@@ -107,7 +107,7 @@ describe('installFailedPreloadRecorder', () => {
 });
 
 describe('allPreloadAssetUrls', () => {
-  it('只留 modulepreload／preload／stylesheet 的同源 /assets/，去重，最多 60', () => {
+  it('只留 modulepreload／preload／stylesheet 的同源 /assets/，去重', () => {
     const js = addLink('modulepreload', '/assets/app.js').href;
     const css = addLink('stylesheet', '/assets/app.css').href;
     const pre = addLink('preload', '/assets/chunk.js').href;
@@ -117,17 +117,22 @@ describe('allPreloadAssetUrls', () => {
     addLink('preload', '/assets/nested/app.js');
     addLink('modulepreload', '/assets/app.js');
     expect(allPreloadAssetUrls()).toEqual([js, css, pre]);
+  });
 
-    document.querySelectorAll('link').forEach((node) => node.remove());
-    const hrefs: string[] = [];
-    for (let i = 0; i < MAX_ALL + 1; i += 1) {
-      hrefs.push(addLink('stylesheet', `/assets/s${i}.css`).href);
+  it('80 個合格 link 全回；81 個整批不刷新', () => {
+    expect(MAX_ALL).toBe(80);
+    const eighty: string[] = [];
+    for (let i = 0; i < 80; i += 1) {
+      eighty.push(addLink('stylesheet', `/assets/s${i}.css`).href);
     }
-    const got = allPreloadAssetUrls();
-    expect(got).toHaveLength(MAX_ALL);
-    expect(got).toEqual(hrefs.slice(0, MAX_ALL));
-    const dropped = hrefs[MAX_ALL];
-    expect(dropped).toBeTruthy();
-    expect(got).not.toContain(dropped);
+    // 不合格與重複不計入上限。
+    addLink('icon', '/assets/icon.js');
+    addLink('stylesheet', 'https://cdn.example.com/assets/ext.css');
+    addLink('stylesheet', '/assets/s0.css');
+    expect(allPreloadAssetUrls()).toEqual(eighty);
+    expect(allPreloadAssetUrls()).toHaveLength(80);
+
+    addLink('modulepreload', '/assets/overflow.js');
+    expect(allPreloadAssetUrls()).toEqual([]);
   });
 });

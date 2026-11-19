@@ -76,7 +76,11 @@ export function installChunkReloadGuard(): void {
       storage,
       now: () => now,
       // 取代：直接 location.reload()；WebKit 會沿用失敗結果（§3.293）
-      reload: () => { void refreshThenReload(); },
+      // §3.295(a)：等待後重整前再查一次
+      // 仍走 void refreshThenReload()，只多傳 canReload；真正換頁是 location.reload()，query 與 hash 留著。
+      reload: () => {
+        void refreshThenReload({ canReload: () => canReloadAfterChunkFailure().safe });
+      },
       canReload: () => canReloadAfterChunkFailure().safe,
       onBlocked: (reload) => {
         showChunkFailurePrompt(reload, 'chunk-load');

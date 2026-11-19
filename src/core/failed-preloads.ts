@@ -3,7 +3,10 @@
 // iOS／桌面 WebKit 會把 5xx 的失敗結果帶過 location.reload()；重載前要先刷新這些網址。
 
 export const MAX_FAILED = 30;
-export const MAX_ALL = 60;
+// 冷開 `/events/<id>` 的同源 /assets/ 預載約 57 個（index.html 24＋開機預載），80 留餘裕；
+// 超過代表已在站內換頁很久、累積大量 link，全部刷新成本高且不一定刷到真兇，直接重整較穩。
+// 只收同源 /assets/*.js|css。合格候選超過 MAX_ALL 就整批不刷新（回空陣列），不再取前 N 個。
+export const MAX_ALL = 80;
 
 /** 同源、路徑符合這條才刷新。new URL 失敗回 false。 */
 const ASSET_PATH = /^\/assets\/[\w.-]+\.(?:js|css)$/;
@@ -56,7 +59,7 @@ export function getFailedPreloads(): string[] {
   return failedUrls.slice();
 }
 
-/** 退回用：文件中所有 rel=modulepreload／preload／stylesheet 且通過 isRefreshableAssetUrl 的 link.href，去重，最多 MAX_ALL。 */
+/** 退回用：文件中所有 rel=modulepreload／preload／stylesheet 且通過 isRefreshableAssetUrl 的 link.href，去重。合格候選超過 MAX_ALL 就回空陣列（整批不刷新）。 */
 export function allPreloadAssetUrls(doc?: Document): string[] {
   const targetDoc = doc ?? (typeof document === 'undefined' ? undefined : document);
   if (!targetDoc) return [];
@@ -65,8 +68,8 @@ export function allPreloadAssetUrls(doc?: Document): string[] {
     if (!relAllowed(link.rel)) continue;
     const href = link.href;
     if (!href || out.includes(href) || !isRefreshableAssetUrl(href)) continue;
-    if (out.length >= MAX_ALL) break;
     out.push(href);
+    if (out.length > MAX_ALL) return [];
   }
   return out;
 }

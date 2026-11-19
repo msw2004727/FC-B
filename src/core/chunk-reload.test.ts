@@ -1,7 +1,10 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setLocale } from '@/i18n/i18n';
 import { RELOAD_AT_KEY, _resetChunkReloadGuardForTest, handleChunkLoadFailure, installChunkReloadGuard } from './chunk-reload';
+import { _resetFailedPreloadsForTest, installFailedPreloadRecorder } from './failed-preloads';
+import { _resetRefreshReloadForTest } from './refresh-reload';
 import { _resetReloadSafetyForTest, canReloadAfterChunkFailure } from './reload-safety';
+import { _resetRouteLoadingForTest } from './route-loading';
 import { _resetSubmitGuardForTest, beginSubmitting } from './submit-guard';
 import { _resetRouteLoadPendingForTest, beginRouteLoad } from './route-load-pending';
 
@@ -165,6 +168,11 @@ describe('installChunkReloadGuard', () => {
     _resetSubmitGuardForTest();
     _resetReloadSafetyForTest();
     _resetChunkReloadGuardForTest();
+    _resetRefreshReloadForTest();
+    _resetFailedPreloadsForTest();
+    _resetRouteLoadingForTest();
+    document.querySelectorAll('link').forEach((node) => node.remove());
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     sessionStorage.clear();
     history.replaceState(null, '', '/');
@@ -210,6 +218,39 @@ describe('installChunkReloadGuard', () => {
     window.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(false);
     expect(document.getElementById('sw-reload-deferred-prompt')?.dataset.mode).toBe('chunk');
+  });
+
+  it('等待期間開始送出：刷新後不重整，出現延後提示（§3.295(a)）', async () => {
+    installFailedPreloadRecorder();
+    const link = document.createElement('link');
+    link.rel = 'modulepreload';
+    link.href = '/assets/guard.js';
+    document.head.appendChild(link);
+    link.dispatchEvent(new Event('error', { bubbles: false }));
+
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    installChunkReloadGuard();
+    history.replaceState(null, '', '/');
+    sessionStorage.clear();
+    const event = new Event('vite:preloadError', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(fetchMock).toHaveBeenCalled();
+
+    const end = beginSubmitting('signup');
+    resolveFetch(new Response(''));
+    await vi.waitFor(() => {
+      expect(document.getElementById('sw-reload-deferred-prompt')?.dataset.mode).toBe('chunk');
+    });
+    const navErrors = errorSpy.mock.calls.filter((args) => args.some((arg) => String(arg).includes('Not implemented: navigation')));
+    expect(navErrors).toHaveLength(0);
+    end();
   });
 });
 

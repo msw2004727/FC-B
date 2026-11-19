@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { beginRouteLoading } from './route-loading';
+import { beginRouteLoading, endRouteLoading } from './route-loading';
 import { _resetFailedPreloadsForTest, installFailedPreloadRecorder } from './failed-preloads';
+import { _resetReloadSafetyForTest } from './reload-safety';
 import { REFRESH_TIMEOUT_MS, _resetRefreshReloadForTest, refreshThenReload } from './refresh-reload';
+import { _resetSubmitGuardForTest, beginSubmitting } from './submit-guard';
 
 vi.mock('./route-loading', () => ({
   beginRouteLoading: vi.fn(() => 1),
+  endRouteLoading: vi.fn(),
 }));
 
 function addLink(rel: string, href: string): HTMLLinkElement {
@@ -30,6 +33,8 @@ beforeEach(() => {
 afterEach(() => {
   _resetRefreshReloadForTest();
   _resetFailedPreloadsForTest();
+  _resetSubmitGuardForTest();
+  _resetReloadSafetyForTest();
   document.querySelectorAll('link').forEach((node) => node.remove());
   document.body.innerHTML = '';
   history.replaceState(null, '', '/');
@@ -178,5 +183,148 @@ describe('refreshThenReload', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(reload).toHaveBeenCalledTimes(1);
     expect(vi.mocked(beginRouteLoading)).not.toHaveBeenCalled();
+  });
+
+  it('等待後 canReload 回 false：reload 0 次、onBlocked 1 次；retry 再 fetch，改回 true 後 reload 1 次', async () => {
+    recordFailure('modulepreload', '/assets/wait.js');
+    let allow = false;
+    const canReload = vi.fn(() => allow);
+    const onBlocked = vi.fn();
+    let markReloaded: () => void = () => {};
+    const reloaded = new Promise<void>((resolve) => {
+      markReloaded = resolve;
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(''));
+    const reload = vi.fn(() => {
+      markReloaded();
+    });
+    await refreshThenReload({ fetchImpl, reload, online: () => true, canReload, onBlocked });
+    expect(reload).not.toHaveBeenCalled();
+    // 被擋時收掉等待用的載入提示（同一個序號）。
+    expect(endRouteLoading).toHaveBeenCalledWith(1);
+    expect(onBlocked).toHaveBeenCalledTimes(1);
+    expect(canReload).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    allow = true;
+    const retry = onBlocked.mock.calls[0]?.[0] as () => void;
+    retry();
+    await reloaded;
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(canReload).toHaveBeenCalledTimes(2);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('onBlocked 同步呼叫 retry：清掉 inFlight 後重走一輪並重整', async () => {
+    recordFailure('modulepreload', '/assets/sync-retry.js');
+    let allow = false;
+    let startedRetry = false;
+    let markReloaded: () => void = () => {};
+    const reloaded = new Promise<void>((resolve) => {
+      markReloaded = resolve;
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(''));
+    const reload = vi.fn(() => {
+      markReloaded();
+    });
+    const pending = refreshThenReload({
+      fetchImpl,
+      reload,
+      online: () => true,
+      canReload: () => allow,
+      onBlocked: (retry) => {
+        if (startedRetry) throw new Error('第二輪不該再被擋');
+        startedRetry = true;
+        allow = true;
+        retry();
+      },
+    });
+    await pending;
+    await reloaded;
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('預設 canReload：beginSubmitting 期間被擋，結束後 retry 會重整', async () => {
+    recordFailure('modulepreload', '/assets/sub.js');
+    let markReloaded: () => void = () => {};
+    const reloaded = new Promise<void>((resolve) => {
+      markReloaded = resolve;
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(''));
+    const reload = vi.fn(() => {
+      markReloaded();
+    });
+    const pending = refreshThenReload({ fetchImpl, reload, online: () => true });
+    const end = beginSubmitting('signup');
+    await pending;
+    expect(reload).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const prompt = document.getElementById('sw-reload-deferred-prompt');
+    expect(prompt?.dataset.mode).toBe('chunk');
+    expect(prompt?.dataset.reason).toBe('chunk-load-deferred');
+    end();
+    prompt?.querySelector<HTMLButtonElement>('[data-sw-reload-now]')?.click();
+    await reloaded;
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('離線路徑不呼叫 canReload', async () => {
+    recordFailure('modulepreload', '/assets/off-check.js');
+    const canReload = vi.fn(() => false);
+    const onBlocked = vi.fn();
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(''));
+    const reload = vi.fn();
+    await refreshThenReload({ fetchImpl, reload, online: () => false, canReload, onBlocked });
+    expect(canReload).not.toHaveBeenCalled();
+    expect(onBlocked).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('沒有網址而直接重整：不呼叫 canReload', async () => {
+    const canReload = vi.fn(() => false);
+    const onBlocked = vi.fn();
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(''));
+    const reload = vi.fn();
+    await refreshThenReload({ fetchImpl, reload, online: () => true, canReload, onBlocked });
+    expect(canReload).not.toHaveBeenCalled();
+    expect(onBlocked).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('canReload 丟錯：不 reload、不 reject', async () => {
+    recordFailure('modulepreload', '/assets/boom.js');
+    const reload = vi.fn();
+    const onBlocked = vi.fn();
+    const pending = refreshThenReload({
+      fetchImpl: async () => new Response(''),
+      reload,
+      online: () => true,
+      canReload: () => {
+        throw new Error('boom');
+      },
+      onBlocked,
+    });
+    await expect(pending).resolves.toBeUndefined();
+    expect(reload).not.toHaveBeenCalled();
+    expect(onBlocked).toHaveBeenCalledTimes(1);
+  });
+
+  it('onBlocked 丟錯：不 reload、不 reject', async () => {
+    recordFailure('modulepreload', '/assets/boom-block.js');
+    const reload = vi.fn();
+    const pending = refreshThenReload({
+      fetchImpl: async () => new Response(''),
+      reload,
+      online: () => true,
+      canReload: () => false,
+      onBlocked: () => {
+        throw new Error('nope');
+      },
+    });
+    await expect(pending).resolves.toBeUndefined();
+    expect(reload).not.toHaveBeenCalled();
   });
 });
