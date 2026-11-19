@@ -188,6 +188,18 @@
 .cp3-m__vs .s--pk { display: inline-flex; align-items: baseline; justify-content: center; gap: var(--space-1); width: max-content; max-width: none; }
 .cp3-m__vs--pk .s4-pk { flex: 0 0 auto; overflow: visible; }
 .cp3-m__vs .s.vs { font-size: var(--font-size-body-sm); font-weight: 400; color: var(--color-text-muted); }
+/* PK 在比分欄下一行、置中。沒有 PK 不渲染，不佔高度。比分欄仍走上面的 56px。 */
+.cp3-m__vs .cp3-m__pk {
+  grid-column: 2;
+  margin-top: 2px;
+  overflow: visible;
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-text-secondary);
+  text-align: center;
+  white-space: nowrap;
+}
 
 .cp3-st { padding: var(--space-3) 10px; }
 .cp3-st__r { display: grid; grid-template-columns: 28px minmax(0, 1fr) 20px 20px 20px 20px 40px 30px 30px; column-gap: 2px; align-items: center; padding: 8px 0; border-top: 1px solid var(--color-border-subtle); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-variant-numeric: tabular-nums; }

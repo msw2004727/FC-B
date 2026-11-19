@@ -214,21 +214,19 @@ export function MatchSchedule({
                             {clock === 'keep' && match.live ? <LiveScoreBadge kind="live" /> : null}
                             {clock === 'keep' && match.corrected ? <LiveScoreBadge kind="corrected" /> : null}
                           </div>
-                          <div class={match.pk ? 'cp3-m__vs cp3-m__vs--pk' : 'cp3-m__vs'}>
+                          <div class="cp3-m__vs">
                             <span class="h">
                               <SideName entryId={match.homeId} name={match.homeName} crests={crests} align="home" logo={match.homeLogo} />
                             </span>
                             {match.score ? (
-                              <span class={match.pk ? 's s--pk' : 's'}>
-                                {match.score[0]}：{match.score[1]}
-                                {match.pk ? <span class="s4-pk">{pkScoreLabel(match.pk[0], match.pk[1])}</span> : null}
-                              </span>
+                              <span class="s">{match.score[0]}：{match.score[1]}</span>
                             ) : (
                               <span class="s vs">vs</span>
                             )}
                             <span class="a">
                               <SideName entryId={match.awayId} name={match.awayName} crests={crests} align="away" logo={match.awayLogo} />
                             </span>
+                            {match.pk ? <span class="cp3-m__pk">{pkScoreLabel(match.pk[0], match.pk[1])}</span> : null}
                           </div>
                           {clock === 'keep' && match.reason ? (
                             <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{match.reason}</p>

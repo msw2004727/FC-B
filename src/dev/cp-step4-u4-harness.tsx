@@ -105,7 +105,7 @@ const LIVE_ENTRIES: readonly SummaryEntry[] = [
 const CORRECTED_ENTRIES: readonly SummaryEntry[] = [
   detailEntry({
     id: 'd3', hour: 8, minute: 0, home: '藍鯨隊', away: '海風隊',
-    homeId: 'en_whale', awayId: 'en_h', score: [2, 1], st: 'confirmed', cx: DETAIL_NOW, pk: [4, 3], logo: U4_CREST,
+    homeId: 'en_whale', awayId: 'en_h', score: [2, 2], st: 'confirmed', cx: DETAIL_NOW, pk: [4, 3], logo: U4_CREST,
   }),
 ];
 

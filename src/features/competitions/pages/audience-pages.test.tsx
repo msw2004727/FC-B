@@ -307,9 +307,17 @@ describe('詳情頁即時', () => {
     expect(await screen.findByText('即時')).toBeTruthy();
     expect(screen.getByText('比分已更正')).toBeTruthy();
     const pk = screen.getByText('PK 4:3');
-    expect(pk.classList.contains('s4-pk')).toBe(true);
-    expect(pk.parentElement?.classList.contains('s--pk')).toBe(true);
-    expect(screen.getByText('2：1')).toBeTruthy();
+    expect(pk.classList.contains('cp3-m__pk')).toBe(true);
+    expect(pk.closest('.s')).toBeNull();
+    expect(pk.parentElement?.className).toBe('cp3-m__vs');
+    const score = pk.parentElement?.querySelector('.s');
+    expect(score?.className).toBe('s');
+    expect(score?.textContent).toBe('2：1');
+    const pkRow = pk.closest('.cp3-m');
+    expect(view.container.querySelectorAll('.cp3-m__pk')).toHaveLength(1);
+    for (const row of view.container.querySelectorAll('.cp3-m')) {
+      if (row !== pkRow) expect(row.querySelector('.cp3-m__pk')).toBeNull();
+    }
     expect(view.container.textContent ?? '').toContain('隔日 01:30');
     expect(view.container.textContent ?? '').toContain('09:00　示範球場');
     expect(view.container.textContent ?? '').toContain('14:30　確認場');
