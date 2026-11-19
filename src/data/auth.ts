@@ -17,6 +17,8 @@
 
 import { emit } from '@/core/events';
 import { toast } from '@/ui/Toast';
+import { LOGIN_HANDOFF_ENABLED, LOGIN_HANDOFF_STORAGE_KEY } from '@/features/login-handoff/flag';
+import { isStandalonePwa } from '@/features/pwa/pwa-install';
 
 import { writeAuthHint } from './auth-hint';
 import { callFn } from './callables';
@@ -26,6 +28,7 @@ import {
   buildCleanLoginRedirectUri,
   cleanLoginParamsFromUrl,
   hasLoginRedirectParams,
+  isIosStandalone,
   markAutoLoginSuppressed,
   suppressAutoLoginThisPage,
 } from './login-redirect';
@@ -203,6 +206,10 @@ function emitAuth(uid: string | null): void {
  * 改拋 LoginRedirectingError（呼叫端不顯示錯誤）。
  */
 export async function signIn(options: { interactive?: boolean } = {}): Promise<AuthUser> {
+  // Safari 轉交頁不能消耗 code。
+  if (typeof location !== 'undefined' && location.search.includes('fcbHandoff')) {
+    throw new LoginRedirectingError();
+  }
   // 登出進行中（等 LIFF 登出或重整前）：不登入，頁面自動要求登入會在這裡停住（Opus P3-4）。
   if (signingOut) throw new LoginRedirectingError('[auth] 登出中，略過登入');
   // 進行中的 signIn 共用同一支 Promise：各頁按鈕與 App 接手同時登入時只 liff.init 一次，
@@ -355,6 +362,19 @@ async function redirectToLineLogin(
   // liff.login() 會觸發 OAuth 重導向；呼叫後通常不會返回。
   // M-036：照 A 帶 redirectUri＝目前網址（清理 OAuth 參數後），登入完回到原本那頁；在首頁時不帶。不顯示失敗錯誤。
   const redirectUri = buildCleanLoginRedirectUri(location.href);
+  if (LOGIN_HANDOFF_ENABLED && isIosStandalone(
+    navigator.userAgent,
+    isStandalonePwa(),
+    navigator.maxTouchPoints ?? 0,
+  )) {
+    // 這次之後要再經過提示框；B1-02 不會自己發起轉交。載入失敗不退回一般 liff.login。
+    mobileHintAcknowledged = false;
+    const handoff = await import('@/features/login-handoff/start');
+    const uri = await handoff.beginLoginHandoff(redirectUri);
+    if (uri === null) throw new LoginRedirectingError();
+    liff.login({ redirectUri: uri });
+    throw new LoginRedirectingError();
+  }
   if (redirectUri === new URL('/', location.origin).toString()) {
     liff.login();
   } else {
@@ -610,7 +630,12 @@ export interface QaClaims {
 // 'fcb:home-next:'：首頁「我的下一場活動」快照（含 owner uid 與報名活動），登出與清除快取一起清（2026-11-19）。
 // 'fcb:cp-list:'：站內賽事清單快照（含 owner uid 與本人主辦／草稿賽事名稱），登出與清除快取一起清（2026-11-21，顧問 §3.553）。
 const ACCOUNT_STORAGE_PREFIXES = ['shub_c_', 'shub_ts_', 'shub_cache_', 'shub_qr_', 'LIFF', 'toosterx:auth', 'fcb:events-snapshot:', 'fcb:home-next:', 'fcb:cp-list:'];
-const ACCOUNT_STORAGE_EXACT_KEYS = ['sporthub_auto_exp_rules', 'sporthub_auto_exp_logs', 'admin_stealth'];
+const ACCOUNT_STORAGE_EXACT_KEYS = [
+  'sporthub_auto_exp_rules',
+  'sporthub_auto_exp_logs',
+  'admin_stealth',
+  LOGIN_HANDOFF_STORAGE_KEY,
+];
 
 /** 換帳號前拍下的帳號相關 localStorage（key → 當時的值）。 */
 export type AccountLocalSnapshot = ReadonlyMap<string, string | null>;

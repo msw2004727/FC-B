@@ -55,6 +55,7 @@ import { reportClientError } from '@/core/error-report';
 import { installOfflineWriteGuard } from '@/core/sync-status';
 import { scheduleIdleRoutePrefetch } from '@/core/route-prefetch';
 import { startMiniAppLiffPreinit } from '@/data/liff-preinit';
+import { LOGIN_HANDOFF_ENABLED, LOGIN_HANDOFF_STORAGE_KEY } from '@/features/login-handoff/flag';
 import { initPwaInstallListener } from '@/features/pwa/pwa-install';
 import { RESTRICTED_ACCOUNT_MSG } from '@/core/unavailable';
 import type { FeatureRoute, RouteAccessContext } from '@/core/feature-types';
@@ -252,6 +253,33 @@ export function App({
     const stopLiffPreinit = startMiniAppLiffPreinit();
     // 側邊選單改成延遲載入後，Android 的安裝提示事件仍要在開站時就接住（原本由選單掛載時綁定）。
     initPwaInstallListener();
+    let retryHandoff: (() => void) | undefined;
+    if (LOGIN_HANDOFF_ENABLED) {
+      let pending = false;
+      try {
+        pending = localStorage.getItem(LOGIN_HANDOFF_STORAGE_KEY) !== null;
+      } catch { /* ignore */ }
+      if (pending || (typeof location !== 'undefined' && location.search.includes('fcbHandoff'))) {
+        let once = false;
+        const load = (): void => {
+          void import('@/features/login-handoff/boot').then(
+            (m) => { void m.bootLoginHandoff().catch(() => undefined); },
+            () => {
+              if (once) return;
+              retryHandoff = () => {
+                if (document.visibilityState !== 'visible') return;
+                document.removeEventListener('visibilitychange', retryHandoff as () => void);
+                retryHandoff = undefined;
+                once = true;
+                load();
+              };
+              document.addEventListener('visibilitychange', retryHandoff);
+            },
+          );
+        };
+        load();
+      }
+    }
 
     mounted.current = true;
     let cancelled = false;
@@ -323,6 +351,7 @@ export function App({
       stopOfflineGuard();
       stopIdlePrefetch();
       stopLiffPreinit();
+      if (retryHandoff) document.removeEventListener('visibilitychange', retryHandoff);
     };
   }, []);
 

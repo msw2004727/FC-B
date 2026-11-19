@@ -11,10 +11,21 @@ export function isLikelyMiniAppUserAgent(userAgent: string): boolean {
   return /\bLine\//i.test(userAgent) && /\bLIFF\b/.test(userAgent);
 }
 
-/** 網址是否帶 LINE 授權回跳參數。 */
+/**
+ * iPhone／iPad／iPod，或 Macintosh 且觸控點 >1，且 standalone。
+ * 邏輯與原本應隱藏瀏覽器登入的判斷相同。
+ */
+export function isIosStandalone(ua: string, standalone: boolean, maxTouchPoints: number): boolean {
+  const isIOS = /iPhone|iPad|iPod/.test(ua)
+    || (/Macintosh/.test(ua) && maxTouchPoints > 1);
+  return isIOS && standalone;
+}
+
+/** 網址是否帶 LINE 授權回跳參數。帶 fcbHandoff 的轉交回跳不是本機接手。 */
 export function hasLoginRedirectParams(href: string): boolean {
   try {
     const params = new URL(href).searchParams;
+    if (params.has('fcbHandoff')) return false;
     return (params.has('code') && params.has('liffClientId')) || params.has('liff.state');
   } catch {
     return false;
@@ -43,6 +54,7 @@ const LOGIN_REDIRECT_PARAM_KEYS = [
   'error',
   'error_description',
   'liff.state',
+  'fcbHandoff',
 ] as const;
 
 /** M-036：照 A `js/line-auth.js:595-605` 清理 OAuth 查詢參數並組出回跳網址。 */

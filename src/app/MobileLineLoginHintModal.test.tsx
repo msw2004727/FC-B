@@ -4,7 +4,8 @@ import { _resetOverlayBackForTest } from '@/core/overlay-back';
 import { _setDictLoaderForTest, setLocale } from '@/i18n/i18n';
 import { getMiniAppShareUrl } from '@/ui/mini-app-share-url';
 import { isStandalonePwa } from '@/features/pwa/pwa-install';
-import { MobileLineLoginHintModal, shouldHideBrowserLogin } from './MobileLineLoginHintModal';
+import { isIosStandalone } from '@/data/login-redirect';
+import { MobileLineLoginHintModal } from './MobileLineLoginHintModal';
 
 vi.mock('@/ui/mini-app-share-url', () => ({
   getMiniAppShareUrl: () => 'https://miniapp.line.me/2008123456-AbCd',
@@ -79,7 +80,7 @@ describe('MobileLineLoginHintModal', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('iPhone 主畫面 PWA 模式只留 LINE App 登入、其小字與取消', () => {
+  it('旗標開啟時主畫面模式顯示按鈕', () => {
     setNavigator({
       userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
       maxTouchPoints: 5,
@@ -89,9 +90,9 @@ describe('MobileLineLoginHintModal', () => {
 
     expect(screen.getByRole('link', { name: '在 LINE App 中登入' })).toBeTruthy();
     expect(screen.getByText('之後都在 LINE 裡使用')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '用目前瀏覽器登入' })).toBeNull();
-    expect(screen.queryByText('或')).toBeNull();
-    expect(screen.queryByText('LINE 確認後回到這個瀏覽器')).toBeNull();
+    expect(screen.getByRole('button', { name: '用目前瀏覽器登入' })).toBeTruthy();
+    expect(screen.getByText('或')).toBeTruthy();
+    expect(screen.getByText('LINE 確認後回到這個瀏覽器')).toBeTruthy();
     expect(screen.getByRole('button', { name: '取消' })).toBeTruthy();
   });
 
@@ -113,14 +114,14 @@ describe('MobileLineLoginHintModal', () => {
     });
   }
 
-  it('shouldHideBrowserLogin 判斷各平台與 standalone', () => {
-    expect(shouldHideBrowserLogin('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', true, 5)).toBe(true);
-    expect(shouldHideBrowserLogin('Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)', true, 5)).toBe(true);
-    expect(shouldHideBrowserLogin('Mozilla/5.0 (iPod touch; CPU iPhone OS 17_0 like Mac OS X)', true, 5)).toBe(true);
-    expect(shouldHideBrowserLogin('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', true, 5)).toBe(true);
-    expect(shouldHideBrowserLogin('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', true, 1)).toBe(false);
-    expect(shouldHideBrowserLogin('Mozilla/5.0 (Linux; Android 13)', true, 5)).toBe(false);
-    expect(shouldHideBrowserLogin('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', false, 5)).toBe(false);
-    expect(shouldHideBrowserLogin('Mozilla/5.0 (Windows NT 10.0; Win64; x64)', false, 0)).toBe(false);
+  it('isIosStandalone 判斷各平台與 standalone', () => {
+    expect(isIosStandalone('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', true, 5)).toBe(true);
+    expect(isIosStandalone('Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)', true, 5)).toBe(true);
+    expect(isIosStandalone('Mozilla/5.0 (iPod touch; CPU iPhone OS 17_0 like Mac OS X)', true, 5)).toBe(true);
+    expect(isIosStandalone('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', true, 5)).toBe(true);
+    expect(isIosStandalone('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', true, 1)).toBe(false);
+    expect(isIosStandalone('Mozilla/5.0 (Linux; Android 13)', true, 5)).toBe(false);
+    expect(isIosStandalone('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', false, 5)).toBe(false);
+    expect(isIosStandalone('Mozilla/5.0 (Windows NT 10.0; Win64; x64)', false, 0)).toBe(false);
   });
 });

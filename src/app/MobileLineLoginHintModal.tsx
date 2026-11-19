@@ -5,6 +5,8 @@ import { useEffect } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
 import { lt, useT } from '@/i18n/i18n';
 import { getMiniAppShareUrl } from '@/ui/mini-app-share-url';
+import { isIosStandalone } from '@/data/login-redirect';
+import { LOGIN_HANDOFF_ENABLED } from '@/features/login-handoff/flag';
 import { isStandalonePwa } from '@/features/pwa/pwa-install';
 import './MobileLineLoginHintModal.css';
 
@@ -12,17 +14,6 @@ export interface MobileLineLoginHintModalProps {
   open: boolean;
   onConfirm: () => void;
   onCancel: () => void;
-}
-
-/** iOS 主畫面 PWA 模式不顯示瀏覽器登入，避免登入結果回不到 App。 */
-export function shouldHideBrowserLogin(
-  ua: string,
-  standalone: boolean,
-  maxTouchPoints: number,
-): boolean {
-  const isIOS = /iPhone|iPad|iPod/.test(ua)
-    || (/Macintosh/.test(ua) && maxTouchPoints > 1);
-  return isIOS && standalone;
 }
 
 function hintLabel(
@@ -57,7 +48,7 @@ export function MobileLineLoginHintModal({
   const browserLogin = hintLabel(translate, 'lineLoginHint.browserLogin', '用目前瀏覽器登入');
   const browserLoginNote = hintLabel(translate, 'lineLoginHint.browserLoginNote', 'LINE 確認後回到這個瀏覽器');
 
-  const hideBrowserLogin = shouldHideBrowserLogin(
+  const hideBrowserLogin = !LOGIN_HANDOFF_ENABLED && isIosStandalone(
     typeof navigator === 'undefined' ? '' : navigator.userAgent,
     isStandalonePwa(),
     typeof navigator === 'undefined' ? 0 : (navigator.maxTouchPoints ?? 0),

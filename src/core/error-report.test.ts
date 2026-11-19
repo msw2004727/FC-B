@@ -394,4 +394,8 @@ describe('redactUrl／redactHash', () => {
   it('沒有 = 的長片段整段遮掉', () => {
     expect(redactHash('#eyJhbGciOiJIUzI1NiJ9.payload.sig')).toBe('#***');
   });
+
+  it('fcbHandoff 遮成 ***', () => {
+    expect(redactUrl('https://a.test/?fcbHandoff=abc123def&p=1')).toBe('https://a.test/?fcbHandoff=***&p=1');
+  });
 });
