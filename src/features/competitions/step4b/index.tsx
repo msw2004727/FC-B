@@ -1,0 +1,67 @@
+// 第 4 步預覽入口。只給 harness 與測試用，不從 competitions/index 再出口。
+
+import type { JSX } from 'preact';
+import type { Step4bScreen } from '../testing/step4b-fixtures';
+import { AdditionRequestScreen, AdditionReviewScreen, ClaimScreen, LinkJoinScreen, LinkRepScreen } from './links';
+import { AuditLogScreen, CheckinPrintScreen, ScheduleMidnightScreen } from './other';
+import { RulesAdvancedScreen, RulesPublicScreen, RulesTemplateScreen } from './rules';
+import { InviteAcceptScreen, ScorerMatchesScreen, StaffAssignScreen, StaffInviteScreen, StaffListScreen } from './staff';
+
+export {
+  AdditionRequestScreen,
+  AdditionReviewScreen,
+  AuditLogScreen,
+  CheckinPrintScreen,
+  ClaimScreen,
+  InviteAcceptScreen,
+  LinkJoinScreen,
+  LinkRepScreen,
+  RulesAdvancedScreen,
+  RulesPublicScreen,
+  RulesTemplateScreen,
+  ScheduleMidnightScreen,
+  ScorerMatchesScreen,
+  StaffAssignScreen,
+  StaffInviteScreen,
+  StaffListScreen,
+};
+
+/** 依畫面 id 畫預覽。每個 id 都有對應分支，缺一個就過不了型別檢查。 */
+export function renderStep4bScreen(screen: Step4bScreen): JSX.Element {
+  switch (screen) {
+    case 'staff-list':
+      return <StaffListScreen />;
+    case 'staff-assign':
+      return <StaffAssignScreen />;
+    case 'staff-invite':
+      return <StaffInviteScreen />;
+    case 'invite-accept':
+      return <InviteAcceptScreen />;
+    case 'scorer-my-matches':
+      return <ScorerMatchesScreen />;
+    case 'link-rep':
+      return <LinkRepScreen />;
+    case 'link-join':
+      return <LinkJoinScreen extras />;
+    case 'link-join-birthday':
+      return <LinkJoinScreen needBirthday />;
+    case 'claim':
+      return <ClaimScreen />;
+    case 'addition-request':
+      return <AdditionRequestScreen />;
+    case 'addition-review':
+      return <AdditionReviewScreen />;
+    case 'rules-template':
+      return <RulesTemplateScreen />;
+    case 'rules-advanced':
+      return <RulesAdvancedScreen />;
+    case 'rules-public':
+      return <RulesPublicScreen />;
+    case 'checkin-print':
+      return <CheckinPrintScreen />;
+    case 'audit-log':
+      return <AuditLogScreen />;
+    case 'schedule-midnight':
+      return <ScheduleMidnightScreen />;
+  }
+}
