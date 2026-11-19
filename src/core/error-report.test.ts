@@ -277,6 +277,15 @@ describe('error-report', () => {
     expect(payload).not.toHaveProperty('diag');
   });
 
+  it('錯誤訊息文字裡的 ?fcbHandoff=abc 被遮', async () => {
+    currentUser = { uid: 'u1', displayName: '小明' };
+    reportClientError('error', new Error('open ?fcbHandoff=abc now'));
+    await waitForWrites(1);
+    const payload = mockAddDoc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload.errorMessage).toBe('open ?fcbHandoff=*** now');
+    expect(JSON.stringify(payload)).not.toContain('fcbHandoff=abc');
+  });
+
   it('errorMessage／errorStack 夾帶的憑證網址與 JWT 也遮掉', async () => {
     currentUser = { uid: 'u1', displayName: '小明' };
     const err = new Error('failed at https://toosterx.com/?code=SECRET_M1 token eyJhbGciOiJIUzI1NiJ9.SECRET_JWT');
@@ -393,5 +402,9 @@ describe('redactUrl／redactHash', () => {
 
   it('沒有 = 的長片段整段遮掉', () => {
     expect(redactHash('#eyJhbGciOiJIUzI1NiJ9.payload.sig')).toBe('#***');
+  });
+
+  it('fcbHandoff 遮成 ***', () => {
+    expect(redactUrl('https://a.test/?fcbHandoff=abc123def&p=1')).toBe('https://a.test/?fcbHandoff=***&p=1');
   });
 });

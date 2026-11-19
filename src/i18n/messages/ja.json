@@ -31,7 +31,8 @@
     "openInLine": "LINE アプリでログイン",
     "openInLineNote": "今後は LINE 内で利用します",
     "browserLogin": "このブラウザでログイン",
-    "browserLoginNote": "LINE 確認後、このブラウザに戻ります"
+    "browserLoginNote": "LINE 確認後、このブラウザに戻ります",
+    "browserLoginNoteApp": "ブラウザで確認したらアプリに戻ってください"
   },
   "ui": {
     "shell": {
