@@ -128,10 +128,21 @@
   font-family: inherit;
 }
 
-/* 360 寬時中文長句會斷出孤字（例如「頁。」「成登入。」），平均分配各行長度；不支援的瀏覽器維持一般換行。 */
+/* 只在標點後換行：每段 inline-block，段內不拆字（顧問 §3.350，取代單用 text-wrap: balance——它會把「數字」拆開）。
+   balance 保留，讓各段在可換行處平均分配。 */
+.login-handoff .login-handoff-seg {
+  display: inline-block;
+}
+
 .login-handoff .login-handoff-warn span,
 .login-handoff .login-handoff-body,
 .login-handoff .login-handoff-note,
 .login-handoff .login-handoff-prompt {
   text-wrap: balance;
+}
+
+/* 韓文以空格分詞，預設會在字詞中間斷開（「홈 화/면」）：只在空格處換行，過長的詞才強制斷。 */
+.login-handoff--ko {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }

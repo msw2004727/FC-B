@@ -11,6 +11,15 @@ import './login-handoff.css';
 
 const LINE_PATH = 'M12 3C6.48 3 2 6.58 2 11c0 3.96 3.6 7.27 8.46 7.9.33.07.78.22.89.5.1.26.07.66.03.92l-.14.86c-.04.26-.2 1 .88.55 1.08-.46 5.83-3.43 7.95-5.88C21.53 14.24 22 12.67 22 11c0-4.42-4.48-8-10-8z';
 
+// 只在全形標點後換行（站長規則：文字不被動斷行；顧問 §3.350）。每段 inline-block，段內不拆字；
+// 單段比畫面寬時仍會在段內換行，不會溢出。只認全形標點：英、韓、越等以空格分詞的語言照一般換行，
+// 若連半形標點也切，下一段開頭的空格會被 inline-block 吃掉（「unstable.Please」）。
+const BREAK_AFTER = /(?<=[，。、！？；：])/;
+function Seg({ text }: { text: string }): JSX.Element {
+  const parts = text.split(BREAK_AFTER).filter((part) => part !== '');
+  return <>{parts.map((part, i) => <span key={i} class="login-handoff-seg">{part}</span>)}</>;
+}
+
 function useOverlayBack(onClose: () => void): void {
   useEffect(() => pushOverlay(() => {
     onClose();
@@ -40,7 +49,7 @@ function Shell({ title, closeLabel, onClose, children }: {
 }): JSX.Element {
   useOverlayBack(onClose);
   return (
-    <div class="legacy-ui login-handoff">
+    <div class={`legacy-ui login-handoff${getCurrentLocale() === 'ko' ? ' login-handoff--ko' : ''}`}>
       <div id="modal-overlay" class="modal-overlay open line-login-hint-overlay" />
       <div
         class="modal open"
@@ -104,7 +113,7 @@ export function WaitScreen({ view, handlers }: { view: WaitView; handlers: WaitH
     return (
       <Shell title={text.timeoutTitle} closeLabel={text.close} onClose={handlers.onClose}>
         <div class="login-handoff-icon"><Icon kind="clock" /></div>
-        <p class="login-handoff-body">{text.timeoutBody}</p>
+        <p class="login-handoff-body"><Seg text={text.timeoutBody} /></p>
         <Primary label={text.relogin} line onClick={handlers.onRestart} />
         <Secondary label={text.cancel} onClick={handlers.onClose} />
       </Shell>
@@ -114,7 +123,7 @@ export function WaitScreen({ view, handlers }: { view: WaitView; handlers: WaitH
     return (
       <Shell title={text.notYetTitle} closeLabel={text.close} onClose={handlers.onClose}>
         <div class="login-handoff-icon"><Icon kind="clock" /></div>
-        <p class="login-handoff-body">{text.notYetBody}</p>
+        <p class="login-handoff-body"><Seg text={text.notYetBody} /></p>
         {/* 站長 11-19 選 B：按鈕與內文「再按一次『我已完成』」一致（取代預覽 v2 的「再試一次」）。 */}
         <Primary label={text.iDone} onClick={handlers.onRetry} />
         <Secondary label={text.relogin} onClick={handlers.onRestart} />
@@ -124,9 +133,9 @@ export function WaitScreen({ view, handlers }: { view: WaitView; handlers: WaitH
   return (
     <Shell title={text.waitTitle} closeLabel={text.close} onClose={handlers.onClose}>
       <div class="login-handoff-icon"><Icon kind="phone" /></div>
-      <p class="login-handoff-prompt">{text.waitPrompt}</p>
+      <p class="login-handoff-prompt"><Seg text={text.waitPrompt} /></p>
       <div class="login-handoff-big" aria-live="polite">{view.number}</div>
-      <p class="login-handoff-note">{text.waitNote}</p>
+      <p class="login-handoff-note"><Seg text={text.waitNote} /></p>
       <span class="login-handoff-remain">{remainLabel(text, view.expiresAt, now)}</span>
       <Primary label={text.iDone} disabled={view.busy} onClick={handlers.onDone} />
       <Secondary label={text.restart} onClick={handlers.onRestart} />
@@ -140,8 +149,8 @@ export function RelayScreen({ view, handlers }: { view: RelayView; handlers: Rel
     return (
       <Shell title={text.doneTitle} closeLabel={text.close} onClose={handlers.onClose}>
         <div class="login-handoff-icon"><Icon kind={view.kind === 'done' ? 'ok' : 'phone'} /></div>
-        <p class="login-handoff-body">{view.kind === 'done' ? text.doneBody : text.sentOrExpired}</p>
-        {view.kind === 'done' && <p class="login-handoff-note">{text.doneNote}</p>}
+        <p class="login-handoff-body"><Seg text={view.kind === 'done' ? text.doneBody : text.sentOrExpired} /></p>
+        {view.kind === 'done' && <p class="login-handoff-note"><Seg text={text.doneNote} /></p>}
       </Shell>
     );
   }
@@ -149,7 +158,7 @@ export function RelayScreen({ view, handlers }: { view: RelayView; handlers: Rel
     return (
       <Shell title={text.wrongTitle} closeLabel={text.close} onClose={handlers.onClose}>
         <div class="login-handoff-icon"><Icon kind="x" /></div>
-        <p class="login-handoff-body">{text.wrongBody}</p>
+        <p class="login-handoff-body"><Seg text={text.wrongBody} /></p>
         <Secondary label={text.closePage} onClick={handlers.onClose} />
       </Shell>
     );
@@ -158,9 +167,9 @@ export function RelayScreen({ view, handlers }: { view: RelayView; handlers: Rel
     <Shell title={text.pickTitle} closeLabel={text.close} onClose={handlers.onClose}>
       <div class="login-handoff-warn" role="note">
         <span aria-hidden="true">⚠</span>
-        <span>{text.warn}</span>
+        <span><Seg text={text.warn} /></span>
       </div>
-      <p class="login-handoff-prompt">{text.pickPrompt}</p>
+      <p class="login-handoff-prompt"><Seg text={text.pickPrompt} /></p>
       <div class="login-handoff-nums">
         {view.options.map((n) => (
           <button
@@ -176,11 +185,11 @@ export function RelayScreen({ view, handlers }: { view: RelayView; handlers: Rel
       </div>
       {view.tryLater ? (
         <div class="login-handoff-stack">
-          <p class="login-handoff-note login-handoff-trylater" role="alert">{text.tryLater}</p>
+          <p class="login-handoff-note login-handoff-trylater" role="alert"><Seg text={text.tryLater} /></p>
           <Primary label={text.retry} disabled={view.busy} onClick={handlers.onRetry} />
         </div>
       ) : (
-        <p class="login-handoff-note">{text.pickNote}</p>
+        <p class="login-handoff-note"><Seg text={text.pickNote} /></p>
       )}
       <Secondary label={text.notMe} onClick={handlers.onClose} />
     </Shell>

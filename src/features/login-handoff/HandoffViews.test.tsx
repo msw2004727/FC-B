@@ -8,6 +8,11 @@ import { HANDOFF_TEXT_FOR_TEST } from './messages';
 import { renderRelay, renderWait } from './view';
 import type { RelayHandlers, WaitHandlers } from './view-types';
 
+/** 文字依標點拆成多段 span，比對整段 <p> 的文字。 */
+function para(text: string): HTMLElement {
+  return screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === text);
+}
+
 function waitHandlers(): WaitHandlers {
   return { onDone: vi.fn(), onRestart: vi.fn(), onRetry: vi.fn(), onClose: vi.fn() };
 }
@@ -100,7 +105,7 @@ describe('轉交頁', () => {
     expect(screen.getByRole('note').textContent).toContain('請關閉此頁');
     fireEvent.click(screen.getByText('81'));
     expect(h.onPick).toHaveBeenCalledWith(81);
-    expect(screen.getByText('選錯一次，這次登入就會作廢')).toBeTruthy();
+    expect(para('選錯一次，這次登入就會作廢')).toBeTruthy();
     rerender(<RelayScreen view={{ kind: 'pick', options: [27, 81, 46], busy: true, tryLater: false }} handlers={h} />);
     expect((screen.getByText('27') as HTMLButtonElement).disabled).toBe(true);
   });
@@ -117,14 +122,30 @@ describe('轉交頁', () => {
     const h = relayHandlers();
     const { rerender } = render(<RelayScreen view={{ kind: 'done' }} handlers={h} />);
     expect(screen.getByText('請回到主畫面 App')).toBeTruthy();
-    expect(screen.getByText('這個頁面不會登入，可以關掉。')).toBeTruthy();
+    expect(para('這個頁面不會登入，可以關掉。')).toBeTruthy();
     rerender(<RelayScreen view={{ kind: 'wrong' }} handlers={h} />);
     expect(screen.getByText('數字不符')).toBeTruthy();
     fireEvent.click(screen.getByText('關閉此頁'));
     expect(h.onClose).toHaveBeenCalledOnce();
     rerender(<RelayScreen view={{ kind: 'sentOrExpired' }} handlers={h} />);
-    expect(screen.getByText('這次登入已送出或已失效，請回到主畫面 App 查看。')).toBeTruthy();
+    expect(para('這次登入已送出或已失效，請回到主畫面 App 查看。')).toBeTruthy();
     expect(document.body.textContent).not.toContain('失敗');
+  });
+});
+
+describe('斷行', () => {
+  it('只在標點後切段，「數字」不會被拆開', () => {
+    render(<WaitScreen view={{ kind: 'notYet', number: 27, expiresAt: Date.now() + 60_000 }} handlers={waitHandlers()} />);
+    const segs = [...para('請確認已在瀏覽器選好數字，再按一次「我已完成」。').querySelectorAll('.login-handoff-seg')].map((el) => el.textContent);
+    expect(segs).toEqual(['請確認已在瀏覽器選好數字，', '再按一次「我已完成」。']);
+  });
+
+  it('英文不在半形標點切段（句點後的空格保留）', async () => {
+    await setLocale('en');
+    render(<RelayScreen view={{ kind: 'pick', options: [27, 81, 46], busy: false, tryLater: true }} handlers={relayHandlers()} />);
+    const alert = screen.getByRole('alert');
+    expect(alert.querySelectorAll('.login-handoff-seg').length).toBe(1);
+    expect(alert.textContent).toBe('Connection unstable. Please try again.');
   });
 });
 
