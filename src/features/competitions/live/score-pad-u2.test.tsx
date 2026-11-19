@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installUi4TestLocale } from '@/ui/ui4-test-helpers';
-import { S4_SCENE_LIVE, S4_SCENE_PK_START } from '../testing/step4-fixtures';
+import { S4_SCENE_LIVE, S4_SCENE_PK_START, S4_SCENE_TAKEOVER } from '../testing/step4-fixtures';
 import { LIVE_COPY } from './copy';
 import { EventSheet } from './EventSheet';
 import { ScorePad, type ScoreFeedRow } from './ScorePad';
@@ -68,6 +68,14 @@ describe('記分板新狀態', () => {
     expect((undo as HTMLButtonElement).disabled).toBe(true);
     expect((amend as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(LIVE_COPY.pkGoalLocked)).toBeTruthy();
+    expect(document.querySelector('.s4-evsum')).toBeTruthy();
+    expect(document.querySelector('.s4-kinds')).toBeNull();
+    expect(document.querySelector('.s4-pick')).toBeNull();
+    expect(screen.queryByText(LIVE_COPY.amendNote)).toBeNull();
+    expect(screen.queryByRole('button', { name: LIVE_COPY.goalNormal })).toBeNull();
+    expect(screen.queryByRole('button', { name: LIVE_COPY.goalPenalty })).toBeNull();
+    expect(screen.queryByRole('button', { name: LIVE_COPY.goalOwn })).toBeNull();
+    expect(screen.queryByRole('button', { name: LIVE_COPY.unspecified })).toBeNull();
   });
 
   it('牌與 PK 腳的復原不受鎖影響', () => {
@@ -89,6 +97,8 @@ describe('記分板新狀態', () => {
       onClose: () => {},
     };
     const card = render(<EventSheet {...sheet} kind="card" goalLocked />);
+    expect(screen.getByRole('button', { name: LIVE_COPY.yellow })).toBeTruthy();
+    expect(document.querySelector('.s4-kinds')).toBeTruthy();
     expect((screen.getByRole('button', { name: /復原/ }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByRole('button', { name: /改判/ }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByText(LIVE_COPY.pkGoalLocked)).toBeNull();
@@ -105,5 +115,50 @@ describe('記分板新狀態', () => {
     const buttons = [...(root?.querySelectorAll('button') ?? [])];
     expect(buttons.length).toBeGreaterThan(0);
     for (const button of buttons) expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('正式頁倒數跟著 timeoutView，收合留在同一段，重整後仍在', () => {
+    const startedAt = 1_700_000_000_000;
+    const timeoutView = { side: 'home' as const, leftSec: 47, startedAt };
+    const first = render(<ScorePad {...S4_SCENE_LIVE} timeoutControlled timeoutView={timeoutView} />);
+    expect(screen.getByText('雷霆隊暫停 0:47')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.collapseTimeout }));
+    first.rerender(<ScorePad {...S4_SCENE_LIVE} timeoutControlled timeoutView={{ ...timeoutView, leftSec: 46 }} />);
+    expect(document.querySelector('.s4-timeout--mini')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '雷霆隊暫停 0:46' })).toBeTruthy();
+    first.unmount();
+    render(<ScorePad {...S4_SCENE_LIVE} timeoutControlled timeoutView={timeoutView} />);
+    expect(screen.getByText('雷霆隊暫停 0:47')).toBeTruthy();
+  });
+
+  it('倒數到 0 顯示繼續計時，資料走完後仍留到結束暫停', () => {
+    const onClock = vi.fn();
+    const startedAt = 1_700_000_000_000;
+    const view = render(
+      <ScorePad
+        {...S4_SCENE_LIVE}
+        timeoutControlled
+        onClock={onClock}
+        timeoutView={{ side: 'home', leftSec: 0, startedAt }}
+      />,
+    );
+    expect(document.querySelector('.s4-timeout__text')?.textContent).toBe(LIVE_COPY.resumeClock);
+    view.rerender(<ScorePad {...S4_SCENE_LIVE} timeoutControlled onClock={onClock} />);
+    expect(document.querySelector('.s4-timeout__text')?.textContent).toBe(LIVE_COPY.resumeClock);
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.endTimeout }));
+    expect(onClock).not.toHaveBeenCalled();
+    expect(document.querySelector('.s4-timeout')).toBeNull();
+  });
+
+  it('沒有本機 sid 時按鈕寫接手記分', () => {
+    render(<ScorePad {...S4_SCENE_LIVE} takeoverOffered takeoverSelf />);
+    expect(screen.getByRole('button', { name: LIVE_COPY.takeoverAction })).toBeTruthy();
+    expect(screen.queryByText(LIVE_COPY.takeoverEntry)).toBeNull();
+  });
+
+  it('別的裝置仍寫其他裝置記分中', () => {
+    render(<ScorePad {...S4_SCENE_TAKEOVER} />);
+    expect(screen.getByRole('button', { name: LIVE_COPY.takeoverEntry })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: LIVE_COPY.takeoverAction })).toBeNull();
   });
 });

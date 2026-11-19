@@ -85,6 +85,7 @@ export const LIVE_COPY = {
   pkGoalLocked: 'PK 期間不能復原或改判一般進球',
   noScorePermission: '你沒有這場的記分權限',
   backToSchedule: '回賽程',
+  leaveScore: '離開記分',
   assignScorerHint: '請先在指派頁把自己指派為記分員',
 } as const;
 

@@ -83,6 +83,8 @@ export interface TimeoutView {
   leftSec: number;
   collapsed?: boolean;
   over?: boolean;
+  /** 這次暫停的事件時間。正式頁用來對上同一段倒數。 */
+  startedAt?: number;
 }
 
 export interface ScorePadProps {
@@ -103,6 +105,8 @@ export interface ScorePadProps {
   clock: LiveClock;
   nowMs: number;
   takeoverOffered: boolean;
+  /** 沒有本機 sid、控制權不是別人時，按鈕寫「接手記分」。沒傳沿用「其他裝置記分中」。 */
+  takeoverSelf?: boolean;
   onRecord?: (pick: ScorePick) => void | boolean;
   onUndo?: (seq: number) => void | boolean;
   /** 停錶／繼續只改 clockBase，不改狀態與比分。 */
@@ -118,6 +122,8 @@ export interface ScorePadProps {
   onReapply?: (id: string) => void;
   onDiscard?: (id: string) => void;
   onTakeover?: () => void;
+  /** 正式頁：比賽選單最後一項。沒傳不顯示，預覽選單維持原樣。 */
+  onLeave?: () => void;
   /** 正式頁：全部記分按鈕停用。預設不關。 */
   scoringDisabled?: boolean;
   /** 正式頁：分頁提示。預設不顯示。 */
@@ -164,6 +170,8 @@ interface TeamTimeoutState {
   collapsed: boolean;
   over: boolean;
   done: boolean;
+  /** 正式頁這段倒數的事件時間。預覽本機倒數沒有。 */
+  startedAt?: number;
 }
 
 interface TimeoutUses {
@@ -194,7 +202,42 @@ function previewTimeout(view: TimeoutView | undefined): TeamTimeoutState | null 
     collapsed: view.collapsed ?? false,
     over: view.over ?? false,
     done: view.leftSec <= 0,
+    ...(view.startedAt != null ? { startedAt: view.startedAt } : {}),
   };
+}
+
+function sameTimeout(current: TeamTimeoutState, next: TeamTimeoutState): boolean {
+  return current.side === next.side
+    && current.leftSec === next.leftSec
+    && current.collapsed === next.collapsed
+    && current.over === next.over
+    && current.done === next.done
+    && current.startedAt === next.startedAt;
+}
+
+/** 正式頁倒數只跟著 timeoutView。收合留在同一段；走完後留到按結束暫停。 */
+function controlledTimeout(
+  current: TeamTimeoutState | null,
+  view: TimeoutView | undefined,
+  hiddenStart: number | null,
+): TeamTimeoutState | null {
+  if (view?.startedAt != null && view.startedAt === hiddenStart) return null;
+  if (!view) {
+    if (current?.startedAt == null) return null;
+    if (current.startedAt === hiddenStart) return null;
+    if (current.done && current.leftSec === 0) return current;
+    return { ...current, leftSec: 0, done: true };
+  }
+  const next: TeamTimeoutState = {
+    side: view.side,
+    leftSec: Math.max(0, view.leftSec),
+    collapsed: current != null && current.startedAt === view.startedAt ? current.collapsed : (view.collapsed ?? false),
+    over: view.over ?? false,
+    done: view.leftSec <= 0,
+    ...(view.startedAt != null ? { startedAt: view.startedAt } : {}),
+  };
+  if (current && sameTimeout(current, next)) return current;
+  return next;
 }
 
 function Mark({
@@ -320,6 +363,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const [timeoutOpen, setTimeoutOpen] = useState(false);
   const [teamTimeout, setTeamTimeout] = useState<TeamTimeoutState | null>(() => previewTimeout(props.timeoutView));
+  const [hiddenStart, setHiddenStart] = useState<number | null>(null);
   const [timeoutUses, setTimeoutUses] = useState<TimeoutUses>({
     period: match.clockBase.period,
     home: 0,
@@ -332,7 +376,12 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const [confirmPair, setConfirmPair] = useState<ConfirmPair | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const restoreFocus = useRef<HTMLElement | null>(null);
-  const timeoutLive = teamTimeout != null && !teamTimeout.done;
+  useEffect(() => {
+    if (props.timeoutControlled !== true) return;
+    const view = props.timeoutView;
+    setTeamTimeout((current) => controlledTimeout(current, view, hiddenStart));
+  }, [props.timeoutControlled, props.timeoutView, hiddenStart]);
+  const timeoutLive = teamTimeout != null && !teamTimeout.done && props.timeoutControlled !== true;
 
   useEffect(() => {
     setTimeoutUses((prev) => (
@@ -761,7 +810,9 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
             <Button variant="secondary" disabled={padOff} onClick={() => setUnappliedOpen(true)}>{LIVE_COPY.unappliedTitle}</Button>
           ) : null}
           {takeoverOffered ? (
-            <Button variant="secondary" disabled={padOff} onClick={() => setTakeoverOpen(true)}>{LIVE_COPY.takeoverEntry}</Button>
+            <Button variant="secondary" disabled={padOff} onClick={() => setTakeoverOpen(true)}>
+              {props.takeoverSelf ? LIVE_COPY.takeoverAction : LIVE_COPY.takeoverEntry}
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -783,7 +834,18 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
         <>
           <div class="s4-timeout__row">
             <span class="s4-timeout__text">{timeoutLabel}</span>
-            <button type="button" class="s4-timeout__btn" onClick={() => setTeamTimeout(null)}>{LIVE_COPY.endTimeout}</button>
+            <button
+              type="button"
+              class="s4-timeout__btn"
+              onClick={() => {
+                if (props.timeoutControlled === true && teamTimeout.startedAt != null) {
+                  setHiddenStart(teamTimeout.startedAt);
+                }
+                setTeamTimeout(null);
+              }}
+            >
+              {LIVE_COPY.endTimeout}
+            </button>
             <button
               type="button"
               class="s4-timeout__btn"
@@ -850,7 +912,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
             <Button
               class="s4-menu-btn"
               variant="ghost"
-              disabled={flowOff}
+              disabled={flowOff && props.onLeave == null}
               aria-expanded={menuOpen}
               aria-controls="s4-clock-menu"
               aria-label={LIVE_COPY.matchMenu}
@@ -873,12 +935,24 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
                 {phase === 'play' && !pk ? (
                   <Button
                     variant="ghost"
+                    disabled={flowOff}
                     onClick={() => {
                       setMenuOpen(false);
                       setTimeoutOpen(true);
                     }}
                   >
                     {LIVE_COPY.teamTimeout}
+                  </Button>
+                ) : null}
+                {props.onLeave ? (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      props.onLeave?.();
+                    }}
+                  >
+                    {LIVE_COPY.leaveScore}
                   </Button>
                 ) : null}
               </div>

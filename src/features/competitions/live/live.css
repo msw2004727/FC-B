@@ -957,3 +957,11 @@ button.s4-ev__main:active { opacity: 0.7; }
   overflow-wrap: normal;
   word-break: keep-all;
 }
+
+/* 寬螢幕：記分板限寬置中，頁面背景仍由外側滿版。 */
+@media (min-width: 600px) {
+  .s4-root {
+    max-width: 480px;
+    margin-inline: auto;
+  }
+}

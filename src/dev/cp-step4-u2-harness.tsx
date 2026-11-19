@@ -48,7 +48,7 @@ const ANCHORS: Record<string, string> = {
   'u2-pk-confirm': '開始 PK 大戰？',
   'u2-pk-live': 'PK 3:2',
   'u2-pk-goal-locked': 'PK 期間不能復原或改判一般進球',
-  'u2-timeout-stop': '已停錶',
+  'u2-timeout-stop': '暫停',
   'u2-reader-tab': '這場已在另一個分頁記分',
   'u2-no-permission': '你沒有這場的記分權限',
   'u2-storage-unavailable': '離線紀錄無法保存',
@@ -198,9 +198,19 @@ function seedOf(name: string): Seed {
     return {
       match: match({
         status: 'live',
+        rev: 1,
         score: { home: 1, away: 0 },
         clockBase: clock(10 * 60, 'h2', false, NOW - 8_000),
       }),
+      events: [{
+        seq: 1,
+        type: 'timeout',
+        op: 'timeout-op-00000001',
+        sid: SID,
+        side: 'home',
+        matchSecond: 600,
+        createdAt: NOW - 13_000,
+      }],
     };
   }
   if (name === 'u2-reader-tab') {

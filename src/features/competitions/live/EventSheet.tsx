@@ -60,10 +60,11 @@ export function EventSheet({
     { id: 'red', label: LIVE_COPY.red },
   ];
   const lockGoal = goalLocked && kind === 'goal' && !undoOnly;
+  const showPick = !undoOnly && !lockGoal;
 
   return (
     <BottomSheet open class="s4-sheet" title={undoOnly ? LIVE_COPY.undo : LIVE_COPY.amend} onClose={onClose}>
-      {undoOnly ? null : <p class="s4-note">{LIVE_COPY.amendNote}</p>}
+      {showPick ? <p class="s4-note">{LIVE_COPY.amendNote}</p> : null}
       <p class="s4-evsum">{summary}</p>
       <div class="s4-amend-act">
         <Button
@@ -84,12 +85,12 @@ export function EventSheet({
           </Button>
         )}
       </div>
-      {undoOnly ? null : kind === 'card' ? (
+      {showPick && kind === 'card' ? (
         <Button variant="secondary" aria-label={withEvent(LIVE_COPY.showCard, label)} onClick={onShowCard}>
           {LIVE_COPY.showCard}
         </Button>
       ) : null}
-      {undoOnly ? null : kind === 'goal' ? (
+      {showPick && kind === 'goal' ? (
         <div class="s4-kinds">
           {goalKinds.map((item) => (
             <Chip
@@ -101,7 +102,8 @@ export function EventSheet({
             />
           ))}
         </div>
-      ) : (
+      ) : null}
+      {showPick && kind === 'card' ? (
         <div class="s4-kinds">
           {cardKinds.map((item) => (
             <Chip
@@ -113,22 +115,22 @@ export function EventSheet({
             />
           ))}
         </div>
-      )}
-      {undoOnly ? null : (
-      <div class="s4-pick">
-        <RosterGrid roster={roster} selectedId={playerId} onPick={onPlayer} />
-        {kind === 'goal' ? (
-          <Button
-            class="s4-unspecified"
-            variant="secondary"
-            aria-pressed={playerId == null}
-            onClick={onUnspecified}
-          >
-            {LIVE_COPY.unspecified}
-          </Button>
-        ) : null}
-      </div>
-      )}
+      ) : null}
+      {showPick ? (
+        <div class="s4-pick">
+          <RosterGrid roster={roster} selectedId={playerId} onPick={onPlayer} />
+          {kind === 'goal' ? (
+            <Button
+              class="s4-unspecified"
+              variant="secondary"
+              aria-pressed={playerId == null}
+              onClick={onUnspecified}
+            >
+              {LIVE_COPY.unspecified}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       {lockGoal ? <PkGoalLock /> : null}
     </BottomSheet>
   );

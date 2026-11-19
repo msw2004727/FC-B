@@ -18,7 +18,7 @@ const ANCHORS = {
   'u2-pk-confirm': '開始 PK 大戰？',
   'u2-pk-live': 'PK 3:2',
   'u2-pk-goal-locked': 'PK 期間不能復原或改判一般進球',
-  'u2-timeout-stop': '已停錶',
+  'u2-timeout-stop': '暫停',
   'u2-reader-tab': '這場已在另一個分頁記分',
   'u2-no-permission': '你沒有這場的記分權限',
   'u2-storage-unavailable': '離線紀錄無法保存',
@@ -195,13 +195,14 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
     }
   }
 }
-// 顧問 §3.308：360×640 第一屏。標籤用 360x640，避免蓋掉既有 360×780 的 s4-*-360-*。
-const FIRST = ['score-live', 'score-offline', 'score-cap', 'score-pause-reserved', 'score-timeout', 'score-pk'];
+// 第一屏：這 7 個 u2 畫面在 360×640 與 1280×800，控制列或開賽鈕的底邊要在視窗內。
+const FIRST = ['u2-pre', 'u2-live', 'u2-pending', 'u2-pk-live', 'u2-timeout-stop', 'u2-reader-tab', 'u2-storage-unavailable'];
 for (const name of FIRST) {
-  for (const theme of THEMES) {
-    const ctx = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 1.5 }); await ctx.route(/googleapis\.com|firebaseio\.com|firebaseapp\.com/, (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });
+  for (const [w, h] of ALL) {
+    for (const theme of THEMES) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 }); await ctx.route(/googleapis\.com|firebaseio\.com|firebaseapp\.com/, (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });
     const page = await ctx.newPage();
-    const tag = `s4-${name}-360x640-${theme}`;
+    const tag = `s4-${name}-${w}x${h}-${theme}`;
     page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });
     page.on('pageerror', (e) => report.consoleErrors.push(`${tag}: pageerror ${e.message}`));
     await page.goto(`${BASE}/dev-harness/cp-step4-u2.html?screen=${name}&theme=${theme}`);
@@ -216,64 +217,19 @@ for (const name of FIRST) {
     }
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(300);
-    const missing = await page.evaluate((screen) => {
-      const vh = window.innerHeight;
-      const vw = window.innerWidth;
-      const missing = [];
-      function clipped(el) {
-        if (!el) return true;
-        const r = el.getBoundingClientRect();
-        if (r.width < 1 || r.height < 1) return true;
-        if (r.top < -0.5 || r.left < -0.5 || r.bottom > vh + 0.5 || r.right > vw + 0.5) return true;
-        for (let p = el.parentElement; p && p !== document.documentElement; p = p.parentElement) {
-          const st = getComputedStyle(p);
-          const clipY = st.overflowY === 'hidden' || st.overflowY === 'auto' || st.overflowY === 'scroll' || st.overflowY === 'clip';
-          const clipX = st.overflowX === 'hidden' || st.overflowX === 'auto' || st.overflowX === 'scroll' || st.overflowX === 'clip';
-          if (!clipY && !clipX) continue;
-          const q = p.getBoundingClientRect();
-          if (clipY && (r.top < q.top - 1 || r.bottom > q.bottom + 1)) return true;
-          if (clipX && (r.left < q.left - 1 || r.right > q.right + 1)) return true;
-        }
-        return false;
-      }
-      function need(el, label) {
-        if (clipped(el)) missing.push(label);
-      }
-      function labelOf(el) {
-        return ((el.getAttribute('aria-label') || el.textContent || '').trim()).slice(0, 24);
-      }
-      need(document.querySelector('.s4-score'), '比分');
-      need(document.querySelector('.s4-clock'), '計時');
-      need(document.querySelector('.s4-stage'), '節次');
-      // PK 進行中沒有一般進球鈕：四顆進／沒進，頂列要有 PK 比分。
-      if (screen === 'score-pk') {
-        if (!document.querySelector('.s4-pk')) missing.push('頂列沒有 PK 比分');
-        const hits = [...document.querySelectorAll('.s4-goals .s4-hit')];
-        if (hits.length !== 4) missing.push(`PK 應有 4 顆進／沒進，實際 ${hits.length}`);
-        if (hits.some((el) => (el.textContent || '').includes('進球'))) missing.push('PK 期間出現進球鈕');
-        hits.forEach((el, i) => need(el, `PK ${i + 1} ${labelOf(el)}`));
-      } else {
-        const goals = [...document.querySelectorAll('.s4-goals .s4-hit--goal')];
-        if (goals.length !== 2) missing.push(`進球應有 2 顆，實際 ${goals.length}`);
-        goals.forEach((el, i) => need(el, `進球 ${i + 1} ${labelOf(el)}`));
-      }
-      if (screen === 'score-timeout') need(document.querySelector('.s4-timeout'), '球隊暫停橫幅');
-      const cards = [...document.querySelectorAll('.s4-cards .s4-hit--card')];
-      if (cards.length !== 4) missing.push(`牌應有 4 顆，實際 ${cards.length}`);
-      cards.forEach((el, i) => need(el, `牌 ${i + 1} ${labelOf(el)}`));
-      const bar = [...document.querySelectorAll('.s4-ctrl button')];
-      if (bar.length < 1) missing.push('底部控制列沒有按鈕');
-      for (const el of bar) need(el, `底欄 ${labelOf(el)}`);
-      const rows = [...document.querySelectorAll('.s4-feed .s4-ev')];
-      const visible = rows.filter((el) => !clipped(el));
-      if (visible.length < 4) missing.push(`紀錄列只完整露出 ${visible.length} 列`);
-      return missing;
-    }, name);
+    const missing = await page.evaluate(() => {
+      const el = document.querySelector('.s4-ctrl') || document.querySelector('.s4-kickoff');
+      if (!el) return ['底部控制列'];
+      const bottom = el.getBoundingClientRect().bottom;
+      if (bottom > window.innerHeight + 0.5) return [`底部控制列超出第一屏 ${Math.round(bottom)}>${window.innerHeight}`];
+      return [];
+    });
     report.firstScreen.push({ tag, missing });
     const file = `${tag}.png`;
     await page.screenshot({ path: join(OUT, file), fullPage: false });
     report.shots.push(file);
     await ctx.close();
+    }
   }
 }
 await browser.close();

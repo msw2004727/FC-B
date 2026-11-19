@@ -96,6 +96,8 @@ export interface ScoringView {
     sid: string | null;
     localSid: string | null;
     needsTakeover: boolean;
+    /** 沒有本機 sid，而且控制權不是別人。按鈕用「接手記分」。 */
+    takeoverSelf: boolean;
   };
   phase: ScoringPhase;
   clock: ClockReading;
@@ -166,7 +168,7 @@ export function loadingView(): ScoringView {
     roster: { home: [], away: [] },
     events: [],
     voids: [],
-    control: { uid: null, sid: null, localSid: null, needsTakeover: false },
+    control: { uid: null, sid: null, localSid: null, needsTakeover: false, takeoverSelf: false },
     phase: 'pre',
     clock: EMPTY_CLOCK,
     budget: {
@@ -288,6 +290,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
     const budget = budgetView(base?.rev ?? 0, base?.resetRev ?? 0, entries, events, timeoutRule.stopsClock);
     const score = base ? scoreView(base, events, entries) : loadingView().score;
     const needsTakeover = current?.needsTakeover ?? !localSid;
+    const takeoverSelf = needsTakeover && !localSid && !(control != null && control.uid !== uid);
     return {
       match: shown,
       roster,
@@ -298,6 +301,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
         sid: control?.sid ?? null,
         localSid,
         needsTakeover,
+        takeoverSelf,
       },
       phase: base ? phaseOf(base, now()) : 'pre',
       clock: over ? clockFromBase(over.clockBase, now()) : EMPTY_CLOCK,

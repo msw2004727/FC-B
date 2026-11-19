@@ -964,6 +964,22 @@ describe('送出與工作階段', () => {
     const h = await openHarness({ log: broken });
     expect(h.session.getState().storage).toBe('unavailable');
     expect(h.session.getState().storageHint).toBe(LIVE_COPY.offlineUnstored);
+    expect(h.session.getState().control.localSid).toBeNull();
+    expect(h.session.getState().control.needsTakeover).toBe(true);
+    expect(h.session.getState().control.takeoverSelf).toBe(true);
+    const other = await openHarness({
+      log: new IndexedDbActionLog(async () => { throw new Error('開不起來'); }),
+      control: { uid: 'other', sid: 'other-sid-0123456789', takenAt: 2 },
+    });
+    expect(other.session.getState().control.needsTakeover).toBe(true);
+    expect(other.session.getState().control.takeoverSelf).toBe(false);
+    const fresh = await openHarness({
+      log: new IndexedDbActionLog(async () => { throw new Error('開不起來'); }),
+      control: null,
+    });
+    expect(fresh.session.getState().control.localSid).toBeNull();
+    expect(fresh.session.getState().control.needsTakeover).toBe(true);
+    expect(fresh.session.getState().control.takeoverSelf).toBe(true);
     const queued = await h.session.getState().actions.goal({ side: 'home' });
     expect(queued.status).toBe('queued');
     expect(h.session.getState().unapplied.some((row) => row.kind === 'goal')).toBe(true);

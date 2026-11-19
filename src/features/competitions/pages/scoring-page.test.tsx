@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { getCurrentLocale } from '@/i18n/i18n';
@@ -175,6 +175,8 @@ describe('正式記分頁權限', () => {
     expect(screen.queryByText(LIVE_COPY.assignScorerHint)).toBeNull();
     expect(screen.queryByRole('button', { name: '開賽' })).toBeNull();
     expect(screen.getByRole('button', { name: LIVE_COPY.backToSchedule })).toBeTruthy();
+    expect(document.querySelector('.cps-top')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '記分' })).toBeTruthy();
   });
 
   it('沒有指派的主辦看得到說明', async () => {
@@ -195,6 +197,9 @@ describe('正式記分頁權限', () => {
     const scorer = await deps({ staffRoles: ['scorer'], matchIds: [MT] });
     draw(scorer.deps);
     expect(await screen.findByRole('button', { name: '開賽' })).toBeTruthy();
+    expect(document.querySelector('.cps-top')).toBeNull();
+    expect(document.querySelector('h1')).toBeNull();
+    expect(document.title).toBe('記分');
     cleanup();
     const host = await deps({ staffRoles: ['host', 'referee'], matchIds: [MT] });
     draw(host.deps);
@@ -269,9 +274,27 @@ describe('正式記分頁走 useScoring', () => {
     });
     draw(made.deps);
     expect(await screen.findByText('這場已在另一個分頁記分')).toBeTruthy();
-    const buttons = [...(document.querySelector('.s4-root')?.querySelectorAll('button') ?? [])];
-    expect(buttons.length).toBeGreaterThan(0);
-    for (const button of buttons) expect((button as HTMLButtonElement).disabled).toBe(true);
+    const buttons = [...(document.querySelector('.s4-root')?.querySelectorAll('button') ?? [])] as HTMLButtonElement[];
+    const menu = buttons.filter((button) => (button.getAttribute('aria-label') || '') === LIVE_COPY.matchMenu);
+    expect(menu).toHaveLength(1);
+    expect(menu[0]?.disabled).toBe(false);
+    const scoring = buttons.filter((button) => button !== menu[0]);
+    expect(scoring.length).toBeGreaterThan(0);
+    for (const button of scoring) expect(button.disabled).toBe(true);
+  });
+
+  it('全幅記分板的選單最後一項離開記分，回到賽程列表', async () => {
+    const previous = `${window.location.pathname}${window.location.search}`;
+    const made = await deps({ staffRoles: ['scorer'], matchIds: [MT] });
+    draw(made.deps);
+    fireEvent.click(await screen.findByRole('button', { name: LIVE_COPY.matchMenu }));
+    const menu = document.getElementById('s4-clock-menu');
+    const labels = [...(menu?.querySelectorAll('button') ?? [])].map((button) => (button.textContent || '').trim());
+    expect(labels.at(-1)).toBe(LIVE_COPY.leaveScore);
+    expect(document.querySelector('.cps-top')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.leaveScore }));
+    await waitFor(() => expect(window.location.pathname).toBe(`/competitions/${CID}/matches`));
+    window.history.pushState(null, '', previous || '/');
   });
 
   it('儲存不可用仍可記分，並顯示既有警告', async () => {
@@ -284,7 +307,58 @@ describe('正式記分頁走 useScoring', () => {
     });
     draw(made.deps);
     expect(await screen.findByText(LIVE_COPY.offlineUnstored)).toBeTruthy();
+    expect(screen.getByRole('button', { name: LIVE_COPY.takeoverAction })).toBeTruthy();
+    expect(screen.queryByText(LIVE_COPY.takeoverEntry)).toBeNull();
     expect(screen.getByRole('button', { name: '終場' })).toBeTruthy();
+  });
+
+  it('進行中的球隊暫停由事件推出，重整後仍在', async () => {
+    const made = await deps({
+      events: [{
+        seq: 1,
+        type: 'timeout',
+        op: 'timeout-op-00000001',
+        sid: SID,
+        side: 'home',
+        matchSecond: 600,
+        createdAt: NOW - 13_000,
+      }],
+      match: {
+        status: 'live',
+        rev: 1,
+        score: { home: 1, away: 0 },
+        clockBase: { startedAt: NOW - 8_000, pausedSec: 600, running: false, period: 'h2' },
+      },
+    });
+    draw(made.deps);
+    expect(await screen.findByText('雷霆隊暫停 0:47')).toBeTruthy();
+    cleanup();
+    draw(made.deps);
+    expect(await screen.findByText('雷霆隊暫停 0:47')).toBeTruthy();
+  });
+
+  it('暫停剛好走完顯示繼續計時', async () => {
+    const made = await deps({
+      events: [{
+        seq: 1,
+        type: 'timeout',
+        op: 'timeout-op-00000001',
+        sid: SID,
+        side: 'home',
+        matchSecond: 600,
+        createdAt: NOW - 60_000,
+      }],
+      match: {
+        status: 'live',
+        rev: 1,
+        score: { home: 1, away: 0 },
+        clockBase: { startedAt: null, pausedSec: 600, running: false, period: 'h2' },
+      },
+    });
+    draw(made.deps);
+    await waitFor(() => {
+      expect(document.querySelector('.s4-timeout__text')?.textContent).toBe(LIVE_COPY.resumeClock);
+    });
   });
 });
 

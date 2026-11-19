@@ -3,7 +3,7 @@ import { loadingView, type ScoringView } from './data/session';
 import type { ServerEvent, ServerMatch } from './data/types';
 import { pkCanStart, shootoutOffered } from './present';
 import { LIVE_COPY, offlineChip } from './copy';
-import { scorePadPropsFrom, timeoutUsesFrom } from './scoring-adapter';
+import { scorePadPropsFrom, timeoutUsesFrom, timeoutViewFrom } from './scoring-adapter';
 
 const NOW = 1_763_510_400_000;
 
@@ -87,7 +87,7 @@ describe('scorePadPropsFrom', () => {
         intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 30 },
         summary: '主隊 進球',
       }],
-      control: { uid: 'u', sid: 's', localSid: 's', needsTakeover: true },
+      control: { uid: 'u', sid: 's', localSid: 's', needsTakeover: true, takeoverSelf: false },
       connection: { online: false, wakeLock: 'held' },
       pk: { started: false, score: null, canStart: true },
       actions: {
@@ -116,6 +116,8 @@ describe('scorePadPropsFrom', () => {
     expect(props.clock).toEqual({ elapsedSec: 120, period: 'h1', addedMin: null });
     expect(props.nowMs).toBe(NOW);
     expect(props.takeoverOffered).toBe(true);
+    expect(props.takeoverSelf).toBe(false);
+    expect(props.timeoutView).toBeUndefined();
     expect(props.scoringDisabled).toBe(false);
     expect(props.topBanner).toBeNull();
     expect(props.storageBanner).toBe(false);
@@ -211,7 +213,86 @@ describe('scorePadPropsFrom', () => {
     }));
     expect(whole).toEqual({ home: 2, away: 0 });
   });
+
+  it('暫停倒數由最新事件與規則秒數推出', () => {
+    const rule60 = { enabled: true, per: 'half' as const, count: 1, seconds: 60, stopsClock: true };
+    const running = timeoutEvent({ createdAt: NOW - 13_000 });
+    const props = scorePadPropsFrom(view({ events: [running], timeoutRule: rule60 }), NOW);
+    expect(props.timeoutView).toEqual({ side: 'home', leftSec: 47, startedAt: NOW - 13_000 });
+    expect(timeoutViewFrom(view({
+      events: [timeoutEvent({ createdAt: NOW - 60_000 })],
+      timeoutRule: rule60,
+    }), NOW)).toEqual({ side: 'home', leftSec: 0, startedAt: NOW - 60_000 });
+    expect(timeoutViewFrom(view({
+      events: [timeoutEvent({ createdAt: NOW - 120_000 })],
+      timeoutRule: rule60,
+    }), NOW)).toBeUndefined();
+    expect(timeoutViewFrom(view({
+      events: [timeoutEvent({ createdAt: NOW + 5_000 })],
+      timeoutRule: rule60,
+    }), NOW)).toEqual({ side: 'home', leftSec: 60, startedAt: NOW + 5_000 });
+    const rule90 = { enabled: true, per: 'match' as const, count: 2, seconds: 90, stopsClock: false };
+    expect(timeoutViewFrom(view({
+      events: [
+        timeoutEvent({ seq: 2, side: 'away', createdAt: NOW - 50_000 }),
+        timeoutEvent({ seq: 5, side: 'home', createdAt: NOW - 43_000, op: 'timeout-op-00000005' }),
+      ],
+      timeoutRule: rule90,
+    }), NOW)).toEqual({ side: 'home', leftSec: 47, startedAt: NOW - 43_000 });
+  });
+
+  it('待送暫停較新才蓋過伺服器，重置前的不算', () => {
+    const rule60 = { enabled: true, per: 'half' as const, count: 1, seconds: 60, stopsClock: true };
+    const server = timeoutEvent({ seq: 4, createdAt: NOW - 10_000 });
+    const newer = timeoutViewFrom(view({
+      events: [server],
+      timeoutRule: rule60,
+      unapplied: [{
+        op: 'pend-to-new',
+        kind: 'timeout',
+        state: 'pending',
+        createdAt: NOW - 4_000,
+        intent: { kind: 'timeout', side: 'away', matchSecond: 40 },
+        summary: '客隊 暫停',
+      }],
+    }), NOW);
+    expect(newer).toEqual({ side: 'away', leftSec: 56, startedAt: NOW - 4_000 });
+    const older = timeoutViewFrom(view({
+      events: [server],
+      timeoutRule: rule60,
+      unapplied: [{
+        op: 'pend-to-old',
+        kind: 'timeout',
+        state: 'sending',
+        createdAt: NOW - 30_000,
+        intent: { kind: 'timeout', side: 'away', matchSecond: 20 },
+        summary: '客隊 暫停',
+      }],
+    }), NOW);
+    expect(older).toEqual({ side: 'home', leftSec: 50, startedAt: NOW - 10_000 });
+    expect(timeoutViewFrom(view({
+      match: serverMatch({ resetRev: 4 }),
+      events: [
+        timeoutEvent({ seq: 4, createdAt: NOW - 5_000, side: 'away' }),
+        timeoutEvent({ seq: 5, createdAt: NOW - 13_000, op: 'timeout-op-00000005' }),
+      ],
+      timeoutRule: rule60,
+    }), NOW)).toEqual({ side: 'home', leftSec: 47, startedAt: NOW - 13_000 });
+  });
 });
+
+function timeoutEvent(partial: Partial<ServerEvent> = {}): ServerEvent {
+  return {
+    seq: 2,
+    type: 'timeout',
+    op: 'timeout-op-00000001',
+    sid: 's',
+    side: 'home',
+    matchSecond: 600,
+    createdAt: NOW - 13_000,
+    ...partial,
+  };
+}
 
 describe('pkCanStart 與 shootoutOffered', () => {
   const periods = ['h1', 'ht', 'h2', 'et', 'et1', 'et2', 'pk', 'ft'];

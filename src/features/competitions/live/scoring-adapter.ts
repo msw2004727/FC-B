@@ -4,7 +4,7 @@ import type { MatchDoc, MatchStatus, RosterPublicDoc } from '../data/types';
 import type { LiveClock, LiveLink } from './clock';
 import { LIVE_COPY, minuteMark, pkKickLine } from './copy';
 import { eventLines, findPlayer, nextPkRound, type EventLine } from './present';
-import type { ScoreFeedRow, ScorePadProps, ScorePick } from './ScorePad';
+import type { ScoreFeedRow, ScorePadProps, ScorePick, TimeoutView } from './ScorePad';
 import type { ScoringView } from './data/session';
 import type { ServerEvent, UnappliedView } from './data/types';
 import type { ActionLogEntry, CardType, GoalKind, TimelineEvent, VoidMark } from './types';
@@ -320,6 +320,45 @@ function sendRecord(view: ScoringView, pick: ScorePick): void {
   });
 }
 
+function timeoutSide(value: string | undefined): 'home' | 'away' | null {
+  if (value === 'home' || value === 'away') return value;
+  return null;
+}
+
+/**
+ * 最新一筆還沒走完的球隊暫停。
+ * 伺服器事件以 seq 較大者為新；待送或發送中的暫停，時間不早於那一筆才算最新。
+ * 現在減事件時間小於規則秒數時回倒數；剛好走完剩 0；再久就沒有。
+ */
+export function timeoutViewFrom(view: ScoringView, nowMs: number): TimeoutView | undefined {
+  const resetRev = view.match?.resetRev ?? 0;
+  let best: { side: 'home' | 'away'; at: number } | null = null;
+  let bestSeq = resetRev;
+  for (const event of view.events) {
+    if (event.type !== 'timeout' || event.seq <= resetRev) continue;
+    const side = timeoutSide(event.side);
+    if (!side) continue;
+    if (event.seq > bestSeq) {
+      bestSeq = event.seq;
+      best = { side, at: event.createdAt };
+    }
+  }
+  for (const row of view.unapplied) {
+    if (row.state !== 'pending' && row.state !== 'sending') continue;
+    if (row.intent.kind !== 'timeout') continue;
+    const side = timeoutSide(row.intent.side);
+    if (!side) continue;
+    if (best && row.createdAt < best.at) continue;
+    best = { side, at: row.createdAt };
+  }
+  if (!best) return undefined;
+  const seconds = view.timeoutRule.seconds;
+  const elapsed = Math.floor((nowMs - best.at) / 1000);
+  if (elapsed > seconds) return undefined;
+  const leftSec = elapsed < 0 ? seconds : seconds - elapsed;
+  return { side: best.side, leftSec, startedAt: best.at };
+}
+
 /** 正式頁的記分板。本機預覽狀態改由 view 決定。 */
 export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadProps {
   const timeline = timelineFrom(view.events, view.voids);
@@ -351,6 +390,8 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     clock,
     nowMs,
     takeoverOffered: view.control.needsTakeover,
+    takeoverSelf: view.control.takeoverSelf,
+    timeoutView: timeoutViewFrom(view, nowMs),
     onRecord: (pick) => {
       sendRecord(view, pick);
       return true;
