@@ -17,6 +17,7 @@ import {
   S4B_NOW,
   S4B_SCORER_ID,
   S4B_STAFF,
+  canRemoveStaff,
   canRevokeInvite,
   clockLabel,
   formatMdHm,
@@ -30,6 +31,7 @@ import {
   type AssignRole,
   type S4bInvite,
   type S4bStaff,
+  type StaffViewer,
 } from '../testing/step4b-fixtures';
 import { assignRoleLabel, copy, inviteLifeLabel, matchStatusLabel, staffRoleLabel, weekdayName } from './copy';
 import { Line, MatchBits, S4bCard, S4bFrame, vsLabel } from './ui';
@@ -52,10 +54,11 @@ function dayText(month: number, day: number, weekday: number): string {
   return copy.dayHeading(month, day, weekdayName[weekday] ?? '');
 }
 
-export function StaffListScreen(): JSX.Element {
+export function StaffListScreen({ viewerRole = 'host' }: { viewerRole?: StaffViewer }): JSX.Element {
   const [rows, setRows] = useState<readonly S4bStaff[]>(S4B_STAFF);
+  const screen = viewerRole === 'host' ? 'staff-list' : 'staff-list-cohost';
   return (
-    <S4bFrame title={copy.staffTitle} admin screen="staff-list">
+    <S4bFrame title={copy.staffTitle} admin screen={screen}>
       <S4bCard plain>
         <ul class="cps-list">
           {rows.map((staff) => (
@@ -65,15 +68,17 @@ export function StaffListScreen(): JSX.Element {
                 <Badge tone={roleTone(staff.role)} size="sm" label={staffRoleLabel[staff.role]} />
                 <span class="s4b-staff__meta">{copy.assigned(staffAssignmentCount(staff))}</span>
                 <span class="s4b-staff__gap" />
-                <span class="s4b-mini">
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => setRows((prev) => prev.filter((row) => row.id !== staff.id))}
-                  >
-                    {copy.remove}
-                  </Button>
-                </span>
+                {canRemoveStaff(viewerRole, staff.role) ? (
+                  <span class="s4b-mini">
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setRows((prev) => prev.filter((row) => row.id !== staff.id))}
+                    >
+                      {copy.remove}
+                    </Button>
+                  </span>
+                ) : null}
               </div>
             </li>
           ))}
@@ -215,10 +220,27 @@ function AcceptBody({ title, sentence }: { title: string; sentence: string }): J
   );
 }
 
-export function InviteAcceptScreen(): JSX.Element {
+export type InviteAcceptStatus = 'active' | 'revoked' | 'expired' | 'cancelled';
+
+const INVITE_DEAD: Record<Exclude<InviteAcceptStatus, 'active'>, { title: string; sentence: string }> = {
+  revoked: { title: copy.inviteRevokedTitle, sentence: copy.inviteRevoked },
+  expired: { title: copy.inviteExpiredTitle, sentence: copy.inviteExpired },
+  cancelled: { title: copy.compCancelledTitle, sentence: copy.compCancelled },
+};
+
+export function InviteAcceptScreen({ status = 'active' }: { status?: InviteAcceptStatus }): JSX.Element {
+  const screen = status === 'active' ? 'invite-accept' : 'invite-accept-invalid';
+  if (status !== 'active') {
+    const dead = INVITE_DEAD[status];
+    return (
+      <S4bFrame title={copy.acceptTitle} screen={screen}>
+        <AcceptBody title={dead.title} sentence={dead.sentence} />
+      </S4bFrame>
+    );
+  }
   const matches = matchesByIds(['m_1400', 'm_2200']);
   return (
-    <S4bFrame title={copy.acceptTitle} screen="invite-accept">
+    <S4bFrame title={copy.acceptTitle} screen={screen}>
       <S4bCard>
         <div class="s4b-gap">
           <h2 class="s4b-h">{S4B_COMP_NAME}</h2>
@@ -234,9 +256,6 @@ export function InviteAcceptScreen(): JSX.Element {
           </div>
         </div>
       </S4bCard>
-      <AcceptBody title={copy.inviteRevokedTitle} sentence={copy.inviteRevoked} />
-      <AcceptBody title={copy.inviteExpiredTitle} sentence={copy.inviteExpired} />
-      <AcceptBody title={copy.compCancelledTitle} sentence={copy.compCancelled} />
     </S4bFrame>
   );
 }

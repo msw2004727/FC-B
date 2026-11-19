@@ -61,9 +61,26 @@ export function S4bCard({
   return <section class={plain ? 's4b-plain' : 'cps-card'}>{children}</section>;
 }
 
-export function Line({ text, strong = false }: { text: string; strong?: boolean }): JSX.Element {
+export function Line({
+  text,
+  strong = false,
+  fit = false,
+  warn = false,
+}: {
+  text: string;
+  strong?: boolean;
+  /** 較長的一行用較小字級，360 寬不斷行。 */
+  fit?: boolean;
+  /** 警示色。文字本身仍要寫出是或否，不能只靠顏色。 */
+  warn?: boolean;
+}): JSX.Element {
   const i = text.indexOf('：');
-  const cls = strong ? 's4b-line s4b-strong' : 's4b-line';
+  const cls = [
+    's4b-line',
+    strong ? 's4b-strong' : '',
+    fit ? 's4b-line--fit' : '',
+    warn ? 's4b-age-no' : '',
+  ].filter(Boolean).join(' ');
   if (i < 0) return <p class={cls}><span class="s4b-k">{text}</span></p>;
   return (
     <p class={cls}>
@@ -88,10 +105,11 @@ export function vsLabel(match: S4bMatch): string {
   return copy.vs(match.home, match.away);
 }
 
-/** 有內容時展開；沒內容只放「＋補充說明」。 */
+/** 有內容時展開；沒內容只放「＋補充說明」。打開後可輸入。 */
 export function NoteSlot({ text }: { text: string | null }): JSX.Element {
   const filled = text != null && text.trim().length > 0;
   const [open, setOpen] = useState(filled);
+  const [value, setValue] = useState(text ?? '');
   if (!open) {
     return (
       <div class="s4b-mini">
@@ -99,5 +117,5 @@ export function NoteSlot({ text }: { text: string | null }): JSX.Element {
       </div>
     );
   }
-  return <Textarea label={copy.noteLabel} value={text ?? ''} maxLength={200} rows={2} onValueChange={() => undefined} />;
+  return <Textarea label={copy.noteLabel} value={value} maxLength={200} rows={2} onValueChange={setValue} />;
 }

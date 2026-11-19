@@ -1,7 +1,7 @@
 // 第 4 步預覽文案。畫面只從這裡拿字，避免各檔各寫一句。
 // 沿用既有名單公開說明與監護人勾選的句子（competitions locales-lazy zh-TW）。
 
-import type { AssignRole, AuditAction, InviteLife, PlayerPos, S4bMatchStatus, StaffRole, TemplateId, TieKey } from '../testing/step4b-fixtures';
+import type { AssignRole, AuditAction, AuditActorRole, InviteLife, PlayerPos, S4bMatchStatus, StaffRole, TemplateId, TieKey } from '../testing/step4b-fixtures';
 
 export const copy = {
   back: '返回',
@@ -42,6 +42,8 @@ export const copy = {
   position: '位置',
   privacy: '我了解名單會公開我的顯示名稱與背號',
   guardian: '我已取得監護人同意',
+  selfConsent: '已取得本人同意',
+  addAck: '已告知球員名單會公開顯示名稱與背號',
   rosterFullTitle: '名單已滿',
   rosterFull: '這隊名單已滿，不能再加入。',
   linkDeadTitle: '連結失效',
@@ -120,6 +122,8 @@ export const copy = {
   checkinTitle: '檢錄表',
   auditTitle: '稽核紀錄',
   scheduleTitle: '賽程',
+  actor: '操作者',
+  unset: '未設定',
   colNumber: '背號',
   colReal: '真名',
   colDisplay: '顯示名',
@@ -158,14 +162,11 @@ export const copy = {
   numberUsed(n: number): string {
     return `${n}（已用）`;
   },
-  playersLine(n: number): string {
-    return `人數：${n} 人`;
+  templateSummary(players: number, half: number, halftime: number): string {
+    return `${players} 人・每半場 ${half} 分・中場 ${halftime} 分`;
   },
-  timeLine(n: number): string {
-    return `時間：每半場 ${n} 分鐘`;
-  },
-  htLine(n: number): string {
-    return `中場：${n} 分鐘`;
+  ageFit(ok: boolean): string {
+    return `年齡符合組別：${ok ? '是' : '否'}`;
   },
   rank(i: number, name: string): string {
     return `${i}. ${name}`;
@@ -221,6 +222,14 @@ export const staffRoleLabel: Record<StaffRole, string> = {
   coHost: '共同主辦',
   scorer: '記分員',
   referee: '裁判',
+};
+
+export const auditActorLabel: Record<AuditActorRole, string> = {
+  host: '主辦',
+  coHost: '共同主辦',
+  scorer: '記分員',
+  referee: '裁判',
+  admin: '管理員',
 };
 
 export const assignRoleLabel: Record<AssignRole, string> = {

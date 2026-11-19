@@ -31,22 +31,34 @@ export function renderStep4bScreen(screen: Step4bScreen): JSX.Element {
   switch (screen) {
     case 'staff-list':
       return <StaffListScreen />;
+    case 'staff-list-cohost':
+      return <StaffListScreen viewerRole="coHost" />;
     case 'staff-assign':
       return <StaffAssignScreen />;
     case 'staff-invite':
       return <StaffInviteScreen />;
     case 'invite-accept':
       return <InviteAcceptScreen />;
+    case 'invite-accept-invalid':
+      return <InviteAcceptScreen status="expired" />;
     case 'scorer-my-matches':
       return <ScorerMatchesScreen />;
     case 'link-rep':
       return <LinkRepScreen />;
     case 'link-join':
-      return <LinkJoinScreen extras />;
+      return <LinkJoinScreen />;
+    case 'link-join-minor':
+      return <LinkJoinScreen minor />;
     case 'link-join-birthday':
       return <LinkJoinScreen needBirthday />;
+    case 'link-join-full':
+      return <LinkJoinScreen status="rosterFull" />;
+    case 'link-join-invalid':
+      return <LinkJoinScreen status="invalid" />;
     case 'claim':
       return <ClaimScreen />;
+    case 'claim-age-mismatch':
+      return <ClaimScreen status="ageMismatch" />;
     case 'addition-request':
       return <AdditionRequestScreen />;
     case 'addition-review':
@@ -58,7 +70,7 @@ export function renderStep4bScreen(screen: Step4bScreen): JSX.Element {
     case 'rules-public':
       return <RulesPublicScreen />;
     case 'checkin-print':
-      return <CheckinPrintScreen />;
+      return <CheckinPrintScreen viewer="host" />;
     case 'audit-log':
       return <AuditLogScreen />;
     case 'schedule-midnight':

@@ -8,7 +8,6 @@ import {
   S4B_AUDIT,
   S4B_MIDNIGHT_IDS,
   S4B_PLAYERS,
-  S4B_TEAM_THUNDER,
   canSeeRealName,
   formatMdHm,
   groupMatches,
@@ -17,12 +16,13 @@ import {
   weekdayIndex,
   type CheckinViewer,
 } from '../testing/step4b-fixtures';
-import { auditActionLabel, copy, matchStatusLabel, posLabel, weekdayName } from './copy';
+import { auditActionLabel, auditActorLabel, copy, matchStatusLabel, posLabel, weekdayName } from './copy';
 import { Line, MatchBits, S4bCard, S4bFrame, vsLabel } from './ui';
 
+// 漏傳視角時用 other，漏傳代表隊伍時不給真名。預覽的 checkin-print 會明確傳 host。
 export function CheckinPrintScreen({
-  viewer = 'host',
-  repTeamId = S4B_TEAM_THUNDER,
+  viewer = 'other',
+  repTeamId = null,
 }: {
   viewer?: CheckinViewer;
   repTeamId?: string | null;
@@ -101,6 +101,7 @@ export function AuditLogScreen(): JSX.Element {
                   <span class="s4b-k">{formatMdHm(row.at)}</span>
                   <Badge tone={row.action === 'score' ? 'warning' : 'neutral'} size="sm" label={auditActionLabel[row.action]} />
                 </div>
+                <Line text={copy.kv(copy.actor, auditActorLabel[row.actorRole])} />
                 <Line text={row.target} />
                 <Line text={row.reason} />
                 {row.before && row.after ? (

@@ -19,6 +19,7 @@ import {
   S4B_TIEBREAK,
   STEP4B_SCREENS,
   additionRemaining,
+  canRemoveStaff,
   canRevokeInvite,
   canSeeRealName,
   competitionDay,
@@ -121,9 +122,20 @@ describe('step4b 假資料', () => {
     expect(S4B_TIEBREAK[0]).toBe('points');
   });
 
-  it('十七個畫面 id 不重複', () => {
-    expect(STEP4B_SCREENS).toHaveLength(17);
-    expect(new Set(STEP4B_SCREENS).size).toBe(17);
+  it('畫面 id 不重複', () => {
+    expect(STEP4B_SCREENS).toHaveLength(23);
+    expect(new Set(STEP4B_SCREENS).size).toBe(23);
+  });
+
+  it('主辦本人不能移除；共同主辦只有主辦能移除', () => {
+    expect(canRemoveStaff('host', 'host')).toBe(false);
+    expect(canRemoveStaff('coHost', 'host')).toBe(false);
+    expect(canRemoveStaff('host', 'coHost')).toBe(true);
+    expect(canRemoveStaff('coHost', 'coHost')).toBe(false);
+    expect(canRemoveStaff('host', 'scorer')).toBe(true);
+    expect(canRemoveStaff('coHost', 'scorer')).toBe(true);
+    expect(canRemoveStaff('host', 'referee')).toBe(true);
+    expect(canRemoveStaff('coHost', 'referee')).toBe(true);
   });
 
   it('已開賽的場次是進行中，還沒開的是未開賽', () => {

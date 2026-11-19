@@ -18,14 +18,20 @@ export const S4B_INVITE_PATH = '…/?competition=cp_demo#invite=s4b9…';
 
 export const STEP4B_SCREENS = [
   'staff-list',
+  'staff-list-cohost',
   'staff-assign',
   'staff-invite',
   'invite-accept',
+  'invite-accept-invalid',
   'scorer-my-matches',
   'link-rep',
   'link-join',
+  'link-join-minor',
   'link-join-birthday',
+  'link-join-full',
+  'link-join-invalid',
   'claim',
+  'claim-age-mismatch',
   'addition-request',
   'addition-review',
   'rules-template',
@@ -73,6 +79,15 @@ export const S4B_STAFF: readonly S4bStaff[] = [
   { id: 'st_sc', name: '林記分', role: 'scorer', matchIds: ['m_live', 'm_1400', 'm_0020', 'm_1600'] },
   { id: 'st_ref', name: '陳裁判', role: 'referee', matchIds: ['m_2200'] },
 ];
+
+export type StaffViewer = 'host' | 'coHost';
+
+/** 主辦本人不能移除。共同主辦只有主辦能移除。記分員、裁判兩邊都能移除。 */
+export function canRemoveStaff(viewer: StaffViewer, role: StaffRole): boolean {
+  if (role === 'host') return false;
+  if (role === 'coHost') return viewer === 'host';
+  return role === 'scorer' || role === 'referee';
+}
 
 export const S4B_ASSIGN_PEOPLE = [
   { id: 'me', name: '我自己' },
@@ -335,11 +350,13 @@ export interface S4bAddition {
   displayName: string;
   number: number;
   at: number;
+  /** 年齡是否落在組別資格裡。否的那列要用文字寫出來，不能只靠顏色。 */
+  ageOk: boolean;
 }
 
 export const S4B_ADDITIONS: readonly S4bAddition[] = [
-  { id: 'ad1', teamName: '雷霆隊', displayName: '新手', number: 15, at: taipeiMs(2027, 1, 9, 8, 20) },
-  { id: 'ad2', teamName: '海風隊', displayName: '阿海', number: 8, at: taipeiMs(2027, 1, 9, 8, 41) },
+  { id: 'ad1', teamName: '雷霆隊', displayName: '新手', number: 15, at: taipeiMs(2027, 1, 9, 8, 20), ageOk: false },
+  { id: 'ad2', teamName: '海風隊', displayName: '阿海', number: 8, at: taipeiMs(2027, 1, 9, 8, 41), ageOk: true },
 ];
 
 export const S4B_ADDITION_SENT = {
@@ -348,6 +365,8 @@ export const S4B_ADDITION_SENT = {
 } as const;
 
 export type AuditAction = 'score' | 'reset' | 'rules';
+/** 畫面上只出現角色，不出現 uid 或姓名。 */
+export type AuditActorRole = 'host' | 'coHost' | 'scorer' | 'referee' | 'admin';
 export interface S4bAudit {
   id: string;
   at: number;
@@ -356,13 +375,16 @@ export interface S4bAudit {
   reason: string;
   before?: string;
   after?: string;
+  actorRole: AuditActorRole;
   actorUid: string;
 }
 
 export const S4B_AUDIT: readonly S4bAudit[] = [
-  { id: 'au1', at: taipeiMs(2027, 1, 9, 9, 12), action: 'score', target: '1/9 09:00 雷霆隊對海風隊', reason: '記錯邊', before: '1:0', after: '2:0', actorUid: 'uid_host_9f3a' },
-  { id: 'au2', at: taipeiMs(2027, 1, 9, 9, 20), action: 'reset', target: '1/9 14:00 山貓隊對藍鯨隊', reason: '裁判未到', actorUid: 'uid_host_9f3a' },
-  { id: 'au3', at: taipeiMs(2027, 1, 9, 8, 5), action: 'rules', target: '成人組', reason: '勝分改 2', actorUid: 'uid_admin_22c1' },
+  { id: 'au1', at: taipeiMs(2027, 1, 9, 9, 12), action: 'score', target: '1/9 09:00 雷霆隊對海風隊', reason: '記錯邊', before: '1:0', after: '2:0', actorRole: 'host', actorUid: 'uid_host_9f3a' },
+  { id: 'au2', at: taipeiMs(2027, 1, 9, 9, 20), action: 'reset', target: '1/9 14:00 山貓隊對藍鯨隊', reason: '裁判未到', actorRole: 'coHost', actorUid: 'uid_co_4c21' },
+  { id: 'au3', at: taipeiMs(2027, 1, 9, 8, 5), action: 'rules', target: '成人組', reason: '勝分改 2', actorRole: 'admin', actorUid: 'uid_admin_22c1' },
+  { id: 'au4', at: taipeiMs(2027, 1, 9, 9, 28), action: 'score', target: '1/9 22:00 雷霆隊對山貓隊', reason: '補記進球', actorRole: 'scorer', actorUid: 'uid_scorer_77ab' },
+  { id: 'au5', at: taipeiMs(2027, 1, 9, 9, 36), action: 'reset', target: '1/9 23:10 海風隊對藍鯨隊', reason: '場地積水', actorRole: 'referee', actorUid: 'uid_ref_18cd' },
 ];
 
 export const S4B_TEMPLATES = [

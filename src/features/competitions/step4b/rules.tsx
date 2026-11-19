@@ -2,7 +2,6 @@
 // 進階預設收合，由 harness 點「進階」打開。補充說明沒內容就收著。淘汰賽未支援，公開頁不印。
 
 import type { JSX } from 'preact';
-import { Fragment } from 'preact';
 import { useState } from 'preact/hooks';
 import { Button } from '@/ui/Button';
 import { Select } from '@/ui/Select';
@@ -28,9 +27,7 @@ export function RulesTemplateScreen(): JSX.Element {
         <S4bCard key={item.id}>
           <div class="s4b-gap">
             <h2 class="s4b-h">{templateTitle[item.id]}</h2>
-            <Line text={copy.playersLine(item.players)} />
-            <Line text={copy.timeLine(item.half)} />
-            <Line text={copy.htLine(item.halftime)} />
+            <Line text={copy.templateSummary(item.players, item.half, item.halftime)} />
             <div class="s4b-blockbtn">
               <Button variant={picked === item.id ? 'secondary' : 'primary'} onClick={() => setPicked(item.id)}>
                 {copy.useTemplate}
@@ -153,72 +150,92 @@ export function RulesAdvancedScreen({
   );
 }
 
+/** 值是「未設定」的整行不顯示。沒有冒號的句子照留。 */
+export function shownRuleLines(lines: readonly string[]): string[] {
+  return lines.filter((line) => {
+    const cut = line.indexOf('：');
+    if (cut < 0) return true;
+    return line.slice(cut + 1).trim() !== copy.unset;
+  });
+}
+
+function RuleBlock({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: readonly { text: string; fit?: boolean }[];
+}): JSX.Element | null {
+  const shown = rows.filter((row) => shownRuleLines([row.text]).length > 0);
+  if (shown.length === 0) return null;
+  return (
+    <section class="s4b-sub">
+      <h3 class="s4b-h">{title}</h3>
+      {shown.map((row) => <Line key={row.text} text={row.text} fit={row.fit} />)}
+    </section>
+  );
+}
+
 export function RulesPublicScreen(): JSX.Element {
   const fair = S4B_PUBLISHED.fair;
+  const tieRows = [
+    { text: copy.algo1 },
+    { text: copy.algo2 },
+    ...S4B_TIEBREAK.flatMap((key, index) => {
+      if (key === 'fairPlay') {
+        return [
+          // 顧問 §3.306-4：第 8 項緊接一行標明「記牌功能上線後生效」（不縮字級，避免 360 寬字級不一致）
+          { text: copy.rank(index + 1, criterionLabel[key]) },
+          { text: `${copy.fairLater}・${copy.fairHint}` },
+        ];
+      }
+      return [{ text: copy.rank(index + 1, criterionLabel[key]) }];
+    }),
+  ];
+  const fairLines = shownRuleLines([
+    copy.cardLine(cardWeightLabel.yellow, formatSigned(fair.yellow)),
+    copy.cardLine(cardWeightLabel.secondYellow, formatSigned(fair.secondYellow)),
+    copy.cardLine(cardWeightLabel.directRed, formatSigned(fair.directRed)),
+    copy.cardLine(cardWeightLabel.yellowThenRed, formatSigned(fair.yellowThenRed)),
+  ]);
   return (
     <S4bFrame title={copy.rulesPublicTitle} screen="rules-public">
       <S4bCard>
         <h2 class="s4b-h">{copy.sysCalc}</h2>
-        <section class="s4b-sub">
-          <h3 class="s4b-h">{copy.pointsTitle}</h3>
-          <Line text={copy.winLine(S4B_PUBLISHED.win)} />
-          <Line text={copy.drawLine(S4B_PUBLISHED.draw)} />
-          <Line text={copy.lossLine(S4B_PUBLISHED.loss)} />
-        </section>
-        <section class="s4b-sub">
-          <h3 class="s4b-h">{copy.tieTitle}</h3>
-          <Line text={copy.algo1} />
-          <Line text={copy.algo2} />
-          {S4B_TIEBREAK.map((key, index) => (
-            <Fragment key={key}>
-              <Line text={copy.rank(index + 1, criterionLabel[key])} />
-              {key === 'fairPlay' ? <Line text={copy.fairHint} /> : null}
-            </Fragment>
-          ))}
-        </section>
-        <section class="s4b-sub">
-          <h3 class="s4b-h">{copy.walkTitle}</h3>
-          <Line text={copy.woScore(S4B_PUBLISHED.woAgainst, S4B_PUBLISHED.woFor)} />
-          <Line text={copy.woPoints(S4B_PUBLISHED.award, S4B_PUBLISHED.penalty)} />
-          <Line text={copy.woGoals} />
-        </section>
-        <section class="s4b-sub">
-          <h3 class="s4b-h">{copy.mercyTitle}</h3>
-          <Line text={copy.mercyOff} />
-        </section>
+        <RuleBlock
+          title={copy.pointsTitle}
+          rows={[
+            { text: copy.winLine(S4B_PUBLISHED.win) },
+            { text: copy.drawLine(S4B_PUBLISHED.draw) },
+            { text: copy.lossLine(S4B_PUBLISHED.loss) },
+          ]}
+        />
+        <RuleBlock title={copy.tieTitle} rows={tieRows} />
+        <RuleBlock
+          title={copy.walkTitle}
+          rows={[
+            { text: copy.woScore(S4B_PUBLISHED.woAgainst, S4B_PUBLISHED.woFor) },
+            { text: copy.woPoints(S4B_PUBLISHED.award, S4B_PUBLISHED.penalty) },
+            { text: copy.woGoals },
+          ]}
+        />
+        <RuleBlock title={copy.mercyTitle} rows={[{ text: copy.mercyOff }]} />
         <section class="s4b-sub">
           <h3 class="s4b-h">{copy.fairTitle}</h3>
           <p class="s4b-status">{copy.fairLater}</p>
-          <Line text={copy.cardLine(cardWeightLabel.yellow, formatSigned(fair.yellow))} />
-          <Line text={copy.cardLine(cardWeightLabel.secondYellow, formatSigned(fair.secondYellow))} />
-          <Line text={copy.cardLine(cardWeightLabel.directRed, formatSigned(fair.directRed))} />
-          <Line text={copy.cardLine(cardWeightLabel.yellowThenRed, formatSigned(fair.yellowThenRed))} />
+          {fairLines.map((text) => <Line key={text} text={text} />)}
         </section>
       </S4bCard>
       <S4bCard>
         <h2 class="s4b-h">{copy.hostDoes}</h2>
-        <section class="s4b-sub">
-          <h3 class="s4b-h">{copy.subTitle}</h3>
-          <Line text={copy.subLine} />
-        </section>
-        <section class="s4b-sub">
-          <h3 class="s4b-h">{copy.lateTitle}</h3>
-          <Line text={copy.lateLine} />
-        </section>
-        <section class="s4b-sub">
-          <h3 class="s4b-h">{copy.suspTitle}</h3>
-          <Line text={copy.suspLine} />
-        </section>
-        <section class="s4b-sub">
-          <h3 class="s4b-h">{copy.kitTitle}</h3>
-          <Line text={copy.shinLine} />
-          <Line text={copy.colorLine} />
-          <Line text={copy.numLine} />
-        </section>
-        <section class="s4b-sub">
-          <h3 class="s4b-h">{copy.appealTitle}</h3>
-          <Line text={copy.appealLine} />
-        </section>
+        <RuleBlock title={copy.subTitle} rows={[{ text: copy.subLine }]} />
+        <RuleBlock title={copy.lateTitle} rows={[{ text: copy.lateLine }]} />
+        <RuleBlock title={copy.suspTitle} rows={[{ text: copy.suspLine }]} />
+        <RuleBlock
+          title={copy.kitTitle}
+          rows={[{ text: copy.shinLine }, { text: copy.colorLine }, { text: copy.numLine }]}
+        />
+        <RuleBlock title={copy.appealTitle} rows={[{ text: copy.appealLine }]} />
       </S4bCard>
     </S4bFrame>
   );

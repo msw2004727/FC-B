@@ -10,6 +10,7 @@ import { Input } from '@/ui/Input';
 import { Select } from '@/ui/Select';
 import { Stepper } from '@/ui/Stepper';
 import { Textarea } from '@/ui/Textarea';
+import { isMinorAt } from '../format';
 import { DateField } from '../ui/fields';
 import {
   S4B_ADDITION_LEFT,
@@ -25,6 +26,7 @@ import {
   S4B_LINK_USED,
   S4B_LINK_USES_MAX,
   S4B_LINK_USES_MIN,
+  S4B_NOW,
   S4B_NUMBER_MAX,
   S4B_NUMBER_MIN,
   S4B_PLAYERS,
@@ -206,14 +208,24 @@ export function LinkRepScreen(): JSX.Element {
   );
 }
 
+export type JoinStatus = 'active' | 'rosterFull' | 'invalid';
+
+function joinScreen(minor: boolean, needBirthday: boolean, status: JoinStatus): string {
+  if (status === 'rosterFull') return 'link-join-full';
+  if (status === 'invalid') return 'link-join-invalid';
+  if (needBirthday) return 'link-join-birthday';
+  if (minor) return 'link-join-minor';
+  return 'link-join';
+}
+
 export function LinkJoinScreen({
-  minor = true,
+  minor = false,
   needBirthday = false,
-  extras = false,
+  status = 'active',
 }: {
   minor?: boolean;
   needBirthday?: boolean;
-  extras?: boolean;
+  status?: JoinStatus;
 }): JSX.Element {
   const used = usedNumbers(S4B_TEAM_THUNDER);
   const [number, setNumber] = useState('7');
@@ -221,14 +233,38 @@ export function LinkJoinScreen({
   const [positionText, setPositionText] = useState('');
   const [privacy, setPrivacy] = useState(false);
   const [guardian, setGuardian] = useState(false);
+  const screen = joinScreen(minor, needBirthday, status);
   const teamName = S4B_PLAYERS.find((player) => player.teamId === S4B_TEAM_THUNDER)?.teamName ?? '';
+  if (status === 'rosterFull') {
+    return (
+      <S4bFrame title={copy.joinTitle} screen={screen}>
+        <S4bCard>
+          <div data-reason="ROSTER_FULL">
+            <h2 class="s4b-h">{copy.rosterFullTitle}</h2>
+            <p class="s4b-alert">{copy.rosterFull}</p>
+          </div>
+        </S4bCard>
+      </S4bFrame>
+    );
+  }
+  if (status === 'invalid') {
+    return (
+      <S4bFrame title={copy.joinTitle} screen={screen}>
+        <S4bCard>
+          <h2 class="s4b-h">{copy.linkDeadTitle}</h2>
+          <p class="s4b-alert">{copy.linkDead}</p>
+        </S4bCard>
+      </S4bFrame>
+    );
+  }
   const options = [];
   for (let n = S4B_NUMBER_MIN; n <= S4B_NUMBER_MAX; n += 1) {
     const taken = used.has(n);
     options.push({ value: String(n), label: taken ? copy.numberUsed(n) : String(n), disabled: taken });
   }
+  const canJoin = privacy && (!minor || guardian);
   return (
-    <S4bFrame title={copy.joinTitle} screen={needBirthday ? 'link-join-birthday' : 'link-join'}>
+    <S4bFrame title={copy.joinTitle} screen={screen}>
       <S4bCard>
         <div class="s4b-gap">
           <h2 class="s4b-h">{S4B_COMP_NAME}</h2>
@@ -249,42 +285,50 @@ export function LinkJoinScreen({
           <Checkbox label={copy.privacy} checked={privacy} onCheckedChange={setPrivacy} />
           {minor ? <Checkbox label={copy.guardian} checked={guardian} onCheckedChange={setGuardian} /> : null}
           <div class="s4b-blockbtn">
-            <Button variant="primary">{copy.join}</Button>
+            <Button variant="primary" disabled={!canJoin}>{copy.join}</Button>
           </div>
         </div>
       </S4bCard>
-      {extras ? (
-        <>
-          <S4bCard>
-            <div data-reason="ROSTER_FULL">
-              <h2 class="s4b-h">{copy.rosterFullTitle}</h2>
-              <p class="s4b-alert">{copy.rosterFull}</p>
-            </div>
-          </S4bCard>
-          <S4bCard>
-            <h2 class="s4b-h">{copy.linkDeadTitle}</h2>
-            <p class="s4b-alert">{copy.linkDead}</p>
-          </S4bCard>
-        </>
-      ) : null}
     </S4bFrame>
   );
 }
 
-export function ClaimScreen(): JSX.Element {
+export type ClaimStatus = 'claimable' | 'ageMismatch';
+
+export function ClaimScreen({
+  status = 'claimable',
+  minor = false,
+}: {
+  status?: ClaimStatus;
+  minor?: boolean;
+}): JSX.Element {
+  const [privacy, setPrivacy] = useState(false);
+  const [guardian, setGuardian] = useState(false);
+  const screen = status === 'ageMismatch' ? 'claim-age-mismatch' : 'claim';
+  if (status === 'ageMismatch') {
+    return (
+      <S4bFrame title={copy.claimTitle} screen={screen}>
+        <S4bCard>
+          <h2 class="s4b-h">{copy.claimAgeTitle}</h2>
+          <p class="s4b-alert">{copy.claimAge}</p>
+        </S4bCard>
+      </S4bFrame>
+    );
+  }
+  const ready = privacy && (!minor || guardian);
   return (
-    <S4bFrame title={copy.claimTitle} screen="claim">
+    <S4bFrame title={copy.claimTitle} screen={screen}>
       <S4bCard>
         <div class="s4b-gap">
+          <h2 class="s4b-h">{S4B_COMP_NAME}</h2>
+          <h2 class="s4b-h">{S4B_CLAIM_TEAM}</h2>
           <h2 class="s4b-h">{copy.claimLine(S4B_CLAIM_TEAM, S4B_CLAIM_NUMBER)}</h2>
+          <Checkbox label={copy.privacy} checked={privacy} onCheckedChange={setPrivacy} />
+          {minor ? <Checkbox label={copy.guardian} checked={guardian} onCheckedChange={setGuardian} /> : null}
           <div class="s4b-blockbtn">
-            <Button variant="primary">{copy.claimYes}</Button>
+            <Button variant="primary" disabled={!ready}>{copy.claimYes}</Button>
           </div>
         </div>
-      </S4bCard>
-      <S4bCard>
-        <h2 class="s4b-h">{copy.claimAgeTitle}</h2>
-        <p class="s4b-alert">{copy.claimAge}</p>
       </S4bCard>
     </S4bFrame>
   );
@@ -296,6 +340,15 @@ export function AdditionRequestScreen(): JSX.Element {
   const [number, setNumber] = useState('');
   const [position, setPosition] = useState('FW');
   const [positionText, setPositionText] = useState('');
+  const [consent, setConsent] = useState(false);
+  const [ack, setAck] = useState(false);
+  const minor = isMinorAt(birthday, S4B_NOW) === true;
+  function changeBirthday(next: string): void {
+    const nextMinor = isMinorAt(next, S4B_NOW) === true;
+    if (nextMinor !== minor) setConsent(false);
+    setBirthday(next);
+  }
+  const consentLabel = minor ? copy.guardian : copy.selfConsent;
   return (
     <S4bFrame title={copy.additionTitle} screen="addition-request">
       <S4bCard>
@@ -304,11 +357,14 @@ export function AdditionRequestScreen(): JSX.Element {
       <S4bCard>
         <div class="s4b-gap">
           <Input label={copy.realName} value={realName} onValueChange={setRealName} />
-          <DateField id="s4b-add-birthday" label={copy.birthday} value={birthday} onValueChange={setBirthday} />
+          <DateField id="s4b-add-birthday" label={copy.birthday} value={birthday} onValueChange={changeBirthday} />
           <Input label={copy.number} type="number" value={number} min={0} max={99} onValueChange={setNumber} />
           <PositionPick value={position} text={positionText} onChange={(next, text) => { setPosition(next); setPositionText(text); }} />
+          <Checkbox label={consentLabel} checked={consent} onCheckedChange={setConsent} />
+          {/* 顧問 §3.306-3：比照正式代填頁，另有名單公開告知勾選 */}
+          <Checkbox label={copy.addAck} checked={ack} onCheckedChange={setAck} />
           <div class="s4b-blockbtn">
-            <Button variant="primary">{copy.addSubmit}</Button>
+            <Button variant="primary" disabled={!consent || !ack}>{copy.addSubmit}</Button>
           </div>
         </div>
       </S4bCard>
@@ -353,6 +409,7 @@ export function AdditionReviewScreen(): JSX.Element {
                   <span class="s4b-k">{row.number}</span>
                 </div>
                 <p class="s4b-status">{formatMdHm(row.at)}</p>
+                <Line text={copy.ageFit(row.ageOk)} warn={!row.ageOk} />
                 <div class="s4b-pair">
                   <Button variant="primary" size="sm" onClick={() => setDone((prev) => new Set(prev).add(row.id))}>{copy.approve}</Button>
                   <Button
