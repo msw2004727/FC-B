@@ -115,7 +115,8 @@ export function WaitScreen({ view, handlers }: { view: WaitView; handlers: WaitH
       <Shell title={text.notYetTitle} closeLabel={text.close} onClose={handlers.onClose}>
         <div class="login-handoff-icon"><Icon kind="clock" /></div>
         <p class="login-handoff-body">{text.notYetBody}</p>
-        <Primary label={text.retry} onClick={handlers.onRetry} />
+        {/* 站長 11-19 選 B：按鈕與內文「再按一次『我已完成』」一致（取代預覽 v2 的「再試一次」）。 */}
+        <Primary label={text.iDone} onClick={handlers.onRetry} />
         <Secondary label={text.relogin} onClick={handlers.onRestart} />
       </Shell>
     );

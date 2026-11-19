@@ -63,11 +63,12 @@ describe('等待框', () => {
     expect((screen.getByText('我已完成') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('⑤ 還沒收到：再試一次＝onRetry，重新登入＝onRestart', () => {
+  it('⑤ 還沒收到：按鈕「我已完成」（與內文一致，站長選 B）＝onRetry，重新登入＝onRestart', () => {
     const h = waitHandlers();
     render(<WaitScreen view={{ kind: 'notYet', number: 27, expiresAt: Date.now() + 60_000 }} handlers={h} />);
     expect(screen.getByText('還沒收到登入資料')).toBeTruthy();
-    fireEvent.click(screen.getByText('再試一次'));
+    expect(screen.queryByText('再試一次')).toBeNull();
+    fireEvent.click(screen.getByText('我已完成'));
     expect(h.onRetry).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByText('重新登入'));
     expect(h.onRestart).toHaveBeenCalledOnce();
