@@ -6,10 +6,10 @@
   "fcHead": "f35c12cc4b7a12172444d9b7fbd640cea767f196",
   "asiaMainRules": {
     "file": "asia-main.rules",
-    "sha256": "17068d4b6bd9e90871ee1dff73e2d500d49a8f6e53b80d467d11f5c45eb43320",
-    "fcCommit": "c096dfd43",
-    "source": ".grok-input/asia-main.rules.integ-c096dfd43",
-    "copiedAt": "2026-11-19T00:00:00.000Z",
+    "sha256": "99a8cafef181e8e01c7bacad7dc51d7b34a04e07c20a60fffb7199da156044bc",
+    "fcCommit": "6c9a6b18c",
+    "source": ".grok-input/asia-main.rules.integ-6c9a6b18c",
+    "copiedAt": "2026-11-20T00:00:00.000Z",
     "note": "規則本文與整合版快照逐位元組相同。來源記在這裡；寫進規則檔頭會改變 sha256。"
   }
 }

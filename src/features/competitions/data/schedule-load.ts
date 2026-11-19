@@ -9,7 +9,8 @@
 // 賽事文件不存在就停，不再讀子集合。
 
 import type { CompetitionsRepo } from './cp-repo';
-import { competitionPhase, taipeiYmd, type CompetitionPhase } from './present';
+import { matchDayOf } from './match-day';
+import { competitionPhase, type CompetitionPhase } from './present';
 import type {
   CompetitionDoc,
   DivisionDoc,
@@ -54,9 +55,9 @@ const emptyDetail = (): ScheduleDetail => ({
   staff: null,
 });
 
-/** 當日摘要片 id：d + 台北日期 YYYYMMDD。 */
+/** 摘要片 id：比賽日 dYYYYMMDD。台北 00:00～04:59 歸前一天，與後端 K5 相同。 */
 export function summaryShardIdOf(now: number): string {
-  return `d${taipeiYmd(now)}`;
+  return matchDayOf(now).shardId;
 }
 
 async function readInternal(repo: CompetitionsRepo, input: ScheduleDetailInput): Promise<void> {

@@ -1,6 +1,5 @@
 // 比賽日與後端 K5 相同：台北 00:00～04:59 歸前一個比賽日，05:00 起算當天。
-// 既有 summaryShardIdOf 仍是日曆日，進行中一次讀取的斷言鎖著它，這裡不改那支。
-// 觀眾監聽與賽程分組用這支的 shardId。
+// 摘要片 id（summaryShardIdOf）與觀眾監聽、賽程分組都用這支的 shardId。
 
 import { taipeiMs, taipeiParts } from '../format';
 

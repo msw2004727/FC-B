@@ -11,21 +11,21 @@ import {
   SCORE_FINISH_WINDOW_MS,
   type StaffViewerKind,
 } from './staff-assign';
-import type { StaffAssignmentRole } from './types';
-
-const ROLES: StaffAssignmentRole[] = ['host', 'coHost', 'scorer', 'referee'];
 const VIEWERS: StaffViewerKind[] = ['host', 'coHost'];
 
 describe('指派規則', () => {
-  it('移除鈕：主辦列不顯示，共同主辦列只有主辦看得到，記分員與裁判都顯示', () => {
+  it('移除鈕只給有記分角色、而且動得了的列', () => {
     for (const viewer of VIEWERS) {
-      for (const role of ROLES) {
-        const shown = canRemoveStaffRow(viewer, role);
-        if (role === 'host') expect(shown, `${viewer} ${role}`).toBe(false);
-        else if (role === 'coHost') expect(shown, `${viewer} ${role}`).toBe(viewer === 'host');
-        else expect(shown, `${viewer} ${role}`).toBe(true);
-      }
+      expect(canRemoveStaffRow(viewer, ['host']), viewer).toBe(false);
+      expect(canRemoveStaffRow(viewer, ['coHost']), viewer).toBe(false);
+      expect(canRemoveStaffRow(viewer, ['host', 'scorer'], true), viewer).toBe(false);
+      expect(canRemoveStaffRow(viewer, ['scorer']), viewer).toBe(true);
+      expect(canRemoveStaffRow(viewer, ['referee']), viewer).toBe(true);
     }
+    expect(canRemoveStaffRow('host', ['coHost', 'scorer'])).toBe(true);
+    expect(canRemoveStaffRow('coHost', ['coHost', 'scorer'], false)).toBe(false);
+    expect(canRemoveStaffRow('coHost', ['coHost', 'referee'], true)).toBe(true);
+    expect(canRemoveStaffRow('coHost', ['host', 'scorer'], false)).toBe(false);
   });
 
   it('編號用 memberNo；移除成員 2 後成員 3 仍是 3；缺號不帶號碼', () => {

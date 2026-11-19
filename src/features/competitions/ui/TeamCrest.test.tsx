@@ -2,7 +2,7 @@ import { fireEvent, render } from '@testing-library/preact';
 import { describe, expect, it } from 'vitest';
 import { FIREBASE_CONFIG } from '@/data/firebase-config';
 import { crestIndex } from '../data/present';
-import { CREST_SIZES, crestFromEntry, isProjectStorageDownloadUrl, TeamCrest } from './TeamCrest';
+import { CREST_SIZES, crestFromEntry, isInlinePngCrest, isProjectStorageDownloadUrl, TeamCrest } from './TeamCrest';
 
 const BUCKET = FIREBASE_CONFIG.storageBucket;
 const STORAGE_URL = `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/crests%2Fa.png?alt=media&token=t`;
@@ -59,6 +59,25 @@ describe('TeamCrest', () => {
       view.unmount();
     }
     expect(isProjectStorageDownloadUrl(STORAGE_URL)).toBe(true);
+  });
+
+  it('內嵌 PNG 畫成圖片；SVG 與過長 data URI 退回首字', () => {
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    expect(isInlinePngCrest(png)).toBe(true);
+    expect(isProjectStorageDownloadUrl(png)).toBe(false);
+    const view = render(<TeamCrest teamId="club_png" name="雷霆隊" teamLogo={png} size={22} />);
+    expect(view.container.querySelector('img')?.getAttribute('src')).toBe(png);
+    view.unmount();
+    for (const url of [
+      'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>',
+      `data:image/png;base64,${'A'.repeat(5000)}`,
+    ]) {
+      expect(isInlinePngCrest(url)).toBe(false);
+      const rejected = render(<TeamCrest teamId="club_png" name="雷霆隊" teamLogo={url} size={22} />);
+      expect(rejected.container.querySelector('img')).toBeNull();
+      expect(rejected.container.querySelector('.cp3-crest')?.textContent).toBe('雷');
+      rejected.unmount();
+    }
   });
 
   it('五種尺寸都畫得出圓形框', () => {

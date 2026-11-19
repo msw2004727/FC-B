@@ -11,7 +11,7 @@ describe('asia-main 規則快照', () => {
     };
     const hash = createHash('sha256').update(rules).digest('hex');
     expect(hash).toBe(recorded.asiaMainRules.sha256);
-    expect(recorded.asiaMainRules.fcCommit).toBe('c096dfd43');
-    expect(hash.slice(0, 16)).toBe('17068d4b6bd9e908');
+    expect(recorded.asiaMainRules.fcCommit).toBe('6c9a6b18c');
+    expect(hash.slice(0, 16)).toBe('99a8cafef181e8e0');
   });
 });

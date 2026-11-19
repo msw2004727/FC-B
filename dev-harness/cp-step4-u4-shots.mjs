@@ -191,7 +191,7 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
     }
   }
 }
-// 第一屏：凍結元件沒有 h1。改看 .s4-page 的頂端在視窗內。U2 的記分控制列不適用於這組畫面。
+// 第一屏：凍結元件沒有 h1。單場與榜用 .s4-page；詳情改畫正式列表，看 .cp3-ml。U2 的記分控制列不適用於這組畫面。
 const FIRST = ['u4-detail-live', 'u4-detail-corrected-pk', 'u4-match-live', 'u4-match-log-open', 'u4-scorers', 'u4-cards', 'u4-scorers-stalled', 'u4-scorers-empty'];
 for (const name of FIRST) {
   for (const [w, h] of ALL) {
@@ -214,7 +214,7 @@ for (const name of FIRST) {
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(300);
     const missing = await page.evaluate(() => {
-      const el = document.querySelector('.s4-page');
+      const el = document.querySelector('.s4-page, .cp3-ml');
       if (!el) return ['畫面'];
       const top = el.getBoundingClientRect().top;
       if (top > window.innerHeight + 0.5) return [`內容超出第一屏 ${Math.round(top)}>${window.innerHeight}`];

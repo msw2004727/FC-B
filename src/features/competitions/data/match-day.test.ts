@@ -42,10 +42,14 @@ describe('matchDayOf', () => {
     expect(matchDayNoon(at(2027, 1, 1, 3, 0))).toBe(at(2026, 12, 31, 12, 0));
   });
 
-  it('00:30 的比賽日片與既有日曆片不同', () => {
-    const ms = at(2026, 12, 5, 0, 30);
-    expect(matchDayOf(ms).shardId).toBe('d20261204');
-    expect(summaryShardIdOf(ms)).toBe('d20261205');
+  it('01:30 開賽的摘要片是前一個比賽日', () => {
+    const early = at(2026, 12, 5, 1, 30);
+    expect(matchDayOf(early).shardId).toBe('d20261204');
+    expect(matchDayOf(early).key).toBe('2026-12-04');
+    expect(summaryShardIdOf(early)).toBe('d20261204');
+    const half = at(2026, 12, 5, 0, 30);
+    expect(summaryShardIdOf(half)).toBe(matchDayOf(half).shardId);
+    expect(summaryShardIdOf(half)).toBe('d20261204');
   });
 });
 

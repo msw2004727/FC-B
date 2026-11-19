@@ -143,15 +143,15 @@ export function showsScore(entry: SummaryEntry): boolean {
 }
 
 /**
- * 今天場數只算開賽時間落在台北今天、而且不是已取消的場次。時間待定不算今天。
- * 下一場只看 st === 'scheduled' 且開賽時間 ≥ now 的最早一場（改期、已取消都不算）。
+ * 今天場數只算開賽時間落在今天的比賽日、而且不是已取消的場次。時間待定不算今天。
+ * 台北 00:00～04:59 算前一個比賽日。下一場只看 st === 'scheduled' 且開賽時間 ≥ now 的最早一場（改期、已取消都不算）。
  */
 export function liveStrip(entries: readonly SummaryEntry[], now: number): LiveStrip {
-  const todayKey = taipeiDayKey(now);
+  const todayKey = matchDayOf(now).key;
   let today = 0;
   let nextAt: number | null = null;
   for (const entry of entries) {
-    if (entry.k != null && entry.st !== 'cancelled' && taipeiDayKey(entry.k) === todayKey) today += 1;
+    if (entry.k != null && entry.st !== 'cancelled' && matchDayOf(entry.k).key === todayKey) today += 1;
     if (entry.st !== 'scheduled' || entry.k == null || entry.k < now) continue;
     if (nextAt == null || entry.k < nextAt) nextAt = entry.k;
   }

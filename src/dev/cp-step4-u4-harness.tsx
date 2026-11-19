@@ -6,16 +6,17 @@ import '../styles/tokens.css';
 import '../styles/base.css';
 import '@/ui/app-shell.css';
 import { setLocale } from '@/i18n/i18n';
-import { loadCompetitionsDict } from '@/features/competitions/i18n';
-import { LiveDetailList } from '@/features/competitions/live/LiveDetailList';
+import { groupSchedule } from '@/features/competitions/data/schedule-present';
+import type { EntryDoc, SummaryEntry } from '@/features/competitions/data/types';
+import { taipeiMs } from '@/features/competitions/format';
+import { ctOrKey, loadCompetitionsDict, useCompetitionsT } from '@/features/competitions/i18n';
 import { LiveMatchView } from '@/features/competitions/live/LiveMatchView';
-import { pkScoreLabel } from '@/features/competitions/live/copy';
 import { ScorersTable } from '@/features/competitions/live/ScorersTable';
 import { derivePublicTable } from '@/features/competitions/live/stats';
 import type { TimelineEvent } from '@/features/competitions/live/types';
+import { MatchSchedule, scheduleLabels } from '@/features/competitions/ui/schedule-board';
 import {
   S4_CONFIRMED,
-  S4_DETAIL_ROWS,
   S4_PEOPLE,
   S4_SCENE_LIVE,
 } from '@/features/competitions/testing/step4-fixtures';
@@ -47,18 +48,77 @@ const ANCHORS: Record<string, string> = {
   'u4-scorers-empty': '還沒有已確認的比賽紀錄',
 };
 
-const CORRECTED_ROWS = [
-  {
-    id: 'd3',
-    when: '08:00',
-    home: '藍鯨隊',
-    away: '海風隊',
-    score: '2:1',
-    live: false,
-    corrected: true,
-    pk: pkScoreLabel(4, 3),
-  },
+/** 截圖隊徽：16×16 內嵌 PNG。不連正式儲存網域。 */
+const U4_CREST = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAANElEQVR4nGNgoBDwFeehIdJU49ODSzV2PfhVo+shRjWKnhGpgeRgJSfiyEkauPTgU00MAADYspGlcL3zwAAAAABJRU5ErkJggg==';
+
+/** 與觀眾詳情同一天的白天，時刻維持 08:00／09:00，不寫「隔日」。 */
+const DETAIL_NOW = taipeiMs(2027, 1, 9, 12, 0);
+
+function detailEntry(row: {
+  id: string;
+  hour: number;
+  minute: number;
+  home: string;
+  away: string;
+  homeId: string;
+  awayId: string;
+  score: [number, number];
+  st: SummaryEntry['st'];
+  cx?: number;
+  pk?: [number, number];
+  logo?: string;
+}): SummaryEntry {
+  return {
+    id: row.id,
+    dv: 'dv_adult',
+    r: 1,
+    no: 1,
+    k: taipeiMs(2027, 1, 9, row.hour, row.minute),
+    v: null,
+    h: { id: row.homeId, n: row.home, ...(row.logo ? { l: row.logo } : {}) },
+    a: { id: row.awayId, n: row.away },
+    s: row.score,
+    st: row.st,
+    wo: null,
+    ...(row.cx != null ? { cx: row.cx } : {}),
+    ...(row.pk ? { p: row.pk } : {}),
+  };
+}
+
+/** 兩場進行中、一場比分已更正。長隊名沿用原本截圖。 */
+const LIVE_ENTRIES: readonly SummaryEntry[] = [
+  detailEntry({
+    id: 'd1', hour: 9, minute: 0, home: '雷霆隊', away: '海風隊',
+    homeId: 'en_c', awayId: 'en_h', score: [1, 1], st: 'live', logo: U4_CREST,
+  }),
+  detailEntry({
+    id: 'd2', hour: 9, minute: 0, home: '山貓隊', away: '銀河隊',
+    homeId: 'en_cat', awayId: 'en_gal', score: [0, 2], st: 'live',
+  }),
+  detailEntry({
+    id: 'd3', hour: 8, minute: 0, home: '藍鯨隊', away: '一二三四五六七八九十示範隊',
+    homeId: 'en_whale', awayId: 'en_long', score: [2, 1], st: 'confirmed', cx: DETAIL_NOW,
+  }),
 ];
+
+/** 一列：已更正、PK。隊徽只用內嵌圖。 */
+const CORRECTED_ENTRIES: readonly SummaryEntry[] = [
+  detailEntry({
+    id: 'd3', hour: 8, minute: 0, home: '藍鯨隊', away: '海風隊',
+    homeId: 'en_whale', awayId: 'en_h', score: [2, 1], st: 'confirmed', cx: DETAIL_NOW, pk: [4, 3], logo: U4_CREST,
+  }),
+];
+
+function shotCrests(crests: readonly EntryDoc[]): EntryDoc[] {
+  return crests.map((row) => (row.teamLogo ? { ...row, teamLogo: U4_CREST } : row));
+}
+
+/** 詳情截圖畫正式列表（.cp3-m 與即時／已更正標籤），不是 LiveDetailList。 */
+function OfficialList({ entries }: { entries: readonly SummaryEntry[] }) {
+  const ct = ctOrKey(useCompetitionsT());
+  const groups = groupSchedule(entries, DETAIL_NOW, scheduleLabels(ct));
+  return <MatchSchedule ct={ct} groups={groups} standings={[]} crests={[]} />;
+}
 
 const LOG_EVENTS: TimelineEvent[] = [
   ...S4_SCENE_LIVE.events,
@@ -89,8 +149,8 @@ function clickButton(name: string): void {
 }
 
 function screenOf(name: string) {
-  if (name === 'u4-detail-live') return <LiveDetailList rows={S4_DETAIL_ROWS} />;
-  if (name === 'u4-detail-corrected-pk') return <LiveDetailList rows={CORRECTED_ROWS} />;
+  if (name === 'u4-detail-live') return <OfficialList entries={LIVE_ENTRIES} />;
+  if (name === 'u4-detail-corrected-pk') return <OfficialList entries={CORRECTED_ENTRIES} />;
   if (name === 'u4-match-live' || name === 'u4-match-log-open') {
     const scene = S4_SCENE_LIVE;
     return (
@@ -101,7 +161,7 @@ function screenOf(name: string) {
         voids={scene.voids}
         homeRoster={scene.homeRoster}
         awayRoster={scene.awayRoster}
-        crests={scene.crests}
+        crests={shotCrests(scene.crests)}
       />
     );
   }

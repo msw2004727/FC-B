@@ -1,4 +1,5 @@
-// 圓形隊徽。只收本專案 Storage 下載網址；其他網址或載入失敗時退回隊名首字＋底色。
+// 圓形隊徽。正式圖只收本專案 Storage 下載網址；截圖可再收內嵌 PNG。
+// 其他網址或載入失敗時退回隊名首字＋底色。
 // 底色由 teamId 決定（crestIndex），同 id 永遠同色。不在這裡讀網路：呼叫端把 listEntriesForCrest 的結果傳進來。
 
 import type { JSX } from 'preact';
@@ -9,6 +10,14 @@ import type { EntryDoc } from '../data/types';
 
 function projectBucket(): string {
   return FIREBASE_CONFIG.storageBucket.trim().replace(/^gs:\/\//, '').replace(/\/+$/, '');
+}
+
+/** 截圖假資料的小張 PNG。正式隊徽仍只走 Storage；SVG 與其他 data URI 不收。 */
+const INLINE_PNG = /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/;
+
+export function isInlinePngCrest(value: string): boolean {
+  const text = value.trim();
+  return text.length <= 4096 && INLINE_PNG.test(text);
 }
 
 /**
@@ -45,7 +54,11 @@ export function TeamCrest({
   teamLogo: string | null;
   size: CrestSize;
 }): JSX.Element {
-  const logo = teamLogo && isProjectStorageDownloadUrl(teamLogo) ? teamLogo : null;
+  const logo = teamLogo && isInlinePngCrest(teamLogo)
+    ? teamLogo.trim()
+    : teamLogo && isProjectStorageDownloadUrl(teamLogo)
+      ? teamLogo
+      : null;
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     setFailed(false);

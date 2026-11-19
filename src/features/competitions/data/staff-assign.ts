@@ -45,13 +45,20 @@ export function rowRole(roles: readonly string[]): StaffAssignmentRole | null {
 }
 
 /**
- * 移除鈕。主辦列不顯示。共同主辦列只有主辦視角顯示。
- * 記分員與裁判兩種視角都顯示。
+ * 移除鈕只給有記分角色、而且照後端 assertMayTouchStaff 動得了的列。
+ * 沒有 scorer／referee 不顯示。含 host 的那一列不顯示（主辦本人）。
+ * 共同主辦看別人的共同主辦不顯示；改自己的記分角色可以。
+ * roles 必須是陣列。字串的 includes 會誤判（「coHost」裡有「host」）。
  */
-export function canRemoveStaffRow(viewer: StaffViewerKind, role: StaffAssignmentRole): boolean {
-  if (role === 'host') return false;
-  if (role === 'coHost') return viewer === 'host';
-  return role === 'scorer' || role === 'referee';
+export function canRemoveStaffRow(
+  viewer: StaffViewerKind,
+  roles: readonly string[],
+  self = false,
+): boolean {
+  if (!hasScoreRole(roles)) return false;
+  if (roles.includes('host')) return false;
+  if (viewer === 'coHost' && roles.includes('coHost') && !self) return false;
+  return true;
 }
 
 export function hasScoreRole(roles: readonly string[]): boolean {

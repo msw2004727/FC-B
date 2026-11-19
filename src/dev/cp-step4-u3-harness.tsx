@@ -70,7 +70,7 @@ function assignDays(): AssignDayGroup[] {
 // 假資料：主辦 1、共同主辦 2、記分員 3、5（4 號已移除，不重排）、裁判 6。
 const HOST_ROWS: StaffListRow[] = [
   { id: 'me', name: '我自己', role: 'host', roleLabel: '主辦', countLabel: '0 場', removable: false },
-  { id: 'co', name: '成員 2', role: 'coHost', roleLabel: '共同主辦', countLabel: '0 場', removable: true },
+  { id: 'co', name: '成員 2', role: 'coHost', roleLabel: '共同主辦', countLabel: '0 場', removable: false },
   { id: 's1', name: '成員 3', role: 'scorer', roleLabel: '記分員', countLabel: '4 場', removable: true },
   { id: 's2', name: '成員 5', role: 'scorer', roleLabel: '記分員', countLabel: '1 場', removable: true },
   { id: 'ref', name: '成員 6', role: 'referee', roleLabel: '裁判', countLabel: '1 場', removable: true },

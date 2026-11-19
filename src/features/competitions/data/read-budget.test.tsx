@@ -7,6 +7,7 @@ import { loadCompetitionsDict } from '../i18n';
 import CompetitionDetailPage from '../pages/CompetitionDetailPage';
 import { createFakeCpRepo, type FakeCpRepo } from '../testing/fake-cp-repo';
 import { idleActions, memberActor } from '../testing/screen-fixtures';
+import { matchDayOf } from './match-day';
 import { loadFullSchedule, loadScheduleDetail, summaryShardIdOf } from './schedule-load';
 import { CP_READ_LIMIT, type CompetitionDoc, type DivisionDoc, type EntryDoc, type MatchDoc, type StandingDoc, type SummaryEntry } from './types';
 
@@ -491,9 +492,56 @@ describe('詳情讀取預算', () => {
     expect(repo.readCount()).toBeLessThanOrEqual(fullMax);
   });
 
-  it('台北跨日時摘要片用台北日期', () => {
-    expect(summaryShardIdOf(Date.parse('2026-12-05T00:30:00+08:00'))).toBe('d20261205');
+  it('台北跨日時摘要片用比賽日，00:00～04:59 歸前一天', () => {
+    expect(summaryShardIdOf(Date.parse('2026-12-05T00:30:00+08:00'))).toBe('d20261204');
     expect(summaryShardIdOf(Date.parse('2026-12-04T23:30:00+08:00'))).toBe('d20261204');
+    expect(summaryShardIdOf(Date.parse('2026-12-05T05:00:00+08:00'))).toBe('d20261205');
+  });
+
+  it('01:30 開賽的場次讀前一天的摘要片', async () => {
+    const kick = Date.parse('2026-12-05T01:30:00+08:00');
+    expect(summaryShardIdOf(kick)).toBe(matchDayOf(kick).shardId);
+    expect(summaryShardIdOf(kick)).toBe('d20261204');
+    const warm = createFakeCpRepo({
+      competitions: [competition({
+        id: 'cid_1',
+        ...SCHEDULE_TIMES,
+        firstMatchAt: kick,
+        lastMatchAt: Date.parse('2026-12-06T18:00:00+08:00'),
+      })],
+      summary: {
+        cid_1: [
+          { id: 'd20261204', entries: [summaryEntry('mt_early', kick)] },
+          { id: 'd20261205', entries: [summaryEntry('mt_wrong', kick)] },
+        ],
+      },
+    });
+    const warmed = await loadScheduleDetail(warm, {
+      cid: 'cid_1',
+      uid: null,
+      now: Date.parse('2026-12-04T12:00:00+08:00'),
+    });
+    expect(warmed.phase).toBe('warm');
+    expect(warmed.summary.map((row) => row.id)).toEqual(['mt_early']);
+
+    const liveNow = kick;
+    const live = createFakeCpRepo({
+      competitions: [competition({
+        id: 'cid_1',
+        ...SCHEDULE_TIMES,
+        firstMatchAt: Date.parse('2026-12-04T09:00:00+08:00'),
+      })],
+      summary: {
+        cid_1: [
+          { id: 'd20261204', entries: [summaryEntry('mt_night', liveNow)] },
+          { id: 'd20261205', entries: [summaryEntry('mt_wrong', liveNow)] },
+        ],
+      },
+    });
+    const going = await loadScheduleDetail(live, { cid: 'cid_1', uid: null, now: liveNow });
+    expect(going.phase).toBe('live');
+    expect(summaryShardIdOf(liveNow)).toBe('d20261204');
+    expect(going.summary.map((row) => row.id)).toEqual(['mt_night']);
   });
 
   it('詳情頁用同一組讀取，不呼叫 listMatches 或 listEntries', async () => {

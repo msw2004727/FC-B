@@ -180,7 +180,8 @@ describe('指派頁與我的場次', () => {
     expect(self?.textContent ?? '').toContain('主辦');
     expect(removeIn(self)).toBeNull();
     const co = [...view.container.querySelectorAll('.s4b-li')].find((el) => (el.textContent ?? '').includes('共同主辦'));
-    expect(removeIn(co ?? null)).not.toBeNull();
+    expect(removeIn(co ?? null)).toBeNull();
+    expect(removeIn(rowOf(view, '裁判'))).not.toBeNull();
     expect(view.container.textContent ?? '').toContain('2 場');
     const scorer = rowOf(view, '成員 3');
     const button = removeIn(scorer);
@@ -211,9 +212,73 @@ describe('指派頁與我的場次', () => {
     const host = [...view.container.querySelectorAll('.s4b-li')].find((el) => (el.textContent ?? '').includes('主辦') && !(el.textContent ?? '').includes('共同'));
     expect(removeIn(host ?? null)).toBeNull();
     expect(removeIn(rowOf(view, '成員 3'))).not.toBeNull();
+    expect(removeIn(rowOf(view, '裁判'))).not.toBeNull();
   });
 
-  it('移除成員 2 後成員 3 仍是 3，重新整理號碼不變', async () => {
+  it('共同主辦加記分員有移除鈕，按下只拿記分角色', async () => {
+    const rows = [
+      { uid: 'uid_host', roles: ['host' as const], matchIds: ['mt_1'], expiresAt: null, memberNo: 1 },
+      { uid: 'uid_co', roles: ['coHost' as const], matchIds: [] as string[], expiresAt: null, memberNo: 2 },
+      { uid: 'uid_mix', roles: ['coHost' as const, 'scorer' as const], matchIds: ['mt_1'], expiresAt: null, memberNo: 5 },
+      { uid: 'uid_ref', roles: ['referee' as const], matchIds: [] as string[], expiresAt: null },
+    ];
+    const removeStaff = vi.fn<CpActions['removeStaff']>(async () => ({}));
+    const view = draw({
+      actor: hostActor,
+      repo: createFakeCpRepo({
+        competitions: [competition({ id: 'cup' })],
+        staff: STAFF_SEED,
+        assignments: { cup: rows },
+      }),
+      actions: { ...idleActions(), removeStaff },
+      route: { cid: 'cup' },
+    }, <StaffPage />);
+    expect(await screen.findByText('成員 5')).toBeTruthy();
+    expect(removeIn(rowOf(view, '成員 2'))).toBeNull();
+    const mix = rowOf(view, '成員 5');
+    expect(mix?.textContent ?? '').toContain('共同主辦');
+    const button = removeIn(mix);
+    if (!button) throw new Error('共同主辦兼記分員應有移除鈕');
+    fireEvent.click(button);
+    expect(await screen.findByText('移除記分角色？')).toBeTruthy();
+    expect(screen.getByText('這位成員將不能再記分。')).toBeTruthy();
+    const dialog = document.body.querySelector('[role="dialog"]');
+    const confirm = [...(dialog?.querySelectorAll('button') ?? [])].find((el) => (el.textContent ?? '').trim() === '移除');
+    if (!confirm) throw new Error('確認框應有移除');
+    fireEvent.click(confirm);
+    await waitFor(() => expect(removeStaff).toHaveBeenCalledWith({ cid: 'cup', uid: 'uid_mix' }));
+    expect(removeStaff.mock.calls[0]?.[0]).not.toHaveProperty('roles');
+    expect(removeIn(rowOf(view, '裁判'))).not.toBeNull();
+  });
+
+  it('共同主辦可移除自己的記分角色，不能移除其他共同主辦', async () => {
+    const rows = [
+      { uid: 'uid_host', roles: ['host' as const], matchIds: [] as string[], expiresAt: null, memberNo: 1 },
+      { uid: 'uid_co', roles: ['coHost' as const, 'scorer' as const], matchIds: ['mt_1'], expiresAt: null, memberNo: 2 },
+      { uid: 'uid_peer', roles: ['coHost' as const, 'referee' as const], matchIds: [] as string[], expiresAt: null, memberNo: 5 },
+      { uid: 'uid_only', roles: ['coHost' as const], matchIds: [] as string[], expiresAt: null, memberNo: 6 },
+      { uid: 'uid_ref', roles: ['referee' as const], matchIds: [] as string[], expiresAt: null },
+    ];
+    const view = draw({
+      actor: coHostActor,
+      repo: createFakeCpRepo({
+        competitions: [competition({ id: 'cup' })],
+        staff: STAFF_SEED,
+        assignments: { cup: rows },
+      }),
+      actions: idleActions(),
+      route: { cid: 'cup' },
+    }, <StaffPage />);
+    expect(await screen.findByText('我自己')).toBeTruthy();
+    const self = rowOf(view, '我自己');
+    expect(self?.textContent ?? '').toContain('共同主辦');
+    expect(removeIn(self)).not.toBeNull();
+    expect(removeIn(rowOf(view, '成員 5'))).toBeNull();
+    expect(removeIn(rowOf(view, '成員 6'))).toBeNull();
+    expect(removeIn(rowOf(view, '裁判'))).not.toBeNull();
+  });
+
+  it('移除記分員後成員 3 仍是 3，重新整理號碼不變', async () => {
     const rows = ASSIGNMENTS.cup.map((row) => ({
       ...row,
       roles: [...row.roles],
@@ -244,8 +309,9 @@ describe('指派頁與我的場次', () => {
     const view = draw(env, <StaffPage />);
     expect(await screen.findByText('成員 3')).toBeTruthy();
     expect(staffNames(view)).toEqual(['我自己', '成員 2', '成員 3', '成員 4', '成員']);
-    const button = removeIn(rowOf(view, '成員 2'));
-    if (!button) throw new Error('成員 2 應有移除鈕');
+    expect(removeIn(rowOf(view, '成員 2'))).toBeNull();
+    const button = removeIn(rowOf(view, '成員 4'));
+    if (!button) throw new Error('記分員應有移除鈕');
     fireEvent.click(button);
     const dialog = document.body.querySelector('[role="dialog"]');
     expect(dialog?.textContent ?? '').toContain('移除記分角色？');
@@ -253,14 +319,14 @@ describe('指派頁與我的場次', () => {
     const confirm = [...(dialog?.querySelectorAll('button') ?? [])].find((el) => (el.textContent ?? '').trim() === '移除');
     if (!confirm) throw new Error('確認框應有移除');
     fireEvent.click(confirm);
-    await waitFor(() => expect(removeStaff).toHaveBeenCalledWith({ cid: 'cup', uid: 'uid_co' }));
-    await waitFor(() => expect(staffNames(view)).toEqual(['我自己', '成員 3', '成員 4', '成員']));
+    await waitFor(() => expect(removeStaff).toHaveBeenCalledWith({ cid: 'cup', uid: 'uid_b' }));
+    await waitFor(() => expect(staffNames(view)).toEqual(['我自己', '成員 2', '成員 3', '成員']));
     view.unmount();
     const again = draw(env, <StaffPage />);
     expect(await screen.findByText('成員 3')).toBeTruthy();
-    expect(staffNames(again)).toEqual(['我自己', '成員 3', '成員 4', '成員']);
+    expect(staffNames(again)).toEqual(['我自己', '成員 2', '成員 3', '成員']);
     expect(again.container.textContent ?? '').not.toContain('成員 1');
-    expect(again.container.textContent ?? '').not.toContain('成員 2');
+    expect(again.container.textContent ?? '').not.toContain('成員 4');
   });
 
   it('管理員沒有 staff 文件仍可進清單', async () => {

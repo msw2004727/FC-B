@@ -132,6 +132,17 @@ describe('場次小標與進行中條', () => {
     ], NOW_LIVE)).toEqual({ today: 1, next: '12:00' });
   });
 
+  it('01:30 算前一個比賽日的今天，當天白天場不算', () => {
+    const now = taipeiMs(2027, 1, 10, 1, 30);
+    const strip = liveStrip([
+      entry({ id: 'night', k: taipeiMs(2027, 1, 9, 20, 0), st: 'confirmed', s: [1, 0] }),
+      entry({ id: 'early', k: now, st: 'scheduled' }),
+      entry({ id: 'morning', k: taipeiMs(2027, 1, 10, 9, 0), st: 'scheduled' }),
+      entry({ id: 'off', k: taipeiMs(2027, 1, 9, 22, 0), st: 'cancelled' }),
+    ], now);
+    expect(strip).toEqual({ today: 2, next: '01:30' });
+  });
+
   it('距開賽用台北日曆，不是滿 24 小時', () => {
     expect(daysUntilStart(taipeiMs(2027, 1, 9, 8, 0), taipeiMs(2027, 1, 6, 23, 0))).toBe(3);
     expect(daysUntilStart(taipeiMs(2027, 1, 9, 8, 0), taipeiMs(2027, 1, 9, 1, 0))).toBe(0);

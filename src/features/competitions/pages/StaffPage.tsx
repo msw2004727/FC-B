@@ -52,7 +52,7 @@ function toRows(
       role,
       roleLabel: roleText(ct, role),
       countLabel: ct('assignedCount', { n: item.matchIds.length }),
-      removable: canRemoveStaffRow(viewer, role),
+      removable: canRemoveStaffRow(viewer, item.roles, item.uid === selfUid),
     });
   }
   return rows;

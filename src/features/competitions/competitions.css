@@ -180,9 +180,13 @@
 .cp3-m__when b { color: var(--color-text-primary); font-weight: 700; }
 .cp3-m__top .ui-badge { flex: 0 0 auto; white-space: nowrap; }
 .cp3-m__vs { display: grid; grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr); align-items: center; margin-top: 2px; }
+/* 有 PK 時中欄跟內容走，比分與 PK 用既有間距，避免 56px 把「2：1 PK 4:3」裁掉。 */
+.cp3-m__vs--pk { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
 .cp3-m__vs span { min-width: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cp3-m__vs .h { text-align: right; }
 .cp3-m__vs .s { text-align: center; font-size: var(--font-size-body-lg); font-weight: 700; font-variant-numeric: tabular-nums; overflow: visible; }
+.cp3-m__vs .s--pk { display: inline-flex; align-items: baseline; justify-content: center; gap: var(--space-1); width: max-content; max-width: none; }
+.cp3-m__vs--pk .s4-pk { flex: 0 0 auto; overflow: visible; }
 .cp3-m__vs .s.vs { font-size: var(--font-size-body-sm); font-weight: 400; color: var(--color-text-muted); }
 
 .cp3-st { padding: var(--space-3) 10px; }

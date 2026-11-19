@@ -306,7 +306,9 @@ describe('詳情頁即時', () => {
     }), CompetitionDetailPage);
     expect(await screen.findByText('即時')).toBeTruthy();
     expect(screen.getByText('比分已更正')).toBeTruthy();
-    expect(screen.getByText('PK 4:3')).toBeTruthy();
+    const pk = screen.getByText('PK 4:3');
+    expect(pk.classList.contains('s4-pk')).toBe(true);
+    expect(pk.parentElement?.classList.contains('s--pk')).toBe(true);
     expect(screen.getByText('2：1')).toBeTruthy();
     expect(view.container.textContent ?? '').toContain('隔日 01:30');
     expect(view.container.textContent ?? '').toContain('09:00　示範球場');
@@ -410,7 +412,9 @@ describe('射手榜分頁', () => {
       }),
     }), CompetitionDetailPage);
     fireEvent.click(await screen.findByRole('tab', { name: '射手榜' }));
-    expect(await screen.findByText('射手榜已停止更新')).toBeTruthy();
+    const stalled = await screen.findByText('射手榜已停止更新');
+    expect(stalled.classList.contains('s4-banner')).toBe(true);
+    expect(stalled.classList.contains('s4-banner--quiet')).toBe(true);
     expect(screen.getAllByText('王一').length).toBeGreaterThan(0);
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
     expect(screen.queryByText('mt_secret')).toBeNull();
