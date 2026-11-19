@@ -15,10 +15,15 @@ import {
   S4B_STAFF,
   S4B_TEAM_THUNDER,
   S4B_TEAM_WIND,
+  S4B_AUDIT,
+  S4B_PUBLISHED,
   S4B_TEMPLATES,
   S4B_TIEBREAK,
+  S4B_TIMEOUT_OFF,
+  S4B_TIMEOUT_ON,
   STEP4B_SCREENS,
   additionRemaining,
+  auditNewestFirst,
   canRemoveStaff,
   canRevokeInvite,
   canSeeRealName,
@@ -120,6 +125,32 @@ describe('step4b 假資料', () => {
       ['eleven', 11, 35, 10],
     ]);
     expect(S4B_TIEBREAK[0]).toBe('points');
+  });
+
+  it('五人制開放球隊暫停，公開頁用同一筆，另有關閉資料', () => {
+    expect(S4B_TEMPLATES.find((item) => item.id === 'five')?.timeout).toBe(S4B_TIMEOUT_ON);
+    expect(S4B_TIMEOUT_ON).toEqual({
+      enabled: true,
+      basis: 'half',
+      perTeam: 1,
+      seconds: 60,
+      stopClock: true,
+      extraPerTeam: 1,
+    });
+    expect(S4B_TEMPLATES.filter((item) => item.id !== 'five').map((item) => item.timeout)).toEqual([
+      S4B_TIMEOUT_OFF,
+      S4B_TIMEOUT_OFF,
+    ]);
+    expect(S4B_TIMEOUT_OFF.enabled).toBe(false);
+    expect(S4B_PUBLISHED.timeout).toBe(S4B_TIMEOUT_ON);
+  });
+
+  it('稽核由新到舊', () => {
+    const sorted = auditNewestFirst(S4B_AUDIT);
+    expect(sorted.map((row) => row.id)).toEqual(['au5', 'au4', 'au2', 'au1', 'au3']);
+    const times = sorted.map((row) => row.at);
+    expect([...times].sort((a, b) => b - a)).toEqual(times);
+    expect(S4B_AUDIT.map((row) => row.id)).not.toEqual(sorted.map((row) => row.id));
   });
 
   it('畫面 id 不重複', () => {

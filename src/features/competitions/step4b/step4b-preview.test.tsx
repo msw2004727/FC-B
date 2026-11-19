@@ -1,16 +1,24 @@
 import { cleanup, fireEvent, render } from '@testing-library/preact';
+import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
+import { isMinorAt } from '../format';
 import zhTW from '../locales-lazy/zh-TW.json';
 import {
+  S4B_AUDIT,
   S4B_CLAIM_NUMBER,
   S4B_CLAIM_TEAM,
   S4B_COMP_NAME,
+  S4B_NOW,
   S4B_PLAYERS,
   S4B_TEAM_THUNDER,
   S4B_TIEBREAK,
+  S4B_TIMEOUT_OFF,
+  S4B_TIMEOUT_ON,
   STEP4B_SCREENS,
+  auditNewestFirst,
+  formatMdHm,
 } from '../testing/step4b-fixtures';
-import { auditActorLabel, copy, criterionLabel } from './copy';
+import { auditActorLabel, copy, criterionLabel, publicTimeoutLines, templateTimeoutLine } from './copy';
 import {
   AdditionRequestScreen,
   AdditionReviewScreen,
@@ -99,6 +107,11 @@ describe('step4b 預覽畫面', () => {
     expect(text).not.toContain(copy.appealTitle);
     expect(text).toContain(copy.suspLine);
     expect(text).toContain(copy.lateLine);
+    expect(text).toContain('次數：每隊每半場 1 次');
+    expect(text).toContain('延長賽：每隊 1 次');
+    expect(text.indexOf(copy.hostDoes)).toBeLessThan(text.indexOf(copy.timeoutTitle));
+    expect(text.indexOf(copy.subLine)).toBeLessThan(text.indexOf('延長賽：每隊 1 次'));
+    expect(text.indexOf('延長賽：每隊 1 次')).toBeLessThan(text.indexOf(copy.lateTitle));
     let cursor = 0;
     for (const key of S4B_TIEBREAK) {
       const at = text.indexOf(criterionLabel[key], cursor);
@@ -119,7 +132,7 @@ describe('step4b 預覽畫面', () => {
     expect((note as HTMLTextAreaElement).value).toBe(copy.fairNote);
     fireEvent.input(note, { target: { value: '改成這句' } });
     expect((view.getByRole('textbox', { name: copy.noteLabel }) as HTMLTextAreaElement).value).toBe('改成這句');
-    expect(view.getAllByRole('button', { name: copy.addNote })).toHaveLength(4);
+    expect(view.getAllByRole('button', { name: copy.addNote })).toHaveLength(5);
     const add = view.getAllByRole('button', { name: copy.addNote })[0];
     if (!add) throw new Error('找不到補充說明');
     fireEvent.click(add);
@@ -188,6 +201,15 @@ describe('step4b 預覽畫面', () => {
     for (const label of Object.values(auditActorLabel)) {
       expect(text).toContain(`操作者：${label}`);
     }
+    const stamps = auditNewestFirst(S4B_AUDIT).map((row) => formatMdHm(row.at));
+    let cursor = 0;
+    for (const stamp of stamps) {
+      const at = text.indexOf(stamp, cursor);
+      expect(at).toBeGreaterThanOrEqual(cursor);
+      cursor = at + stamp.length;
+    }
+    expect(stamps[0]).toBe('1/9 09:36');
+    expect(stamps[stamps.length - 1]).toBe('1/9 08:05');
   });
 
   it('未勾同意不能加入、不能認領、不能送出增補', () => {
@@ -244,15 +266,21 @@ describe('step4b 預覽畫面', () => {
 
   it('互斥狀態一頁只顯示一種，錯誤時沒有表單', () => {
     const full = render(<LinkJoinScreen status="rosterFull" />);
-    expect(full.container.textContent ?? '').toContain(copy.rosterFullTitle);
-    expect(full.container.textContent ?? '').not.toContain(copy.linkDeadTitle);
+    const fullText = full.container.textContent ?? '';
+    expect(fullText).toContain(copy.rosterFullTitle);
+    expect(fullText).not.toContain(copy.linkDeadTitle);
+    expect(fullText.indexOf(S4B_COMP_NAME)).toBeLessThan(fullText.indexOf(copy.rosterFullTitle));
+    expect(fullText.indexOf(S4B_CLAIM_TEAM)).toBeLessThan(fullText.indexOf(copy.rosterFullTitle));
     expect(full.queryByRole('button', { name: copy.join })).toBeNull();
     expect(full.container.querySelector('[data-reason="ROSTER_FULL"]')).not.toBeNull();
     cleanup();
 
     const dead = render(<LinkJoinScreen status="invalid" />);
-    expect(dead.container.textContent ?? '').toContain(copy.linkDead);
-    expect(dead.container.textContent ?? '').not.toContain(copy.rosterFullTitle);
+    const deadText = dead.container.textContent ?? '';
+    expect(deadText).toContain(copy.linkDead);
+    expect(deadText).not.toContain(copy.rosterFullTitle);
+    expect(deadText.indexOf(S4B_COMP_NAME)).toBeLessThan(deadText.indexOf(copy.linkDeadTitle));
+    expect(deadText.indexOf(S4B_CLAIM_TEAM)).toBeLessThan(deadText.indexOf(copy.linkDeadTitle));
     expect(dead.queryByRole('button', { name: copy.join })).toBeNull();
     cleanup();
 
@@ -340,10 +368,104 @@ describe('step4b 預覽畫面', () => {
     expect(text).toContain('5 人・每半場 20 分・中場 5 分');
     expect(text).toContain('7 人・每半場 25 分・中場 5 分');
     expect(text).toContain('11 人・每半場 35 分・中場 10 分');
+    expect(text).toContain(templateTimeoutLine(S4B_TIMEOUT_ON));
+    expect(text.match(/球隊暫停：不開放/g)).toHaveLength(2);
+    expect(templateTimeoutLine(S4B_TIMEOUT_ON)).toBe('球隊暫停：每隊每半場 1 次、60 秒');
+    expect(templateTimeoutLine(S4B_TIMEOUT_OFF)).toBe('球隊暫停：不開放');
     expect(text).not.toContain('人數：');
     expect(shownRuleLines(['護脛：未設定', '同色球衣：自備'])).toEqual(['同色球衣：自備']);
     expect(shownRuleLines(['護脛：未設定', '號碼：未設定'])).toEqual([]);
     expect(shownRuleLines([copy.fairHint])).toEqual([copy.fairHint]);
+  });
+
+  it('球隊暫停關閉時藏起欄位，公開頁關閉時不出現', () => {
+    function spin(root: ParentNode, label: string): Element {
+      const node = [...root.querySelectorAll('.ui-stepper')].find((el) =>
+        [...el.children].some((child) => child.textContent?.trim() === label),
+      );
+      if (!node) throw new Error(label);
+      return node;
+    }
+    const on = render(<RulesAdvancedScreen />);
+    expect(on.getByRole('radio', { name: '每半場' })).toBeTruthy();
+    expect(on.getByRole('radio', { name: '每場' })).toBeTruthy();
+    expect(on.getByRole('radio', { name: '每節' })).toBeTruthy();
+    expect(on.container.textContent ?? '').toContain(copy.timeoutHint);
+    const perTeam = spin(on.container, copy.timeoutPerTeam);
+    const seconds = spin(on.container, copy.timeoutSeconds);
+    const extra = spin(on.container, copy.timeoutExtra);
+    expect(perTeam.querySelector('[role="spinbutton"]')?.getAttribute('aria-valuemin')).toBe('0');
+    expect(perTeam.querySelector('[role="spinbutton"]')?.getAttribute('aria-valuemax')).toBe('5');
+    expect(seconds.querySelector('[role="spinbutton"]')?.getAttribute('aria-valuemin')).toBe('30');
+    expect(seconds.querySelector('[role="spinbutton"]')?.getAttribute('aria-valuemax')).toBe('180');
+    expect(seconds.querySelector('[role="spinbutton"]')?.getAttribute('aria-valuenow')).toBe('60');
+    const inc = seconds.querySelector('.ui-stepper__increase');
+    if (!inc) throw new Error('找不到秒數增加');
+    fireEvent.click(inc);
+    expect(seconds.querySelector('[role="spinbutton"]')?.getAttribute('aria-valuenow')).toBe('70');
+    expect(extra.querySelector('[role="spinbutton"]')?.getAttribute('aria-valuemin')).toBe('0');
+    expect(extra.querySelector('[role="spinbutton"]')?.getAttribute('aria-valuemax')).toBe('3');
+    fireEvent.click(on.getByRole('switch', { name: copy.timeoutEnabled }));
+    expect(on.queryByRole('radio', { name: '每半場' })).toBeNull();
+    expect(on.container.textContent ?? '').not.toContain(copy.timeoutBasis);
+    expect(on.container.textContent ?? '').not.toContain(copy.timeoutPerTeam);
+    expect(on.container.textContent ?? '').not.toContain(copy.timeoutSeconds);
+    expect(on.container.textContent ?? '').not.toContain(copy.timeoutStopClock);
+    expect(on.container.textContent ?? '').not.toContain(copy.timeoutExtra);
+    expect(on.container.textContent ?? '').not.toContain(copy.timeoutHint);
+    expect(on.container.textContent ?? '').toContain(copy.timeoutTitle);
+    cleanup();
+
+    const seeded = render(<RulesAdvancedScreen timeout={S4B_TIMEOUT_OFF} />);
+    expect(seeded.queryByRole('radiogroup')).toBeNull();
+    expect(seeded.container.textContent ?? '').not.toContain(copy.timeoutSeconds);
+    cleanup();
+
+    const hidden = render(<RulesPublicScreen timeout={S4B_TIMEOUT_OFF} />);
+    expect(hidden.container.textContent ?? '').not.toContain(copy.timeoutTitle);
+    expect(hidden.container.textContent ?? '').not.toContain('延長賽');
+    cleanup();
+
+    const noExtra = render(<RulesPublicScreen timeout={{ ...S4B_TIMEOUT_ON, extraPerTeam: 0 }} />);
+    const noExtraText = noExtra.container.textContent ?? '';
+    expect(noExtraText).toContain('次數：每隊每半場 1 次');
+    expect(noExtraText).toContain('停錶：暫停時停錶');
+    expect(noExtraText).not.toContain('延長賽');
+    expect(publicTimeoutLines(S4B_TIMEOUT_OFF)).toEqual([]);
+    expect(publicTimeoutLines({ ...S4B_TIMEOUT_ON, extraPerTeam: 0 })).toEqual([
+      '次數：每隊每半場 1 次', '每次：60 秒', '停錶：暫停時停錶',
+    ]);
+    expect(publicTimeoutLines({ ...S4B_TIMEOUT_ON, stopClock: false })).toEqual([
+      '次數：每隊每半場 1 次', '每次：60 秒', '延長賽：每隊 1 次',
+    ]);
+  });
+
+  it('補生日時依輸入判斷未成年，才出現監護人勾選', () => {
+    expect(isMinorAt('2015-06-01', S4B_NOW)).toBe(true);
+    expect(isMinorAt('1990-01-01', S4B_NOW)).toBe(false);
+    const view = render(<LinkJoinScreen needBirthday minor />);
+    expect(view.container.querySelector('[data-screen="link-join-birthday"]')).not.toBeNull();
+    expect(view.container.textContent ?? '').not.toContain(copy.guardian);
+    function choose(name: string, value: string): void {
+      const select = view.getByRole('combobox', { name }) as HTMLSelectElement;
+      act(() => {
+        select.value = value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+    choose(copy.year, '2015');
+    expect(view.container.textContent ?? '').not.toContain(copy.guardian);
+    choose(copy.month, '6');
+    choose(copy.day, '1');
+    expect(view.container.textContent ?? '').toContain(copy.guardian);
+    expect(view.getByRole('button', { name: copy.join }).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(view.getByRole('checkbox', { name: copy.privacy }));
+    expect(view.getByRole('button', { name: copy.join }).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(view.getByRole('checkbox', { name: copy.guardian }));
+    expect(view.getByRole('button', { name: copy.join }).hasAttribute('disabled')).toBe(false);
+    choose(copy.year, '1990');
+    expect(view.container.textContent ?? '').not.toContain(copy.guardian);
+    expect(view.getByRole('button', { name: copy.join }).hasAttribute('disabled')).toBe(false);
   });
 
   it('跨午夜場次顯示 1/10 00:20 與隔日', () => {

@@ -387,10 +387,51 @@ export const S4B_AUDIT: readonly S4bAudit[] = [
   { id: 'au5', at: taipeiMs(2027, 1, 9, 9, 36), action: 'reset', target: '1/9 23:10 海風隊對藍鯨隊', reason: '場地積水', actorRole: 'referee', actorUid: 'uid_ref_18cd' },
 ];
 
+/** 畫面由新到舊。時間相同再比 id，避免順序飄動。 */
+export function auditNewestFirst(rows: readonly S4bAudit[]): S4bAudit[] {
+  return [...rows].sort((a, b) => b.at - a.at || a.id.localeCompare(b.id));
+}
+
+export const TIMEOUT_BASIS = ['half', 'match', 'period'] as const;
+export type TimeoutBasis = (typeof TIMEOUT_BASIS)[number];
+
+/** 球隊暫停。關閉時公開頁整區不印；範本仍寫「不開放」。 */
+export interface S4bTimeout {
+  enabled: boolean;
+  basis: TimeoutBasis;
+  /** 每隊次數，0～5。 */
+  perTeam: number;
+  /** 每次秒數，30～180，間隔 10。 */
+  seconds: number;
+  stopClock: boolean;
+  /** 延長賽每隊次數，0～3。0 不印。 */
+  extraPerTeam: number;
+}
+
+/** 五人制一般：每隊每半場 1 次、60 秒，暫停時停錶，延長賽每隊 1 次。 */
+export const S4B_TIMEOUT_ON: S4bTimeout = {
+  enabled: true,
+  basis: 'half',
+  perTeam: 1,
+  seconds: 60,
+  stopClock: true,
+  extraPerTeam: 1,
+};
+
+/** 關閉的一筆。公開頁用這筆確認整區不顯示。 */
+export const S4B_TIMEOUT_OFF: S4bTimeout = {
+  enabled: false,
+  basis: 'half',
+  perTeam: 1,
+  seconds: 60,
+  stopClock: true,
+  extraPerTeam: 0,
+};
+
 export const S4B_TEMPLATES = [
-  { id: 'five', players: 5, half: 20, halftime: 5 },
-  { id: 'seven', players: 7, half: 25, halftime: 5 },
-  { id: 'eleven', players: 11, half: 35, halftime: 10 },
+  { id: 'five', players: 5, half: 20, halftime: 5, timeout: S4B_TIMEOUT_ON },
+  { id: 'seven', players: 7, half: 25, halftime: 5, timeout: S4B_TIMEOUT_OFF },
+  { id: 'eleven', players: 11, half: 35, halftime: 10, timeout: S4B_TIMEOUT_OFF },
 ] as const;
 export type TemplateId = (typeof S4B_TEMPLATES)[number]['id'];
 
@@ -403,6 +444,7 @@ export const S4B_PUBLISHED = {
   award: 3,
   penalty: 0,
   fair: { yellow: -1, secondYellow: -3, directRed: -4, yellowThenRed: -5 },
+  timeout: S4B_TIMEOUT_ON,
 } as const;
 
 export const S4B_TIEBREAK = [

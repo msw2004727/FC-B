@@ -1,7 +1,7 @@
 // 第 4 步預覽文案。畫面只從這裡拿字，避免各檔各寫一句。
 // 沿用既有名單公開說明與監護人勾選的句子（competitions locales-lazy zh-TW）。
 
-import type { AssignRole, AuditAction, AuditActorRole, InviteLife, PlayerPos, S4bMatchStatus, StaffRole, TemplateId, TieKey } from '../testing/step4b-fixtures';
+import type { AssignRole, AuditAction, AuditActorRole, InviteLife, PlayerPos, S4bMatchStatus, S4bTimeout, StaffRole, TemplateId, TieKey, TimeoutBasis } from '../testing/step4b-fixtures';
 
 export const copy = {
   back: '返回',
@@ -97,6 +97,15 @@ export const copy = {
   tieTitle: '同分排序',
   walkTitle: '棄權',
   subTitle: '換人',
+  timeoutTitle: '球隊暫停',
+  timeoutEnabled: '開放',
+  timeoutBasis: '次數怎麼算',
+  timeoutPerTeam: '每隊次數',
+  timeoutSeconds: '每次秒數',
+  timeoutStopClock: '暫停時停錶',
+  timeoutExtra: '延長賽每隊次數',
+  timeoutHint: '系統只提醒，不擋',
+  timeoutClosed: '不開放',
   lateTitle: '遲到',
   suspTitle: '紅黃牌累積停賽',
   kitTitle: '裝備',
@@ -216,6 +225,33 @@ export const copy = {
 } as const;
 
 export const weekdayName = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'] as const;
+
+export const timeoutBasisLabel: Record<TimeoutBasis, string> = {
+  half: '每半場',
+  match: '每場',
+  period: '每節',
+};
+
+/** 範本第二行。開放例：球隊暫停：每隊每半場 1 次、60 秒。關閉：球隊暫停：不開放。 */
+export function templateTimeoutLine(timeout: S4bTimeout): string {
+  if (!timeout.enabled) return `${copy.timeoutTitle}：${copy.timeoutClosed}`;
+  const basis = timeoutBasisLabel[timeout.basis];
+  return `${copy.timeoutTitle}：每隊${basis} ${timeout.perTeam} 次、${timeout.seconds} 秒`;
+}
+
+/**
+ * 公開頁一項一行。關閉回空陣列（整區不印）。
+ * 延長賽次數為 0 不印。停錶關掉時不寫「暫停時停錶」。
+ */
+export function publicTimeoutLines(timeout: S4bTimeout): string[] {
+  if (!timeout.enabled) return [];
+  const basis = timeoutBasisLabel[timeout.basis];
+  // 一項一行（F5 草案 §5）；區塊標題已是「球隊暫停」，各行不再重複標題（取代單行長句被縮字級，PM 收件 11-19）
+  const lines = [`次數：每隊${basis} ${timeout.perTeam} 次`, `每次：${timeout.seconds} 秒`];
+  if (timeout.stopClock) lines.push(`停錶：${copy.timeoutStopClock}`);
+  if (timeout.extraPerTeam > 0) lines.push(`延長賽：每隊 ${timeout.extraPerTeam} 次`);
+  return lines;
+}
 
 export const staffRoleLabel: Record<StaffRole, string> = {
   host: '主辦',

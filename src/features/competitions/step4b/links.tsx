@@ -1,7 +1,7 @@
 // B. 隊伍登錄連結。代表頁與核可頁：代表沿用賽事卡片，主辦核可用平面卡片。
 
 import type { JSX } from 'preact';
-import { useMemo, useState } from 'preact/hooks';
+import { useMemo, useRef, useState } from 'preact/hooks';
 import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
@@ -54,10 +54,19 @@ function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
-function BirthdayFields(): JSX.Element {
+function birthdayIso(year: string, month: string, day: string): string {
+  if (!year || !month || !day) return '';
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
+
+function BirthdayFields({ onBirthdayChange }: { onBirthdayChange: (iso: string) => void }): JSX.Element {
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
   const [day, setDay] = useState('');
+  // 連續改年／月／日時，用最新值組生日，不吃到尚未重繪的舊狀態。
+  const yearRef = useRef('');
+  const monthRef = useRef('');
+  const dayRef = useRef('');
   const years = useMemo(() => {
     const out: { value: string; label: string }[] = [{ value: '', label: copy.year }];
     for (let y = S4B_YEAR; y >= 1930; y -= 1) out.push({ value: String(y), label: copy.yearOption(y) });
@@ -74,13 +83,26 @@ function BirthdayFields(): JSX.Element {
     for (let d = 1; d <= dayMax; d += 1) out.push({ value: String(d), label: copy.dayOption(d) });
     return out;
   }, [dayMax]);
+  function apply(nextYear: string, nextMonth: string, nextDay: string): void {
+    yearRef.current = nextYear;
+    monthRef.current = nextMonth;
+    dayRef.current = nextDay;
+    setYear(nextYear);
+    setMonth(nextMonth);
+    setDay(nextDay);
+    onBirthdayChange(birthdayIso(nextYear, nextMonth, nextDay));
+  }
   function changeMonth(next: string): void {
-    setMonth(next);
-    if (day && year && next && Number(day) > daysInMonth(Number(year), Number(next))) setDay('');
+    const y = yearRef.current;
+    const d = dayRef.current;
+    const overflow = Boolean(d && y && next && Number(d) > daysInMonth(Number(y), Number(next)));
+    apply(y, next, overflow ? '' : d);
   }
   function changeYear(next: string): void {
-    setYear(next);
-    if (day && month && next && Number(day) > daysInMonth(Number(next), Number(month))) setDay('');
+    const m = monthRef.current;
+    const d = dayRef.current;
+    const overflow = Boolean(d && m && next && Number(d) > daysInMonth(Number(next), Number(m)));
+    apply(next, m, overflow ? '' : d);
   }
   return (
     <div class="s4b-gap">
@@ -92,7 +114,7 @@ function BirthdayFields(): JSX.Element {
         <select aria-label={copy.month} value={month} onChange={(event) => changeMonth(event.currentTarget.value)}>
           {months.map((option) => <option key={option.value || 'm'} value={option.value}>{option.label}</option>)}
         </select>
-        <select aria-label={copy.day} value={day} onChange={(event) => setDay(event.currentTarget.value)}>
+        <select aria-label={copy.day} value={day} onChange={(event) => apply(yearRef.current, monthRef.current, event.currentTarget.value)}>
           {days.map((option) => <option key={option.value || 'd'} value={option.value}>{option.label}</option>)}
         </select>
       </div>
@@ -231,17 +253,34 @@ export function LinkJoinScreen({
   const [number, setNumber] = useState('7');
   const [position, setPosition] = useState('FW');
   const [positionText, setPositionText] = useState('');
+  const [birthday, setBirthday] = useState('');
   const [privacy, setPrivacy] = useState(false);
   const [guardian, setGuardian] = useState(false);
   const screen = joinScreen(minor, needBirthday, status);
   const teamName = S4B_PLAYERS.find((player) => player.teamId === S4B_TEAM_THUNDER)?.teamName ?? '';
+  // 要補生日時，未成年只看輸入的生日。minor prop 只用於已有生日的畫面。
+  const birthdayMinor = isMinorAt(birthday, S4B_NOW) === true;
+  function changeBirthday(next: string): void {
+    if ((isMinorAt(next, S4B_NOW) === true) !== birthdayMinor) setGuardian(false);
+    setBirthday(next);
+  }
+  const minorNow = needBirthday ? birthdayMinor : minor;
+  const names = (
+    <>
+      <h2 class="s4b-h">{S4B_COMP_NAME}</h2>
+      <h2 class="s4b-h">{teamName}</h2>
+    </>
+  );
   if (status === 'rosterFull') {
     return (
       <S4bFrame title={copy.joinTitle} screen={screen}>
         <S4bCard>
-          <div data-reason="ROSTER_FULL">
-            <h2 class="s4b-h">{copy.rosterFullTitle}</h2>
-            <p class="s4b-alert">{copy.rosterFull}</p>
+          <div class="s4b-gap">
+            {names}
+            <div data-reason="ROSTER_FULL">
+              <h2 class="s4b-h">{copy.rosterFullTitle}</h2>
+              <p class="s4b-alert">{copy.rosterFull}</p>
+            </div>
           </div>
         </S4bCard>
       </S4bFrame>
@@ -251,8 +290,11 @@ export function LinkJoinScreen({
     return (
       <S4bFrame title={copy.joinTitle} screen={screen}>
         <S4bCard>
-          <h2 class="s4b-h">{copy.linkDeadTitle}</h2>
-          <p class="s4b-alert">{copy.linkDead}</p>
+          <div class="s4b-gap">
+            {names}
+            <h2 class="s4b-h">{copy.linkDeadTitle}</h2>
+            <p class="s4b-alert">{copy.linkDead}</p>
+          </div>
         </S4bCard>
       </S4bFrame>
     );
@@ -262,15 +304,14 @@ export function LinkJoinScreen({
     const taken = used.has(n);
     options.push({ value: String(n), label: taken ? copy.numberUsed(n) : String(n), disabled: taken });
   }
-  const canJoin = privacy && (!minor || guardian);
+  const canJoin = privacy && (!minorNow || guardian);
   return (
     <S4bFrame title={copy.joinTitle} screen={screen}>
       <S4bCard>
         <div class="s4b-gap">
-          <h2 class="s4b-h">{S4B_COMP_NAME}</h2>
-          <h2 class="s4b-h">{teamName}</h2>
+          {names}
           <Input label={copy.name} value={S4B_JOIN_LINE_NAME} readOnly />
-          {needBirthday ? <BirthdayFields /> : <Line text={copy.birthdayKnown} />}
+          {needBirthday ? <BirthdayFields onBirthdayChange={changeBirthday} /> : <Line text={copy.birthdayKnown} />}
           <Select
             id="s4b-number"
             label={copy.number}
@@ -283,7 +324,7 @@ export function LinkJoinScreen({
           />
           <PositionPick value={position} text={positionText} onChange={(next, text) => { setPosition(next); setPositionText(text); }} />
           <Checkbox label={copy.privacy} checked={privacy} onCheckedChange={setPrivacy} />
-          {minor ? <Checkbox label={copy.guardian} checked={guardian} onCheckedChange={setGuardian} /> : null}
+          {minorNow ? <Checkbox label={copy.guardian} checked={guardian} onCheckedChange={setGuardian} /> : null}
           <div class="s4b-blockbtn">
             <Button variant="primary" disabled={!canJoin}>{copy.join}</Button>
           </div>

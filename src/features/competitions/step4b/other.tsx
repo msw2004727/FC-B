@@ -8,6 +8,7 @@ import {
   S4B_AUDIT,
   S4B_MIDNIGHT_IDS,
   S4B_PLAYERS,
+  auditNewestFirst,
   canSeeRealName,
   formatMdHm,
   groupMatches,
@@ -90,11 +91,12 @@ export function CheckinPrintScreen({
 }
 
 export function AuditLogScreen(): JSX.Element {
+  const rows = auditNewestFirst(S4B_AUDIT);
   return (
     <S4bFrame title={copy.auditTitle} admin screen="audit-log">
       <S4bCard plain>
         <ul class="cps-list">
-          {S4B_AUDIT.map((row) => (
+          {rows.map((row) => (
             <li key={row.id} class="s4b-li">
               <div class="s4b-gap" style="width:100%">
                 <div class="s4b-m__top">

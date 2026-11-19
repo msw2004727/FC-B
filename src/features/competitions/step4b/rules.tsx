@@ -4,6 +4,7 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { Button } from '@/ui/Button';
+import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { Stepper } from '@/ui/Stepper';
 import { Switch } from '@/ui/Switch';
@@ -12,11 +13,14 @@ import {
   S4B_PUBLISHED,
   S4B_TEMPLATES,
   S4B_TIEBREAK,
+  TIMEOUT_BASIS,
   formatSigned,
   pointsWarn,
+  type S4bTimeout,
   type TemplateId,
+  type TimeoutBasis,
 } from '../testing/step4b-fixtures';
-import { cardWeightLabel, copy, criterionLabel, templateTitle } from './copy';
+import { cardWeightLabel, copy, criterionLabel, publicTimeoutLines, templateTimeoutLine, templateTitle, timeoutBasisLabel } from './copy';
 import { Chevron, Line, NoteSlot, S4bCard, S4bFrame } from './ui';
 
 export function RulesTemplateScreen(): JSX.Element {
@@ -27,7 +31,9 @@ export function RulesTemplateScreen(): JSX.Element {
         <S4bCard key={item.id}>
           <div class="s4b-gap">
             <h2 class="s4b-h">{templateTitle[item.id]}</h2>
+            {/* 人數與時間一行。暫停句放第二行，避免 360 寬從句子中間斷開。 */}
             <Line text={copy.templateSummary(item.players, item.half, item.halftime)} />
+            <Line text={templateTimeoutLine(item.timeout)} />
             <div class="s4b-blockbtn">
               <Button variant={picked === item.id ? 'secondary' : 'primary'} onClick={() => setPicked(item.id)}>
                 {copy.useTemplate}
@@ -40,12 +46,51 @@ export function RulesTemplateScreen(): JSX.Element {
   );
 }
 
+function TimeoutCard({ seed }: { seed: S4bTimeout }): JSX.Element {
+  const [open, setOpen] = useState(seed.enabled);
+  const [basis, setBasis] = useState<TimeoutBasis>(seed.basis);
+  const [perTeam, setPerTeam] = useState(seed.perTeam);
+  const [seconds, setSeconds] = useState(seed.seconds);
+  const [stopClock, setStopClock] = useState(seed.stopClock);
+  const [extra, setExtra] = useState(seed.extraPerTeam);
+  function pickBasis(next: string): void {
+    if (next === 'half' || next === 'match' || next === 'period') setBasis(next);
+  }
+  return (
+    <S4bCard>
+      <div class="s4b-gap">
+        <h2 class="s4b-h">{copy.timeoutTitle}</h2>
+        <Switch label={copy.timeoutEnabled} checked={open} onCheckedChange={setOpen} />
+        {open ? (
+          <>
+            <RadioGroup
+              label={copy.timeoutBasis}
+              value={basis}
+              orientation="vertical"
+              options={TIMEOUT_BASIS.map((id) => ({ value: id, label: timeoutBasisLabel[id] }))}
+              onValueChange={pickBasis}
+            />
+            <Stepper label={copy.timeoutPerTeam} value={perTeam} min={0} max={5} onValueChange={setPerTeam} />
+            <Stepper label={copy.timeoutSeconds} value={seconds} min={30} max={180} step={10} onValueChange={setSeconds} />
+            <Switch label={copy.timeoutStopClock} checked={stopClock} onCheckedChange={setStopClock} />
+            <Stepper label={copy.timeoutExtra} value={extra} min={0} max={3} onValueChange={setExtra} />
+            <NoteSlot text={null} />
+            <p class="s4b-foot">{copy.timeoutHint}</p>
+          </>
+        ) : null}
+      </div>
+    </S4bCard>
+  );
+}
+
 export function RulesAdvancedScreen({
   subMode = 'free',
   advancedOpen = false,
+  timeout = S4B_PUBLISHED.timeout,
 }: {
   subMode?: 'free' | 'limited';
   advancedOpen?: boolean;
+  timeout?: S4bTimeout;
 }): JSX.Element {
   const [sub, setSub] = useState(subMode);
   const [win, setWin] = useState<number>(S4B_DRAFT_POINTS.win);
@@ -83,6 +128,7 @@ export function RulesAdvancedScreen({
           <NoteSlot text={null} />
         </div>
       </S4bCard>
+      <TimeoutCard seed={timeout} />
       <S4bCard>
         <div class="s4b-gap">
           <h2 class="s4b-h">{copy.pointsTitle}</h2>
@@ -176,7 +222,11 @@ function RuleBlock({
   );
 }
 
-export function RulesPublicScreen(): JSX.Element {
+export function RulesPublicScreen({
+  timeout = S4B_PUBLISHED.timeout,
+}: {
+  timeout?: S4bTimeout;
+} = {}): JSX.Element {
   const fair = S4B_PUBLISHED.fair;
   const tieRows = [
     { text: copy.algo1 },
@@ -229,6 +279,11 @@ export function RulesPublicScreen(): JSX.Element {
       <S4bCard>
         <h2 class="s4b-h">{copy.hostDoes}</h2>
         <RuleBlock title={copy.subTitle} rows={[{ text: copy.subLine }]} />
+        {/* 關閉時沒有列，整區連標題一起不畫。長句用較小字級，360 寬不斷在詞中間。 */}
+        <RuleBlock
+          title={copy.timeoutTitle}
+          rows={publicTimeoutLines(timeout).map((text) => ({ text }))}
+        />
         <RuleBlock title={copy.lateTitle} rows={[{ text: copy.lateLine }]} />
         <RuleBlock title={copy.suspTitle} rows={[{ text: copy.suspLine }]} />
         <RuleBlock
