@@ -11,7 +11,7 @@ import type { ScoringView } from '../live/data/session';
 import type { BatchPlan, ScoringPort, ServerEvent, ServerMatch } from '../live/data/types';
 import type { LockManager } from '../live/data/tab-lock';
 import { useScoring, type ScoringDeps } from '../live/useScoring';
-import { LIVE_COPY } from '../live/copy';
+import { LIVE_COPY, pauseRemain, teamAction } from '../live/copy';
 import { loadCompetitionsDict } from '../i18n';
 import { ScoringScreen } from './ScoringPage';
 
@@ -135,10 +135,12 @@ async function deps(options: Parameters<typeof backend>[0] & {
   locks?: LockManager | null;
   online?: boolean;
   log?: ActionLog;
+  /** false：本機沒有 sid，畫面要先接手。 */
+  withSid?: boolean;
 } = {}): Promise<{ deps: ScoringDeps; plans: BatchPlan[] }> {
   const made = backend(options);
   const sids = memorySidStore();
-  await sids.set(CID, MT, UID, SID);
+  if (options.withSid !== false) await sids.set(CID, MT, UID, SID);
   return {
     plans: made.plans,
     deps: {
@@ -196,7 +198,9 @@ describe('正式記分頁權限', () => {
   it('記分員與已指派的主辦看得到記分板', async () => {
     const scorer = await deps({ staffRoles: ['scorer'], matchIds: [MT] });
     draw(scorer.deps);
-    expect(await screen.findByRole('button', { name: '開賽' })).toBeTruthy();
+    const kickoff = await screen.findByRole('button', { name: '開賽' }) as HTMLButtonElement;
+    expect(kickoff.disabled).toBe(false);
+    expect(screen.queryByRole('button', { name: LIVE_COPY.takeoverAction })).toBeNull();
     expect(document.querySelector('.cps-top')).toBeNull();
     expect(document.querySelector('h1')).toBeNull();
     expect(document.title).toBe('記分');
@@ -217,8 +221,10 @@ describe('正式記分頁走 useScoring', () => {
       },
     });
     draw(made.deps);
-    expect(await screen.findByRole('button', { name: '下半場開始' })).toBeTruthy();
+    const resume = await screen.findByRole('button', { name: '下半場開始' }) as HTMLButtonElement;
+    expect(resume.disabled).toBe(false);
     expect(screen.queryByRole('button', { name: '繼續計時' })).toBeNull();
+    expect(screen.queryByRole('button', { name: LIVE_COPY.takeoverAction })).toBeNull();
   });
 
   it('終場超過 180 秒不能復原也不能改判', async () => {
@@ -297,19 +303,97 @@ describe('正式記分頁走 useScoring', () => {
     window.history.pushState(null, '', previous || '/');
   });
 
-  it('儲存不可用仍可記分，並顯示既有警告', async () => {
-    const made = await deps({
-      log: deadLog(),
-      match: {
-        status: 'live',
-        clockBase: { startedAt: NOW, pausedSec: 15 * 60, running: true, period: 'h1' },
-      },
+  const liveMatch = {
+    status: 'live' as const,
+    score: { home: 0, away: 0 },
+    clockBase: { startedAt: NOW, pausedSec: 15 * 60, running: true, period: 'h1' },
+  };
+
+  function expectScoringLocked(): void {
+    const names = [
+      teamAction('雷霆隊', LIVE_COPY.goal),
+      teamAction('海風隊', LIVE_COPY.goal),
+      teamAction('雷霆隊', LIVE_COPY.yellow),
+      teamAction('海風隊', LIVE_COPY.yellow),
+      teamAction('雷霆隊', LIVE_COPY.red),
+      teamAction('海風隊', LIVE_COPY.red),
+      LIVE_COPY.halftime,
+      pauseRemain(20),
+      LIVE_COPY.fulltime,
+    ];
+    for (const name of names) {
+      const nodes = screen.getAllByRole('button', { name });
+      expect(nodes.length).toBeGreaterThan(0);
+      for (const node of nodes) {
+        const button = node as HTMLButtonElement;
+        expect(button.disabled).toBe(true);
+        expect(button.getAttribute('aria-disabled')).toBe('true');
+      }
+    }
+    const take = screen.getByRole('button', { name: LIVE_COPY.takeoverAction }) as HTMLButtonElement;
+    expect(take.disabled).toBe(false);
+    expect(screen.queryByText(LIVE_COPY.takeoverEntry)).toBeNull();
+    const menu = screen.getByRole('button', { name: LIVE_COPY.matchMenu }) as HTMLButtonElement;
+    expect(menu.disabled).toBe(false);
+  }
+
+  async function confirmTakeover(): Promise<void> {
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.takeoverAction }));
+    const dialog = document.querySelector('.s4-dialog');
+    expect(dialog).toBeTruthy();
+    const confirm = [...(dialog?.querySelectorAll('button') ?? [])].find((node) =>
+      (node.textContent ?? '').includes(LIVE_COPY.takeoverAction),
+    );
+    expect(confirm).toBeTruthy();
+    fireEvent.click(confirm as HTMLButtonElement);
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: LIVE_COPY.takeoverAction })).toBeNull();
+      expect(screen.queryByText(LIVE_COPY.takeoverEntry)).toBeNull();
     });
+  }
+
+  async function scoreHomeGoal(): Promise<void> {
+    const goal = screen.getByRole('button', { name: teamAction('雷霆隊', LIVE_COPY.goal) }) as HTMLButtonElement;
+    expect(goal.disabled).toBe(false);
+    fireEvent.click(goal);
+    fireEvent.click(await screen.findByRole('button', { name: LIVE_COPY.unspecified }));
+    await waitFor(() => {
+      expect(document.querySelector('.s4-score')?.textContent).toBe('1:0');
+    });
+  }
+
+  it('儲存不可用要先接手，記分按鈕停用', async () => {
+    const made = await deps({ log: deadLog(), match: liveMatch });
     draw(made.deps);
     expect(await screen.findByText(LIVE_COPY.offlineUnstored)).toBeTruthy();
-    expect(screen.getByRole('button', { name: LIVE_COPY.takeoverAction })).toBeTruthy();
-    expect(screen.queryByText(LIVE_COPY.takeoverEntry)).toBeNull();
-    expect(screen.getByRole('button', { name: '終場' })).toBeTruthy();
+    expectScoringLocked();
+    fireEvent.click(screen.getByRole('button', { name: teamAction('雷霆隊', LIVE_COPY.goal) }));
+    expect(screen.queryByRole('button', { name: LIVE_COPY.unspecified })).toBeNull();
+    expect(document.querySelector('.s4-score')?.textContent).toBe('0:0');
+    expect(screen.queryByText(LIVE_COPY.pending)).toBeNull();
+    await confirmTakeover();
+    expect(screen.getByText(LIVE_COPY.offlineUnstored)).toBeTruthy();
+    await scoreHomeGoal();
+  });
+
+  it('需要接手時按進球不產生日誌，接手後可以記', async () => {
+    const log = new MemoryActionLog();
+    const made = await deps({ log, withSid: false, match: liveMatch });
+    draw(made.deps);
+    expect(await screen.findByRole('button', { name: LIVE_COPY.takeoverAction })).toBeTruthy();
+    expectScoringLocked();
+    fireEvent.click(screen.getByRole('button', { name: teamAction('雷霆隊', LIVE_COPY.goal) }));
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.halftime }));
+    fireEvent.click(screen.getByRole('button', { name: pauseRemain(20) }));
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.fulltime }));
+    expect(screen.queryByRole('button', { name: LIVE_COPY.unspecified })).toBeNull();
+    expect(document.querySelector('.s4-score')?.textContent).toBe('0:0');
+    expect(screen.queryByText(LIVE_COPY.pending)).toBeNull();
+    expect(await log.list(CID, MT)).toEqual([]);
+    await confirmTakeover();
+    await scoreHomeGoal();
+    const rows = await log.list(CID, MT);
+    expect(rows.map((row) => row.kind)).toEqual(['goal']);
   });
 
   it('進行中的球隊暫停由事件推出，重整後仍在', async () => {

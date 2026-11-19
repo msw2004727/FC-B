@@ -1,8 +1,8 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installUi4TestLocale } from '@/ui/ui4-test-helpers';
-import { S4_SCENE_LIVE, S4_SCENE_PK_START, S4_SCENE_TAKEOVER } from '../testing/step4-fixtures';
-import { LIVE_COPY } from './copy';
+import { S4_SCENE_LIVE, S4_SCENE_PK, S4_SCENE_PK_START, S4_SCENE_TAKEOVER } from '../testing/step4-fixtures';
+import { LIVE_COPY, teamAction } from './copy';
 import { EventSheet } from './EventSheet';
 import { ScorePad, type ScoreFeedRow } from './ScorePad';
 
@@ -150,15 +150,41 @@ describe('記分板新狀態', () => {
     expect(document.querySelector('.s4-timeout')).toBeNull();
   });
 
-  it('沒有本機 sid 時按鈕寫接手記分', () => {
+  it('沒有本機 sid 時按鈕寫接手記分，記分鈕停用', () => {
     render(<ScorePad {...S4_SCENE_LIVE} takeoverOffered takeoverSelf />);
-    expect(screen.getByRole('button', { name: LIVE_COPY.takeoverAction })).toBeTruthy();
+    const take = screen.getByRole('button', { name: LIVE_COPY.takeoverAction }) as HTMLButtonElement;
+    expect(take.disabled).toBe(false);
     expect(screen.queryByText(LIVE_COPY.takeoverEntry)).toBeNull();
+    const goal = screen.getByRole('button', { name: teamAction('雷霆隊', LIVE_COPY.goal) }) as HTMLButtonElement;
+    expect(goal.disabled).toBe(true);
+    expect(goal.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(goal);
+    expect(screen.queryByRole('button', { name: LIVE_COPY.unspecified })).toBeNull();
   });
 
-  it('別的裝置仍寫其他裝置記分中', () => {
+  it('別的裝置仍寫其他裝置記分中，記分鈕停用', () => {
     render(<ScorePad {...S4_SCENE_TAKEOVER} />);
-    expect(screen.getByRole('button', { name: LIVE_COPY.takeoverEntry })).toBeTruthy();
+    const entry = screen.getByRole('button', { name: LIVE_COPY.takeoverEntry }) as HTMLButtonElement;
+    expect(entry.disabled).toBe(false);
     expect(screen.queryByRole('button', { name: LIVE_COPY.takeoverAction })).toBeNull();
+    const goal = screen.getByRole('button', { name: teamAction('雷霆隊', LIVE_COPY.goal) }) as HTMLButtonElement;
+    expect(goal.disabled).toBe(true);
+  });
+
+  it('需要接手時 PK 進沒進與終場停用', () => {
+    render(<ScorePad {...S4_SCENE_PK} takeoverOffered takeoverSelf />);
+    const take = screen.getByRole('button', { name: LIVE_COPY.takeoverAction }) as HTMLButtonElement;
+    expect(take.disabled).toBe(false);
+    for (const name of [
+      teamAction('雷霆隊', LIVE_COPY.pkIn),
+      teamAction('雷霆隊', LIVE_COPY.pkMiss),
+      teamAction('海風隊', LIVE_COPY.pkIn),
+      teamAction('海風隊', LIVE_COPY.pkMiss),
+      LIVE_COPY.fulltime,
+    ]) {
+      const button = screen.getByRole('button', { name }) as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+      expect(button.getAttribute('aria-disabled')).toBe('true');
+    }
   });
 });

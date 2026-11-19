@@ -284,7 +284,9 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const atMax = eventCount >= EVENT_MAX;
   const nearCap = eventCount >= EVENT_WARN && eventCount < EVENT_RESERVE;
   const pauseBlocked = pauseHeldForScoring(eventCount);
-  const padOff = props.scoringDisabled === true;
+  const readerOff = props.scoringDisabled === true;
+  // 需要接手時，記分與比賽控制比照讀分頁停用。接手鈕不跟這批一起關。
+  const padOff = readerOff || takeoverOffered;
   const goalOff = padOff || atMax || reserved || phase !== 'play';
   const cardOff = padOff || atMax || reserved || (phase !== 'play' && phase !== 'ht');
   const flowOff = padOff || atMax;
@@ -810,7 +812,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
             <Button variant="secondary" disabled={padOff} onClick={() => setUnappliedOpen(true)}>{LIVE_COPY.unappliedTitle}</Button>
           ) : null}
           {takeoverOffered ? (
-            <Button variant="secondary" disabled={padOff} onClick={() => setTakeoverOpen(true)}>
+            <Button variant="secondary" disabled={readerOff} onClick={() => setTakeoverOpen(true)}>
               {props.takeoverSelf ? LIVE_COPY.takeoverAction : LIVE_COPY.takeoverEntry}
             </Button>
           ) : null}
@@ -876,7 +878,10 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           class="s4-kickoff"
           disabled={flowOff}
           aria-disabled={flowOff ? 'true' : undefined}
-          onClick={() => props.onKickoff?.()}
+          onClick={() => {
+            if (flowOff) return;
+            props.onKickoff?.();
+          }}
         >
           {LIVE_COPY.kickoff}
         </button>
