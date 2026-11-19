@@ -15,13 +15,14 @@ import {
   stageLabel,
   undoClock,
 } from './clock';
-import { LIVE_COPY, offlineChip, offlineSaved, pausedFor, restedFor, teamAction, undoWithin } from './copy';
+import { LIVE_COPY, offlineChip, offlineSaved, pauseRemain, pausedFor, restedFor, teamAction, undoWithin } from './copy';
 import { EventSheet } from './EventSheet';
 import { PlayerSheet } from './PlayerSheet';
 import {
   EVENT_MAX,
   EVENT_RESERVE,
   EVENT_WARN,
+  PAUSE_MAX,
   type FlashCard,
   type RecordAction,
   eventLines,
@@ -30,6 +31,7 @@ import {
   flashFromCard,
   linkedSecondSeq,
   openYellowSeq,
+  pauseHeldForScoring,
   recordIntent,
   seenCards,
   unappliedEntries,
@@ -59,6 +61,10 @@ export interface ScorePadProps {
   actionLog: readonly ActionLogEntry[];
   /** 沒傳就用 rev − resetRev。 */
   eventCount?: number;
+  /** 這場已經按過幾次暫停。沒傳當 0，每場最多 PAUSE_MAX 次。 */
+  pauseUses?: number;
+  /** default：進球在上。thumb：紀錄在上、進球與牌集中在下半屏。 */
+  layout?: 'default' | 'thumb';
   crests?: readonly EntryDoc[];
   link: LiveLink;
   clock: LiveClock;
@@ -112,6 +118,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const reserved = eventCount >= EVENT_RESERVE;
   const atMax = eventCount >= EVENT_MAX;
   const nearCap = eventCount >= EVENT_WARN && eventCount < EVENT_RESERVE;
+  const pauseBlocked = pauseHeldForScoring(eventCount);
   const goalOff = atMax || reserved || phase !== 'play';
   const cardOff = atMax || reserved || (phase !== 'play' && phase !== 'ht');
   const flowOff = atMax;
@@ -146,7 +153,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const holdText = holdLive && reading.holdSec != null
     ? (phase === 'ht' ? restedFor(formatMatchClock(reading.holdSec)) : pausedFor(formatMatchClock(reading.holdSec)))
     : null;
-  const showPause = phase === 'play';
+  const showPause = phase === 'play' || phase === 'ht';
   const lines = eventLines({
     events,
     voids,
@@ -155,9 +162,13 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     homeRoster,
     awayRoster,
     hideVoided: false,
-    limit: 5,
     order: 'recent',
   });
+  const [pauseUses, setPauseUses] = useState(props.pauseUses ?? 0);
+  useEffect(() => {
+    setPauseUses(props.pauseUses ?? 0);
+  }, [props.pauseUses]);
+  const pauseLeft = Math.max(0, PAUSE_MAX - pauseUses);
   const [localLog, setLocalLog] = useState<ActionLogEntry[]>([]);
   const pending = unappliedEntries([...actionLog, ...localLog]);
   const cards = seenCards(events, voids, [...actionLog, ...localLog]);
@@ -238,6 +249,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
 
   function togglePause(): void {
     if (flowOff) return;
+    if (clockBase.running && (pauseBlocked || pauseUses >= PAUSE_MAX)) return;
     const elapsed = Math.floor(clockFromBase(clockBase, now).elapsedSec);
     const next: MatchClock = {
       ...clockBase,
@@ -245,6 +257,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       startedAt: now,
       pausedSec: elapsed,
     };
+    if (clockBase.running) setPauseUses((value) => value + 1);
     setClockBase(next);
     props.onClock?.(next);
   }
@@ -348,62 +361,66 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const pickerRoster = picker?.side === 'away' ? awayRoster : homeRoster;
   const pickerTeam = picker?.side === 'away' ? match.away.name : match.home.name;
   const amendRoster = openEventDoc && 'side' in openEventDoc && openEventDoc.side === 'away' ? awayRoster : homeRoster;
+  const pauseDisabled = flowOff || (clockBase.running && (pauseBlocked || pauseUses >= PAUSE_MAX));
+  const showCtrl = phase === 'pre' || phase === 'play' || phase === 'ht';
+  const thumb = props.layout === 'thumb';
 
-  return (
-    <section class="s4-root">
-      <header>
-        <div class="s4-board">
-          <TeamLockup entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" place="board" />
-          <span class="s4-score">{match.score.home}:{match.score.away}</span>
-          <TeamLockup entryId={match.away.teamId} name={match.away.name} crests={crests} align="away" place="board" />
-        </div>
-        <div class="s4-clockrow">
-          <span class="s4-clock">{formatMatchClock(reading.elapsedSec)}</span>
-          {holdText ? <span class="s4-hold">{holdText}</span> : null}
-          {showStage ? <span class="s4-stage">{stageLabel(stageClock)}</span> : null}
-        </div>
-        <div class="s4-meta">
-          <Badge
-            size="sm"
-            tone={link.online ? 'success' : 'warning'}
-            label={link.online ? LIVE_COPY.connected : offlineChip(link.pendingCount)}
-          />
-        </div>
-      </header>
+  const alerts: JSX.Element[] = [];
+  if (pauseBlocked) {
+    alerts.push(<p key="pause" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.pauseReserved}</p>);
+  }
+  if (nearCap) alerts.push(<p key="near" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.nearCap}</p>);
+  if (reserved) alerts.push(<p key="cap" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.atCap}</p>);
+  if (notice) alerts.push(<p key="notice" class="s4-banner s4-banner--saved" role="alert">{notice}</p>);
+  if (!link.online && link.storageUnavailable) {
+    alerts.push(<p key="off" class="s4-banner s4-banner--danger" role="alert">{LIVE_COPY.offlineUnstored}</p>);
+  } else if (!link.online) {
+    alerts.push(<p key="saved" class="s4-banner s4-banner--saved" role="status">{offlineSaved(link.pendingCount)}</p>);
+  }
+  if (!link.wakeLock) alerts.push(<p key="wake" class="s4-wake">{LIVE_COPY.wakeLock}</p>);
 
-      {nearCap ? <p class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.nearCap}</p> : null}
-      {reserved ? <p class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.atCap}</p> : null}
-      {notice ? <p class="s4-banner s4-banner--saved" role="alert">{notice}</p> : null}
-
-      {!link.online && link.storageUnavailable ? (
-        <p class="s4-banner s4-banner--danger" role="alert">{LIVE_COPY.offlineUnstored}</p>
-      ) : null}
-      {!link.online && !link.storageUnavailable ? (
-        <p class="s4-banner s4-banner--saved" role="status">{offlineSaved(link.pendingCount)}</p>
-      ) : null}
-      {!link.wakeLock ? <p class="s4-wake">{LIVE_COPY.wakeLock}</p> : null}
-
-      <div class="s4-pitch">
-        <TeamColumn
-          side="home"
-          team={match.home.name}
-          entryId={match.home.teamId}
-          crests={crests}
-          goalDisabled={goalOff}
-          cardDisabled={cardOff}
-          onAction={openPicker}
-        />
-        <TeamColumn
-          side="away"
-          team={match.away.name}
-          entryId={match.away.teamId}
-          crests={crests}
-          goalDisabled={goalOff}
-          cardDisabled={cardOff}
-          onAction={openPicker}
+  const top = (
+    <header key="top" class="s4-top">
+      <div class="s4-board">
+        <TeamLockup entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" place="board" />
+        <span class="s4-score">{match.score.home}:{match.score.away}</span>
+        <TeamLockup entryId={match.away.teamId} name={match.away.name} crests={crests} align="away" place="board" />
+      </div>
+      <div class="s4-clockrow">
+        <span class="s4-clock">{formatMatchClock(reading.elapsedSec)}</span>
+        {showStage ? <span class="s4-stage">{stageLabel(stageClock)}</span> : null}
+        <Badge
+          size="sm"
+          tone={link.online ? 'success' : 'warning'}
+          label={link.online ? LIVE_COPY.connected : offlineChip(link.pendingCount)}
         />
       </div>
+      {holdText ? <p class="s4-hold">{holdText}</p> : null}
+    </header>
+  );
 
+  const goals = (
+    <div key="goals" class="s4-goals">
+      <Hit team={match.home.name} action="goal" tone="home" disabled={goalOff} onClick={() => openPicker('home', 'goal')} />
+      <Hit team={match.away.name} action="goal" tone="away" disabled={goalOff} onClick={() => openPicker('away', 'goal')} />
+    </div>
+  );
+
+  const cardRow = (
+    <div key="cards" class="s4-cards">
+      <div class="s4-cardpair">
+        <Hit team={match.home.name} action="yellow" tone="yellow" disabled={cardOff} onClick={() => openPicker('home', 'yellow')} />
+        <Hit team={match.home.name} action="red" tone="red" disabled={cardOff} onClick={() => openPicker('home', 'red')} />
+      </div>
+      <div class="s4-cardpair">
+        <Hit team={match.away.name} action="yellow" tone="yellow" disabled={cardOff} onClick={() => openPicker('away', 'yellow')} />
+        <Hit team={match.away.name} action="red" tone="red" disabled={cardOff} onClick={() => openPicker('away', 'red')} />
+      </div>
+    </div>
+  );
+
+  const log = (
+    <div key="log" class="s4-feed">
       {lines.length > 0 ? (
         <ul class="s4-events">
           {lines.map((line) => (
@@ -429,7 +446,6 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           ))}
         </ul>
       ) : null}
-
       {pending.length > 0 || takeoverOffered ? (
         <div class="s4-extra">
           {pending.length > 0 ? (
@@ -440,7 +456,11 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           ) : null}
         </div>
       ) : null}
+    </div>
+  );
 
+  const bar = (
+    <div key="bar" class="s4-dock">
       {phase === 'undo' && remain ? (
         <div class="s4-sent">
           <p class="s4-sent__st">{LIVE_COPY.fulltimeSent}</p>
@@ -448,20 +468,21 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           <Button variant="danger" disabled={flowOff} onClick={() => props.onUndoFulltime?.()}>{LIVE_COPY.undoFulltime}</Button>
         </div>
       ) : null}
-
-      {phase === 'pre' || phase === 'play' || phase === 'ht' ? (
+      {showCtrl ? (
         <div class="s4-ctrl">
           {phase === 'pre' ? (
-            <Button size="lg" disabled={flowOff} onClick={() => props.onKickoff?.()}>{LIVE_COPY.kickoff}</Button>
+            <Button disabled={flowOff} onClick={() => props.onKickoff?.()}>{LIVE_COPY.kickoff}</Button>
           ) : null}
           {phase === 'play' ? (
             <Button variant="secondary" disabled={flowOff} onClick={() => props.onHalftime?.()}>{LIVE_COPY.halftime}</Button>
           ) : null}
-          {phase === 'play' ? (
-            <Button variant="danger" disabled={flowOff} onClick={() => props.onFulltime?.()}>{LIVE_COPY.fulltime}</Button>
-          ) : null}
           {phase === 'ht' ? (
-            <Button size="lg" disabled={flowOff} onClick={() => props.onResume?.()}>{LIVE_COPY.resume}</Button>
+            <Button disabled={flowOff} onClick={() => props.onResume?.()}>{LIVE_COPY.resume}</Button>
+          ) : null}
+          {showPause ? (
+            <Button variant="secondary" disabled={pauseDisabled} onClick={togglePause}>
+              {clockBase.running ? pauseRemain(pauseLeft) : LIVE_COPY.resumeClock}
+            </Button>
           ) : null}
           <div class="s4-menu-wrap">
             <Button
@@ -490,15 +511,23 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
               </div>
             ) : null}
           </div>
+          {phase === 'play' ? <span class="s4-ctrl__gap" aria-hidden="true" /> : null}
+          {phase === 'play' ? (
+            <Button class="s4-end" variant="danger" disabled={flowOff} onClick={() => props.onFulltime?.()}>{LIVE_COPY.fulltime}</Button>
+          ) : null}
         </div>
       ) : null}
-      {showPause ? (
-        <div class="s4-pause">
-          <Button variant="secondary" disabled={flowOff} onClick={togglePause}>
-            {clockBase.running ? LIVE_COPY.pauseClock : LIVE_COPY.resumeClock}
-          </Button>
-        </div>
-      ) : null}
+    </div>
+  );
+
+  const alertBlock = alerts.length > 0 ? <div key="alerts" class="s4-alerts">{alerts}</div> : null;
+  const parts = thumb
+    ? [top, alertBlock, log, goals, cardRow, bar]
+    : [top, alertBlock, goals, cardRow, log, bar];
+
+  return (
+    <section class={thumb ? 's4-root s4-root--thumb' : 's4-root'}>
+      {parts}
 
       {picker ? (
         <PlayerSheet
@@ -569,58 +598,31 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   );
 }
 
-function TeamColumn({
-  side,
+function Hit({
   team,
-  entryId,
-  crests,
-  goalDisabled,
-  cardDisabled,
-  onAction,
+  action,
+  tone,
+  disabled,
+  onClick,
 }: {
-  side: MatchSideName;
   team: string;
-  entryId: string;
-  crests: readonly EntryDoc[];
-  goalDisabled: boolean;
-  cardDisabled: boolean;
-  onAction: (side: MatchSideName, action: RecordAction) => void;
+  action: RecordAction;
+  tone: 'home' | 'away' | 'yellow' | 'red';
+  disabled: boolean;
+  onClick: () => void;
 }): JSX.Element {
+  const label = action === 'goal' ? LIVE_COPY.goal : action === 'yellow' ? LIVE_COPY.yellow : LIVE_COPY.red;
+  const kind = action === 'goal' ? 's4-hit--goal' : 's4-hit--card';
   return (
-    <div class={side === 'home' ? 's4-col s4-col--home' : 's4-col s4-col--away'}>
-      <TeamLockup entryId={entryId} name={team} crests={crests} align={side} place="column" />
-      <button
-        type="button"
-        class="s4-hit s4-hit--goal"
-        disabled={goalDisabled}
-        aria-disabled={goalDisabled ? 'true' : undefined}
-        aria-label={teamAction(team, LIVE_COPY.goal)}
-        onClick={() => onAction(side, 'goal')}
-      >
-        {LIVE_COPY.goal}
-      </button>
-      <div class="s4-cardrow">
-        <button
-          type="button"
-          class="s4-hit s4-hit--card s4-hit--yellow"
-          disabled={cardDisabled}
-          aria-disabled={cardDisabled ? 'true' : undefined}
-          aria-label={teamAction(team, LIVE_COPY.yellow)}
-          onClick={() => onAction(side, 'yellow')}
-        >
-          {LIVE_COPY.yellow}
-        </button>
-        <button
-          type="button"
-          class="s4-hit s4-hit--card s4-hit--red"
-          disabled={cardDisabled}
-          aria-disabled={cardDisabled ? 'true' : undefined}
-          aria-label={teamAction(team, LIVE_COPY.red)}
-          onClick={() => onAction(side, 'red')}
-        >
-          {LIVE_COPY.red}
-        </button>
-      </div>
-    </div>
+    <button
+      type="button"
+      class={`s4-hit ${kind} s4-hit--${tone}`}
+      disabled={disabled}
+      aria-disabled={disabled ? 'true' : undefined}
+      aria-label={teamAction(team, label)}
+      onClick={onClick}
+    >
+      {label}
+    </button>
   );
 }

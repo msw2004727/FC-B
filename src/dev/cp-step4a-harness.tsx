@@ -28,7 +28,9 @@ document.documentElement.setAttribute('data-theme', theme);
 const ANCHORS: Record<string, string> = {
   'score-pre': '開賽',
   'score-live': '34:00',
+  'score-live-thumb': '34:00',
   'score-pick-player': '不指定球員',
+  'score-pick-player-long': '不指定球員',
   'score-card-yellow': '點一下關閉',
   'score-card-red-auto': '第二張黃牌 → 紅牌',
   'score-halftime': '下半場開始',
@@ -39,6 +41,7 @@ const ANCHORS: Record<string, string> = {
   'score-paused': '繼續計時',
   'score-amend': '會先復原原紀錄，再記新的',
   'score-cap': '紀錄已達上限，請由主辦在賽後登錄比分',
+  'score-pause-reserved': '為保留記分額度，暫停計時已停用',
   'score-undo-half': '第二張黃牌已復原，第一張黃牌仍在',
   'live-detail': '比分已更正',
   'live-match': '比賽紀錄',
@@ -49,6 +52,9 @@ const ANCHORS: Record<string, string> = {
 let undoHalfCalls = 0;
 
 function Screen() {
+  if (screenName === 'score-live-thumb') {
+    return <ScorePad {...S4_SCENE_LIVE} layout="thumb" />;
+  }
   if (screenName === 'score-undo-half') {
     return (
       <ScorePad
@@ -120,6 +126,10 @@ const OPEN: Record<string, () => Promise<void>> = {
   'score-pick-player': async () => {
     clickButton('進球', 0);
     await until('背號選擇', () => hasText('不指定球員') && hasText('一般'));
+  },
+  'score-pick-player-long': async () => {
+    clickButton('進球', 0);
+    await until('18 人背號', () => hasText('不指定球員') && hasText('董禾') && hasText('一般'));
   },
   'score-card-yellow': async () => {
     clickLabel("12' 黃牌");

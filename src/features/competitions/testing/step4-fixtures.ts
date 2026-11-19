@@ -25,7 +25,9 @@ export const STEP4_SCREENS = [
   // 1 記分頁（裁判模式）
   'score-pre',
   'score-live',
+  'score-live-thumb',
   'score-pick-player',
+  'score-pick-player-long',
   'score-card-yellow',
   'score-card-red-auto',
   'score-halftime',
@@ -36,6 +38,7 @@ export const STEP4_SCREENS = [
   'score-paused',
   'score-amend',
   'score-cap',
+  'score-pause-reserved',
   'score-undo-half',
   // 2 指派與邀請
   'staff-list',
@@ -90,6 +93,16 @@ export const S4_HOME = { teamId: 'en_c', name: '雷霆隊' } as const;
 export const S4_AWAY = { teamId: 'en_h', name: '海風隊' } as const;
 export const S4_ROSTER_HOME = roster(S4_HOME.teamId, 'th', HOME_PLAYERS);
 export const S4_ROSTER_AWAY = roster(S4_AWAY.teamId, 'hf', AWAY_PLAYERS);
+/** 主隊 18 人，用來確認選背號面板可以捲。前 8 人沿用進行中場次的 id。 */
+const HOME_LONG_EXTRA: P[] = [
+  [2, '吳柏', 'DF'], [3, '何安', 'DF'], [6, '呂恩', 'MF'], [11, '高翔', 'FW'],
+  [13, '羅文', 'MF'], [14, '宋宇', 'MF'], [15, '唐亮', 'DF'], [16, '馮凱', 'FW'],
+  [17, '彭宇', 'DF'], [18, '董禾', 'MF'],
+];
+export const S4_ROSTER_HOME_LONG: RosterPublicDoc[] = [
+  ...S4_ROSTER_HOME,
+  ...roster(S4_HOME.teamId, 'lg', HOME_LONG_EXTRA),
+];
 
 // ── 進行中場次（score-live 等共用）─────────────────────────────────
 const at = (sec: number) => S4_KICKOFF + sec * 1000 + 800;
@@ -333,17 +346,32 @@ export const S4_SCENE_PAUSED: S4ScoreScene = {
   clock: { elapsedSec: 34 * 60, period: 'h1', addedMin: null },
 };
 
-/** 96 筆：已過 95，進球／牌／換人／修正時鐘停用，比賽控制還在。 */
+/** 192 筆：已過 190，進球／牌／改判／修正時鐘停用，比賽控制還在。暫停計時在超過 130 時已停。 */
 export const S4_SCENE_CAP: S4ScoreScene = {
   ...S4_SCENE_LIVE,
-  match: s4Match({ rev: 96, resetRev: 0 }),
-  eventCount: 96,
+  match: s4Match({ rev: 192, resetRev: 0 }),
+  eventCount: 192,
+};
+
+/** 135 筆：已超過 130，暫停計時停用；記分與比賽控制都還在。 */
+export const S4_SCENE_PAUSE_RESERVED: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  match: s4Match({ rev: 135, resetRev: 0 }),
+  eventCount: 135,
+};
+
+/** 主隊 18 人，選背號面板要能捲到底。 */
+export const S4_SCENE_PICK_LONG: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  homeRoster: S4_ROSTER_HOME_LONG,
 };
 
 export const S4_SCORE_SCENES = {
   'score-pre': S4_SCENE_PRE,
   'score-live': S4_SCENE_LIVE,
+  'score-live-thumb': S4_SCENE_LIVE,
   'score-pick-player': S4_SCENE_LIVE,
+  'score-pick-player-long': S4_SCENE_PICK_LONG,
   'score-card-yellow': S4_SCENE_LIVE,
   'score-card-red-auto': S4_SCENE_LIVE,
   'score-halftime': S4_SCENE_HT,
@@ -354,6 +382,7 @@ export const S4_SCORE_SCENES = {
   'score-paused': S4_SCENE_PAUSED,
   'score-amend': S4_SCENE_LIVE,
   'score-cap': S4_SCENE_CAP,
+  'score-pause-reserved': S4_SCENE_PAUSE_RESERVED,
   'score-undo-half': S4_SCENE_LIVE,
 } as const;
 
@@ -364,11 +393,13 @@ export const S4_DETAIL_ROWS = [
   { id: 'd3', when: '08:00', home: '藍鯨隊', away: '一二三四五六七八九十示範隊', score: '2:1', live: false, corrected: true },
 ] as const;
 
-/** U0a 再加上暫停、改判、上限、復原半成功。名稱對齊 harness 與截圖腳本。 */
+/** U0a-fix2：拇指排法、18 人背號、暫停額度。名稱對齊 harness 與截圖腳本。 */
 export const S4A_SCREENS = [
   'score-pre',
   'score-live',
+  'score-live-thumb',
   'score-pick-player',
+  'score-pick-player-long',
   'score-card-yellow',
   'score-card-red-auto',
   'score-halftime',
@@ -379,6 +410,7 @@ export const S4A_SCREENS = [
   'score-paused',
   'score-amend',
   'score-cap',
+  'score-pause-reserved',
   'score-undo-half',
   'live-detail',
   'live-match',

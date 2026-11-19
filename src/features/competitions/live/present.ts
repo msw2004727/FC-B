@@ -2,10 +2,23 @@ import type { MatchSideName, RosterPublicDoc } from '../data/types';
 import { LIVE_COPY, minuteMark } from './copy';
 import type { ActionLogEntry, CardType, GoalKind, TimelineEvent, VoidMark } from './types';
 
-/** 本場事件數（rev − resetRev）的三個門檻。 */
-export const EVENT_WARN = 90;
-export const EVENT_RESERVE = 95;
-export const EVENT_MAX = 100;
+/**
+ * 本場事件數（rev − resetRev）。
+ * 180 提醒、190 起只留比賽控制、200 連比賽控制也停。
+ * 已用超過 EVENT_MAX − SCORING_RESERVE（130）時先停用暫停計時。
+ */
+export const EVENT_WARN = 180;
+export const EVENT_RESERVE = 190;
+export const EVENT_MAX = 200;
+/** 要留給記分的筆數。已用 > 130 就先停暫停計時。 */
+export const SCORING_RESERVE = 70;
+/** 暫停計時每場最多幾次。 */
+export const PAUSE_MAX = 20;
+
+/** 已用超過 130（EVENT_MAX − SCORING_RESERVE）時，暫停計時要先讓路給記分。 */
+export function pauseHeldForScoring(eventCount: number): boolean {
+  return eventCount > EVENT_MAX - SCORING_RESERVE;
+}
 
 export type RecordAction = 'goal' | 'yellow' | 'red';
 

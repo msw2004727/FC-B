@@ -24,6 +24,7 @@ export const LIVE_COPY = {
   correctClock: '修正時鐘',
   pauseClock: '暫停計時',
   resumeClock: '繼續計時',
+  pauseReserved: '為保留記分額度，暫停計時已停用',
   matchMenu: '選單',
   amend: '改判',
   amendNote: '會先復原原紀錄，再記新的',
@@ -96,6 +97,11 @@ export function addedClock(baseMin: number, addedMin: number): string {
 
 export function pausedFor(clock: string): string {
   return `已暫停 ${clock}`;
+}
+
+/** 暫停鈕上的剩餘次數，例「暫停 18」。 */
+export function pauseRemain(left: number): string {
+  return `暫停 ${left}`;
 }
 
 export function restedFor(clock: string): string {

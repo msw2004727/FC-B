@@ -3,8 +3,6 @@
 .s4-root,
 .s4-page {
   box-sizing: border-box;
-  min-height: 100vh;
-  min-height: 100dvh;
   background: var(--color-bg-root);
   color: var(--color-text-primary);
   font-family: var(--font-sans);
@@ -17,9 +15,26 @@
 .s4-sheet *,
 .s4-dialog * { box-sizing: border-box; }
 
+.s4-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 8px 8px 12px;
+}
+.s4-root {
+  /* 一屏記分。提示列只壓縮 .s4-feed，進球、牌、底欄不縮小。 */
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 8px 0;
+  overflow: hidden;
+}
 .s4-root,
 .s4-page {
-  padding: 8px 8px 12px;
   --crest-0: #0f766e;
   --crest-1: #0e7490;
   --crest-2: #c2410c;
@@ -42,13 +57,18 @@
   --crest-7: #34d399;
   --crest-fg: #0b0f16;
 }
-.s4-root {
+
+.s4-top {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+  max-height: 96px;
+  min-width: 0;
 }
-
 .s4-board {
+  height: 28px;
+  min-height: 28px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
@@ -71,6 +91,10 @@
   gap: 6px;
   min-width: 0;
   max-width: 100%;
+}
+.s4-board .s4-team {
+  font-size: 14px;
+  line-height: 20px;
 }
 .s4-board .s4-side { width: 100%; }
 .s4-side--away { flex-direction: row-reverse; }
@@ -104,7 +128,7 @@
 .s4-root .cp3-crest--c6, .s4-page .cp3-crest--c6 { background: var(--crest-6); }
 .s4-root .cp3-crest--c7, .s4-page .cp3-crest--c7 { background: var(--crest-7); }
 .s4-score {
-  font-size: 40px;
+  font-size: 22px;
   line-height: 1;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
@@ -112,30 +136,35 @@
 }
 .s4-clockrow {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: center;
   gap: 8px;
+  height: 32px;
+  min-height: 32px;
   min-width: 0;
 }
 .s4-clock {
-  font-size: 36px;
+  font-size: 32px;
   line-height: 1;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.s4-stage,
-.s4-hold {
-  font-size: var(--font-size-body-lg);
+.s4-stage {
+  font-size: 14px;
   line-height: 1;
   font-weight: 700;
   white-space: nowrap;
 }
-.s4-hold { font-variant-numeric: tabular-nums; }
-.s4-meta {
-  display: flex;
-  justify-content: center;
-  min-width: 0;
+.s4-hold {
+  margin: 0;
+  height: 16px;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
 }
 /* 壓過 :root:lang .ui-text 與 badge 的兩行裁切，短標籤維持一行。 */
 .s4-root .ui-badge,
@@ -153,12 +182,19 @@
   -webkit-line-clamp: unset;
 }
 
+.s4-alerts {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
 .s4-banner,
 .s4-wake {
   margin: 0;
-  padding: 10px 4px;
+  padding: 4px 8px;
   border-radius: var(--radius-sm);
-  /* 12px：24 字的離線警告在 360 寬要整句落在一行，不能省略。 */
+  /* 12px：長句在 360 寬要整句落在一行，不能省略。 */
   font-size: 12px;
   line-height: 16px;
   font-weight: 800;
@@ -178,19 +214,48 @@
   color: var(--color-text-primary);
 }
 
-.s4-pitch {
-  flex: 1 1 auto;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  min-height: 0;
+.s4-goals,
+.s4-cards,
+.s4-ctrl,
+.s4-sent,
+.s4-dock {
+  flex: 0 0 auto;
 }
-.s4-col {
+.s4-dock {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.s4-goals {
+  height: 104px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+.s4-cards {
+  height: 56px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+.s4-cardpair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  height: 56px;
+  min-width: 0;
+}
+.s4-feed {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-width: 0;
-  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 .s4-col__name {
   min-width: 0;
@@ -221,25 +286,23 @@
 .s4-hit:active { transform: scale(0.98); filter: brightness(0.92); }
 .s4-hit:disabled { cursor: not-allowed; opacity: 0.45; }
 .s4-hit--goal {
-  flex: 1 1 auto;
-  min-height: 56px;
-  font-size: 28px;
+  height: 104px;
+  min-height: 104px;
+  max-height: 104px;
+  font-size: 22px;
   line-height: 1;
 }
-/* 兩隊進球鈕用固定色，避免深色 token 把白字對比打穿。 */
-.s4-col--home .s4-hit--goal { background: #0b6b4e; color: #fff; }
-.s4-col--away .s4-hit--goal { background: #1d4ed8; color: #fff; }
-.s4-cardrow {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  flex: 0 0 auto;
-}
+/* 兩隊進球鈕用固定色，避免深色 token 把白字對比打穿。停用時尺寸不變。 */
+.s4-hit--home { background: #0b6b4e; color: #fff; }
+.s4-hit--away { background: #1d4ed8; color: #fff; }
 .s4-hit--card {
-  min-width: 0;
+  width: 100%;
+  height: 56px;
   min-height: 56px;
+  max-height: 56px;
+  min-width: 0;
   padding: 0 4px;
-  font-size: var(--font-size-body-lg);
+  font-size: 16px;
   line-height: 1;
 }
 .s4-hit--yellow { background: #ffe14a; color: #141414; }
@@ -248,7 +311,7 @@
 .s4-events {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -260,7 +323,8 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  min-height: 44px;
+  height: 48px;
+  min-height: 48px;
 }
 .s4-sr {
   position: absolute;
@@ -285,14 +349,15 @@
 .s4-ev__main {
   flex: 1 1 auto;
   min-width: 0;
+  height: 48px;
   margin: 0;
   padding: 0;
   border: 0;
   background: none;
   color: inherit;
   font: inherit;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
+  font-size: 14px;
+  line-height: 48px;
   font-weight: 600;
   text-align: start;
   white-space: nowrap;
@@ -331,7 +396,8 @@ button.s4-ev__main:active { opacity: 0.7; }
   gap: 8px;
   min-width: 0;
 }
-.s4-extra { flex-direction: column; }
+.s4-extra { flex: 0 0 auto; flex-direction: column; }
+.s4-extra .ui-button { min-height: 48px; min-block-size: 48px; }
 .s4-root .ui-button .ui-text,
 .s4-page .ui-button .ui-text,
 .s4-sheet .ui-button .ui-text,
@@ -345,10 +411,32 @@ button.s4-ev__main:active { opacity: 0.7; }
   min-inline-size: 0;
   max-width: 100%;
 }
-.s4-ctrl .ui-button,
-.s4-pause .ui-button { flex: 1 1 0; min-height: 56px; }
-.s4-pause { display: flex; min-width: 0; }
-.s4-ctrl .s4-menu-btn { flex: 0 0 auto; min-width: 56px; }
+.s4-ctrl {
+  height: 56px;
+  align-items: center;
+  gap: 8px;
+}
+.s4-ctrl .ui-button {
+  flex: 0 1 auto;
+  height: 48px;
+  min-height: 48px;
+  min-block-size: 48px;
+  min-inline-size: 0;
+  padding-inline: 10px;
+}
+.s4-ctrl__gap {
+  flex: 1 1 16px;
+  min-width: 16px;
+  height: 1px;
+}
+.s4-ctrl .s4-end {
+  --comp-button-background-default: #ff2d2d;
+  --comp-button-background-hover: #ff4d4d;
+  --comp-button-background-active: #e02626;
+  --comp-button-foreground-default: #141414;
+  --comp-button-border-default: #ff2d2d;
+}
+.s4-ctrl .s4-menu-btn { flex: 0 0 auto; min-width: 48px; }
 .s4-menu-wrap { position: relative; flex: 0 0 auto; }
 .s4-menu {
   position: absolute;
@@ -520,6 +608,11 @@ button.s4-ev__main:active { opacity: 0.7; }
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+/* 超過 8 人時把面板頂住，內容才會在既有的捲動區裡捲。8 人內容較矮，不受這條影響。 */
+.s4-sheet--long.ui-bottom-sheet .ui-modal__panel {
+  max-height: 58vh;
+  max-height: 58dvh;
 }
 .s4-unspecified { width: 100%; min-height: 56px; margin-top: 0; }
 .s4-amend-act {

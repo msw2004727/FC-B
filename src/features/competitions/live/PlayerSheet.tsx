@@ -70,7 +70,7 @@ export function PlayerSheet({
   return (
     <BottomSheet
       open={open}
-      class="s4-sheet"
+      class={roster.length > 8 ? 's4-sheet s4-sheet--long' : 's4-sheet'}
       title={`${teamName} ${actionLabel} ${minuteMark(minute)}`}
       onClose={onClose}
     >

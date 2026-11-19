@@ -14,7 +14,9 @@ const THEMES = ['light', 'dark'];
 const ANCHORS = {
   'score-pre': '開賽',
   'score-live': '34:00',
+  'score-live-thumb': '34:00',
   'score-pick-player': '不指定球員',
+  'score-pick-player-long': '不指定球員',
   'score-card-yellow': '點一下關閉',
   'score-card-red-auto': '第二張黃牌 → 紅牌',
   'score-halftime': '下半場開始',
@@ -25,6 +27,7 @@ const ANCHORS = {
   'score-paused': '繼續計時',
   'score-amend': '會先復原原紀錄，再記新的',
   'score-cap': '紀錄已達上限，請由主辦在賽後登錄比分',
+  'score-pause-reserved': '為保留記分額度，暫停計時已停用',
   'score-undo-half': '第二張黃牌已復原，第一張黃牌仍在',
   'live-detail': '比分已更正',
   'live-match': '比賽紀錄',
@@ -34,7 +37,9 @@ const ANCHORS = {
 const SCREENS = [
   ['score-pre', ALL, THEMES, true],
   ['score-live', ALL, THEMES, true],
+  ['score-live-thumb', ALL, THEMES, true],
   ['score-pick-player', ALL, THEMES, false],
+  ['score-pick-player-long', ALL, THEMES, false],
   ['score-card-yellow', ALL, THEMES, false],
   ['score-card-red-auto', ALL, THEMES, false],
   ['score-halftime', ALL, THEMES, true],
@@ -45,6 +50,7 @@ const SCREENS = [
   ['score-paused', ALL, THEMES, true],
   ['score-amend', ALL, THEMES, false],
   ['score-cap', ALL, THEMES, true],
+  ['score-pause-reserved', ALL, THEMES, true],
   ['score-undo-half', ALL, THEMES, false],
   ['live-detail', ALL, THEMES, true],
   ['live-match', ALL, THEMES, true],
@@ -55,7 +61,7 @@ const SELECTORS = '.s4-team, .s4-col__name, .s4-clock, .s4-stage, .s4-hold, .s4-
 
 const browser = await chromium.launch({ args: ['--noerrdialogs'] });
 await mkdir(OUT, { recursive: true });
-const report = { shots: [], consoleErrors: [], overflows: [], wraps: [] };
+const report = { shots: [], consoleErrors: [], overflows: [], wraps: [], firstScreen: [] };
 const copyMap = new Map();
 for (const [name, sizes, themes, scrollMore] of SCREENS) {
   for (const [w, h] of sizes) {
@@ -82,7 +88,7 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
       // 區塊內部溢出（被 overflow:hidden 吃掉的內容）也要抓
       const clipped = await page.evaluate(() => {
         const out = [];
-        for (const el of document.querySelectorAll('.cp3-st__r, .cp3-m__vs, .cp3-score, .cp3-m__act, .cps-footer, .cp3-stack-btns, .cp3-strip, .cp3-row, .cps-grid2, .s4-board, .s4-pitch, .s4-ctrl, .s4-pause, .s4-clockrow, .s4-side, .s4-amend-act, .s4-ev, .s4-cardrow, .s4-vs, .s4-dlist__top, .s4-log__act, .s4-kinds, .s4-grid')) {
+        for (const el of document.querySelectorAll('.cp3-st__r, .cp3-m__vs, .cp3-score, .cp3-m__act, .cps-footer, .cp3-stack-btns, .cp3-strip, .cp3-row, .cps-grid2, .s4-board, .s4-top, .s4-goals, .s4-cards, .s4-cardpair, .s4-ctrl, .s4-clockrow, .s4-side, .s4-amend-act, .s4-ev, .s4-vs, .s4-dlist__top, .s4-log__act, .s4-kinds, .s4-grid')) {
           if (el.scrollWidth - el.clientWidth > 1) out.push(`${el.className} ${el.scrollWidth}>${el.clientWidth}`);
         }
         return out;
@@ -147,13 +153,142 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
         }, anchor)) anchorSeen = true;
         report.shots.push(file);
       }
+      if (name === 'score-pick-player-long') {
+        const scrollable = await page.evaluate(() => {
+          const body = document.querySelector('.s4-sheet .ui-modal__body');
+          if (!body) return false;
+          return body.scrollHeight > body.clientHeight + 1;
+        });
+        if (!scrollable) report.overflows.push(`${tag}: 背號面板不能捲動`);
+        await page.evaluate(() => {
+          const body = document.querySelector('.s4-sheet .ui-modal__body');
+          if (body) body.scrollTop = body.scrollHeight;
+        });
+        await page.waitForTimeout(150);
+        const covered = await page.evaluate(() => {
+          const body = document.querySelector('.s4-sheet .ui-modal__body');
+          const missing = [];
+          const vh = window.innerHeight;
+          const vw = window.innerWidth;
+          function seen(el, label) {
+            if (!el || !body) {
+              missing.push(label);
+              return;
+            }
+            const r = el.getBoundingClientRect();
+            const q = body.getBoundingClientRect();
+            if (r.width < 1 || r.height < 1) {
+              missing.push(label);
+              return;
+            }
+            if (r.top < q.top - 1 || r.bottom > q.bottom + 1 || r.left < q.left - 1 || r.right > q.right + 1) {
+              missing.push(`${label} 被面板裁切`);
+            }
+            if (r.top < -1 || r.bottom > vh + 1 || r.left < -1 || r.right > vw + 1) missing.push(`${label} 超出視窗`);
+          }
+          const players = [...document.querySelectorAll('.s4-sheet .s4-pl')];
+          const maxTop = players.reduce((n, el) => Math.max(n, el.getBoundingClientRect().top), 0);
+          const last = players.filter((el) => Math.abs(el.getBoundingClientRect().top - maxTop) < 8);
+          if (last.length < 1) missing.push('最後一排');
+          for (const el of last) seen(el, `最後一排「${(el.textContent || '').trim().slice(0, 8)}」`);
+          const unspecified = [...document.querySelectorAll('.s4-sheet button')].find((el) => (el.textContent || '').includes('不指定球員'));
+          seen(unspecified, '不指定球員');
+          return missing;
+        });
+        for (const item of covered) report.overflows.push(`${tag}: 捲到底後 ${item}`);
+        const bottomFile = `${tag}-bottom.png`;
+        await page.screenshot({ path: join(OUT, bottomFile), fullPage: false });
+        report.shots.push(bottomFile);
+        if (await page.evaluate((text) => {
+          const vh = window.innerHeight;
+          for (const el of document.querySelectorAll('body *')) {
+            if (!(el.textContent || '').includes(text)) continue;
+            if ([...el.children].some((c) => (c.textContent || '').includes(text))) continue;
+            const r = el.getBoundingClientRect();
+            if (r.height > 0 && r.bottom > 0 && r.top < vh) return true;
+          }
+          return false;
+        }, '不指定球員')) anchorSeen = true;
+      }
       if (ANCHORS[name] && !anchorSeen) report.consoleErrors.push(`${tag}: 截圖沒拍到「${ANCHORS[name]}」`);
       await ctx.close();
     }
   }
 }
+// 顧問 §3.308：360×640 第一屏。標籤用 360x640，避免蓋掉既有 360×780 的 s4-*-360-*。
+const FIRST = ['score-live', 'score-offline', 'score-cap', 'score-pause-reserved'];
+for (const name of FIRST) {
+  for (const theme of THEMES) {
+    const ctx = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 1.5 });
+    const page = await ctx.newPage();
+    const tag = `s4-${name}-360x640-${theme}`;
+    page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });
+    page.on('pageerror', (e) => report.consoleErrors.push(`${tag}: pageerror ${e.message}`));
+    await page.goto(`${BASE}/dev-harness/cp-step4a.html?screen=${name}&theme=${theme}`);
+    try {
+      await page.waitForFunction(() => window.__CPS_READY === true, null, { timeout: 25000 });
+    } catch {
+      const st = await page.evaluate(() => ({ err: window.__CPS_ERROR ?? null, txt: document.body.innerText.slice(0, 120) })).catch(() => null);
+      report.consoleErrors.push(`${tag}: 未就緒 ${JSON.stringify(st)}`);
+      report.firstScreen.push({ tag, missing: ['未就緒'] });
+      await ctx.close();
+      continue;
+    }
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(300);
+    const missing = await page.evaluate(() => {
+      const vh = window.innerHeight;
+      const vw = window.innerWidth;
+      const missing = [];
+      function clipped(el) {
+        if (!el) return true;
+        const r = el.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1) return true;
+        if (r.top < -0.5 || r.left < -0.5 || r.bottom > vh + 0.5 || r.right > vw + 0.5) return true;
+        for (let p = el.parentElement; p && p !== document.documentElement; p = p.parentElement) {
+          const st = getComputedStyle(p);
+          const clipY = st.overflowY === 'hidden' || st.overflowY === 'auto' || st.overflowY === 'scroll' || st.overflowY === 'clip';
+          const clipX = st.overflowX === 'hidden' || st.overflowX === 'auto' || st.overflowX === 'scroll' || st.overflowX === 'clip';
+          if (!clipY && !clipX) continue;
+          const q = p.getBoundingClientRect();
+          if (clipY && (r.top < q.top - 1 || r.bottom > q.bottom + 1)) return true;
+          if (clipX && (r.left < q.left - 1 || r.right > q.right + 1)) return true;
+        }
+        return false;
+      }
+      function need(el, label) {
+        if (clipped(el)) missing.push(label);
+      }
+      function labelOf(el) {
+        return ((el.getAttribute('aria-label') || el.textContent || '').trim()).slice(0, 24);
+      }
+      need(document.querySelector('.s4-score'), '比分');
+      need(document.querySelector('.s4-clock'), '計時');
+      need(document.querySelector('.s4-stage'), '節次');
+      const goals = [...document.querySelectorAll('.s4-goals .s4-hit--goal')];
+      if (goals.length !== 2) missing.push(`進球應有 2 顆，實際 ${goals.length}`);
+      goals.forEach((el, i) => need(el, `進球 ${i + 1} ${labelOf(el)}`));
+      const cards = [...document.querySelectorAll('.s4-cards .s4-hit--card')];
+      if (cards.length !== 4) missing.push(`牌應有 4 顆，實際 ${cards.length}`);
+      cards.forEach((el, i) => need(el, `牌 ${i + 1} ${labelOf(el)}`));
+      const bar = [...document.querySelectorAll('.s4-ctrl button')];
+      if (bar.length < 1) missing.push('底部控制列沒有按鈕');
+      for (const el of bar) need(el, `底欄 ${labelOf(el)}`);
+      const rows = [...document.querySelectorAll('.s4-feed .s4-ev')];
+      const visible = rows.filter((el) => !clipped(el));
+      if (visible.length < 4) missing.push(`紀錄列只完整露出 ${visible.length} 列`);
+      return missing;
+    });
+    report.firstScreen.push({ tag, missing });
+    const file = `${tag}.png`;
+    await page.screenshot({ path: join(OUT, file), fullPage: false });
+    report.shots.push(file);
+    await ctx.close();
+  }
+}
 await browser.close();
 await writeFile(join(OUT, 'copy.json'), JSON.stringify([...copyMap.values()], null, 2), 'utf8');
 await writeFile(join(OUT, 'report.json'), JSON.stringify(report, null, 2), 'utf8');
-console.log(`截圖 ${report.shots.length} 張；console 錯誤 ${report.consoleErrors.length}；溢出 ${report.overflows.length}；斷行／省略 ${report.wraps.length}`);
+console.log(`截圖 ${report.shots.length} 張；console 錯誤 ${report.consoleErrors.length}；溢出 ${report.overflows.length}；斷行／省略 ${report.wraps.length}；第一屏 ${report.firstScreen.length}`);
 for (const k of ['consoleErrors', 'overflows', 'wraps']) for (const l of report[k]) console.log(k, l);
+for (const row of report.firstScreen) if (row.missing.length) console.log('firstScreen', row.tag, row.missing.join('、'));

@@ -15,11 +15,15 @@ import {
   S4_PEOPLE,
   S4_ROSTER_AWAY,
   S4_ROSTER_HOME,
+  S4_ROSTER_HOME_LONG,
+  S4_SCENE_CAP,
   S4_SCENE_FT,
   S4_SCENE_HT,
   S4_SCENE_LIVE,
   S4_SCENE_OFFLINE,
+  S4_SCENE_PAUSE_RESERVED,
   S4_SCENE_PAUSED,
+  S4_SCENE_PICK_LONG,
   S4_SCENE_PRE,
   S4_SCENE_UNAPPLIED,
   S4_SCORE_SCENES,
@@ -58,7 +62,7 @@ describe('第 4 步預覽假資料一致性', () => {
   });
 
   it('同隊背號不重複、id 符合 pl_ 格式', () => {
-    for (const list of [S4_ROSTER_HOME, S4_ROSTER_AWAY]) {
+    for (const list of [S4_ROSTER_HOME, S4_ROSTER_AWAY, S4_ROSTER_HOME_LONG]) {
       expect(new Set(list.map((p) => p.number)).size).toBe(list.length);
       for (const p of list) expect(p.id).toMatch(/^pl_[A-Za-z0-9_-]{1,37}$/);
     }
@@ -137,13 +141,24 @@ describe('第 4 步預覽假資料一致性', () => {
     expect(S4_DETAIL_ROWS.filter((row) => row.live)).toHaveLength(2);
     expect(S4_DETAIL_ROWS.filter((row) => row.corrected)).toHaveLength(1);
     expect(new Set(S4A_SCREENS).size).toBe(S4A_SCREENS.length);
-    expect(S4A_SCREENS).toHaveLength(17);
+    expect(S4A_SCREENS).toHaveLength(20);
     expect(S4A_SCREENS).toEqual(expect.arrayContaining([
       'score-paused',
       'score-amend',
       'score-cap',
       'score-undo-half',
+      'score-live-thumb',
+      'score-pick-player-long',
+      'score-pause-reserved',
     ]));
+    expect(S4_ROSTER_HOME_LONG).toHaveLength(18);
+    expect(new Set(S4_ROSTER_HOME_LONG.map((player) => player.number)).size).toBe(18);
+    expect(S4_SCENE_CAP.eventCount).toBe(192);
+    expect(S4_SCENE_PAUSE_RESERVED.eventCount).toBe(135);
+    expect(S4_SCENE_PICK_LONG.homeRoster).toHaveLength(18);
+    expect(S4_SCORE_SCENES['score-live-thumb']).toBe(S4_SCENE_LIVE);
+    expect(S4_SCORE_SCENES['score-pick-player-long']).toBe(S4_SCENE_PICK_LONG);
+    expect(S4_SCORE_SCENES['score-pause-reserved']).toBe(S4_SCENE_PAUSE_RESERVED);
     expect(isProjectStorageDownloadUrl(S4_CREST_URL)).toBe(true);
     expect(S4_CRESTS.map((row) => row.teamLogo)).toEqual([S4_CREST_URL, null]);
     expect(clockFromBase(S4_SCENE_PAUSED.match.clockBase, S4_NOW)).toEqual({

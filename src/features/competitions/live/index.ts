@@ -16,5 +16,5 @@ export {
   clockFromBase,
   addedBaseMin,
 } from './clock';
-export { EVENT_MAX, EVENT_WARN, EVENT_RESERVE } from './present';
+export { EVENT_MAX, EVENT_WARN, EVENT_RESERVE, SCORING_RESERVE, PAUSE_MAX, pauseHeldForScoring } from './present';
 export type { GoalKind, CardType, TimelineEvent, VoidMark, ActionLogEntry } from './types';
