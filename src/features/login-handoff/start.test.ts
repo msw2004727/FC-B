@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HANDOFF_TTL_MS, readPending, writePending } from './pending';
-import { sha256Hex } from './pairing';
+import { pairingNumber as pairingNumberOf, sha256Hex } from './pairing';
 import { beginLoginHandoff } from './start';
 import { renderWait } from './view';
 
@@ -19,6 +19,15 @@ vi.mock('./view', () => ({
 }));
 
 const SECRET = 'ab'.repeat(32);
+
+/** 模擬使用者在「記住這個數字」畫面按下 go（true）或取消（false）。 */
+function autoAnswer(go: boolean): void {
+  vi.mocked(renderWait).mockImplementation((view, handlers) => {
+    if (view?.kind === 'ready') queueMicrotask(() => (go ? handlers.onGo?.() : handlers.onClose()));
+  });
+}
+
+beforeEach(() => autoAnswer(true));
 
 afterEach(() => {
   vi.useRealTimers();
@@ -43,7 +52,29 @@ describe('beginLoginHandoff', () => {
     expect(readPending()?.secret).toBe(secret);
     expect(armWaitForPending).toHaveBeenCalledOnce();
     expect(showWaitForPending).not.toHaveBeenCalled();
-    expect(renderWait).not.toHaveBeenCalled();
+    expect(vi.mocked(renderWait).mock.calls[0]?.[0]).toMatchObject({ kind: 'ready' });
+    expect(vi.mocked(renderWait).mock.calls[0]?.[0]).toHaveProperty('number', await pairingNumberOf(handoffId));
+  });
+
+  it('按「前往 LINE 登入」之前不回傳（呼叫端不會先 liff.login）', async () => {
+    vi.mocked(renderWait).mockImplementation(() => undefined);
+    let settled = false;
+    void beginLoginHandoff('https://toosterx.com/').then(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(settled).toBe(false);
+    expect(armWaitForPending).not.toHaveBeenCalled();
+    const handlers = vi.mocked(renderWait).mock.calls[0]?.[1];
+    handlers?.onGo?.();
+    await vi.waitFor(() => expect(settled).toBe(true));
+    expect(armWaitForPending).toHaveBeenCalledOnce();
+  });
+
+  it('取消：清掉 pending、卸載畫面、回 null', async () => {
+    autoAnswer(false);
+    await expect(beginLoginHandoff('https://toosterx.com/')).resolves.toBeNull();
+    expect(readPending()).toBeNull();
+    expect(vi.mocked(renderWait).mock.calls.at(-1)?.[0]).toBeNull();
+    expect(armWaitForPending).not.toHaveBeenCalled();
   });
 
   it('未逾 5 分鐘的 pending 顯示等待框並回 null', async () => {

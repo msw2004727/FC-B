@@ -306,6 +306,16 @@ describe('claim', () => {
 });
 
 describe('armWaitForPending', () => {
+  // beginLoginHandoff 先畫「記住這個數字」，模擬使用者按「前往 LINE 登入」。
+  beforeEach(() => {
+    vi.mocked(renderWait).mockImplementation((view, handlers) => {
+      if (view?.kind === 'ready') queueMicrotask(() => handlers.onGo?.());
+    });
+  });
+  afterEach(() => {
+    vi.mocked(renderWait).mockImplementation(() => undefined);
+  });
+
   it('beginLoginHandoff 不冷開；回前景才 claim，not-found 後 6 秒再打', async () => {
     localStorage.clear();
     vi.mocked(renderWait).mockClear();

@@ -70,6 +70,17 @@ describe('等待框', () => {
     expect((screen.getByText('我已完成') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('準備（記住數字）：大數字、倒數；「前往 LINE 登入」＝onGo，「取消」＝onClose', () => {
+    const h = { ...waitHandlers(), onGo: vi.fn() };
+    render(<WaitScreen view={{ kind: 'ready', number: 64, expiresAt: Date.now() + 300_000 }} handlers={h} />);
+    expect(screen.getByText('記住這個數字')).toBeTruthy();
+    expect(screen.getByText('64')).toBeTruthy();
+    fireEvent.click(screen.getByText('前往 LINE 登入'));
+    expect(h.onGo).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByText('取消'));
+    expect(h.onClose).toHaveBeenCalledOnce();
+  });
+
   it('⑤ 還沒收到：按鈕「我已完成」（與內文一致，站長選 B）＝onRetry，重新登入＝onRestart', () => {
     const h = waitHandlers();
     render(<WaitScreen view={{ kind: 'notYet', number: 27, expiresAt: Date.now() + 60_000 }} handlers={h} />);

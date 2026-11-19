@@ -111,7 +111,20 @@ function useNow(active: boolean): number {
 export function WaitScreen({ view, handlers }: { view: WaitView; handlers: WaitHandlers }): JSX.Element {
   const text = handoffText(getCurrentLocale());
   // 只有④等待畫面顯示倒數；⑤⑥不必每秒重畫（Flash 交叉審 P3）。
-  const now = useNow(view.kind === 'wait');
+  const now = useNow(view.kind === 'wait' || view.kind === 'ready');
+  if (view.kind === 'ready') {
+    // 根因 1（站長 11-20 實機）：換頁到 LINE 前先停在這裡讓使用者記住數字（版面待站長看預覽決定，顧問 §3.355 d）。
+    return (
+      <Shell title={text.readyTitle} closeLabel={text.close} onClose={handlers.onClose}>
+        <div class="login-handoff-icon"><Icon kind="phone" /></div>
+        <p class="login-handoff-prompt"><Seg text={text.readyPrompt} /></p>
+        <div class="login-handoff-big" aria-live="polite">{view.number}</div>
+        <span class="login-handoff-remain">{remainLabel(text, view.expiresAt, now)}</span>
+        <Primary label={text.goLine} line onClick={() => handlers.onGo?.()} />
+        <Secondary label={text.cancel} onClick={handlers.onClose} />
+      </Shell>
+    );
+  }
   if (view.kind === 'timeout') {
     return (
       <Shell title={text.timeoutTitle} closeLabel={text.close} onClose={handlers.onClose}>

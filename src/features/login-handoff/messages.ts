@@ -4,6 +4,9 @@
 import type { Locale } from '@/i18n/locales';
 
 export interface HandoffText {
+  readyTitle: string;
+  readyPrompt: string;
+  goLine: string;
   pickTitle: string;
   warn: string;
   pickPrompt: string;
@@ -34,6 +37,9 @@ export interface HandoffText {
 }
 
 const zhTW: HandoffText = {
+  readyTitle: "記住這個數字",
+  readyPrompt: "等一下在瀏覽器要選它",
+  goLine: "前往 LINE 登入",
   pickTitle: '回到主畫面 App 登入',
   warn: '不是你自己剛在主畫面 App 按登入，請關閉此頁。',
   pickPrompt: '請選出主畫面 App 上顯示的數字',
@@ -64,6 +70,9 @@ const zhTW: HandoffText = {
 };
 
 const zhCN: HandoffText = {
+  readyTitle: "记住这个数字",
+  readyPrompt: "等一下在浏览器要选它",
+  goLine: "前往 LINE 登录",
   pickTitle: '回到主屏幕 App 登录',
   warn: '如果不是你自己刚在主屏幕 App 点了登录，请关闭此页。',
   pickPrompt: '请选出主屏幕 App 上显示的数字',
@@ -94,6 +103,9 @@ const zhCN: HandoffText = {
 };
 
 const en: HandoffText = {
+  readyTitle: "Remember this number",
+  readyPrompt: "You'll pick it in the browser next",
+  goLine: "Continue to LINE login",
   pickTitle: 'Sign in to the Home Screen app',
   warn: "If you didn't just tap Sign in in the Home Screen app, close this page.",
   pickPrompt: 'Pick the number shown in the Home Screen app',
@@ -124,6 +136,9 @@ const en: HandoffText = {
 };
 
 const ja: HandoffText = {
+  readyTitle: "この数字を覚えてください",
+  readyPrompt: "このあとブラウザで選びます",
+  goLine: "LINE ログインへ進む",
   pickTitle: 'ホーム画面のアプリでログイン',
   warn: 'ホーム画面のアプリでログインを押していない場合は、このページを閉じてください。',
   pickPrompt: 'ホーム画面のアプリに表示された数字を選んでください',
@@ -154,6 +169,9 @@ const ja: HandoffText = {
 };
 
 const ko: HandoffText = {
+  readyTitle: "이 숫자를 기억하세요",
+  readyPrompt: "다음에 브라우저에서 고르게 됩니다",
+  goLine: "LINE 로그인으로 이동",
   pickTitle: '홈 화면 앱으로 로그인',
   warn: '방금 홈 화면 앱에서 로그인을 누르지 않았다면 이 페이지를 닫으세요.',
   pickPrompt: '홈 화면 앱에 표시된 숫자를 고르세요',
@@ -184,6 +202,9 @@ const ko: HandoffText = {
 };
 
 const th: HandoffText = {
+  readyTitle: "จำตัวเลขนี้ไว้",
+  readyPrompt: "ถัดไปต้องเลือกตัวเลขนี้ในเบราว์เซอร์",
+  goLine: "ไปที่การเข้าสู่ระบบ LINE",
   pickTitle: 'เข้าสู่ระบบในแอปบนหน้าจอโฮม',
   warn: 'หากคุณไม่ได้เพิ่งกดเข้าสู่ระบบในแอปบนหน้าจอโฮม โปรดปิดหน้านี้',
   pickPrompt: 'เลือกตัวเลขที่แสดงในแอปบนหน้าจอโฮม',
@@ -214,6 +235,9 @@ const th: HandoffText = {
 };
 
 const vi: HandoffText = {
+  readyTitle: "Hãy nhớ số này",
+  readyPrompt: "Bước tiếp theo bạn sẽ chọn số này trong trình duyệt",
+  goLine: "Tiếp tục đăng nhập LINE",
   pickTitle: 'Đăng nhập vào ứng dụng trên màn hình chính',
   warn: 'Nếu bạn không vừa bấm Đăng nhập trong ứng dụng trên màn hình chính, hãy đóng trang này.',
   pickPrompt: 'Chọn số đang hiện trong ứng dụng trên màn hình chính',
