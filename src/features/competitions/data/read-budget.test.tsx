@@ -163,6 +163,8 @@ const doneMax = ROOT
   + STAFF;
 const fullMax = CP_READ_LIMIT.summary + RULES_PARENT;
 // 當日摘要是單筆 get，不加父文件，所以比 liveMax 少父文件那 1 筆。職員另計。
+/** 詳情頁在 loadScheduleDetail 之後，登入者多 get 一次自己的指派文件。 */
+const DETAIL_ASSIGNMENT = 1;
 const liveExact = ROOT
   + 1
   + (CP_READ_LIMIT.standings + RULES_PARENT)
@@ -499,9 +501,9 @@ describe('詳情讀取預算', () => {
       </LocationProvider>,
     );
     await waitFor(() => expect(recruit.calls()).toEqual([
-      'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff',
+      'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff', 'getStaffAssignment',
     ]));
-    expect(recruit.readCount()).toBeLessThanOrEqual(recruitMax);
+    expect(recruit.readCount()).toBeLessThanOrEqual(recruitMax + DETAIL_ASSIGNMENT);
     expect(recruit.calls()).not.toContain('listSummary');
     expect(recruit.calls()).not.toContain('getSummaryShard');
     expect(recruit.calls()).not.toContain('listMatches');
@@ -518,9 +520,9 @@ describe('詳情讀取預算', () => {
       </LocationProvider>,
     );
     await waitFor(() => expect(live.calls()).toEqual([
-      'getCompetition', 'getSummaryShard', 'listStandings', 'listEntriesForCrest', 'getStaff',
+      'getCompetition', 'getSummaryShard', 'listStandings', 'listEntriesForCrest', 'getStaff', 'getStaffAssignment',
     ]));
-    expect(live.readCount()).toBeLessThanOrEqual(liveMax);
+    expect(live.readCount()).toBeLessThanOrEqual(liveMax + DETAIL_ASSIGNMENT);
     expect(live.calls()).not.toContain('listSummary');
     expect(live.calls()).not.toContain('listMatches');
     expect(live.calls()).not.toContain('listEntries');
@@ -529,7 +531,7 @@ describe('詳情讀取預算', () => {
 
   it('摘要有已取消場次時詳情頁讀取數不變、不呼叫 listMatches', async () => {
     const liveCalls = [
-      'getCompetition', 'getSummaryShard', 'listStandings', 'listEntriesForCrest', 'getStaff',
+      'getCompetition', 'getSummaryShard', 'listStandings', 'listEntriesForCrest', 'getStaff', 'getStaffAssignment',
     ];
     const plain = repoFor(8);
     render(

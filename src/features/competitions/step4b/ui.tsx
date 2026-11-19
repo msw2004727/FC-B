@@ -30,18 +30,20 @@ export function S4bFrame({
   title,
   admin = false,
   screen,
+  onBack,
   children,
 }: {
   title: string;
   admin?: boolean;
   screen: string;
+  onBack?: () => void;
   children: ComponentChildren;
 }): JSX.Element {
   const root = admin ? 'cps-root s4b s4b-admin' : 'cps-root s4b';
   return (
     <div class={root} data-screen={screen}>
       <header class="cps-top s4b-noprint">
-        <button type="button" class="cps-iconbtn" aria-label={copy.back}>
+        <button type="button" class="cps-iconbtn" aria-label={copy.back} onClick={onBack}>
           <BackIcon />
         </button>
         <h1>{title}</h1>

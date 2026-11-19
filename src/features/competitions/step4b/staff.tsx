@@ -5,8 +5,10 @@ import { useState } from 'preact/hooks';
 import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
+import { Modal } from '@/ui/Modal';
 import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
+import { CpFrame } from '../ui/shell';
 import {
   S4B_ASSIGN_PEOPLE,
   S4B_COMP_NAME,
@@ -30,6 +32,7 @@ import {
   weekdayIndex,
   type AssignRole,
   type S4bInvite,
+  type S4bMatch,
   type S4bStaff,
   type StaffViewer,
 } from '../testing/step4b-fixtures';
@@ -54,26 +57,69 @@ function dayText(month: number, day: number, weekday: number): string {
   return copy.dayHeading(month, day, weekdayName[weekday] ?? '');
 }
 
-export function StaffListScreen({ viewerRole = 'host' }: { viewerRole?: StaffViewer }): JSX.Element {
-  const [rows, setRows] = useState<readonly S4bStaff[]>(S4B_STAFF);
+export interface StaffListRow {
+  id: string;
+  name: string;
+  role: S4bStaff['role'];
+  roleLabel: string;
+  countLabel: string;
+  removable: boolean;
+}
+
+export interface StaffConfirm {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  error?: string;
+}
+
+export function StaffListScreen(props: {
+  viewerRole?: StaffViewer;
+  title?: string;
+  rows?: readonly StaffListRow[];
+  onRemove?: (id: string) => void;
+  onAssign?: () => void;
+  onBack?: () => void;
+  confirm?: StaffConfirm | null;
+  onConfirm?: () => void;
+  onDismiss?: () => void;
+  confirmBusy?: boolean;
+} = {}): JSX.Element {
+  const viewerRole = props.viewerRole ?? 'host';
+  const controlled = props.rows != null;
+  const [local, setLocal] = useState<readonly S4bStaff[]>(S4B_STAFF);
   const screen = viewerRole === 'host' ? 'staff-list' : 'staff-list-cohost';
+  const rows: readonly StaffListRow[] = controlled
+    ? props.rows ?? []
+    : local.map((staff) => ({
+      id: staff.id,
+      name: staff.name,
+      role: staff.role,
+      roleLabel: staffRoleLabel[staff.role],
+      countLabel: copy.assigned(staffAssignmentCount(staff)),
+      removable: canRemoveStaff(viewerRole, staff.role),
+    }));
   return (
-    <S4bFrame title={copy.staffTitle} admin screen={screen}>
+    <S4bFrame title={props.title ?? copy.staffTitle} admin screen={screen} onBack={props.onBack}>
       <S4bCard plain>
         <ul class="cps-list">
           {rows.map((staff) => (
             <li key={staff.id} class="s4b-li">
               <div class="s4b-staff">
                 <span class="s4b-staff__name">{staff.name}</span>
-                <Badge tone={roleTone(staff.role)} size="sm" label={staffRoleLabel[staff.role]} />
-                <span class="s4b-staff__meta">{copy.assigned(staffAssignmentCount(staff))}</span>
+                <Badge tone={roleTone(staff.role)} size="sm" label={staff.roleLabel} />
+                <span class="s4b-staff__meta">{staff.countLabel}</span>
                 <span class="s4b-staff__gap" />
-                {canRemoveStaff(viewerRole, staff.role) ? (
+                {staff.removable ? (
                   <span class="s4b-mini">
                     <Button
                       variant="danger"
                       size="sm"
-                      onClick={() => setRows((prev) => prev.filter((row) => row.id !== staff.id))}
+                      onClick={() => {
+                        if (controlled) props.onRemove?.(staff.id);
+                        else setLocal((prev) => prev.filter((row) => row.id !== staff.id));
+                      }}
                     >
                       {copy.remove}
                     </Button>
@@ -85,64 +131,140 @@ export function StaffListScreen({ viewerRole = 'host' }: { viewerRole?: StaffVie
         </ul>
       </S4bCard>
       <div class="s4b-pair">
-        <Button variant="primary">{copy.assignScorer}</Button>
-        <Button variant="secondary">{copy.generateInvite}</Button>
+        <Button variant="primary" onClick={props.onAssign}>{copy.assignScorer}</Button>
       </div>
+      {props.confirm ? (
+        <Modal
+          open
+          title={props.confirm.title}
+          busy={props.confirmBusy}
+          error={props.confirm.error}
+          onClose={() => {
+            if (!props.confirmBusy) props.onDismiss?.();
+          }}
+          footer={(
+            <div class="cps-footer">
+              <Button variant="secondary" disabled={props.confirmBusy} onClick={props.onDismiss}>{props.confirm.cancelLabel}</Button>
+              <Button variant="danger" loading={props.confirmBusy} disabled={props.confirmBusy} onClick={props.onConfirm}>{props.confirm.confirmLabel}</Button>
+            </div>
+          )}
+        >
+          <p class="cp3-modal-p">{props.confirm.body}</p>
+        </Modal>
+      ) : null}
     </S4bFrame>
   );
 }
 
-export function StaffAssignScreen(): JSX.Element {
-  const [person, setPerson] = useState<string>(S4B_ASSIGN_PEOPLE[0].id);
-  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
-  const [role, setRole] = useState<AssignRole>('scorer');
-  const groups = groupMatches(S4B_MATCHES);
+export interface AssignDayGroup {
+  key: string;
+  heading: string;
+  matches: readonly { id: string; label: string }[];
+}
+
+export function StaffAssignScreen(props: {
+  title?: string;
+  people?: readonly { id: string; name: string }[];
+  person?: string;
+  onPerson?: (id: string) => void;
+  days?: readonly AssignDayGroup[];
+  picked?: ReadonlySet<string>;
+  onToggle?: (id: string, on: boolean) => void;
+  role?: AssignRole;
+  onRole?: (role: AssignRole) => void;
+  roleLabel?: string;
+  scorerLabel?: string;
+  refereeLabel?: string;
+  personLabel?: string;
+  saveLabel?: string;
+  saving?: boolean;
+  error?: string;
+  onSave?: () => void;
+  onBack?: () => void;
+} = {}): JSX.Element {
+  const controlled = props.days != null;
+  const [personState, setPersonState] = useState<string>(S4B_ASSIGN_PEOPLE[0].id);
+  const [pickedState, setPickedState] = useState<ReadonlySet<string>>(new Set());
+  const [roleState, setRoleState] = useState<AssignRole>('scorer');
+  const person = controlled ? (props.person ?? '') : personState;
+  const picked = controlled ? (props.picked ?? new Set<string>()) : pickedState;
+  const role = controlled ? (props.role ?? 'scorer') : roleState;
+  const people = controlled
+    ? (props.people ?? [])
+    : S4B_ASSIGN_PEOPLE.map((item) => ({ id: item.id, name: item.name }));
+  const days = controlled
+    ? props.days ?? []
+    : groupMatches(S4B_MATCHES).map((group) => ({
+      key: group.key,
+      heading: dayText(group.month, group.day, group.weekday),
+      matches: group.matches.map((match) => ({
+        id: match.id,
+        label: `${clockLabel(match.kickoffAt).time} ${match.venue} ${vsLabel(match)}`,
+      })),
+    }));
   function toggle(id: string, on: boolean): void {
-    setPicked((prev) => {
+    if (controlled) {
+      props.onToggle?.(id, on);
+      return;
+    }
+    setPickedState((prev) => {
       const next = new Set(prev);
       if (on) next.add(id);
       else next.delete(id);
       return next;
     });
   }
+  function setRole(value: AssignRole): void {
+    if (controlled) props.onRole?.(value);
+    else setRoleState(value);
+  }
+  const error = props.error ?? '';
   return (
-    <S4bFrame title={copy.assignTitle} admin screen="staff-assign">
+    <S4bFrame title={props.title ?? copy.assignTitle} admin screen="staff-assign" onBack={props.onBack}>
       <S4bCard plain>
         <div class="s4b-gap">
           <Select
-            label={copy.person}
+            label={props.personLabel ?? copy.person}
             value={person}
-            onValueChange={setPerson}
-            options={S4B_ASSIGN_PEOPLE.map((item) => ({ value: item.id, label: item.name }))}
+            onValueChange={(value) => {
+              if (controlled) props.onPerson?.(value);
+              else setPersonState(value);
+            }}
+            options={people.map((item) => ({ value: item.id, label: item.name }))}
           />
-          {groups.map((group) => (
+          {days.map((group) => (
             <div key={group.key}>
-              <p class="s4b-day">{dayText(group.month, group.day, group.weekday)}</p>
-              {group.matches.map((match) => {
-                const clock = clockLabel(match.kickoffAt);
-                return (
-                  <Checkbox
-                    key={match.id}
-                    label={`${clock.time} ${match.venue} ${vsLabel(match)}`}
-                    checked={picked.has(match.id)}
-                    onCheckedChange={(on) => toggle(match.id, on)}
-                  />
-                );
-              })}
+              <p class="s4b-day">{group.heading}</p>
+              {group.matches.map((match) => (
+                <Checkbox
+                  key={match.id}
+                  label={match.label}
+                  checked={picked.has(match.id)}
+                  onCheckedChange={(on) => toggle(match.id, on)}
+                />
+              ))}
             </div>
           ))}
           <RadioGroup
             name="s4b-assign-role"
-            label={copy.role}
+            label={props.roleLabel ?? copy.role}
             value={role}
             onValueChange={(value) => setRole(value === 'referee' ? 'referee' : 'scorer')}
             options={[
-              { value: 'scorer', label: assignRoleLabel.scorer },
-              { value: 'referee', label: assignRoleLabel.referee },
+              { value: 'scorer', label: props.scorerLabel ?? assignRoleLabel.scorer },
+              { value: 'referee', label: props.refereeLabel ?? assignRoleLabel.referee },
             ]}
           />
+          {error ? <p class="s4b-err" role="alert">{error}</p> : null}
           <div class="s4b-blockbtn">
-            <Button variant="primary">{copy.save}</Button>
+            <Button
+              variant="primary"
+              loading={props.saving === true}
+              disabled={props.saving === true}
+              onClick={props.onSave}
+            >
+              {props.saveLabel ?? copy.save}
+            </Button>
           </div>
         </div>
       </S4bCard>
@@ -260,29 +382,73 @@ export function InviteAcceptScreen({ status = 'active' }: { status?: InviteAccep
   );
 }
 
-export function ScorerMatchesScreen(): JSX.Element {
+export interface ScorerMatchRow {
+  id: string;
+  match: S4bMatch;
+  statusLabel: string;
+  statusTone: 'brand' | 'neutral';
+  showEnter: boolean;
+  /** 沒有開賽時間時改寫時刻，不走 MatchBits。 */
+  timeLabel?: string;
+}
+
+export interface ScorerDay {
+  key: string;
+  heading: string;
+  matches: readonly ScorerMatchRow[];
+}
+
+function fixtureScorerDays(): ScorerDay[] {
   const staff = S4B_STAFF.find((row) => row.id === S4B_SCORER_ID);
   const matches = scorerMatchOrder(matchesByIds(staff?.matchIds ?? []), S4B_NOW);
-  const groups = groupMatches(matches);
+  return groupMatches(matches).map((group) => ({
+    key: group.key,
+    heading: dayText(group.month, group.day, weekdayIndex(group.key) ?? group.weekday),
+    matches: group.matches.map((match) => ({
+      id: match.id,
+      match,
+      statusLabel: matchStatusLabel[match.status],
+      statusTone: match.status === 'live' ? 'brand' as const : 'neutral' as const,
+      showEnter: true,
+    })),
+  }));
+}
+
+export function ScorerMatchesScreen(props: {
+  title?: string;
+  days?: readonly ScorerDay[];
+  empty?: string;
+  enterLabel?: string;
+  onEnter?: (id: string) => void;
+  onBack?: () => void;
+} = {}): JSX.Element {
+  const days = props.days ?? fixtureScorerDays();
+  const enterLabel = props.enterLabel ?? copy.enterScore;
   return (
-    <S4bFrame title={copy.scorerTitle} screen="scorer-my-matches">
+    <S4bFrame title={props.title ?? copy.scorerTitle} screen="scorer-my-matches" onBack={props.onBack}>
       <S4bCard>
-        {groups.map((group) => (
+        {days.length === 0 ? <p class="s4b-foot">{props.empty ?? ''}</p> : null}
+        {days.map((group) => (
           <div key={group.key}>
-            <p class="s4b-day">{dayText(group.month, group.day, weekdayIndex(group.key) ?? group.weekday)}</p>
-            {group.matches.map((match) => (
-              <div key={match.id} class="s4b-m">
+            <p class="s4b-day">{group.heading}</p>
+            {group.matches.map((row) => (
+              <div key={row.id} class="s4b-m">
                 <div class="s4b-m__top">
-                  <MatchBits match={match} />
-                  <Badge
-                    tone={match.status === 'live' ? 'brand' : 'neutral'}
-                    size="sm"
-                    label={matchStatusLabel[match.status]}
-                  />
+                  {row.timeLabel ? (
+                    <>
+                      <span class="s4b-k">{row.timeLabel}</span>
+                      <span class="s4b-k">{row.match.venue}</span>
+                    </>
+                  ) : (
+                    <MatchBits match={row.match} />
+                  )}
+                  <Badge tone={row.statusTone} size="sm" label={row.statusLabel} />
                 </div>
                 <div class="s4b-between">
-                  <span class="s4b-k">{vsLabel(match)}</span>
-                  <Button variant="primary" size="sm">{copy.enterScore}</Button>
+                  <span class="s4b-k">{vsLabel(row.match)}</span>
+                  {row.showEnter ? (
+                    <Button variant="primary" size="sm" onClick={() => props.onEnter?.(row.id)}>{enterLabel}</Button>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -290,5 +456,26 @@ export function ScorerMatchesScreen(): JSX.Element {
         ))}
       </S4bCard>
     </S4bFrame>
+  );
+}
+
+export function StaffDeniedScreen({
+  title,
+  message,
+  backLabel,
+  onBack,
+}: {
+  title: string;
+  message: string;
+  backLabel: string;
+  onBack: () => void;
+}): JSX.Element {
+  return (
+    <CpFrame title={title} onBack={onBack}>
+      <p class="cps-note cps-nowrap" role="alert">{message}</p>
+      <div class="cps-actions">
+        <Button variant="secondary" onClick={onBack}>{backLabel}</Button>
+      </div>
+    </CpFrame>
   );
 }

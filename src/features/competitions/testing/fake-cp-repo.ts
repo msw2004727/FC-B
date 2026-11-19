@@ -14,6 +14,7 @@ import {
   type MatchDoc,
   type RosterPrivateDoc,
   type RosterPublicDoc,
+  type StaffAssignment,
   type StaffDoc,
   type StandingDoc,
   type SummaryEntry,
@@ -31,6 +32,11 @@ export interface FakeCpSeed {
   rosterPrivate?: Readonly<Record<string, readonly RosterPrivateDoc[]>>;
   /** key 是 cid。 */
   staff?: Readonly<Record<string, readonly StaffDoc[]>>;
+  /**
+   * 有這個 cid 時，清單與單筆指派用這份（含記分角色）。
+   * 沒有這個 cid 時，由 staff 種子合成：角色沿用、場次空、沒有到期。
+   */
+  assignments?: Readonly<Record<string, readonly StaffAssignment[]>>;
   matches?: Readonly<Record<string, readonly MatchDoc[]>>;
   /** key 是 cid。每片是一筆 summary 文件。 */
   summary?: Readonly<Record<string, readonly { id: string; entries: readonly SummaryEntry[] }[]>>;
@@ -72,6 +78,7 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
   const entryPrivate = seed.entryPrivate ?? {};
   const rosterPrivate = seed.rosterPrivate ?? {};
   const staff = seed.staff ?? {};
+  const assignments = seed.assignments;
   const matches = seed.matches ?? {};
   const summary = seed.summary ?? {};
   const standings = seed.standings ?? {};
@@ -87,6 +94,22 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
   function noteQuery(name: string, returned: number): void {
     // 回傳幾筆算幾筆，另加 1（Rules 讀父文件）。0 筆仍是 1，不再多加一筆空查詢。
     note(name, returned + 1);
+  }
+
+  function copyAssignment(row: StaffAssignment): StaffAssignment {
+    return { uid: row.uid, roles: [...row.roles], matchIds: [...row.matchIds], expiresAt: row.expiresAt };
+  }
+
+  function staffRows(cid: string): readonly StaffAssignment[] {
+    if (assignments && Object.prototype.hasOwnProperty.call(assignments, cid)) {
+      return assignments[cid] ?? [];
+    }
+    return (staff[cid] ?? []).map((row) => ({
+      uid: row.uid,
+      roles: [...row.roles],
+      matchIds: [],
+      expiresAt: null,
+    }));
   }
 
   return {
@@ -188,6 +211,22 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
       return (staff[cid] ?? []).find((row) => row.uid === uid) ?? null;
     },
 
+    async listStaff(cid) {
+      if (!isSafeId(cid)) return [];
+      const rows = staffRows(cid);
+      const sorted = [...rows].sort((a, b) => (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
+      const taken = take(sorted, 100);
+      noteQuery('listStaff', taken.length);
+      return taken.map(copyAssignment);
+    },
+
+    async getStaffAssignment(cid, uid) {
+      if (!isSafeId(cid) || !isSafeId(uid)) return null;
+      note('getStaffAssignment', 1);
+      const found = staffRows(cid).find((row) => row.uid === uid);
+      return found ? copyAssignment(found) : null;
+    },
+
     async listMatches(cid) {
       if (!isSafeId(cid)) return [];
       const rows = [...(matches[cid] ?? [])].sort(
@@ -196,6 +235,12 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
       const taken = take(rows, CP_READ_LIMIT.matches);
       noteQuery('listMatches', taken.length);
       return taken;
+    },
+
+    async getMatch(cid, mtId) {
+      if (!isSafeId(cid) || !isSafeId(mtId)) return null;
+      note('getMatch', 1);
+      return (matches[cid] ?? []).find((row) => row.id === mtId) ?? null;
     },
 
     async getSummaryShard(cid, shardId) {

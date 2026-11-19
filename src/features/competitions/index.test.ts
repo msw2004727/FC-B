@@ -33,12 +33,15 @@ describe('competitions 功能開關（預設關閉，不載入 asia 程式）', 
       '/competitions/:cid/entries/:enId/join',
       '/competitions/:cid/entries/:enId/add',
       '/competitions/:cid/entries/:enId',
+      '/competitions/:cid/staff/assign',
+      '/competitions/:cid/staff',
+      '/competitions/:cid/my-matches',
       '/competitions/:cid',
     ]);
     expect(ALL_FEATURES).toContain(manifest);
   });
 
-  it('開關打開後九條路由都啟用，而且 /competitions/new 排在 :cid 前面', () => {
+  it('開關打開後十二條路由都啟用，而且 /competitions/new 排在 :cid 前面', () => {
     FEATURE_OVERRIDES.competitions = true;
     registerFeatures(ALL_FEATURES.map((f) => (f.id === 'competitions' ? { ...f, routes: competitionRoutes() } : f)));
     const paths = getActiveRoutes().map((route) => route.path).filter((path) => path.startsWith('/competitions'));
@@ -51,6 +54,9 @@ describe('competitions 功能開關（預設關閉，不載入 asia 程式）', 
       '/competitions/:cid/entries/:enId/join',
       '/competitions/:cid/entries/:enId/add',
       '/competitions/:cid/entries/:enId',
+      '/competitions/:cid/staff/assign',
+      '/competitions/:cid/staff',
+      '/competitions/:cid/my-matches',
       '/competitions/:cid',
     ]);
   });

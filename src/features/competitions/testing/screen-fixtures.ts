@@ -94,6 +94,8 @@ export function idleActions(): CpActions {
     resolveTie: async () => ({}),
     clearTieDecision: async () => ({}),
     explainTie: async () => ({}),
+    assignStaff: async () => ({}),
+    removeStaff: async () => ({}),
   };
 }
 

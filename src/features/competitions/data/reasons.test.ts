@@ -37,6 +37,20 @@ describe('cpReasonKey（契約 §5 全覆蓋）', () => {
     expect(parsed.reason.BIRTHDAY_REQUIRED).toBe('請先補上生日');
   });
 
+  it('指派錯誤沿用既有句子或新規格句子', () => {
+    const parsed = JSON.parse(readLocale('zh-TW')) as { reason: Record<string, string> };
+    expect(parsed.reason.STAFF_NOT_FOUND).toBe('找不到這位成員');
+    expect(parsed.reason.STAFF_PROTECTED).toBe('主辦不能被移除');
+    expect(parsed.reason.FORBIDDEN).toBe('你沒有權限調整這位成員');
+    expect(parsed.reason.COMPETITION_CLOSED).toBe(parsed.reason.STATUS_NOT_EDITABLE);
+    expect(parsed.reason.COMPETITION_ENDED).toBe('賽事已結束，不能再改比分');
+    expect(parsed.reason.COMPETITION_HIDDEN).toBe('這場賽事目前不公開');
+    for (const code of ['STAFF_NOT_FOUND', 'STAFF_PROTECTED', 'FORBIDDEN', 'COMPETITION_CLOSED']) {
+      expect(CP_REASON_CODES, code).toContain(code);
+      expect(cpReasonKey(code)).toBe(`competitions.reason.${code}`);
+    }
+  });
+
   it('賽程彈性與公告的錯誤代碼都有對照', () => {
     const expected: Record<string, string> = {
       SCHEDULE_CONFLICT: '這個時間與其他場次撞期',

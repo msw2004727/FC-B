@@ -114,6 +114,8 @@ function spyActions() {
     resolveTie: vi.fn(actions.resolveTie),
     clearTieDecision: vi.fn(actions.clearTieDecision),
     explainTie: vi.fn(actions.explainTie),
+    assignStaff: vi.fn(actions.assignStaff),
+    removeStaff: vi.fn(actions.removeStaff),
   };
 }
 

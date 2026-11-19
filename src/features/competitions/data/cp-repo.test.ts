@@ -310,6 +310,64 @@ describe('createCompetitionsRepo（查詢條件與上限）', () => {
     expect(gets).toContain('competitions/cid_1/staff/uid_me');
   });
 
+  it('人員清單最多 100，單筆指派保留記分角色，單筆場次走 get', async () => {
+    const { repo, docs, cols, queries, gets } = harness();
+    const rows = Array.from({ length: 101 }, (_, i) => ({
+      id: `uid_${String(i).padStart(3, '0')}`,
+      data: {
+        roles: i === 0 ? ['scorer', 'fan', 'scorer', 'host'] : ['referee'],
+        matchIds: ['mt_a', 'mt_a', 1, 'mt_b'],
+        expiresAt: { toMillis: () => 50 },
+      },
+    }));
+    cols.set('competitions/cid_1/staff', rows);
+    const list = await repo.listStaff('cid_1');
+    expect(list).toHaveLength(100);
+    expect(queries.at(-1)).toMatchObject({
+      path: 'competitions/cid_1/staff',
+      clauses: [{ kind: 'limit', n: 100 }],
+    });
+    expect(list[0]).toEqual({
+      uid: 'uid_000',
+      roles: ['scorer', 'host'],
+      matchIds: ['mt_a', 'mt_b'],
+      expiresAt: 50,
+    });
+    expect(list.map((row) => row.uid)).toEqual([...list.map((row) => row.uid)].sort());
+
+    docs.set('competitions/cid_1/staff/uid_me', {
+      roles: ['coHost', 'creator', 'referee'],
+      matchIds: [],
+      expiresAt: null,
+    });
+    await expect(repo.getStaffAssignment('cid_1', 'uid_me')).resolves.toEqual({
+      uid: 'uid_me',
+      roles: ['coHost', 'referee'],
+      matchIds: [],
+      expiresAt: null,
+    });
+    await expect(repo.getStaff('cid_1', 'uid_me')).resolves.toEqual({
+      uid: 'uid_me',
+      roles: ['coHost'],
+    });
+    expect(gets).toContain('competitions/cid_1/staff/uid_me');
+
+    docs.set('competitions/cid_1/matches/mt_1', {
+      divisionId: 'dv_1',
+      status: 'live',
+      home: { teamId: 'en_h', name: '主隊' },
+      away: { teamId: 'en_a', name: '客隊' },
+    });
+    const match = await repo.getMatch('cid_1', 'mt_1');
+    expect(match?.id).toBe('mt_1');
+    expect(match?.status).toBe('live');
+    expect(gets).toContain('competitions/cid_1/matches/mt_1');
+    await expect(repo.getMatch('cid_1', 'missing')).resolves.toBeNull();
+    await expect(repo.listStaff('a/b')).resolves.toEqual([]);
+    await expect(repo.getStaffAssignment('cid_1', '..')).resolves.toBeNull();
+    await expect(repo.getMatch('.', 'mt_1')).resolves.toBeNull();
+  });
+
   it('id 含斜線或為 . / .. 時不查詢', async () => {
     const box = harness();
     await expect(box.repo.getCompetition('a/b')).resolves.toBeNull();

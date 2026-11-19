@@ -455,6 +455,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         <div class="cps-actions" style="margin-top:0">
           <Button variant="secondary" onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
           <Button variant="secondary" onClick={() => route(`/competitions/${cid}/matches`)}>{ct('hostListTitle')}</Button>
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/staff`)}>{ct('assignScorer')}</Button>
         </div>
       ) : null}
       {manage ? (

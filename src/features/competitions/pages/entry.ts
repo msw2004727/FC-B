@@ -1,4 +1,4 @@
-// 九個頁面同一個 chunk。入口只留一次動態 import，避免每條路由各帶一份預載清單。
+// 十二個頁面同一個 chunk。入口只留一次動態 import，避免每條路由各帶一份預載清單。
 export { default as NewCompetitionPage } from './NewCompetitionPage';
 export { default as CompetitionManagePage } from './CompetitionManagePage';
 export { default as JoinRosterPage } from './JoinRosterPage';
@@ -8,3 +8,6 @@ export { default as CompetitionDetailPage } from './CompetitionDetailPage';
 export { default as HostSchedulePage } from './HostSchedulePage';
 export { default as HostMatchesPage } from './HostMatchesPage';
 export { default as ScoringPage } from './ScoringPage';
+export { default as StaffPage } from './StaffPage';
+export { default as StaffAssignPage } from './StaffAssignPage';
+export { default as ScorerMatchesPage } from './ScorerMatchesPage';

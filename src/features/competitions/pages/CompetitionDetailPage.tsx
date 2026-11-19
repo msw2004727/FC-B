@@ -26,8 +26,9 @@ import { LiveBoundary } from '../live';
 import { buildRegisterInput, buildReportInput } from '../payload';
 import { competitionPhase, type CompetitionPhase } from '../data/present';
 import { hasPendingTie } from '../data/tie-present';
+import { hasScoreRole } from '../data/staff-assign';
 import { loadFullSchedule, loadScheduleDetail } from '../data/schedule-load';
-import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason, StandingDoc, SummaryEntry } from '../data/types';
+import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason, StaffAssignment, StandingDoc, SummaryEntry } from '../data/types';
 import { CpError, errorOf, reasonText } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
 import { CategoryCover, categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
@@ -78,6 +79,8 @@ interface DetailData {
   bundle: CpBundle;
   summary: SummaryEntry[];
   standings: StandingDoc[];
+  /** 登入者自己的指派。未登入是 null，而且不讀。 */
+  myAssignment: StaffAssignment | null;
 }
 
 async function loadDetail(env: CpInjectedEnv, cid: string): Promise<DetailData> {
@@ -90,6 +93,10 @@ async function loadDetail(env: CpInjectedEnv, cid: string): Promise<DetailData> 
     uid: env.actor.uid,
     now: env.now ?? Date.now(),
   });
+  // 登入才多讀自己的 staff，這次保留 scorer／referee。未登入不讀。
+  const myAssignment = env.actor.uid
+    ? await env.repo.getStaffAssignment(cid, env.actor.uid)
+    : null;
   return {
     bundle: {
       competition: view.competition,
@@ -101,6 +108,7 @@ async function loadDetail(env: CpInjectedEnv, cid: string): Promise<DetailData> 
     },
     summary: view.summary,
     standings: view.standings,
+    myAssignment,
   };
 }
 
@@ -110,10 +118,12 @@ function applyDetail(
   setSummary: (value: SummaryEntry[]) => void,
   setStandings: (value: StandingDoc[]) => void,
   setLoadState: (value: 'loading' | 'ready' | 'error') => void,
+  setMine: (value: StaffAssignment | null) => void,
 ): void {
   setBundle(next.bundle);
   setSummary(next.summary);
   setStandings(next.standings);
+  setMine(next.myAssignment);
   setLoadState(next.bundle.competition ? 'ready' : 'error');
 }
 
@@ -124,6 +134,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [bundle, setBundle] = useState<CpBundle | null>(env.bundle ?? null);
   const [summary, setSummary] = useState<SummaryEntry[]>(env.schedule?.summary ?? []);
   const [standings, setStandings] = useState<StandingDoc[]>(env.schedule?.standings ?? []);
+  const [myAssignment, setMyAssignment] = useState<StaffAssignment | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>(env.bundle ? 'ready' : 'loading');
   const [menuOpen, setMenuOpen] = useState(env.preview?.menuOpen === true);
   const [reportOpen, setReportOpen] = useState(env.preview?.reportOpen === true);
@@ -229,7 +240,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     setLoadState('loading');
     void loadDetail(env, cid).then((next) => {
       if (!alive) return;
-      applyDetail(next, setBundle, setSummary, setStandings, setLoadState);
+      applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
     }).catch(() => {
       if (alive) setLoadState('error');
     });
@@ -258,7 +269,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       lastForegroundAt.current = at;
       void loadDetail(env, cid).then((next) => {
         if (!alive || !next.bundle.competition) return;
-        applyDetail(next, setBundle, setSummary, setStandings, setLoadState);
+        applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
       }).catch(() => {
         // 回前景重讀失敗就留著目前畫面，不把詳情打成錯誤頁。
       });
@@ -292,7 +303,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         <Button variant="secondary" onClick={() => {
           setLoadState('loading');
           void loadDetail(env, cid).then((next) => {
-            applyDetail(next, setBundle, setSummary, setStandings, setLoadState);
+            applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
           }).catch(() => setLoadState('error'));
         }}
         >{ct('retry')}</Button>
@@ -311,6 +322,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     staffRoles: bundle?.staff?.roles ?? [],
     isAdmin: isCpAdmin(env.actor.role),
   });
+  const showMyMatches = hasScoreRole(myAssignment?.roles ?? []);
   const showRegister = canRegisterClubEntry({
     repClubIds: clubs.map((club) => club.id),
     status: competition.status,
@@ -341,7 +353,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       await env.actions.publish({ cid });
       const next = await loadDetail(env, cid);
       if (next.bundle.competition) {
-        applyDetail(next, setBundle, setSummary, setStandings, setLoadState);
+        applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
       } else {
         setBundle((prev) => {
           if (!prev?.competition) return next.bundle;
@@ -406,7 +418,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         });
       } else {
         const next = await loadDetail(env, cid);
-        applyDetail(next, setBundle, setSummary, setStandings, setLoadState);
+        applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
       }
       setRestoreOpen(false);
       setRestoreReason('');
@@ -509,7 +521,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       setRegisterOpen(false);
       setRegisterError(null);
       const next = await loadDetail(env, cid);
-      applyDetail(next, setBundle, setSummary, setStandings, setLoadState);
+      applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
     } catch (err) {
       setRegisterError(errorOf(err));
     } finally {
@@ -549,6 +561,11 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         <div class="cps-actions">
           <Button variant="secondary" onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
           <Button variant="secondary" onClick={() => route(`/competitions/${cid}/matches`)}>{ct('hostListTitle')}</Button>
+        </div>
+      ) : null}
+      {showMyMatches ? (
+        <div class="cps-actions">
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/my-matches`)}>{ct('myMatches')}</Button>
         </div>
       ) : null}
     </>

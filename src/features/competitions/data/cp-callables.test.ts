@@ -45,6 +45,7 @@ import {
   cpHostDelete,
   cpHostGenerateSchedule,
   cpHostPublish,
+  cpHostAssignStaff,
   cpHostCancelMatch,
   cpHostClearTieDecision,
   cpHostEndCompetition,
@@ -58,12 +59,15 @@ import {
   cpHostSwapMatches,
   cpHostPostNotice,
   cpHostDeleteNotice,
+  cpHostRemoveStaff,
   cpHostResetMatch,
   cpHostSetStatus,
   cpHostSetWalkover,
   cpHostUpdate,
   cpParticipantReport,
+  assignStaff,
   registerCpMock,
+  removeStaff,
   toCpCallError,
   type CpGenerateScheduleResult,
 } from './cp-callables';
@@ -531,6 +535,71 @@ describe('cp callables（欄位與錯誤轉換）', () => {
     expect(lastPayload()).toEqual({ action: 'update', cid: 'cid_1', contactNote: '賽前群組' });
     await cpHostUpdate({ cid: 'cid_1' });
     expect(lastPayload()).not.toHaveProperty('contactNote');
+  });
+
+  it('assignStaff／removeStaff 只送契約列出的鍵，省略的選填不送出', async () => {
+    await cpHostAssignStaff({
+      cid: 'cid_1',
+      uid: 'uid_1',
+      roles: ['scorer'],
+      matchIds: ['mt_a', 'mt_b'],
+    });
+    expect(h.calls.at(-1)?.name).toBe('cpHost');
+    expect(lastPayload()).toEqual({
+      action: 'assignStaff',
+      cid: 'cid_1',
+      uid: 'uid_1',
+      roles: ['scorer'],
+      matchIds: ['mt_a', 'mt_b'],
+    });
+    expect(lastPayload()).not.toHaveProperty('expiresAt');
+
+    await assignStaff({
+      cid: 'cid_1',
+      uid: 'uid_1',
+      roles: ['referee'],
+      matchIds: [],
+      expiresAt: 90,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'assignStaff',
+      cid: 'cid_1',
+      uid: 'uid_1',
+      roles: ['referee'],
+      matchIds: [],
+      expiresAt: 90,
+    });
+
+    await cpHostRemoveStaff({ cid: 'cid_1', uid: 'uid_1' });
+    expect(lastPayload()).toEqual({ action: 'removeStaff', cid: 'cid_1', uid: 'uid_1' });
+    expect(lastPayload()).not.toHaveProperty('roles');
+
+    await removeStaff({ cid: 'cid_1', uid: 'uid_1', roles: ['scorer'] });
+    expect(lastPayload()).toEqual({
+      action: 'removeStaff',
+      cid: 'cid_1',
+      uid: 'uid_1',
+      roles: ['scorer'],
+    });
+  });
+
+  it('指派錯誤代碼原樣轉出', async () => {
+    for (const reason of [
+      'STAFF_NOT_FOUND',
+      'STAFF_PROTECTED',
+      'FORBIDDEN',
+      'COMPETITION_CLOSED',
+      'COMPETITION_ENDED',
+      'COMPETITION_HIDDEN',
+    ]) {
+      h.nextError = { details: { reason } };
+      await expect(cpHostAssignStaff({
+        cid: 'cid_1',
+        uid: 'uid_1',
+        roles: ['scorer'],
+        matchIds: [],
+      })).rejects.toMatchObject({ name: 'CpCallError', reason, params: {} });
+    }
   });
 
   it('generateSchedule 的 daysUsed 是日期陣列', () => {

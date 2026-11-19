@@ -96,6 +96,11 @@ export const CP_REASON_CODES = [
   'NOTICE_LIMIT',
   'NOTICE_NOT_FOUND',
   'FIELD_TYPE',
+  // 第 4 步指派（K2）。COMPETITION_CLOSED 沿用 STATUS_NOT_EDITABLE 的句子。
+  'STAFF_NOT_FOUND',
+  'STAFF_PROTECTED',
+  'FORBIDDEN',
+  'COMPETITION_CLOSED',
 ] as const;
 
 export type CpReasonCode = (typeof CP_REASON_CODES)[number];

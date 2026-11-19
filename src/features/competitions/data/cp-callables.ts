@@ -565,3 +565,39 @@ export function cpHostExplainTie(input: {
 }): Promise<unknown> {
   return callAction('cpHost', payload('explainTie', { ...input }));
 }
+
+export type StaffScoreRole = 'scorer' | 'referee';
+
+/** 指派記分員或裁判。roles 為 1～2 個記分角色。省略 expiresAt 由伺服器給到期。 */
+export function cpHostAssignStaff(input: {
+  cid: string;
+  uid: string;
+  roles: readonly StaffScoreRole[];
+  matchIds: readonly string[];
+  expiresAt?: number;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('assignStaff', {
+    cid: input.cid,
+    uid: input.uid,
+    roles: input.roles,
+    matchIds: input.matchIds,
+    expiresAt: input.expiresAt,
+  }));
+}
+
+/** 移除記分角色。省略 roles 時伺服器拿掉 scorer 與 referee，主辦身分留著。 */
+export function cpHostRemoveStaff(input: {
+  cid: string;
+  uid: string;
+  roles?: readonly string[];
+}): Promise<unknown> {
+  return callAction('cpHost', payload('removeStaff', {
+    cid: input.cid,
+    uid: input.uid,
+    roles: input.roles,
+  }));
+}
+
+/** 規格上的動作名稱。與 cpHostAssignStaff／cpHostRemoveStaff 同一支。 */
+export const assignStaff = cpHostAssignStaff;
+export const removeStaff = cpHostRemoveStaff;

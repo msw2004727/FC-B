@@ -360,9 +360,9 @@ describe('回前景重讀', () => {
       }, CompetitionDetailPage);
       expect(await screen.findByText('距開賽 19 天')).toBeTruthy();
       expect(repo.calls()).toEqual([
-        'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff', 'getSummaryShard',
+        'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff', 'getSummaryShard', 'getStaffAssignment',
       ]);
-      expect(repo.readCount()).toBeLessThanOrEqual(39);
+      expect(repo.readCount()).toBeLessThanOrEqual(40);
       expect(repo.calls()).not.toContain('listSummary');
       expect(repo.calls()).not.toContain('listMatches');
       expect(repo.calls()).not.toContain('listEntries');

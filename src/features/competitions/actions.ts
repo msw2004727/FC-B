@@ -24,7 +24,9 @@ import {
   cpHostCancelMatch,
   cpHostClearTieDecision,
   cpHostEndCompetition,
+  cpHostAssignStaff,
   cpHostExplainTie,
+  cpHostRemoveStaff,
   cpHostResetMatch,
   cpHostResolveTie,
   cpHostRestoreCompetition,
@@ -32,6 +34,7 @@ import {
   cpHostUpdate,
   cpParticipantReport,
   type CpAddRosterByRepInput,
+  type StaffScoreRole,
   type CpForfeitSide,
   type CpGenerateScheduleInput,
   type CpGenerateScheduleResult,
@@ -126,6 +129,14 @@ export interface CpActions {
     expectedVersion: number;
   }): Promise<unknown>;
   explainTie(input: { cid: string; dvId: string; groupId?: string; teamIds: string[] }): Promise<unknown>;
+  assignStaff(input: {
+    cid: string;
+    uid: string;
+    roles: readonly StaffScoreRole[];
+    matchIds: readonly string[];
+    expiresAt?: number;
+  }): Promise<unknown>;
+  removeStaff(input: { cid: string; uid: string; roles?: readonly string[] }): Promise<unknown>;
 }
 
 export const liveCpActions: CpActions = {
@@ -159,4 +170,6 @@ export const liveCpActions: CpActions = {
   resolveTie: cpHostResolveTie,
   clearTieDecision: cpHostClearTieDecision,
   explainTie: cpHostExplainTie,
+  assignStaff: cpHostAssignStaff,
+  removeStaff: cpHostRemoveStaff,
 };

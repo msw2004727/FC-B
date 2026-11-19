@@ -202,6 +202,17 @@ export interface StaffDoc {
   roles: StaffRole[];
 }
 
+/** 指派讀取用。含記分角色。與 StaffDoc 分開，既有 getStaff 仍只留 host／coHost。 */
+export type StaffAssignmentRole = 'host' | 'coHost' | 'scorer' | 'referee';
+
+export interface StaffAssignment {
+  uid: string;
+  roles: StaffAssignmentRole[];
+  matchIds: string[];
+  /** 沒有到期是 null。毫秒。 */
+  expiresAt: number | null;
+}
+
 export interface MatchSide {
   teamId: string;
   name: string;

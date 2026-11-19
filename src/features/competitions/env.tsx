@@ -94,7 +94,7 @@ export interface CpInjectedEnv {
   actions: CpActions;
   /** 權限判斷用的現在。省略則用 Date.now()。 */
   now?: number;
-  route?: { cid?: string; enId?: string };
+  route?: { cid?: string; enId?: string; uid?: string };
   bundle?: CpBundle;
   /** 注入時詳情不打網路，賽程與積分榜用這份。省略當空。 */
   schedule?: CpScheduleSnapshot;

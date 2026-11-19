@@ -42,6 +42,8 @@ import {
   type RosterPositionCode,
   type RosterPrivateDoc,
   type RosterPublicDoc,
+  type StaffAssignment,
+  type StaffAssignmentRole,
   type StaffDoc,
   type StaffRole,
   type StandingDoc,
@@ -68,8 +70,14 @@ export interface CompetitionsRepo {
   /** uid 為 null：不帶篩選，最多 100。有值則 where uid。 */
   listRosterPrivate(cid: string, uid: string | null): Promise<RosterPrivateDoc[]>;
   getStaff(cid: string, uid: string): Promise<StaffDoc | null>;
+  /** 人員清單。staff 子集合最多 100。保留記分角色與場次。 */
+  listStaff(cid: string): Promise<StaffAssignment[]>;
+  /** 單筆 staff。保留記分角色。沒有文件是 null。 */
+  getStaffAssignment(cid: string, uid: string): Promise<StaffAssignment | null>;
   /** 該賽事場次，最多 CP_READ_LIMIT.matches。不監聽。 */
   listMatches(cid: string): Promise<MatchDoc[]>;
+  /** 單筆場次。沒有或壞掉是 null。 */
+  getMatch(cid: string, mtId: string): Promise<MatchDoc | null>;
   /** 一片摘要。沒有這片回空陣列。shardId 是 dYYYYMMDD 或 tbd。 */
   getSummaryShard(cid: string, shardId: string): Promise<SummaryEntry[]>;
   /** 摘要片攤平後的條目，片數最多 CP_READ_LIMIT.summary。 */
@@ -120,6 +128,9 @@ const PLAYERS: readonly PlayersOnField[] = [5, 7, 8, 9, 11];
 const POSITIONS: readonly RosterPositionCode[] = ['GK', 'DF', 'MF', 'FW', 'custom'];
 const MINE_ROLES: readonly MineRole[] = ['host', 'rep', 'player'];
 const STAFF_ROLES: readonly StaffRole[] = ['host', 'coHost'];
+const STAFF_ASSIGN_ROLES: readonly StaffAssignmentRole[] = ['host', 'coHost', 'scorer', 'referee'];
+/** 人員清單上限。不放進 CP_READ_LIMIT，避免改既有預算常數。 */
+const STAFF_LIST_LIMIT = 100;
 const MATCH_STATUSES: readonly MatchStatus[] = [
   'scheduled', 'postponed', 'live', 'halftime', 'finished', 'confirmed', 'walkover', 'cancelled',
 ];
@@ -363,6 +374,26 @@ function staffFromDoc(uid: string, raw: Record<string, unknown>): StaffDoc | nul
     ? raw.roles.filter((role): role is StaffRole => oneOf(role, STAFF_ROLES) != null)
     : [];
   return { uid, roles };
+}
+
+/** 指派文件。已知角色依文件順序去重。matchIds 去重，最多 100。 */
+function assignmentFromDoc(uid: string, raw: Record<string, unknown>): StaffAssignment {
+  const roles: StaffAssignmentRole[] = [];
+  if (Array.isArray(raw.roles)) {
+    for (const item of raw.roles) {
+      const role = oneOf(item, STAFF_ASSIGN_ROLES);
+      if (role && !roles.includes(role)) roles.push(role);
+    }
+  }
+  const matchIds: string[] = [];
+  if (Array.isArray(raw.matchIds)) {
+    for (const item of raw.matchIds) {
+      if (typeof item !== 'string' || matchIds.includes(item)) continue;
+      matchIds.push(item);
+      if (matchIds.length >= STAFF_LIST_LIMIT) break;
+    }
+  }
+  return { uid, roles, matchIds, expiresAt: optNum(raw.expiresAt) };
 }
 
 function sideOf(value: unknown): MatchSide | null {
@@ -747,6 +778,27 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
       return data ? staffFromDoc(uid, data) : null;
     },
 
+    async listStaff(cid) {
+      if (!isSafeId(cid)) return [];
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDocs(sdk.query(
+        sdk.collection(db, `competitions/${cid}/staff`),
+        sdk.limit(STAFF_LIST_LIMIT),
+      ));
+      return snap.docs
+        .map((doc) => assignmentFromDoc(doc.id, doc.data() ?? {}))
+        .sort((a, b) => (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
+    },
+
+    async getStaffAssignment(cid, uid) {
+      if (!isSafeId(cid) || !isSafeId(uid)) return null;
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDoc(sdk.doc(db, `competitions/${cid}/staff/${uid}`));
+      if (!snap.exists()) return null;
+      const data = snap.data();
+      return data ? assignmentFromDoc(uid, data) : null;
+    },
+
     async listMatches(cid) {
       if (!isSafeId(cid)) return [];
       const { db, sdk } = await ready();
@@ -758,6 +810,15 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
         .map((doc) => matchFromDoc(doc.id, doc.data() ?? {}))
         .filter((doc): doc is MatchDoc => doc != null)
         .sort(compareMatch);
+    },
+
+    async getMatch(cid, mtId) {
+      if (!isSafeId(cid) || !isSafeId(mtId)) return null;
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDoc(sdk.doc(db, `competitions/${cid}/matches/${mtId}`));
+      if (!snap.exists()) return null;
+      const data = snap.data();
+      return data ? matchFromDoc(mtId, data) : null;
     },
 
     async getSummaryShard(cid, shardId) {
