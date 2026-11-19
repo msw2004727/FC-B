@@ -26,6 +26,11 @@ vi.mock('./view', () => ({
 const SECRET = 'cd'.repeat(32);
 const CLOCK = ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] as const;
 
+// useFakeTimers 會換掉全域計時器。digest 在背景執行緒，假計時器推進不到；
+// 這裡留模組載入時的 setTimeout／performance.now，等待才不受假時間影響。
+const realSetTimeout = globalThis.setTimeout.bind(globalThis);
+const realNow = performance.now.bind(performance);
+
 let visibility: DocumentVisibilityState = 'visible';
 const replaced: string[] = [];
 
@@ -50,10 +55,19 @@ function handlers(): WaitHandlers {
   return found;
 }
 
+function realWait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    realSetTimeout(() => { resolve(); }, ms);
+  });
+}
+
 async function untilCalls(count: number): Promise<void> {
-  for (let i = 0; i < 30; i += 1) {
+  const start = realNow();
+  while (realNow() - start < 2000) {
     if (callFn.mock.calls.length >= count) return;
     await vi.advanceTimersByTimeAsync(0);
+    if (callFn.mock.calls.length >= count) return;
+    await realWait(10);
   }
   expect(callFn.mock.calls.length).toBeGreaterThanOrEqual(count);
 }
