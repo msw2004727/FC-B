@@ -14,6 +14,7 @@ import {
   showsScore,
   standingHeading,
   standingLines,
+  standingsNeedWide,
   taipeiDayKey,
 } from './schedule-present';
 import type { StandingDoc, StandingRow, SummaryEntry } from './types';
@@ -175,6 +176,17 @@ describe('積分榜同分', () => {
     expect(formatGoalDiff(0)).toBe('0');
     expect(formatGoalDiff(-4)).toBe('-4');
     expect(championName(table(rows, true))).toEqual({ name: '海風隊', pending: false });
+  });
+
+  it('積分榜寬欄：進球、失球 ≥ 100 或淨勝絕對值 ≥ 100 才要，99 不要', () => {
+    const base = { goalsFor: 99, goalsAgainst: 99, goalDiff: 99 };
+    expect(standingsNeedWide([])).toBe(false);
+    expect(standingsNeedWide([base, { goalsFor: 10, goalsAgainst: 3, goalDiff: 7 }])).toBe(false);
+    expect(standingsNeedWide([base, { ...base, goalsFor: 100 }])).toBe(true);
+    expect(standingsNeedWide([{ ...base, goalsAgainst: 112 }])).toBe(true);
+    expect(standingsNeedWide([{ ...base, goalDiff: -100 }])).toBe(true);
+    expect(standingsNeedWide([{ ...base, goalDiff: -99 }])).toBe(false);
+    expect(standingsNeedWide(standingLines(table(rows, false)))).toBe(false);
   });
 
   it('積分相同但已分出名次時不標同分、不改名次', () => {
