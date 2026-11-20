@@ -86,6 +86,8 @@ export const LIVE_COPY = {
   pkConfirmGo: '開始 PK',
   pkConfirmCancel: '取消',
   pkGoalLocked: 'PK 期間不能復原或改判一般進球',
+  halftimeGoalUndoOnly: '中場休息只能復原，下半場再記',
+  cardNoRoster: '這隊名單沒有球員，無法記牌',
   noScorePermission: '你沒有這場的記分權限',
   backToSchedule: '回賽程',
   leaveScore: '離開記分',
