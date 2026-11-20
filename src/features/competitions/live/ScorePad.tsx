@@ -703,19 +703,24 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       : teamTimeoutText(sideName(teamTimeout.side), timeoutClock(teamTimeout.leftSec)))
     : '';
 
+  // 提示區由上到下的固定順序（施工-第2批 3.9）：離線紀錄無法保存 → 沒送出／被擋 → 之後記的 N 筆 → 停錶已停用 → 接近上限
+  // → notice → 離線已存 N 筆 → 鎖定提醒。只搬順序，條件不變。
   const alerts: JSX.Element[] = [];
-  const hasQueuedLine = (props.heldLines ?? []).some((line) => line.key === 'queued');
+  const storageDanger = props.storageBanner === true || (!link.online && link.storageUnavailable);
+  if (storageDanger) {
+    alerts.push(<p key="off" class="s4-banner s4-banner--danger" role="alert">{LIVE_COPY.offlineUnstored}</p>);
+  }
   for (const line of props.heldLines ?? []) {
-    // 顧問 §3.459 (a)：紅色那行整行可點，點了開同一個「未套用的動作」面板（360×640 紀錄多時原本那顆鈕會被擠出畫面）。
-    // 外層 <p role> 保留讓讀屏照舊念；文字包進原生按鈕。不改行高與排版；可點範圍用 ::after 往上下延伸，
-    // 上方不超過與記分板之間的 8px 空隙；下方有黃色那行時可蓋到它（s4-banner--tapq），沒有時也只到 8px 空隙。
+    // 顧問 §3.459 (a)＋方案 B（3.11）：紅色那一行是 44px 的可點列，點了開同一個「未套用的動作」面板。
+    // 外層 <p role> 保留讓讀屏照舊念；文字包在撐滿整列的原生按鈕裡，可點範圍就是那一列，不再往外延伸。
+    // 第二行「之後記的 N 筆」帶 s4-banner--queued（s4-banner--saved 留著），高度 700 以下用樣式藏。
     const tap = line.key === 'held';
     alerts.push(
       <p
         key={`held-${line.key}`}
         class={line.key === 'queued'
-          ? 's4-banner s4-banner--saved'
-          : `s4-banner s4-banner--held${tap ? ` s4-banner--tap${hasQueuedLine ? ' s4-banner--tapq' : ''}` : ''}`}
+          ? 's4-banner s4-banner--saved s4-banner--queued'
+          : `s4-banner s4-banner--held${tap ? ' s4-banner--tap' : ''}`}
         role={line.alert ? 'alert' : 'status'}
       >
         {tap ? (
@@ -739,10 +744,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   }
   if (nearCap) alerts.push(<p key="near" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.nearCap}</p>);
   if (notice) alerts.push(<p key="notice" class="s4-banner s4-banner--saved" role="alert">{notice}</p>);
-  const storageDanger = props.storageBanner === true || (!link.online && link.storageUnavailable);
-  if (storageDanger) {
-    alerts.push(<p key="off" class="s4-banner s4-banner--danger" role="alert">{LIVE_COPY.offlineUnstored}</p>);
-  } else if (!link.online) {
+  if (!storageDanger && !link.online) {
     alerts.push(<p key="saved" class="s4-banner s4-banner--saved" role="status">{offlineSaved(link.pendingCount)}</p>);
   }
   if (!link.wakeLock) alerts.push(<p key="wake" class="s4-wake">{LIVE_COPY.wakeLock}</p>);
@@ -903,7 +905,8 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           ))}
         </ul>
       ) : null}
-      {pending.length > 0 ? (
+      {/* 紅色可點列畫出來的時候，紀錄區最後那顆「未套用的動作」不重複顯示（3.11） */}
+      {pending.length > 0 && !(props.heldLines ?? []).some((line) => line.key === 'held') ? (
         <div class="s4-extra">
           <Button variant="secondary" disabled={padOff} onClick={() => setUnappliedOpen(true)}>{LIVE_COPY.unappliedTitle}</Button>
         </div>
