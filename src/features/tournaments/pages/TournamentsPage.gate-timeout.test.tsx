@@ -254,6 +254,8 @@ describe('閘門結果', () => {
     const launch = deferred<Launch>();
     gateCtl.getLaunch = () => launch.promise;
     draw();
+    // 閘門等外部清單有結果才開始（11-20 冷開修正），先讓清單讀完，2 秒逾時從閘門開始時起算。
+    await tick();
     await tick(COMPETITIONS_GATE_TIMEOUT_MS);
     expect(gateAttr()).toBe('closed');
     expect(document.querySelector('.cpl-src')).toBeNull();
@@ -285,6 +287,7 @@ describe('閘門結果', () => {
   ] as const)('%s：不顯示切換，外部清單照常', async (_label, impl) => {
     gateCtl.getLaunch = impl;
     draw();
+    await tick();
     await tick();
     expect(gateAttr()).toBe('closed');
     expect(document.querySelector('.cpl-src')).toBeNull();
@@ -324,5 +327,36 @@ describe('閘門結果', () => {
     await tick();
     expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
     expect(document.querySelector('[data-inapp]')).toBeTruthy();
+  });
+
+  it('冷開：外部清單還在讀時不載入站內區塊、不讀閘門；清單有結果後才開始（11-20 staging 冷開修正）', async () => {
+    const cardsReady = deferred<{ docs: Array<{ id: string; data: () => unknown }> }>();
+    sdk.getDocs.mockReset();
+    sdk.getDocs.mockReturnValue(cardsReady.promise);
+    gateCtl.getLaunch = () => Promise.resolve({ isPublic: true, bannedWords: [] });
+    draw();
+    await tick(5_000);
+    expect(gateCtl.mounts).toBe(0);
+    expect(gateCtl.calls).toBe(0);
+    expect(gateAttr()).toBe('pending');
+    cardsReady.resolve({ docs: DOCS.map((doc) => ({ id: doc.id, data: () => doc.data })) });
+    await tick();
+    await tick();
+    expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
+    expect(gateCtl.calls).toBe(1);
+    expect(gateAttr()).toBe('open');
+    expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('冷開帶 ?src=in：不等外部清單，閘門立刻開始', async () => {
+    history.replaceState(null, '', '/tournaments?src=in');
+    sdk.getDocs.mockReset();
+    sdk.getDocs.mockReturnValue(new Promise(() => undefined));
+    gateCtl.getLaunch = () => Promise.resolve({ isPublic: true, bannedWords: [] });
+    draw();
+    await tick();
+    await tick();
+    expect(gateCtl.calls).toBe(1);
+    expect(gateAttr()).toBe('open');
   });
 });

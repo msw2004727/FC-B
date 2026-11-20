@@ -146,17 +146,25 @@ export default function TournamentsPage(): JSX.Element {
     gateRef.current = open ? 'open' : 'closed';
     setGate(open ? 'open' : 'closed');
   }, []);
+  // 非法 ?src 只影響畫面預設，這裡不改網址。
+  const rawSrc = location.query?.src;
+  // 閘門延後開始：外部清單有結果（ready／error）之後才載入站內區塊與讀 cpConfig/launch，
+  // 冷開時不和外部清單搶頻寬與 CPU；網址明確帶 ?src=in 時照舊立刻開始。2 秒逾時從開始時才起算。
+  // （11-20 staging 冷開實測：閘門同時載入 chunk＋第二條連線，把外部清單既有的 8 秒逾時推過界，取代「進頁立刻開始」。）
+  const [gateArmed, setGateArmed] = useState(false);
   useEffect(() => {
-    if (!COMPETITIONS_ENABLED) return undefined;
+    if (!COMPETITIONS_ENABLED || gateArmed) return;
+    if (rawSrc === 'in' || state !== 'loading') setGateArmed(true);
+  }, [gateArmed, rawSrc, state]);
+  useEffect(() => {
+    if (!COMPETITIONS_ENABLED || !gateArmed) return undefined;
     const timer = setTimeout(() => {
       if (gateRef.current !== 'pending') return;
       gateRef.current = 'closed';
       setGate('closed');
     }, COMPETITIONS_GATE_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, []);
-  // 非法 ?src 只影響畫面預設，這裡不改網址。
-  const rawSrc = location.query?.src;
+  }, [gateArmed]);
   const source: CompetitionSource = rawSrc === 'in' || rawSrc === 'ext' ? rawSrc : fallbackSource;
   const showInApp = inAppOpen && source === 'in';
   const [editing, setEditing] = useState<EditingState | null>(null);
@@ -405,7 +413,7 @@ export default function TournamentsPage(): JSX.Element {
           ) : null}
         </div>
         <div class="tc-panel" role="tabpanel" id={inAppOpen ? 'tournaments-source-panel' : undefined}>
-          <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} />
+          {gateArmed ? <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} /> : null}
           {showInApp ? null : (
           <>
           <div class="tc-toolbar">
