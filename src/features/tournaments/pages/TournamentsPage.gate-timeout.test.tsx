@@ -64,6 +64,8 @@ vi.mock('@/features/competitions/components/InAppSection', async () => {
 });
 
 vi.mock('@/i18n/i18n', () => ({
+  // 「＋ 新增賽事」改用站內 Button（內含 Text，會讀目前語系）。
+  getCurrentLocale: () => 'zh-TW',
   useT: () => (key: string, params?: Record<string, unknown>) => {
     let text = dict[key] ?? key;
     for (const [name, value] of Object.entries(params ?? {})) text = text.replace(`{${name}}`, String(value));

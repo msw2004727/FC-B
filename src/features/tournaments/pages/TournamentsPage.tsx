@@ -7,6 +7,7 @@ import '@/styles/category-tokens.css';
 import '../list-v2.css';
 import '@/styles/legacy/reg-loading.css';
 import type { ComponentType, JSX } from 'preact';
+import { Button } from '@/ui/Button';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { COMPETITIONS_ENABLED } from '@/feature-overrides';
 import { useLocation } from 'preact-iso';
@@ -404,22 +405,18 @@ export default function TournamentsPage(): JSX.Element {
               {t(`tournaments.tab.${value}`)}
             </button>
           ))}
-          {/* 站內分頁已有「建立賽事」，「＋ 新增賽事」（外部卡）只在外部分頁出現（站長 11-20：不要出現兩顆新增鈕）。 */}
-          {canManage && !showInApp ? (
-            <button
-              type="button"
-              class="primary-btn small tc-add-btn"
-              id="tc-add-btn"
-              onClick={() => openEditor(null)}
-            >
-              {t('tournaments.add')}
-            </button>
-          ) : null}
         </div>
         <div class="tc-panel" role="tabpanel" id={inAppOpen ? 'tournaments-source-panel' : undefined}>
           {gateArmed ? <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} /> : null}
           {showInApp ? null : (
           <>
+          {/* 「＋ 新增賽事」搬進外部清單框內，位置與樣式比照站內「建立賽事」（.cpl-create），切換分頁不跳動
+              （站長 11-20：取代原本放在分類分頁列、與「建立賽事」同時出現兩顆新增鈕）。 */}
+          {canManage ? (
+            <div class="cpl-create">
+              <Button variant="primary" size="sm" id="tc-add-btn" onClick={() => openEditor(null)}>{t('tournaments.add')}</Button>
+            </div>
+          ) : null}
           <div class="tc-toolbar">
             <label>
               <span>{t('tournaments.showEnded')}</span>
