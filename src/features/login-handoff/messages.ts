@@ -4,6 +4,7 @@
 import type { Locale } from '@/i18n/locales';
 
 export interface HandoffText {
+  closeLineHint: string;
   readyTitle: string;
   readyPrompt: string;
   goLine: string;
@@ -37,6 +38,7 @@ export interface HandoffText {
 }
 
 const zhTW: HandoffText = {
+  closeLineHint: "回到 App 若看到 LINE 頁，按左上 × 關閉。",
   readyTitle: "記住這個數字",
   readyPrompt: "等一下在瀏覽器要選它",
   goLine: "前往 LINE 登入",
@@ -70,6 +72,7 @@ const zhTW: HandoffText = {
 };
 
 const zhCN: HandoffText = {
+  closeLineHint: "回到 App 若看到 LINE 页面，点左上角 × 关闭。",
   readyTitle: "记住这个数字",
   readyPrompt: "等一下在浏览器要选它",
   goLine: "前往 LINE 登录",
@@ -103,6 +106,7 @@ const zhCN: HandoffText = {
 };
 
 const en: HandoffText = {
+  closeLineHint: "If a LINE page shows when you return to the app, tap × at the top left to close it.",
   readyTitle: "Remember this number",
   readyPrompt: "You'll pick it in the browser next",
   goLine: "Continue to LINE login",
@@ -136,6 +140,7 @@ const en: HandoffText = {
 };
 
 const ja: HandoffText = {
+  closeLineHint: "アプリに戻って LINE のページが表示されたら、左上の × で閉じてください。",
   readyTitle: "この数字を覚えてください",
   readyPrompt: "このあとブラウザで選びます",
   goLine: "LINE ログインへ進む",
@@ -169,6 +174,7 @@ const ja: HandoffText = {
 };
 
 const ko: HandoffText = {
+  closeLineHint: "앱으로 돌아왔을 때 LINE 페이지가 보이면 왼쪽 위 ×를 눌러 닫으세요.",
   readyTitle: "이 숫자를 기억하세요",
   readyPrompt: "다음에 브라우저에서 고르게 됩니다",
   goLine: "LINE 로그인으로 이동",
@@ -202,6 +208,7 @@ const ko: HandoffText = {
 };
 
 const th: HandoffText = {
+  closeLineHint: "หากกลับมาที่แอปแล้วเห็นหน้า LINE ให้แตะ × มุมซ้ายบนเพื่อปิด",
   readyTitle: "จำตัวเลขนี้ไว้",
   readyPrompt: "ถัดไปต้องเลือกตัวเลขนี้ในเบราว์เซอร์",
   goLine: "ไปที่การเข้าสู่ระบบ LINE",
@@ -235,6 +242,7 @@ const th: HandoffText = {
 };
 
 const vi: HandoffText = {
+  closeLineHint: "Nếu thấy trang LINE khi quay lại ứng dụng, hãy chạm × ở góc trên bên trái để đóng.",
   readyTitle: "Hãy nhớ số này",
   readyPrompt: "Bước tiếp theo bạn sẽ chọn số này trong trình duyệt",
   goLine: "Tiếp tục đăng nhập LINE",

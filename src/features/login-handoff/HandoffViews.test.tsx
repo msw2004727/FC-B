@@ -81,6 +81,11 @@ describe('等待框', () => {
     expect(h.onClose).toHaveBeenCalledOnce();
   });
 
+  it('等待畫面有「按左上 × 關閉」提示（顧問 §3.361 A 案）', () => {
+    render(<WaitScreen view={{ kind: 'wait', number: 27, expiresAt: Date.now() + 60_000, busy: false }} handlers={waitHandlers()} />);
+    expect(para('回到 App 若看到 LINE 頁，按左上 × 關閉。')).toBeTruthy();
+  });
+
   it('⑤ 還沒收到：按鈕「我已完成」（與內文一致，站長選 B）＝onRetry，重新登入＝onRestart', () => {
     const h = waitHandlers();
     render(<WaitScreen view={{ kind: 'notYet', number: 27, expiresAt: Date.now() + 60_000 }} handlers={h} />);
@@ -145,6 +150,7 @@ describe('轉交頁', () => {
     const { rerender } = render(<RelayScreen view={{ kind: 'done' }} handlers={h} />);
     expect(screen.getByText('請回到主畫面 App')).toBeTruthy();
     expect(para('這個頁面不會登入，可以關掉。')).toBeTruthy();
+    expect(para('回到 App 若看到 LINE 頁，按左上 × 關閉。')).toBeTruthy();
     rerender(<RelayScreen view={{ kind: 'wrong' }} handlers={h} />);
     expect(screen.getByText('數字不符')).toBeTruthy();
     fireEvent.click(screen.getByText('關閉此頁'));

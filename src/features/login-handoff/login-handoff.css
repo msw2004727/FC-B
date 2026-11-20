@@ -169,3 +169,10 @@
 .login-handoff .login-handoff-num.login-handoff-num--dim:disabled {
   opacity: .3;
 }
+
+/* 顧問 §3.361 A 案提示：比一般小字更淡、和上一行留一點距離。 */
+.login-handoff .login-handoff-hint {
+  margin-top: .35rem;
+  font-size: .74rem;
+  opacity: .85;
+}

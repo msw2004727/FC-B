@@ -152,6 +152,8 @@ export function WaitScreen({ view, handlers }: { view: WaitView; handlers: WaitH
       <p class="login-handoff-prompt"><Seg text={text.waitPrompt} /></p>
       <div class="login-handoff-big" aria-live="polite">{view.number}</div>
       <p class="login-handoff-note"><Seg text={text.waitNote} /></p>
+      {/* 顧問 §3.361 A 案：iOS 會留著 LINE 內嵌頁，網頁關不掉，只提示使用者按 ×。 */}
+      <p class="login-handoff-note login-handoff-hint"><Seg text={text.closeLineHint} /></p>
       <span class="login-handoff-remain">{remainLabel(text, view.expiresAt, now)}</span>
       <Primary label={text.iDone} disabled={view.busy} onClick={handlers.onDone} />
       <Secondary label={text.restart} onClick={handlers.onRestart} />
@@ -173,6 +175,7 @@ export function RelayScreen({ view, handlers }: { view: RelayView; handlers: Rel
         <div class="login-handoff-icon"><Icon kind={view.kind === 'done' ? 'ok' : 'phone'} /></div>
         <p class="login-handoff-body"><Seg text={view.kind === 'done' ? text.doneBody : text.sentOrExpired} /></p>
         {view.kind === 'done' && <p class="login-handoff-note"><Seg text={text.doneNote} /></p>}
+        {view.kind === 'done' && <p class="login-handoff-note login-handoff-hint"><Seg text={text.closeLineHint} /></p>}
       </Shell>
     );
   }
