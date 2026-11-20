@@ -313,3 +313,29 @@ describe('終場後的出口（顧問 staging 實測 P1-B：全幅藏了頂欄�
     expect(screen.queryByRole('button', { name: LIVE_COPY.leaveScore })).toBeNull();
   });
 });
+
+describe('顧問 staging 複驗：同分停錶仍可繼續計時、修正時鐘未接上不顯示', () => {
+  it('下半場同分停錶：同時有「PK 大戰」與「繼續計時」，按繼續計時呼叫時鐘恢復', () => {
+    const onClock = vi.fn();
+    render(<ScorePad {...S4_SCENE_PK_START} onClock={onClock} />);
+    expect(screen.getByRole('button', { name: 'PK 大戰' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '繼續計時' }));
+    expect(onClock).toHaveBeenCalledTimes(1);
+  });
+
+  it('PK 開始後維持原行為：沒有停錶或繼續計時', () => {
+    render(<ScorePad {...S4_SCENE_PK} />);
+    expect(screen.queryByRole('button', { name: /停錶|繼續計時/ })).toBeNull();
+  });
+
+  it('沒有 onCorrectClock 時選單不出現「修正時鐘」；有提供才出現', () => {
+    const first = render(<ScorePad {...S4_SCENE_LIVE} onLeave={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: '選單' }));
+    expect(screen.queryByRole('button', { name: LIVE_COPY.correctClock })).toBeNull();
+    expect(screen.getByRole('button', { name: LIVE_COPY.leaveScore })).toBeTruthy();
+    first.unmount();
+    render(<ScorePad {...S4_SCENE_LIVE} onCorrectClock={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: '選單' }));
+    expect(screen.getByRole('button', { name: LIVE_COPY.correctClock })).toBeTruthy();
+  });
+});

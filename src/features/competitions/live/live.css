@@ -566,7 +566,8 @@ button.s4-ev__main:active { opacity: 0.7; }
 .s4-menu-wrap { position: relative; flex: 0 0 auto; }
 .s4-menu {
   position: absolute;
-  right: 0;
+  /* 貼齊按鈕左緣往右展開：開賽前「選單」在最左邊，right:0 往左展開會出界（顧問 staging 複驗；取代 right: 0）。 */
+  left: 0;
   bottom: 60px;
   z-index: 5;
   min-width: 128px;
