@@ -41,13 +41,19 @@ import {
 import { openCardLink } from '../data/open-card-link';
 import { readCardsCache, writeCardsCache } from '../data/cards-cache';
 import {
-  competitionSourceFromQuery,
+  COMPETITIONS_DEFAULT_SOURCE,
   tournamentsSourcePath,
   type CompetitionSource,
 } from '../source';
 
 /** 讀取超過這麼久沒回來就走既有的錯誤＋重試；晚到的結果照常收尾。 */
 export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
+
+/**
+ * 站內賽事閘門（載入站內區塊程式檔＋讀 cpConfig/launch）多久沒回就先當作沒過（顧問 §3.368 P2-1）。
+ * 外部清單從頭到尾不等閘門；逾時只是先定案「不顯示切換」，晚到的通過仍會補上切換。
+ */
+export const COMPETITIONS_GATE_TIMEOUT_MS = 2_000;
 
 const EXTERNAL_CHIP = {
   league: 'cpl-chip--league',
@@ -126,15 +132,32 @@ export default function TournamentsPage(): JSX.Element {
   const canManage = state === 'ready' && canManageTournamentCards(viewer);
   const [tab, setTab] = useState<TournamentCardTab>('all');
   const [showEnded, setShowEnded] = useState(true);
-  // 開關打開時先等閘門。判定中不畫外部清單。沒過才回到原本的外部卡。
+  // 開關打開時閘門在背景判定；判定中、逾時、沒過都照開關關閉時的樣子畫外部清單（含本機快取）。
+  // 通過才補上「站內／外部」切換與站內區塊（顧問 §3.368 P2-1，取代「判定中先顯示骨架、不畫外部清單」）。
   const [gate, setGate] = useState<'pending' | 'open' | 'closed'>(COMPETITIONS_ENABLED ? 'pending' : 'closed');
+  const gateRef = useRef(gate);
+  gateRef.current = gate;
+  // 沒有 ?src 時的來源。閘門先定案沒過（逾時、未登入定案前）之後才通過，使用者已經在看外部清單，
+  // 這時預設留在外部、只補切換，不把畫面整個換成站內。使用者點選後改回點選的那一側。
+  const [fallbackSource, setFallbackSource] = useState<CompetitionSource>(COMPETITIONS_DEFAULT_SOURCE);
   const inAppOpen = gate === 'open';
-  const gatePending = gate === 'pending';
   const onGate = useCallback((open: boolean) => {
+    if (open && gateRef.current === 'closed') setFallbackSource('ext');
+    gateRef.current = open ? 'open' : 'closed';
     setGate(open ? 'open' : 'closed');
   }, []);
+  useEffect(() => {
+    if (!COMPETITIONS_ENABLED) return undefined;
+    const timer = setTimeout(() => {
+      if (gateRef.current !== 'pending') return;
+      gateRef.current = 'closed';
+      setGate('closed');
+    }, COMPETITIONS_GATE_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
   // 非法 ?src 只影響畫面預設，這裡不改網址。
-  const source = competitionSourceFromQuery(location.query?.src);
+  const rawSrc = location.query?.src;
+  const source: CompetitionSource = rawSrc === 'in' || rawSrc === 'ext' ? rawSrc : fallbackSource;
   const showInApp = inAppOpen && source === 'in';
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -290,6 +313,7 @@ export default function TournamentsPage(): JSX.Element {
   const chooseSource = (next: CompetitionSource): void => {
     const path = tournamentsSourcePath(window.location.pathname, window.location.search, next);
     const go = location.route as undefined | ((url: string, replace?: boolean) => void);
+    setFallbackSource(next);
     if (typeof go === 'function') go(path, true);
   };
 
@@ -303,7 +327,7 @@ export default function TournamentsPage(): JSX.Element {
   };
 
   return (
-    <div class="legacy-ui tournaments-root" data-v2={inAppOpen ? '1' : undefined}>
+    <div class="legacy-ui tournaments-root" data-v2={inAppOpen ? '1' : undefined} data-cp-gate={COMPETITIONS_ENABLED ? gate : undefined}>
       <section class="page active tc-page" id="page-tournaments">
         <div class="page-header">
           <button
@@ -382,16 +406,7 @@ export default function TournamentsPage(): JSX.Element {
         </div>
         <div class="tc-panel" role="tabpanel" id={inAppOpen ? 'tournaments-source-panel' : undefined}>
           <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} />
-          {gatePending ? (
-            <div aria-busy="true">
-              <div class="reg-loading" role="status" style="white-space:nowrap">{t('tournaments.loading')}</div>
-              <div class="reg-loading-skeleton" aria-hidden="true">
-                <div class="reg-loading-skeleton-row" />
-                <div class="reg-loading-skeleton-row" />
-                <div class="reg-loading-skeleton-row" />
-              </div>
-            </div>
-          ) : showInApp ? null : (
+          {showInApp ? null : (
           <>
           <div class="tc-toolbar">
             <label>
