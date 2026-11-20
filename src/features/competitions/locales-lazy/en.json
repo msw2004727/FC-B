@@ -44,6 +44,7 @@
   "liveMatchTitle": "單場",
   "detailTabs": "賽事內容",
   "matchPending": "待確認",
+  "pendingMatchesN": "待確認 {n} 場",
   "matchForfeit": "棄權",
   "matchMoved": "改期",
   "matchCancelled": "已取消",

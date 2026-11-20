@@ -300,7 +300,7 @@ describe('排賽程', () => {
       venueIdx: [0],
       dryRun: true,
     }));
-    fireEvent.click(buttonOf('移除', 1));
+    fireEvent.click(screen.getByRole('button', { name: '移除 第 3 天' }));
     expect(screen.getAllByLabelText('日期')).toHaveLength(2);
     fireEvent.click(buttonOf('預覽'));
     await waitFor(() => expect(generate).toHaveBeenLastCalledWith({
@@ -391,8 +391,8 @@ describe('排賽程', () => {
 
 describe('賽程管理按鈕', () => {
   const rows: Array<{ id: string; status: MatchStatus; home: string; away: string; score: [number, number]; kickoff: number | null; buttons: string[] }> = [
-    { id: 'mt_sched', status: 'scheduled', home: '海風隊', away: '山貓隊', score: [0, 0], kickoff: taipeiMs(2027, 1, 9, 9, 0), buttons: ['改期', '取消這場', '登錄比分', '記分'] },
-    { id: 'mt_fin', status: 'finished', home: '銀河隊', away: '晨光隊', score: [2, 1], kickoff: taipeiMs(2027, 1, 9, 11, 0), buttons: ['登錄比分', '確認', '取消這場'] },
+    { id: 'mt_sched', status: 'scheduled', home: '海風隊', away: '山貓隊', score: [0, 0], kickoff: taipeiMs(2027, 1, 9, 9, 0), buttons: ['登錄比分', '記分', '改期', '取消這場'] },
+    { id: 'mt_fin', status: 'finished', home: '銀河隊', away: '晨光隊', score: [2, 1], kickoff: taipeiMs(2027, 1, 9, 11, 0), buttons: ['確認', '登錄比分', '取消這場'] },
     { id: 'mt_ok', status: 'confirmed', home: '青鳥隊', away: '赤羽隊', score: [1, 0], kickoff: taipeiMs(2027, 1, 9, 13, 0), buttons: ['重置'] },
     { id: 'mt_wo', status: 'walkover', home: '白浪隊', away: '黑潮隊', score: [0, 2], kickoff: taipeiMs(2027, 1, 9, 15, 0), buttons: ['重置'] },
     { id: 'mt_live', status: 'live', home: '綠洲隊', away: '黃沙隊', score: [1, 1], kickoff: taipeiMs(2027, 1, 9, 17, 0), buttons: ['記分'] },
@@ -436,6 +436,20 @@ describe('賽程管理按鈕', () => {
     expect(within(rowOf('銀河隊')).queryByRole('button', { name: '記分' })).toBeNull();
     // 新外觀卡 1b-4：主辦版比賽列改用 ui/match-row.tsx 共用兩小塊，比賽列隊徽 22→24
     expect(view.container.querySelector('.cp3-crest')?.getAttribute('style')?.replace(/\s/g, '')).toContain('width:24px');
+  });
+
+  it('賽程管理矮板：進行中在第一格、待確認一格，整句給報讀；場次讀到上限 100 不放板（第 4 批 3.4）', () => {
+    const view = draw(matchesEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, list()), HostMatchesPage);
+    const keys = [...view.container.querySelectorAll('.cph-sb .d2-cell__k')].map((el) => el.textContent);
+    expect(keys[0]).toBe('進行中');
+    expect(keys).toContain('待確認');
+    expect(view.container.querySelector('.cph-sb .d2-cells')?.getAttribute('aria-hidden')).toBe('true');
+    expect(view.container.querySelector('.cph-sb .cps-vh')?.textContent ?? '').toContain('待確認 1 場');
+    view.unmount();
+    cleanup();
+    const many = Array.from({ length: 100 }, (_, i) => match({ id: `mt_${i}`, status: 'scheduled', matchNo: i + 1 }));
+    const capped = draw(matchesEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, many), HostMatchesPage);
+    expect(capped.container.querySelector('.cph-sb')).toBeNull();
   });
 
   it('結束 180 秒內可以記分，超過就不能', () => {
@@ -512,7 +526,8 @@ describe('登錄比分、確認、棄權、重置、改期', () => {
     await waitFor(() => expect(later).toHaveBeenCalledWith({
       cid: 'cup', mtId: 'mt_1', expectedRev: 3, score: { home: 0, away: 1 }, confirm: false,
     }));
-    expect(screen.getByText('待確認')).toBeTruthy();
+    // 新外觀卡 4-B：頁首矮板多一格「待確認」，改在場次清單裡找這一場的狀態標籤
+    expect(within(document.querySelector('.cp3-ml') as HTMLElement).getByText('待確認')).toBeTruthy();
   });
 
   it('登錄連點只送一次', async () => {

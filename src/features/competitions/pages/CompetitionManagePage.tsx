@@ -4,7 +4,6 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
-import { appConfirm } from '@/ui/AppConfirm';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
 import { Input } from '@/ui/Input';
@@ -22,10 +21,13 @@ import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { buildPaymentInput, buildReviewInput } from '../payload';
-import type { CompetitionCategory, DivisionDoc, EntryDoc, EntryPrivateDoc, PaymentStatus } from '../data/types';
+import { CP_READ_LIMIT, type CompetitionCategory, type DivisionDoc, type EntryDoc, type EntryPrivateDoc, type PaymentStatus } from '../data/types';
+import { rememberCompName } from '../data/comp-name-hint';
+import { splitCount } from '../data/host-board';
+import { dangerConfirm } from '../ui/danger-confirm';
 import { CpError, CpLoadFailed, errorOf, loadFailOf } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
-import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
+import { CpCard, CpFrame, CpI18nPending, DownIcon, NextIcon } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
 
 const INFO_TOGGLE_ID = 'cp-comp-info-toggle';
@@ -129,6 +131,12 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, env.actor.uid, env.actor.role, env.bundle, repKey]);
 
+  const compName = bundle?.competition?.name;
+  useEffect(() => {
+    // 頁首賽事名小字：記下來給人員、指派頁用（不為名稱多讀）。
+    if (compName) rememberCompName(cid, compName);
+  }, [cid, compName]);
+
   useEffect(() => {
     const next = bundle?.competition?.category;
     if (next) setCategory(next);
@@ -159,9 +167,9 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   useEffect(() => {
     if (!env.preview?.lockDialog || !cpDict.ct) return;
-    void appConfirm(cpDict.ct('lockConfirm', { n: unconfirmed }), {
+    void dangerConfirm(cpDict.ct('lockConfirm', { n: unconfirmed }), {
       okText: cpDict.ct('lock'),
-      danger: false,
+      danger: true,
     });
     // 只為截圖把確認框打開，不在這裡鎖定。字典晚到時補開一次。
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -276,9 +284,10 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   async function lock(): Promise<void> {
     if (!manage || busy || locked) return;
-    const ok = await appConfirm(ct('lockConfirm', { n: unconfirmed }), {
+    // 危險確認框：「鎖定」紅框，預設焦點在「取消」（顧問 §3.465）。
+    const ok = await dangerConfirm(ct('lockConfirm', { n: unconfirmed }), {
       okText: ct('lock'),
-      danger: false,
+      danger: true,
     });
     if (!ok) return;
     setBusy(true);
@@ -379,23 +388,27 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     now,
   });
 
+  // 卡片頂部第一行：隊名太長省略（省略號只在最內層的 span，連結的點擊區才不會被裁掉，3.15）。
+  const teamName = (name: string): JSX.Element => <span class="cph-nm">{name}</span>;
+
   const pendingPanel = (
     <div class="cps-stack" style="margin-top:12px">
       {pending.map((entry) => {
         const priv = privateOf(bundle?.privates ?? [], entry);
         return (
-          <CpCard key={entry.id}>
+          <CpCard key={entry.id} class="cph-team">
             <div class="cps-head-row">
-              <h3 class="cps-h">{entry.name}</h3>
-              <StatusTag kind="neutral" label={ct('pending')} />
+              <h3 class="cps-h">{teamName(entry.name)}</h3>
             </div>
-            <p class="cps-sub" style="margin:4px 0 8px">{divisionName(entry.dvId)}</p>
+            <p class="cps-sub">{divisionName(entry.dvId)}</p>
             {priv?.contactName ? (
-              <div class="cps-kv"><span>{ct('contact')}</span><span>{priv.contactName}</span></div>
+              <div class="d2-lines">
+                <div class="cph-kv"><span>{ct('contact')}</span><span>{priv.contactName}</span></div>
+              </div>
             ) : null}
             {manage ? (
-              <div class="cps-actions">
-                <Button variant="secondary" onClick={() => { setRejectError(null); setRejectId(entry.id); }}>{ct('reject')}</Button>
+              <div class="cph-decide">
+                <Button variant="danger" onClick={() => { setRejectError(null); setRejectId(entry.id); }}>{ct('reject')}</Button>
                 <Button variant="primary" onClick={() => { void approve(entry.id); }}>{ct('approve')}</Button>
               </div>
             ) : null}
@@ -411,40 +424,44 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         const division = divisionOf(entry.dvId);
         const priv = privateOf(bundle?.privates ?? [], entry);
         const pay = payLabel(ct, priv?.paymentStatus ?? 'none');
+        // 報名費、繳費標籤、標示已繳費只限俱樂部主辦（顧問 §3.257）
+        const club = competition?.hostType === 'club';
         return (
-          <CpCard key={entry.id}>
+          <CpCard key={entry.id} class="cph-team">
             <div class="cps-head-row">
               <h3 class="cps-h">
-                <a class="cps-link" href={`/competitions/${cid}/entries/${entry.id}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); route(`/competitions/${cid}/entries/${entry.id}`); }}>
-                  {entry.name}
+                <a class="cps-link cph-name" href={`/competitions/${cid}/entries/${entry.id}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); route(`/competitions/${cid}/entries/${entry.id}`); }}>
+                  {teamName(entry.name)}
+                  <NextIcon />
                 </a>
               </h3>
               {entry.rosterConfirmed || locked
                 ? <StatusTag kind="neutral" label={ct('rosterConfirmed')} />
                 : <StatusTag kind="neutral" label={ct('rosterUnconfirmed')} />}
             </div>
-            <p class="cps-sub" style="margin:4px 0 8px">{divisionName(entry.dvId)}</p>
-            {/* 報名費、繳費標籤、標示已繳費只限俱樂部主辦（顧問 §3.257） */}
-            {division && competition?.hostType === 'club' ? <FeeLine amount={division.feePerTeam} /> : null}
-            <div class="cps-kv">
-              <span>{ct('rosterPeople')}</span>
-              <span>{ct('rosterCount', { n: entry.rosterCount, max: division?.rosterMax ?? 0, min: division?.rosterMin ?? 0 })}</span>
-            </div>
-            {manage && competition?.hostType === 'club' ? (
-              <div class="cps-pay">
-                <StatusTag kind="neutral" label={pay} />
+            <p class="cps-sub">{divisionName(entry.dvId)}</p>
+            <div class="d2-lines">
+              <div class="cph-kv">
+                <span>{ct('rosterPeople')}</span>
+                <span>{ct('rosterCount', { n: entry.rosterCount, max: division?.rosterMax ?? 0, min: division?.rosterMin ?? 0 })}</span>
+              </div>
+              {division && club ? (
+                <FeeLine amount={division.feePerTeam} tag={manage ? <StatusTag kind="neutral" label={pay} /> : null} />
+              ) : null}
+              {manage && club ? (
                 <Switch
+                  class="cph-switch"
                   label={ct('markPaid')}
                   checked={priv?.paymentStatus === 'paid'}
                   onCheckedChange={(checked) => { void markPaid(entry, checked); }}
                 />
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </CpCard>
         );
       })}
       {manage && !locked ? (
-        <div class="cps-actions cps-actions--col" style="margin-top:0">
+        <div class="cph-end">
           <Button variant="danger" onClick={() => { void lock(); }}>{ct('lockAll')}</Button>
         </div>
       ) : null}
@@ -461,14 +478,15 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {rejected.map((entry) => {
         const priv = privateOf(bundle?.privates ?? [], entry);
         return (
-          <CpCard key={entry.id}>
+          <CpCard key={entry.id} class="cph-team">
             <div class="cps-head-row">
-              <h3 class="cps-h">{entry.name}</h3>
-              <StatusTag kind="neutral" label={ct('rejected')} />
+              <h3 class="cps-h">{teamName(entry.name)}</h3>
             </div>
-            <p class="cps-sub" style="margin:4px 0 8px">{divisionName(entry.dvId)}</p>
+            <p class="cps-sub">{divisionName(entry.dvId)}</p>
             {priv?.reviewNote ? (
-              <div class="cps-kv"><span>{ct('rejectReason')}</span><span>{priv.reviewNote}</span></div>
+              <div class="d2-lines">
+                <div class="cph-kv cph-kv--wrap"><span>{ct('rejectReason')}</span><span>{priv.reviewNote}</span></div>
+              </div>
             ) : null}
           </CpCard>
         );
@@ -476,28 +494,63 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     </div>
   );
 
+  // 矮板（3.3）：數字都是頁面已讀到的，不增加讀取。
+  // 待審：報隊讀到上限（100）時可能少算，不放這一格。已核准：組別文件的 approvedCount／maxTeams 加總；沒讀到組別不放。
+  const divisions = bundle?.divisions ?? [];
+  const showPendingCell = entries.length < CP_READ_LIMIT.entries;
+  const approvedSum = divisions.reduce((sum, row) => sum + row.approvedCount, 0);
+  const maxSum = divisions.reduce((sum, row) => sum + row.maxTeams, 0);
+  const approvedSentence = ct('approvedTeams', { teams: approvedSum, max: maxSum });
+  const approvedCell = divisions.length > 0
+    ? splitCount((n, m) => ct('approvedTeams', { teams: n, max: m }), approvedSum, maxSum)
+    : null;
+  const hasBoard = showPendingCell || divisions.length > 0;
+  const board = hasBoard ? (
+    <div class="d2-sb d2-sb--row">
+      <p class="cps-vh">
+        {showPendingCell ? `${ct('tabPending', { n: pending.length })}　` : ''}
+        {divisions.length > 0 ? approvedSentence : ''}
+      </p>
+      <div class="d2-cells d2-cells--row" aria-hidden="true">
+        {showPendingCell ? (
+          <div class="d2-cell">
+            <span class="d2-cell__k">{ct('pending')}</span>
+            <span class="d2-cell__v"><b class="d2-num">{pending.length}</b></span>
+          </div>
+        ) : null}
+        {divisions.length > 0 ? (
+          <div class="d2-cell">
+            {approvedCell ? (
+              <>
+                <span class="d2-cell__k">{approvedCell.k}</span>
+                <span class="d2-cell__v"><b class="d2-num">{approvedCell.n}</b><small>{approvedCell.tail}</small></span>
+              </>
+            ) : <span class="d2-cell__k">{approvedSentence}</span>}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  ) : null;
+
   return (
-    <CpFrame title={ct('manageTitle')}>
-      {hostOps ? (
-        <div class="cps-actions" style="margin-top:0">
-          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
-          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/matches`)}>{ct('hostListTitle')}</Button>
-          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/staff`)}>{ct('assignScorer')}</Button>
-        </div>
+    <CpFrame
+      title={ct('manageTitle')}
+      context={competition.name}
+      menu={manage || hostOps ? (
+        <Button
+          id={INFO_TOGGLE_ID}
+          class="cph-pill"
+          variant="secondary"
+          size="sm"
+          trailing={<DownIcon />}
+          aria-expanded={infoOpen}
+          aria-controls={INFO_PANEL_ID}
+          onClick={() => toggleInfo(!infoOpen)}
+        >
+          {ct('editCompInfo')}
+        </Button>
       ) : null}
-      {manage || hostOps ? (
-        <div class="cps-actions" style="margin-top:0">
-          <Button
-            id={INFO_TOGGLE_ID}
-            variant="secondary"
-            aria-expanded={infoOpen}
-            aria-controls={INFO_PANEL_ID}
-            onClick={() => toggleInfo(!infoOpen)}
-          >
-            {ct('editCompInfo')}
-          </Button>
-        </div>
-      ) : null}
+    >
       {(manage || hostOps) && infoOpen ? (
       <div id={INFO_PANEL_ID} class="cps-stack">
       {manage ? (
@@ -530,24 +583,40 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               onValueChange={(value) => setContactDraft(clipCodePoints(value.replace(/[\r\n]/g, ''), 60))}
             />
             {competition?.hostType === 'personal' ? <p class="cps-cap">{ct('contactEmptyHint')}</p> : null}
-            <div class="cps-actions">
-              <Button variant="secondary" disabled={busy} onClick={() => { void saveContact(); }}>{ct('contactSave')}</Button>
+            <div class="cph-right">
+              <Button variant="secondary" size="sm" disabled={busy} onClick={() => { void saveContact(); }}>{ct('contactSave')}</Button>
             </div>
           </div>
         </CpCard>
       ) : null}
-      <div class="cps-actions" style="margin-top:0">
-        <Button variant="secondary" onClick={() => toggleInfo(false)}>{ct('editCompDone')}</Button>
+      <div class="cph-right">
+        <Button variant="secondary" size="sm" onClick={() => toggleInfo(false)}>{ct('editCompDone')}</Button>
       </div>
       </div>
       ) : null}
+      {board || hostOps ? (
+        <section class={hostOps ? 'd2-hero' : 'd2-hero d2-hero--bare'}>
+          {board}
+          {hostOps ? (
+            <div class="d2-foot cph-doors">
+              <Button variant="ghost" size="sm" trailing={<NextIcon />} onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
+              <Button variant="ghost" size="sm" trailing={<NextIcon />} onClick={() => route(`/competitions/${cid}/matches`)}>{ct('hostListTitle')}</Button>
+              <Button variant="ghost" size="sm" trailing={<NextIcon />} onClick={() => route(`/competitions/${cid}/staff`)}>{ct('assignScorer')}</Button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       <div>
-        <p class="cps-sub" style="margin-bottom:8px">{competition.name}</p>
-        {(bundle?.divisions ?? []).map((division) => (
-          <p class="cps-cap" key={division.dvId} data-approved-count={division.dvId}>
-            {division.name}　{ct('approvedTeams', { teams: division.approvedCount, max: division.maxTeams })}
-          </p>
-        ))}
+        {/* 只有一個組別時不畫各組小字：板上的視覺隱藏整句已經說了同一件事（終審裁定第 3 點） */}
+        {divisions.length > 1 ? (
+          <div class="cph-caps">
+            {divisions.map((division) => (
+              <p class="cps-cap" key={division.dvId} data-approved-count={division.dvId}>
+                {division.name}　{ct('approvedTeams', { teams: division.approvedCount, max: division.maxTeams })}
+              </p>
+            ))}
+          </div>
+        ) : null}
         <Tabs
           label={ct('entryTabs')}
           variant="segmented"
