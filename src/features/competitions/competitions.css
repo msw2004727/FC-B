@@ -1155,30 +1155,28 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* 卡 4-F：平的面（實色底、細線、圓角 14，沒有光澤與陰影）；在 .cps-stack 裡（間距 12），再加 12 與上面的內容共距 24。
+ * 標題掛 .cpm-h、讀取中與空的掛 cps-note cps-nowrap、清單掛 cps-list；「標為不處理」「重新開啟」是中性文字鈕（只換字色變數）。 */
 .cpa-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   min-width: 0;
+  margin-top: 12px;
   padding: var(--space-4);
   border: 1px solid var(--d2-line);
-  border-radius: var(--radius-md);
-  background: var(--d2-field-bg);
+  border-radius: 14px;
+  background: var(--d2-menu-bg);
   color: var(--d2-text);
 }
 .cpa-head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.cpa-h { margin: 0; font-size: var(--font-size-body-lg); line-height: var(--line-height-body-lg); font-weight: 700; white-space: nowrap; }
 .cpa-btns { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
 .cpa-btns .ui-button { width: auto; min-inline-size: 0; }
-.cpa-reports { min-width: 0; }
-.cpa-muted { margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-body-sm); white-space: nowrap; }
+.cpa-btns .ui-button--ghost { --comp-button-foreground-default: var(--d2-text-2); }
 .cpa-retry { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
-.cpa-list { list-style: none; margin: 0; padding: 0; }
-.cpa-li { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: var(--space-3) 0; border-top: 1px solid var(--color-border); }
-.cpa-li:first-child { border-top: 0; padding-top: 0; }
-.cpa-li:last-child { padding-bottom: 0; }
+.cpa-li { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: var(--space-3) 0; }
+.cpa-li + .cpa-li { border-top: 1px solid var(--d2-line); }
 .cpa-li__top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .cpa-reason { font-weight: 700; white-space: nowrap; font-size: var(--font-size-body); }
 .cpa-detail { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; }
-.cpa-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-body-sm); font-variant-numeric: tabular-nums; }
-.cpa-meta > span { white-space: nowrap; }
+.cpa-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; color: var(--d2-text-2); font-size: var(--font-size-body-sm); font-variant-numeric: tabular-nums; }
