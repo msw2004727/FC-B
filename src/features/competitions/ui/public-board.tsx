@@ -3,7 +3,6 @@
 
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Textarea } from '@/ui/Textarea';
 import { clipCodePoints } from '../format';
@@ -17,6 +16,7 @@ import {
 import type { CompetitionNotice } from '../data/types';
 import type { CompetitionsT } from '../i18n';
 import { CpCard } from './shell';
+import { StatusTag } from './status-tag';
 
 const NOTICE_TOGGLE_ID = 'cp-notice-toggle';
 const NOTICE_COMPOSE_ID = 'cp-notice-compose';
@@ -94,7 +94,7 @@ export function PublicBoard({
               {visible.map((notice) => (
                 <li key={notice.id}>
                   <div class="cpm-ann__row">
-                    {notice.kind === 'system' && !hostOps ? <Badge tone="neutral" label={ct('system')} size="sm" /> : null}
+                    {notice.kind === 'system' && !hostOps ? <StatusTag kind="neutral" label={ct('system')} /> : null}
                     <span class="cpm-ann__txt">{notice.text}</span>
                   </div>
                   {hostOps ? (
@@ -102,7 +102,7 @@ export function PublicBoard({
                     // 不再替刪除留一欄把字擠成三行。非主辦維持原樣。
                     <div class="cpm-ann__meta">
                       <span class="cpm-ann__when">
-                        {notice.kind === 'system' ? <Badge tone="neutral" label={ct('system')} size="sm" /> : null}
+                        {notice.kind === 'system' ? <StatusTag kind="neutral" label={ct('system')} /> : null}
                         <span class="cpm-ann__time">{noticeWhen(notice.at)}</span>
                       </span>
                       <Button variant="ghost" size="sm" disabled={busy} onClick={() => { void onDelete(notice.id); }}>

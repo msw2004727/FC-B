@@ -3,7 +3,6 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
-import { Badge, type BadgeTone } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
@@ -58,6 +57,7 @@ import { CpLoadFailed, errorOf, loadFailOf, reasonText } from '../ui/feedback';
 import { DateField } from '../ui/fields';
 import { scheduleLabels } from '../ui/schedule-board';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
+import { StatusTag, type StatusKind } from '../ui/status-tag';
 import { crestFromEntry, TeamCrest } from '../ui/TeamCrest';
 import { HostFlexCards, type FlexWriteResult, type ShiftRequest, type SwapRequest } from './host-flex';
 
@@ -116,13 +116,10 @@ function holdKind(intent: WriteIntent): Hold['kind'] {
   return intent.kind;
 }
 
-function badgeTone(key: HostBadgeKey): BadgeTone {
-  if (key === 'sched') return 'neutral';
-  if (key === 'pending') return 'warning';
-  if (key === 'confirmed') return 'success';
-  if (key === 'forfeit' || key === 'cancelled') return 'danger';
-  if (key === 'moved') return 'info';
-  return 'warning';
+function badgeKind(key: HostBadgeKey): StatusKind {
+  if (key === 'live') return 'live';
+  if (key === 'cancelled') return 'cancelled';
+  return 'neutral';
 }
 
 function statusText(ct: CompetitionsT, status: MatchStatus): string {
@@ -741,11 +738,11 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                           )}
                           {badge && reset ? (
                             <span class="cp3-tags">
-                              <Badge tone={badgeTone(badge)} label={statusText(ct, match.status)} size="sm" />
+                              <StatusTag kind={badgeKind(badge)} label={statusText(ct, match.status)} />
                               <Button variant="ghost" size="sm" disabled={busy} onClick={() => openReset(match)}>{ct('resetMatch')}</Button>
                             </span>
                           ) : null}
-                          {badge && !reset ? <Badge tone={badgeTone(badge)} label={statusText(ct, match.status)} size="sm" /> : null}
+                          {badge && !reset ? <StatusTag kind={badgeKind(badge)} label={statusText(ct, match.status)} /> : null}
                         </div>
                         <div class="cp3-m__vs">
                           <span class="h"><SideName entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" /></span>
