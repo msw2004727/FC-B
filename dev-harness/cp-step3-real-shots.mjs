@@ -39,7 +39,7 @@ const ANCHORS = {
   'real-done-pending': '冠軍待主辦裁定', 'real-long': '三重示範青年足球俱樂部隊', 'real-long-recruit': '三重區示範運動公園第一足球場',
   'real-draft-host': '發布', 'real-scorer': '我的場次', 'real-admin-menu': '下架', 'real-club-entry-one': '送出報名',
   'real-club-entry-two': '送出報名', 'real-club-entry-error': '還有必填項目沒填', 'real-notice-delete': '確定要刪除這則公告？',
-  'real-notice-delete-sys': '這是系統公告，確定要刪除？', 'real-load-failed': '讀取失敗', 'real-crest-live': '雷霆隊', 'real-corrected-pk': '藍鯨隊',
+  'real-notice-delete-sys': '這是系統公告，確定要刪除？', 'real-load-failed': '讀取失敗', 'real-crest-live': '雷霆隊', 'real-crest-colors': '隊徽底色', 'real-corrected-pk': '藍鯨隊',
   // 新外觀第 4 批第 7 節
   'real-swap-open': '確認對調', 'real-shift-clash': '仍要順延', 'real-shift-clash-settled': '仍要順延', 'real-pending-fresh': '登錄比分', 'real-host-matches-empty': '請先排賽程',
   'real-schedule-preview': '共 12 場、需 2 天、每隊 3 場', 'real-schedule-unplaced': '還有 4 場排不下', 'real-schedule-too-many': '場次太多，請調整賽制',
@@ -99,6 +99,7 @@ const SCREENS = [
   ['real:real-notice-delete-sys', NEW, THEMES, false],
   ['real:real-load-failed', NEW, THEMES, false],
   ['real:real-crest-live', NEW, THEMES, true],
+  ['real:real-crest-colors', NEW, THEMES, true],
   ['real:real-corrected-pk', NEW, THEMES, true],
   // 新外觀第 4 批第 7 節「要補」
   ['real:real-swap-open', NEW, THEMES, true],
@@ -148,7 +149,7 @@ for (const [full, sizes, themes, scrollMore] of SCREENS) {
       const page = await ctx.newPage();
       page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });
       page.on('pageerror', (e) => report.consoleErrors.push(`${tag}: pageerror ${e.message}`));
-      await page.goto(`${BASE}/dev-harness/${kind === 'list' ? 'cp-step3-list' : kind === 'rules' ? 'cp-step3-rules' : kind === 'more' ? 'cp-step3-more' : kind === 'real' ? 'cp-step3-real' : 'cp-step3'}.html?screen=${name}&theme=${theme}`);
+      await page.goto(`${BASE}/dev-harness/${kind === 'list' ? 'cp-step3-list' : 'cp-step3-real'}.html?screen=${name}&theme=${theme}`);
       try {
         await page.waitForFunction(() => window.__CPS_READY === true, null, { timeout: 25000 });
       } catch {

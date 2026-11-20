@@ -13,10 +13,8 @@ export default mergeConfig(base, defineConfig({
     outDir: 'dist-cp-step3-harness',
     emptyOutDir: true,
     rollupOptions: { input: {
-      main: fileURLToPath(new URL('./cp-step3.html', import.meta.url)),
+      // 第 3 步手寫預覽（cp-step3／cp-step3-more／cp-step3-rules）總收尾已刪，正式頁面示範取代。
       list: fileURLToPath(new URL('./cp-step3-list.html', import.meta.url)),
-      rules: fileURLToPath(new URL('./cp-step3-rules.html', import.meta.url)),
-      more: fileURLToPath(new URL('./cp-step3-more.html', import.meta.url)),
       // 正式頁面＋假資料的截圖入口（cp-step3-real.html）
       real: fileURLToPath(new URL('./cp-step3-real.html', import.meta.url)),
     } },

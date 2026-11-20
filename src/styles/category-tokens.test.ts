@@ -68,8 +68,9 @@ describe('category-tokens 照預覽逐值抄', () => {
   const dark = varsOf('src/styles/category-tokens.css', '[data-theme="dark"]');
   const listRoot = varsOf('src/dev/cp-step3-list-harness.css', ':root');
   const listDark = varsOf('src/dev/cp-step3-list-harness.css', '[data-theme="dark"]');
-  const crestRoot = varsOf('src/dev/cp-step3-harness.css', ':root');
-  const crestDark = varsOf('src/dev/cp-step3-harness.css', '[data-theme="dark"]');
+  // 隊徽色票原本照 src/dev/cp-step3-harness.css（第 3 步手寫預覽）逐值抄；總收尾刪掉那支舊示範頁，數值原樣搬到這裡。
+  const crestRoot: Record<string, string> = { '--crest-0': '#0f766e', '--crest-1': '#0e7490', '--crest-2': '#c2410c', '--crest-3': '#be123c', '--crest-4': '#475569', '--crest-5': '#4d7c0f', '--crest-6': '#57534e', '--crest-7': '#047857', '--crest-fg': '#fff' };
+  const crestDark: Record<string, string> = { '--crest-0': '#2dd4bf', '--crest-1': '#22d3ee', '--crest-2': '#fb923c', '--crest-3': '#fb7185', '--crest-4': '#94a3b8', '--crest-5': '#a3e635', '--crest-6': '#a8a29e', '--crest-7': '#34d399', '--crest-fg': '#0b0f16' };
 
   it('預覽與 tokens 都真的讀到變數（避免空物件讓比對恆真，Flash 初審 P2）', () => {
     for (const [name, vars, min] of [['tokens', tokens, 20], ['dark', dark, 15], ['listRoot', listRoot, 12], ['listDark', listDark, 6], ['crestRoot', crestRoot, 9], ['crestDark', crestDark, 9]] as const) {
