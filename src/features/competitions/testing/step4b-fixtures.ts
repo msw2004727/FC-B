@@ -16,11 +16,10 @@ export const S4B_CLAIM_NUMBER = 9;
 export const S4B_LINK_PATH = '…/?competition=cp_demo#join=k7m2…';
 export const S4B_INVITE_PATH = '…/?competition=cp_demo#invite=s4b9…';
 
+// 'staff-list'／'staff-assign'／'staff-invite' 三個舊長相示範（demo-staff-*）總收尾已刪：
+// 正式頁示範 cp-k1112（staff-list 等、invite-form、invite-link）與 cp-step4-u3（u3-staff-*、u3-assign）取代。
 export const STEP4B_SCREENS = [
-  'staff-list',
   'staff-list-cohost',
-  'staff-assign',
-  'staff-invite',
   'invite-accept',
   'invite-accept-invalid',
   'scorer-my-matches',

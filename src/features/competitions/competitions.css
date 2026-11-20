@@ -145,7 +145,6 @@
 
 .cps-root .ui-button,
 .s4-root .ui-button,
-.s4-page .ui-button,
 .d2-panel .ui-button,
 .tournaments-root[data-d2] .ui-button {
   --comp-button-background-default: var(--d2-accent-ink);
@@ -162,17 +161,14 @@
 }
 .cps-root .ui-button__label,
 .s4-root .ui-button__label,
-.s4-page .ui-button__label,
 .d2-panel .ui-button__label,
 .tournaments-root[data-d2] .ui-button__label { white-space: nowrap; overflow-wrap: normal; word-break: keep-all; }
 .cps-root .ui-button--sm,
 .s4-root .ui-button--sm,
-.s4-page .ui-button--sm,
 .d2-panel .ui-button--sm,
 .tournaments-root[data-d2] .ui-button--sm { font-size: 13px; line-height: 20px; }
 .cps-root .ui-button--ghost,
 .s4-root .ui-button--ghost,
-.s4-page .ui-button--ghost,
 .d2-panel .ui-button--ghost {
   --comp-button-background-hover: transparent;
   --comp-button-background-active: transparent;
@@ -180,7 +176,6 @@
 }
 .cps-root .ui-button.ui-button--secondary,
 .s4-root .ui-button.ui-button--secondary,
-.s4-page .ui-button.ui-button--secondary,
 .d2-panel .ui-button.ui-button--secondary,
 .tournaments-root[data-d2] .ui-button.ui-button--secondary {
   --comp-button-background-hover: var(--d2-glass-gloss), var(--d2-glass-base);
@@ -189,12 +184,10 @@
 }
 .cps-root .ui-button.ui-button--secondary::before,
 .s4-root .ui-button.ui-button--secondary::before,
-.s4-page .ui-button.ui-button--secondary::before,
 .d2-panel .ui-button.ui-button--secondary::before,
 .tournaments-root[data-d2] .ui-button.ui-button--secondary::before { border-color: transparent; background: var(--d2-glass-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh); }
 .cps-root .ui-button.ui-button--danger,
 .s4-root .ui-button.ui-button--danger,
-.s4-page .ui-button.ui-button--danger,
 .d2-panel .ui-button.ui-button--danger {
   --comp-button-background-hover: var(--d2-field-bg);
   --comp-button-background-active: var(--d2-field-bg);
@@ -202,15 +195,12 @@
 }
 .cps-root .ui-button.ui-button--danger::before,
 .s4-root .ui-button.ui-button--danger::before,
-.s4-page .ui-button.ui-button--danger::before,
 .d2-panel .ui-button.ui-button--danger::before { border-color: transparent; background: var(--d2-field-bg); box-shadow: inset 0 0 0 1.5px var(--d2-danger); }
 .cps-root .ui-button.ui-button--danger.ui-button--sm,
 .s4-root .ui-button.ui-button--danger.ui-button--sm,
-.s4-page .ui-button.ui-button--danger.ui-button--sm,
 .d2-panel .ui-button.ui-button--danger.ui-button--sm { --comp-button-background-hover: transparent; --comp-button-background-active: transparent; }
 .cps-root .ui-button.ui-button--danger.ui-button--sm::before,
 .s4-root .ui-button.ui-button--danger.ui-button--sm::before,
-.s4-page .ui-button.ui-button--danger.ui-button--sm::before,
 .d2-panel .ui-button.ui-button--danger.ui-button--sm::before { background: none; box-shadow: none; }
 .cps-root .ui-button.ui-button--secondary[aria-expanded="true"],
 .d2-panel .ui-button.ui-button--secondary[aria-expanded="true"],
@@ -220,11 +210,9 @@
 .tournaments-root[data-d2] .ui-button.ui-button--secondary[aria-expanded="true"]::before { background: var(--d2-seg-on); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
 .cps-root .ui-button[aria-disabled="true"],
 .s4-root .ui-button[aria-disabled="true"],
-.s4-page .ui-button[aria-disabled="true"],
 .d2-panel .ui-button[aria-disabled="true"] { opacity: 1; color: var(--d2-text-3); }
 .cps-root .ui-button[aria-disabled="true"]::before,
 .s4-root .ui-button[aria-disabled="true"]::before,
-.s4-page .ui-button[aria-disabled="true"]::before,
 .d2-panel .ui-button[aria-disabled="true"]::before { border-color: transparent; background: var(--d2-off-bg); box-shadow: inset 0 0 0 1px var(--d2-off-line); }
 .cps-root .ui-button.ui-button--danger[aria-disabled="true"]::before,
 .s4-root .ui-button.ui-button--danger[aria-disabled="true"]::before,
@@ -234,7 +222,6 @@
 .cps-root .cps-fee .ui-button[aria-disabled="true"]::before { background: none; box-shadow: inset 0 0 0 1px var(--d2-line); }
 .cps-root .ui-button:focus-visible,
 .s4-root .ui-button:focus-visible,
-.s4-page .ui-button:focus-visible,
 .cps-root .ui-tabs__tab:focus-visible,
 .s4-page .ui-tabs__tab:focus-visible,
 .d2-panel .ui-button:focus-visible,
@@ -307,18 +294,14 @@
 .s4-page .ui-badge__label,
 .d2-panel .ui-badge__label { white-space: nowrap; overflow-wrap: normal; }
 .cps-root .d2-tag--live,
-.s4-page .d2-tag--live,
 .d2-panel .d2-tag--live,
 .cpl-card .cpl-st--live { background: var(--d2-sb-bg); color: var(--d2-sb-now); font-weight: 700; box-shadow: var(--d2-sb-sh-lit); }
 .cps-root .d2-tag--live::before,
-.s4-page .d2-tag--live::before,
 .d2-panel .d2-tag--live::before,
 .cpl-card .cpl-st--live::before { content: ''; flex: 0 0 auto; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--d2-sb-now); }
 .cps-root .d2-tag--cancelled,
-.s4-page .d2-tag--cancelled,
 .d2-panel .d2-tag--cancelled { color: var(--d2-danger); box-shadow: inset 0 0 0 1px var(--d2-danger-line); }
 .cps-root .d2-tag--next,
-.s4-page .d2-tag--next,
 .d2-panel .d2-tag--next { color: var(--d2-accent-ink); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
 .cps-root .d2-tag--neutral,
 .s4-page .d2-tag--neutral,
@@ -341,7 +324,6 @@
   --color-bg-hover: var(--d2-field-bg); --color-bg-active: var(--d2-field-bg);
 }
 .cps-root .ui-input [aria-invalid="true"],
-.cps-root .ui-select [aria-invalid="true"],
 .cps-root .ui-textarea [aria-invalid="true"],
 .d2-panel .ui-input [aria-invalid="true"],
 .d2-panel .ui-select [aria-invalid="true"],
@@ -369,11 +351,8 @@
 .d2-panel .cps-label,
 .d2-panel .ui-stepper > div:not(.ui-stepper__controls) { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-text-2); }
 .cps-root .ui-input label > small,
-.cps-root .ui-select label > small,
 .cps-root .ui-textarea label > small,
-.cps-root .ui-radio-group__label small,
 .cps-root .ui-input [data-field-hint],
-.cps-root .ui-select [data-field-hint],
 .cps-root .ui-textarea [data-field-hint],
 .d2-panel .ui-input label > small,
 .d2-panel .ui-select label > small,
@@ -383,14 +362,12 @@
 .d2-panel .ui-select [data-field-hint],
 .d2-panel .ui-textarea [data-field-hint] { font-size: 12px; line-height: 16px; font-weight: 400; color: var(--d2-text-2); }
 .cps-root .ui-input [data-field-error],
-.cps-root .ui-select [data-field-error],
 .cps-root .ui-textarea [data-field-error],
 .d2-panel .ui-input [data-field-error],
 .d2-panel .ui-select [data-field-error],
 .d2-panel .ui-textarea [data-field-error] { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-danger); }
 /* 錯誤訊息前的紅底驚嘆號圓點（第 4 批 3.10；偽元素畫，報讀與 textContent 不含它） */
 .cps-root .ui-input [data-field-error]::before,
-.cps-root .ui-select [data-field-error]::before,
 .cps-root .ui-textarea [data-field-error]::before,
 .d2-panel .ui-input [data-field-error]::before,
 .d2-panel .ui-select [data-field-error]::before,
@@ -723,7 +700,6 @@
 .cps-success__name { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .cps-pre { white-space: pre-line; }
 .cps-link { color: var(--d2-text); font-weight: 600; white-space: nowrap; }
-.cps-inapp { margin: 0 0 var(--space-4); }
 .cps-head-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .cps-head-row .cps-h { margin: 0; }
 /* 組別卡（卡 1b-5）：組別名單行省略；隊伍列整列是連結、最小高 48、隊徽 28，右邊「已核准」與小箭頭 */
@@ -1328,16 +1304,6 @@
   font-size: 15px;
   line-height: 24px;
   font-weight: 600;
-}
-.cpm-rel svg {
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: var(--color-text-muted);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 .cpm-drag { list-style: none; margin: 0; padding: 0; }
 .cpm-drag__li {

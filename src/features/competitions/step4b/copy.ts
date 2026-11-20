@@ -1,7 +1,7 @@
 // 第 4 步預覽文案。畫面只從這裡拿字，避免各檔各寫一句。
 // 沿用既有名單公開說明與監護人勾選的句子（competitions locales-lazy zh-TW）。
 
-import type { AssignRole, AuditAction, AuditActorRole, InviteLife, PlayerPos, S4bMatchStatus, S4bTimeout, StaffRole, TemplateId, TieKey, TimeoutBasis } from '../testing/step4b-fixtures';
+import type { AssignRole, AuditAction, AuditActorRole, PlayerPos, S4bMatchStatus, S4bTimeout, StaffRole, TemplateId, TieKey, TimeoutBasis } from '../testing/step4b-fixtures';
 
 export const copy = {
   back: '返回',
@@ -57,8 +57,6 @@ export const copy = {
   reasonRequired: '請填寫拒絕原因',
   role: '角色',
   person: '人員',
-  matches: '場次',
-  expiry: '到期日',
   term: '期限',
   uses: '使用次數',
   makeLink: '產生連結',
@@ -118,7 +116,6 @@ export const copy = {
   compCancelled: '賽事已取消，邀請跟著失效。',
   staffTitle: '指派與邀請',
   assignTitle: '指派',
-  inviteTitle: '邀請連結',
   acceptTitle: '接受邀請',
   scorerTitle: '我的場次',
   linkRepTitle: '登錄連結',
@@ -277,13 +274,6 @@ export const matchStatusLabel: Record<S4bMatchStatus, string> = {
   scheduled: '未開賽',
   live: '進行中',
   done: '已結束',
-};
-
-export const inviteLifeLabel: Record<InviteLife, string> = {
-  active: '有效',
-  used: '已使用',
-  revoked: '已撤銷',
-  expired: '已過期',
 };
 
 export const posLabel: Record<PlayerPos, string> = {

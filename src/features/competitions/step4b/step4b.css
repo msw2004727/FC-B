@@ -62,10 +62,6 @@ h3.s4b-h {
 }
 .s4b-k, .s4b-v { white-space: nowrap; }
 .s4b-strong { font-weight: 700; }
-.s4b-line--fit {
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-}
 .s4b-age-no,
 .s4b-age-no .s4b-k,
 .s4b-age-no .s4b-v {
@@ -142,7 +138,6 @@ h3.s4b-h {
 /* 日期標題是第一個子元素，:first-child 選不到第一場。 */
 .s4b-day + .s4b-m { border-top: 0; padding-top: 0; }
 /* 兩天之間。每一天包在 .s4b-daygroup 裡；不用 :has()（顧問預審：不支援的瀏覽器會整條丟掉，取代原 div:has() 寫法）。 */
-.s4b-m + .s4b-day,
 .s4b-daygroup + .s4b-daygroup > .s4b-day {
   margin-top: 0;
   padding-top: 12px;
