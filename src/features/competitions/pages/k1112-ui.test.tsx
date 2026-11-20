@@ -334,12 +334,15 @@ describe('接受邀請（K11，代碼放 #）', () => {
     expect(location.hash).toBe('');
   });
 
-  it('動作替身缺 acceptInvite：顯示通用失敗，不送任何 Callable', async () => {
+  // PM 11-20：CpActions 改回必填，「缺動作」不再可能（型別擋）；改測注入的動作失敗時顯示通用失敗、不退回正式 Functions。
+  it('注入的 acceptInvite 失敗（UNKNOWN）：顯示通用失敗，不送任何 Callable', async () => {
     openWithHash();
     fn.httpsCallable.mockClear();
-    draw(acceptEnv({ actions: idleActions() }), <InviteAcceptPage />);
+    const acceptInvite = vi.fn(() => Promise.reject(new CpCallError('UNKNOWN', {})));
+    draw(acceptEnv({ actions: { ...idleActions(), acceptInvite } }), <InviteAcceptPage />);
     fireEvent.click(await screen.findByText('接受邀請', { selector: 'button *, button' }));
     expect(await screen.findByText('操作失敗，請稍後再試')).toBeTruthy();
+    expect(acceptInvite).toHaveBeenCalledTimes(1);
     expect(fn.httpsCallable).not.toHaveBeenCalled();
     noCodeLeak();
   });
@@ -465,16 +468,25 @@ describe('詳情頁管理員區（K12）', () => {
     expect(await screen.findByText('狀態沒有變更')).toBeTruthy();
   });
 
-  it('動作替身缺 moderate：對話框顯示通用失敗，不送任何 Callable', async () => {
+  it('注入的 moderate 失敗（UNKNOWN）：對話框顯示通用失敗，不送任何 Callable', async () => {
     fn.httpsCallable.mockClear();
-    const { env } = detailEnv(adminActor, idleActions());
+    const moderate = vi.fn(() => Promise.reject(new CpCallError('UNKNOWN', {})));
+    const { env } = detailEnv(adminActor, { ...idleActions(), moderate });
     draw(env, <CompetitionDetailPage />);
     fireEvent.click(button('下架', (await screen.findByText('管理員')).closest('[data-admin-panel]') as HTMLElement));
     const dialog = (await screen.findByRole('dialog')) as HTMLElement;
     fireEvent.input(dialog.querySelector('textarea') as HTMLTextAreaElement, { target: { value: '測試原因' } });
     fireEvent.click(button('下架', dialog));
     expect(await screen.findByText('操作失敗，請稍後再試')).toBeTruthy();
+    expect(moderate).toHaveBeenCalledTimes(1);
     expect(fn.httpsCallable).not.toHaveBeenCalled();
+  });
+
+  it('screen-fixtures 的 idleActions 五支 K11／K12 動作都有（CpActions 必填）', () => {
+    const a = idleActions();
+    for (const k of ['createInvite', 'revokeInvite', 'acceptInvite', 'moderate', 'reviewReport'] as const) {
+      expect(typeof a[k]).toBe('function');
+    }
   });
 
   it('主辦打開已下架的賽事看到原因', async () => {

@@ -8,7 +8,7 @@ import { useLocation, useRoute } from 'preact-iso';
 import { Button } from '@/ui/Button';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { toast } from '@/ui/Toast';
-import { liveCpActions, missingAction } from '../actions';
+import { liveCpActions } from '../actions';
 import {
   clearInviteTicket,
   parseInviteHash,
@@ -87,7 +87,7 @@ function InviteAcceptView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
     setBusy(true);
     setMessage(null);
     try {
-      const run = env.actions.acceptInvite ?? missingAction;
+      const run = env.actions.acceptInvite;
       await run({ cid: ticket.cid, ivId: ticket.ivId, code: ticket.code });
       clearInviteTicket();
       setTicket(null);

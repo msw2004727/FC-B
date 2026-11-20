@@ -117,6 +117,11 @@ function spyActions() {
     explainTie: vi.fn(actions.explainTie),
     assignStaff: vi.fn(actions.assignStaff),
     removeStaff: vi.fn(actions.removeStaff),
+    createInvite: vi.fn(actions.createInvite),
+    revokeInvite: vi.fn(actions.revokeInvite),
+    acceptInvite: vi.fn(actions.acceptInvite),
+    moderate: vi.fn(actions.moderate),
+    reviewReport: vi.fn(actions.reviewReport),
   };
 }
 

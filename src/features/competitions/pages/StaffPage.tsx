@@ -6,7 +6,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { canHostOrCo, isCpAdmin } from '../access';
-import { liveCpActions, missingAction } from '../actions';
+import { liveCpActions } from '../actions';
 import {
   canRemoveStaffRow,
   compareStaffOrder,
@@ -149,7 +149,7 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
     setRemoveError(null);
     try {
       if (confirmTarget.kind === 'invite') {
-        const revoke = env.actions.revokeInvite ?? missingAction;
+        const revoke = env.actions.revokeInvite;
         await revoke({ cid, ivId: confirmTarget.id });
         // 撤銷成功只從畫面拿掉，不重讀（+0 讀）。
         const gone = confirmTarget.id;

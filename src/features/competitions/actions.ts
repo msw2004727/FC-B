@@ -147,23 +147,17 @@ export interface CpActions {
     expiresAt?: number;
   }): Promise<unknown>;
   removeStaff(input: { cid: string; uid: string; roles?: readonly string[] }): Promise<unknown>;
-  // 以下五支是第 4 步 K11／K12。選填：既有測試替身（screen-fixtures 的 idleActions）沒有實作，
-  // 頁面拿不到時回通用失敗，不會退回正式 Functions。正式頁一律用 liveCpActions。
-  createInvite?(input: {
+  // 以下五支是第 4 步 K11／K12。必填（PM 11-20：cp-open-b 合併後 screen-fixtures 的 idleActions 已補上，取代原本選填＋missingAction）。
+  createInvite(input: {
     cid: string;
     roles: readonly StaffScoreRole[];
     matchIds: readonly string[];
     expiresAt?: number;
   }): Promise<CpCreateInviteResult>;
-  revokeInvite?(input: { cid: string; ivId: string }): Promise<unknown>;
-  acceptInvite?(input: { cid: string; ivId: string; code: string }): Promise<CpAcceptInviteResult>;
-  moderate?(input: CpModerateInput): Promise<unknown>;
-  reviewReport?(input: { cid: string; reportId: string; status: CpReviewStatus }): Promise<unknown>;
-}
-
-/** 選填動作沒有實作時丟的錯誤。畫面顯示通用失敗。 */
-export function missingAction(): never {
-  throw new CpCallError('UNKNOWN', {});
+  revokeInvite(input: { cid: string; ivId: string }): Promise<unknown>;
+  acceptInvite(input: { cid: string; ivId: string; code: string }): Promise<CpAcceptInviteResult>;
+  moderate(input: CpModerateInput): Promise<unknown>;
+  reviewReport(input: { cid: string; reportId: string; status: CpReviewStatus }): Promise<unknown>;
 }
 
 export const liveCpActions: CpActions = {

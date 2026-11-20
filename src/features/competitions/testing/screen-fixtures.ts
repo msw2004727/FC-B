@@ -96,6 +96,12 @@ export function idleActions(): CpActions {
     explainTie: async () => ({}),
     assignStaff: async () => ({}),
     removeStaff: async () => ({}),
+    // K11／K12（PM 11-20 補上，CpActions 改回必填）：假資料，不連任何後端。
+    createInvite: async () => ({ ivId: 'iv_' + 'a'.repeat(20), code: 'A'.repeat(22), expiresAt: 0 }),
+    revokeInvite: async () => ({}),
+    acceptInvite: async ({ cid }) => ({ cid, roles: ['scorer'], matchCount: 1 }),
+    moderate: async () => ({}),
+    reviewReport: async () => ({}),
   };
 }
 
