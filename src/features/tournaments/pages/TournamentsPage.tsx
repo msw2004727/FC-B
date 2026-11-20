@@ -59,9 +59,11 @@ export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
 export const COMPETITIONS_GATE_TIMEOUT_MS = 2_000;
 
 /**
- * 有「上次有過」線索時，從進頁到站內清單畫出的上限；到了還沒好就這一次改看外部（顧問 11-20：與外部清單的 8 秒同值、合併成一個）。
+ * 有「上次有過」線索時，從進頁到站內清單畫出的上限；到了還沒好就這一次改看外部。
+ * 12 秒（顧問 11-20 上限裁定：staging 冷開閘門約進頁 7 秒才通過，8 秒餘裕不足；刻意不與外部清單的 8 秒共用，
+ * 取代前一版「與 TOURNAMENTS_LOAD_TIMEOUT_MS 同值」）。
  */
-export const COMPETITIONS_PREFER_IN_CAP_MS = TOURNAMENTS_LOAD_TIMEOUT_MS;
+export const COMPETITIONS_PREFER_IN_CAP_MS = 12_000;
 
 const EXTERNAL_CHIP = {
   league: 'cpl-chip--league',
