@@ -1,5 +1,7 @@
 // 顧問 §3.368 P2-1：開關打開時，外部清單（含本機快取）不等閘門；閘門 2 秒逾時先當沒過，
-// 晚到的通過仍補上切換（這時預設留在外部）；讀取失敗、文件不存在都不顯示切換。
+// 晚到的通過仍補上切換；讀取失敗、文件不存在都不顯示切換。
+// 顧問 §3.373：不論 2 秒內或逾時後通過，都停在外部、只補切換，點「站內」才換（網址寫 ?src=in）；
+// 網址帶 ?src=in 才直接進站內（取代原「2 秒內通過照預設停在站內」）。
 // 站內區塊用假元件代替：照正式 InAppSection 的順序呼叫 getLaunch，再用正式的 canSeeInAppSection 判定，
 // 讀取失敗走 onGate(false)（與正式元件的 catch 相同）。
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
@@ -216,7 +218,7 @@ describe.each([
 });
 
 describe('閘門結果', () => {
-  it('2 秒內通過：補上切換並照預設停在站內', async () => {
+  it('2 秒內通過：補上切換但仍停在外部，不自動切到站內；點站內才換', async () => {
     const launch = deferred<Launch>();
     gateCtl.getLaunch = () => launch.promise;
     draw();
@@ -226,12 +228,29 @@ describe('閘門結果', () => {
     launch.resolve({ isPublic: true, bannedWords: [] });
     await tick();
     expect(gateAttr()).toBe('open');
+    expect(document.querySelector('.cpl-src')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('false');
+    expect(document.querySelector('[data-inapp]')).toBeNull();
+    expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
+    expect(location.search).toBe('');
+
+    // 逾時點過了也不會自己換。
+    await tick(COMPETITIONS_GATE_TIMEOUT_MS);
+    expect(gateAttr()).toBe('open');
+    expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true');
+
+    fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
+    await tick();
+    expect(location.search).toBe('?src=in');
     expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
     expect(document.querySelector('[data-inapp]')).toBeTruthy();
     expect(screen.queryByText('2027 春季聯賽')).toBeNull();
+    expect(gateCtl.calls).toBe(1);
+    expect(sdk.getDocs).toHaveBeenCalledTimes(1);
   });
 
-  it('逾時後晚到的通過仍補上切換；使用者已在看外部，預設留在外部，點站內才換', async () => {
+  it('逾時後晚到的通過仍補上切換；同樣停在外部，點站內才換', async () => {
     const launch = deferred<Launch>();
     gateCtl.getLaunch = () => launch.promise;
     draw();
@@ -248,9 +267,11 @@ describe('閘門結果', () => {
     expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
     expect(document.querySelector('[data-inapp]')).toBeNull();
 
+    expect(location.search).toBe('');
+
     fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
     await tick();
-    expect(location.search).toBe('');
+    expect(location.search).toBe('?src=in');
     expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
     expect(document.querySelector('[data-inapp]')).toBeTruthy();
     expect(screen.queryByText('2027 春季聯賽')).toBeNull();
@@ -272,6 +293,24 @@ describe('閘門結果', () => {
     await tick(COMPETITIONS_GATE_TIMEOUT_MS * 2);
     expect(document.querySelector('.cpl-src')).toBeNull();
     expect(gateCtl.calls).toBe(1);
+  });
+
+  it('?src=in 進頁：2 秒內通過直接站內', async () => {
+    history.replaceState(null, '', '/tournaments?src=in');
+    const launch = deferred<Launch>();
+    gateCtl.getLaunch = () => launch.promise;
+    draw();
+    await tick(500);
+    // 判定中照常先畫外部清單。
+    expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
+    expect(document.querySelector('[data-inapp]')).toBeNull();
+    launch.resolve({ isPublic: true, bannedWords: [] });
+    await tick();
+    expect(gateAttr()).toBe('open');
+    expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
+    expect(document.querySelector('[data-inapp]')).toBeTruthy();
+    expect(screen.queryByText('2027 春季聯賽')).toBeNull();
+    expect(location.search).toBe('?src=in');
   });
 
   it('?src=in 明確指定時，晚到的通過照網址切到站內', async () => {
