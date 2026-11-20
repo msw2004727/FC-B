@@ -2,6 +2,8 @@
 // 賽事第 4 步 U4 觀眾畫面截圖（由 cp-step4-u3-shots.mjs 複製，U3 來自 U2；PM 用）：對已打包的 harness（vite preview）逐畫面、逐寬度、逐主題截圖（固定視窗高度，不截整頁；
 // 內容超過一個視窗時再往下捲、補截後續分段），並檢查 console 錯誤、橫向溢出與介面文字被動斷行。
 // 用法：node dev-harness/cp-step4-u4-shots.mjs <輸出資料夾> [base url，預設 http://localhost:5199]
+// 新外觀第 3 批：補 u4-scorers-cap 與 u4-page-*（正式頁面 LiveMatchPage）；外部請求改成「非 localhost 一律擋」。
+// 第 3 批整套（含詳情頁榜單、我的場次）用 cp-p3-public-shots.mjs。
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
@@ -20,6 +22,18 @@ const ANCHORS = {
   'u4-cards': '黃牌數',
   'u4-scorers-stalled': '射手榜已停止更新',
   'u4-scorers-empty': '還沒有已確認的比賽紀錄',
+  'u4-scorers-cap': '只顯示前 50 名',
+  'u4-page-live': '比賽紀錄',
+  'u4-page-log-open': '劉冠廷',
+  'u4-page-pre': '14:30',
+  'u4-page-ht': '中場休息',
+  'u4-page-pk': 'PK 3:2',
+  'u4-page-pk-log-open': '第1輪',
+  'u4-page-ft-pk-corrected': '比分已更正',
+  'u4-page-cancelled': '11:30　1號場',
+  'u4-page-postponed': '09:00　1號場',
+  'u4-page-long-crest': '一二三四五六七八九十示範隊',
+  'u4-page-missing': '找不到這場比賽',
 };
 // [畫面, 寬度組, 主題組, 是否可往下補截]
 const SCREENS = [
@@ -31,9 +45,21 @@ const SCREENS = [
   ['u4-cards', ALL, THEMES, true],
   ['u4-scorers-stalled', ALL, THEMES, true],
   ['u4-scorers-empty', ALL, THEMES, false],
+  ['u4-scorers-cap', ALL, THEMES, true],
+  ['u4-page-live', ALL, THEMES, false],
+  ['u4-page-log-open', ALL, THEMES, true],
+  ['u4-page-pre', ALL, THEMES, false],
+  ['u4-page-ht', ALL, THEMES, false],
+  ['u4-page-pk', ALL, THEMES, false],
+  ['u4-page-pk-log-open', ALL, THEMES, true],
+  ['u4-page-ft-pk-corrected', ALL, THEMES, false],
+  ['u4-page-cancelled', ALL, THEMES, false],
+  ['u4-page-postponed', ALL, THEMES, false],
+  ['u4-page-long-crest', ALL, THEMES, false],
+  ['u4-page-missing', ALL, THEMES, false],
 ];
 
-const SELECTORS = '.s4b-staff__name, .s4b-staff__meta, .s4b-day, .s4b-k, .s4b-err, .s4b-foot, .s4-team, .s4-col__name, .s4-clock, .s4-stage, .s4-hold, .s4-banner, .s4-wake, .s4-ev__main, .s4-ev__tag, .s4-evsum, .s4-flash__no, .s4-flash__name, .s4-flash__kind, .s4-flash__close, .s4-sent__st, .s4-sent__cd, .s4-hint, .s4-note, .s4-log__intent, .s4-log__st, .s4-pl__name, .s4-dlist__when, .s4-vs__score, .cpm-drag__n, .cpm-drag__li > *, .cpl-src button, .cpl-select, .cpl-st, .tc-chip, .tc-tab, .cpl-line, .tc-card-name, .tc-card-dates, button, .ui-badge, .ui-chip, dt, .cp3-name, .cp3-meta, .cp3-strip__txt, .cp3-day, .cp3-m__when, .cp3-m__vs span, .cp3-st__r > *, .cp3-champ span, .cp3-fold span, .cp3-result, .cp3-result--bad, .cp3-judge, .cp3-sec-h, .cp3-ctx, .cp3-score__name, .cp3-modal-p, .ui-input label, .ui-checkbox label, .ui-radio label, h1, h2, h3, .cps-sub, .cps-note, th';
+const SELECTORS = '.s4b-staff__name, .s4b-staff__meta, .s4b-day, .s4b-k, .s4b-err, .s4b-foot, .s4-team, .s4-col__name, .s4-clock, .s4-stage, .s4-hold, .s4-banner, .s4-wake, .s4-ev__main, .s4-ev__tag, .s4-evsum, .s4-flash__no, .s4-flash__name, .s4-flash__kind, .s4-flash__close, .s4-sent__st, .s4-sent__cd, .s4-hint, .s4-note, .s4-log__intent, .s4-log__st, .s4-pl__name, .s4-dlist__when, .s4-vs__score, .cpm-drag__n, .cpm-drag__li > *, .cpl-src button, .cpl-select, .cpl-st, .tc-chip, .tc-tab, .cpl-line, .tc-card-name, .tc-card-dates, button, .ui-badge, .ui-chip, dt, .cp3-name, .cp3-meta, .cp3-strip__txt, .cp3-day, .cp3-m__when, .cp3-m__vs span, .cp3-st__r > *, .cp3-champ span, .cp3-fold span, .cp3-result, .cp3-result--bad, .cp3-judge, .cp3-sec-h, .cp3-ctx, .cp3-score__name, .cp3-modal-p, .ui-input label, .ui-checkbox label, .ui-radio label, h1, h2, h3, .cps-sub, .cps-note, th, .s4-table td, .s4-pk, .cps-top h1';
 
 const browser = await chromium.launch({ args: ['--noerrdialogs'] });
 await mkdir(OUT, { recursive: true });
@@ -42,7 +68,7 @@ const copyMap = new Map();
 for (const [name, sizes, themes, scrollMore] of SCREENS) {
   for (const [w, h] of sizes) {
     for (const theme of themes) {
-      const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 }); await ctx.route(/googleapis\.com|firebaseio\.com|firebaseapp\.com/, (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });
+      const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 }); await ctx.route((url) => !/^(https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/|data:|blob:)/.test(url.href), (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });
       const page = await ctx.newPage();
       const tag = `s4-${name}-${w}-${theme}`;
       page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });
@@ -64,7 +90,7 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
       // 區塊內部溢出（被 overflow:hidden 吃掉的內容）也要抓
       const clipped = await page.evaluate(() => {
         const out = [];
-        for (const el of document.querySelectorAll('.cp3-st__r, .cp3-m__vs, .cp3-score, .cp3-m__act, .cps-footer, .cp3-stack-btns, .cp3-strip, .cp3-row, .cps-grid2, .s4-board, .s4-top, .s4-goals, .s4-cards, .s4-cardpair, .s4-pkpair, .s4-ctrl, .s4-clockrow, .s4-side, .s4-amend-act, .s4-ev, .s4-vs, .s4-dlist__top, .s4-log__act, .s4-kinds, .s4-grid, .s4-timeout, .s4-timeout__row, .s4-scoreline')) {
+        for (const el of document.querySelectorAll('.cp3-st__r, .cp3-m__vs, .cp3-score, .cp3-m__act, .cps-footer, .cp3-stack-btns, .cp3-strip, .cp3-row, .cps-grid2, .s4-board, .s4-top, .s4-goals, .s4-cards, .s4-cardpair, .s4-pkpair, .s4-ctrl, .s4-clockrow, .s4-side, .s4-amend-act, .s4-ev, .s4-vs, .s4-dlist__top, .s4-log__act, .s4-kinds, .s4-grid, .s4-timeout, .s4-timeout__row, .s4-scoreline, .s4-table')) {
           if (el.scrollWidth - el.clientWidth > 1) out.push(`${el.className} ${el.scrollWidth}>${el.clientWidth}`);
         }
         return out;
@@ -192,11 +218,11 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
   }
 }
 // 第一屏：凍結元件沒有 h1。單場與榜用 .s4-page；詳情改畫正式列表，看 .cp3-ml。U2 的記分控制列不適用於這組畫面。
-const FIRST = ['u4-detail-live', 'u4-detail-corrected-pk', 'u4-match-live', 'u4-match-log-open', 'u4-scorers', 'u4-cards', 'u4-scorers-stalled', 'u4-scorers-empty'];
+const FIRST = ['u4-detail-live', 'u4-detail-corrected-pk', 'u4-match-live', 'u4-match-log-open', 'u4-scorers', 'u4-cards', 'u4-scorers-stalled', 'u4-scorers-empty', 'u4-scorers-cap', 'u4-page-live', 'u4-page-pre', 'u4-page-missing'];
 for (const name of FIRST) {
   for (const [w, h] of ALL) {
     for (const theme of THEMES) {
-    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 }); await ctx.route(/googleapis\.com|firebaseio\.com|firebaseapp\.com/, (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 }); await ctx.route((url) => !/^(https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/|data:|blob:)/.test(url.href), (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });
     const page = await ctx.newPage();
     const tag = `s4-${name}-${w}x${h}-${theme}`;
     page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });
@@ -214,7 +240,7 @@ for (const name of FIRST) {
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(300);
     const missing = await page.evaluate(() => {
-      const el = document.querySelector('.s4-page, .cp3-ml');
+      const el = document.querySelector('.s4-page, .cp3-ml, .cps-root');
       if (!el) return ['畫面'];
       const top = el.getBoundingClientRect().top;
       if (top > window.innerHeight + 0.5) return [`內容超出第一屏 ${Math.round(top)}>${window.innerHeight}`];

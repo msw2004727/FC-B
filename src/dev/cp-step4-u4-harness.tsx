@@ -1,5 +1,7 @@
 // 觀眾即時與射手榜截圖。只畫凍結元件與假資料，不連 Firestore。
 // ?screen= 與 ?theme=light|dark。畫完且錨點出現後設 window.__CPS_READY。
+// u4-page-*（新外觀第 3 批第 7 節要補）：畫正式頁面 LiveMatchPage，用 CpEnvProvider 注入 audience，
+// watchMatch 直接回一筆假場次（p3-public-fixtures 的 liveMatchEnv）。u4-match-* 維持畫元件，當回歸基準。
 import { render } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import '../styles/tokens.css';
@@ -10,7 +12,10 @@ import { groupSchedule } from '@/features/competitions/data/schedule-present';
 import type { EntryDoc, SummaryEntry } from '@/features/competitions/data/types';
 import { taipeiMs } from '@/features/competitions/format';
 import { ctOrKey, loadCompetitionsDict, useCompetitionsT } from '@/features/competitions/i18n';
+import { CpEnvProvider } from '@/features/competitions/env';
 import { LiveMatchView } from '@/features/competitions/live/LiveMatchView';
+import LiveMatchPage from '@/features/competitions/pages/LiveMatchPage';
+import { liveMatchEnv } from '@/features/competitions/testing/p3-public-fixtures';
 import { ScorersTable } from '@/features/competitions/live/ScorersTable';
 import { derivePublicTable } from '@/features/competitions/live/stats';
 import type { TimelineEvent } from '@/features/competitions/live/types';
@@ -35,7 +40,34 @@ export const U4_SCREENS = [
   'u4-cards',
   'u4-scorers-stalled',
   'u4-scorers-empty',
+  'u4-scorers-cap',
+  'u4-page-live',
+  'u4-page-log-open',
+  'u4-page-pre',
+  'u4-page-ht',
+  'u4-page-pk',
+  'u4-page-pk-log-open',
+  'u4-page-ft-pk-corrected',
+  'u4-page-cancelled',
+  'u4-page-postponed',
+  'u4-page-long-crest',
+  'u4-page-missing',
 ] as const;
+
+/** u4-page-* 對到 liveMatchEnv 的哪一筆假場次。 */
+const PAGE_MATCH: Record<string, string> = {
+  'u4-page-live': 'live',
+  'u4-page-log-open': 'live',
+  'u4-page-pre': 'pre',
+  'u4-page-ht': 'ht',
+  'u4-page-pk': 'pk',
+  'u4-page-pk-log-open': 'pk',
+  'u4-page-ft-pk-corrected': 'ftPkCorrected',
+  'u4-page-cancelled': 'cancelled',
+  'u4-page-postponed': 'postponed',
+  'u4-page-long-crest': 'longCrest',
+  'u4-page-missing': 'missing',
+};
 
 const ANCHORS: Record<string, string> = {
   'u4-detail-live': '即時',
@@ -46,6 +78,18 @@ const ANCHORS: Record<string, string> = {
   'u4-cards': '黃牌數',
   'u4-scorers-stalled': '射手榜已停止更新',
   'u4-scorers-empty': '還沒有已確認的比賽紀錄',
+  'u4-scorers-cap': '只顯示前 50 名',
+  'u4-page-live': '比賽紀錄',
+  'u4-page-log-open': '劉冠廷',
+  'u4-page-pre': '14:30',
+  'u4-page-ht': '中場休息',
+  'u4-page-pk': 'PK 3:2',
+  'u4-page-pk-log-open': '第1輪',
+  'u4-page-ft-pk-corrected': '比分已更正',
+  'u4-page-cancelled': '11:30　1號場',
+  'u4-page-postponed': '09:00　1號場',
+  'u4-page-long-crest': '一二三四五六七八九十示範隊',
+  'u4-page-missing': '找不到這場比賽',
 };
 
 /** 截圖隊徽：16×16 內嵌 PNG。不連正式儲存網域。 */
@@ -148,7 +192,24 @@ function clickButton(name: string): void {
   node.click();
 }
 
+/** 超過 50 名：60 人，正式 scorerTables 截在 50 名，元件只多一行附註。 */
+const CAP_SCORERS = Array.from({ length: 50 }, (_, index) => ({
+  rank: Math.floor(index / 5) * 5 + 1,
+  plId: `pl_cap${index}`,
+  displayName: `球員${index + 1}`,
+  isMinor: false,
+  teamName: index % 2 ? '海風隊' : '一二三四五六七八九十示範隊',
+  goals: Math.max(1, 12 - Math.floor(index / 5)),
+}));
+
 function screenOf(name: string) {
+  if (name in PAGE_MATCH) {
+    return (
+      <CpEnvProvider value={liveMatchEnv(PAGE_MATCH[name]!)}>
+        <LiveMatchPage />
+      </CpEnvProvider>
+    );
+  }
   if (name === 'u4-detail-live') return <OfficialList entries={LIVE_ENTRIES} />;
   if (name === 'u4-detail-corrected-pk') return <OfficialList entries={CORRECTED_ENTRIES} />;
   if (name === 'u4-match-live' || name === 'u4-match-log-open') {
@@ -170,6 +231,9 @@ function screenOf(name: string) {
   if (name === 'u4-cards') {
     return <ScorersTable scorers={table.scorers} cards={table.cards} initialTab="cards" />;
   }
+  if (name === 'u4-scorers-cap') {
+    return <ScorersTable scorers={CAP_SCORERS} cards={table.cards} capNote="只顯示前 50 名" />;
+  }
   if (name === 'u4-scorers-stalled') {
     return <ScorersTable scorers={table.scorers} cards={table.cards} stalled />;
   }
@@ -180,6 +244,12 @@ const OPEN: Record<string, () => void> = {
   'u4-match-log-open': () => {
     clickButton('比賽紀錄');
   },
+};
+
+/** 頁面要等 watchMatch 回來才有按鈕，所以展開放在錨點前另外等。 */
+const OPEN_PAGE: Record<string, string> = {
+  'u4-page-log-open': '比賽紀錄',
+  'u4-page-pk-log-open': '比賽紀錄',
 };
 
 void start();
@@ -204,6 +274,15 @@ async function start(): Promise<void> {
       root,
     );
     OPEN[screenName]?.();
+    const fold = OPEN_PAGE[screenName];
+    if (fold) {
+      const waitAt = Date.now();
+      while (buttonsNamed(fold).length === 0) {
+        if (Date.now() - waitAt > 4000) throw new Error(`找不到按鈕：${fold}`);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      clickButton(fold);
+    }
     const anchor = ANCHORS[screenName] ?? '';
     const startAt = Date.now();
     while (!hasText(anchor)) {

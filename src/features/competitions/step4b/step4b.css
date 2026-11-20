@@ -17,10 +17,10 @@
 
 .s4b-plain {
   padding: var(--space-4);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--d2-line);
   border-radius: var(--radius-md);
-  background: var(--color-bg-surface);
-  color: var(--color-text-primary);
+  background: var(--d2-field-bg);
+  color: var(--d2-text);
 }
 
 .s4b .ui-button,
@@ -62,16 +62,6 @@ h3.s4b-h {
   line-height: var(--line-height-body);
 }
 
-.s4b-label {
-  display: block;
-  margin-bottom: var(--space-2);
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-}
-
 .s4b-line {
   display: flex;
   flex-wrap: wrap;
@@ -92,7 +82,7 @@ h3.s4b-h {
 .s4b-age-no,
 .s4b-age-no .s4b-k,
 .s4b-age-no .s4b-v {
-  color: var(--color-warning-fg);
+  color: var(--d2-text-2);
   font-weight: 700;
 }
 
@@ -216,23 +206,15 @@ h3.s4b-h {
 .s4b-between > .s4b-k { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .s4b-m__top .ui-badge { flex: 0 0 auto; }
 
-.s4b-warn {
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--color-warning-bg);
-  color: var(--color-warning-fg);
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  font-weight: 700;
-  white-space: nowrap;
-}
 .s4b-alert {
   margin: 0;
-  color: var(--color-danger-fg);
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-body);
-  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--d2-line);
+  color: var(--d2-text);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
   white-space: nowrap;
 }
 .s4b-err {
@@ -259,93 +241,6 @@ h3.s4b-h {
   white-space: nowrap;
 }
 
-.s4b-fold {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--color-text-primary);
-  font: inherit;
-  font-size: var(--font-size-body-lg);
-  line-height: var(--line-height-body-lg);
-  font-weight: 700;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.s4b-fold svg {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.s4b-fold--open svg { transform: rotate(180deg); }
-.s4b-sub {
-  min-width: 0;
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border-subtle);
-}
-
-.s4b-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.s4b-bday { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; min-width: 0; }
-.s4b-bday select {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  margin: 0;
-  padding: 0 8px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-input);
-  color: var(--color-text-primary);
-  font: inherit;
-  font-size: max(16px, 1rem);
-}
-
-.s4b-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-.s4b-table th, .s4b-table td {
-  padding: 6px 4px;
-  border-bottom: 1px solid var(--color-border);
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  color: var(--color-text-primary);
-}
-.s4b-table th { color: var(--color-text-secondary); font-weight: 600; }
-.s4b-sign {
-  display: block;
-  height: 28px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 2px;
-}
-
-[data-theme="dark"] .s4b .ui-checkbox input,
-[data-theme="dark"] .s4b .ui-radio input { color-scheme: dark; }
-
-.s4b-num {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--color-brand-soft-bg);
-  color: var(--color-brand-soft-fg);
-  font-weight: 700;
-  white-space: nowrap;
-}
-
 @media print {
   .s4b-noprint { display: none !important; }
   .s4b, .s4b * {
@@ -355,7 +250,6 @@ h3.s4b-h {
     text-shadow: none !important;
   }
   .s4b-plain, .s4b .cps-card { border-color: #000 !important; }
-  .s4b-sign { border-color: #000 !important; }
 }
 
 /* 第 4 步 K11：尚未使用的邀請與邀請連結。 */
@@ -378,7 +272,7 @@ h3.s4b-h {
   overflow-wrap: anywhere;
   user-select: all;
 }
-.s4b .s4b-inv__once { color: var(--color-warning-fg); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); }
+.s4b .s4b-inv__once { color: var(--d2-text-2); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); }
 /* 賽事名稱是使用者內容，可以換行，不得撐破 360 寬。 */
 .s4b h2.s4b-accept__name { white-space: normal; overflow-wrap: anywhere; }
 /* K11 追加：記分指派到期顯示在名字下一行（名字、角色、場次維持第一列）。 */

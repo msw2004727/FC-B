@@ -1,15 +1,24 @@
 #!/usr/bin/env node
 // 賽事第 3 步預覽截圖：對已打包的 harness（vite preview）逐畫面、逐寬度、逐主題截圖（固定視窗高度，不截整頁；
 // 內容超過一個視窗時再往下捲、補截後續分段），並檢查 console 錯誤、橫向溢出與介面文字被動斷行。
-// 用法：node dev-harness/cp-step3-shots.mjs <輸出資料夾> [base url，預設 http://localhost:5194]
+// 用法：node dev-harness/cp-step3-real-shots.mjs <輸出資料夾> [base url，預設 http://localhost:5194] [--screens=a,b] [--sizes=360,1280]
+//   --screens 只拍這幾個畫面（名稱不含「real:」）；--sizes 只拍這幾種寬度。非本機請求一律擋下並記在 report.blocked。
+// 新外觀第 1b／4 批（施工-第1b批、第4批第 7 節）：每個畫面都要 360 與 1280；原本只有 390／360，補 1280×800。
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 
-const OUT = resolve(process.argv[2] || 'cp-step3-shots');
-const BASE = process.argv[3] || 'http://localhost:5194';
-const ALL = [[390, 844], [360, 780]];
-const ONE = [[390, 844]];
+const ARGS = process.argv.slice(2);
+const FLAGS = Object.fromEntries(ARGS.filter((a) => a.startsWith('--')).map((a) => { const [k, v] = a.slice(2).split('='); return [k, v ?? '']; }));
+const POS = ARGS.filter((a) => !a.startsWith('--'));
+const OUT = resolve(POS[0] || 'cp-step3-shots');
+const BASE = POS[1] || 'http://localhost:5194';
+const ONLY = FLAGS.screens ? new Set(FLAGS.screens.split(',')) : null;
+const ONLY_W = FLAGS.sizes ? new Set(FLAGS.sizes.split(',').map(Number)) : null;
+const ALL = [[390, 844], [360, 780], [1280, 800]];
+const ONE = [[390, 844], [1280, 800]];
+// 新外觀第 1b／4 批補的狀態：規格只要 360 與 1280。
+const NEW = [[360, 780], [1280, 800]];
 const THEMES = ['light', 'dark'];
 // [畫面, 寬度組, 主題組, 是否可往下補截（面板／對話框不補）]
 // 每個畫面必須拍到的文字（至少一段截圖的視窗內要看得到），避免分段圖拍到別處（顧問 §3.294 P2-2）
@@ -20,6 +29,20 @@ const ANCHORS = {
   'real-recruit': '報名期間', 'real-done': '18:00', 'real-ended-host': '剩餘場次不再進行', 'real-postponed': '場地整修',
   'real-cancelled-comp': '報名隊伍不足', 'real-notices': '領隊會議', 'real-contact-club': '聯絡主辦',
   'real-contact-personal': '聯絡主辦', 'real-host-schedule': '每場分鐘數', 'real-shift-day': '順延', 'real-wizard-personal': '賽事名稱',
+  // 卡 2-0（施工-第2批 3.25、3.27）
+  'real-forfeit-sheet': '確認棄權', 'real-reset-dialog': '重置後比分歸零', 'real-clear-schedule': '確定要清除',
+  'real-tie-exists': '已有裁定，請先撤銷原本的裁定', 'real-tie-decision': '撤銷裁定',
+  // 新外觀第 1b 批第 7 節
+  'real-live-twin-next': '綠洲隊', 'real-live-no-today': '晨光隊', 'real-warm-no-schedule': '距開賽',
+  'real-recruit-nocap': '已核准', 'real-recruit-nodiv': '報名期間', 'real-done-five': '赤焰隊', 'real-done-nochamp': '已結束',
+  'real-done-pending': '冠軍待主辦裁定', 'real-long': '三重示範青年足球俱樂部隊', 'real-long-recruit': '三重區示範運動公園第一足球場',
+  'real-draft-host': '發布', 'real-scorer': '我的場次', 'real-admin-menu': '下架', 'real-club-entry-one': '送出報名',
+  'real-club-entry-two': '送出報名', 'real-club-entry-error': '還有必填項目沒填', 'real-notice-delete': '確定要刪除這則公告？',
+  'real-notice-delete-sys': '這是系統公告，確定要刪除？', 'real-load-failed': '讀取失敗', 'real-crest-live': '雷霆隊', 'real-corrected-pk': '藍鯨隊',
+  // 新外觀第 4 批第 7 節
+  'real-swap-open': '確認對調', 'real-shift-clash': '仍要順延', 'real-pending-fresh': '登錄比分', 'real-host-matches-empty': '請先排賽程',
+  'real-schedule-preview': '共 12 場、需 2 天、每隊 3 場', 'real-schedule-unplaced': '還有 4 場排不下', 'real-schedule-too-many': '場次太多，請調整賽制',
+  'real-schedule-replace': '清除賽程',
 };
 const SCREENS = [
   ['real:list-in', ALL, THEMES, true],
@@ -43,21 +66,69 @@ const SCREENS = [
   ['real:real-host-schedule', ONE, THEMES, true],
   ['real:real-shift-day', ONE, THEMES, true],
   ['real:real-wizard-personal', ONE, THEMES, true],
+  ['real:real-forfeit-sheet', ALL, THEMES, false],
+  ['real:real-reset-dialog', ALL, THEMES, false],
+  ['real:real-clear-schedule', ALL, THEMES, false],
+  ['real:real-tie-exists', ALL, THEMES, true],
+  ['real:real-tie-decision', ALL, THEMES, true],
+  // 新外觀第 1b 批第 7 節「要補示範狀態」
+  ['real:real-live-twin-next', NEW, THEMES, true],
+  ['real:real-live-no-today', NEW, THEMES, true],
+  ['real:real-warm-no-schedule', NEW, THEMES, true],
+  ['real:real-recruit-nocap', NEW, THEMES, true],
+  ['real:real-recruit-nodiv', NEW, THEMES, true],
+  ['real:real-done-five', NEW, THEMES, true],
+  ['real:real-done-nochamp', NEW, THEMES, true],
+  ['real:real-done-pending', NEW, THEMES, true],
+  ['real:real-long', NEW, THEMES, true],
+  ['real:real-long-recruit', NEW, THEMES, true],
+  ['real:real-draft-host', NEW, THEMES, true],
+  ['real:real-scorer', NEW, THEMES, true],
+  ['real:real-admin-menu', NEW, THEMES, false],
+  ['real:real-club-entry-one', NEW, THEMES, false],
+  ['real:real-club-entry-two', NEW, THEMES, false],
+  ['real:real-club-entry-error', NEW, THEMES, false],
+  ['real:real-notice-delete', NEW, THEMES, false],
+  ['real:real-notice-delete-sys', NEW, THEMES, false],
+  ['real:real-load-failed', NEW, THEMES, false],
+  ['real:real-crest-live', NEW, THEMES, true],
+  ['real:real-corrected-pk', NEW, THEMES, true],
+  // 新外觀第 4 批第 7 節「要補」
+  ['real:real-swap-open', NEW, THEMES, true],
+  ['real:real-shift-clash', NEW, THEMES, true],
+  ['real:real-pending-fresh', NEW, THEMES, true],
+  ['real:real-host-matches-empty', NEW, THEMES, false],
+  ['real:real-host-matches-denied', NEW, THEMES, false],
+  ['real:real-schedule-preview', NEW, THEMES, true],
+  ['real:real-schedule-unplaced', NEW, THEMES, true],
+  ['real:real-schedule-too-many', NEW, THEMES, true],
+  ['real:real-schedule-replace', NEW, THEMES, true],
 ];
 
-const SELECTORS = '.cpm-drag__n, .cpm-drag__li > *, .cpl-src button, .cpl-select, .cpl-st, .tc-chip, .tc-tab, .cpl-line, .tc-card-name, .tc-card-dates, button, .ui-badge, .ui-chip, dt, .cp3-name, .cp3-meta, .cp3-strip__txt, .cp3-day, .cp3-m__when, .cp3-m__vs span, .cp3-st__r > *, .cp3-champ span, .cp3-fold span, .cp3-result, .cp3-result--bad, .cp3-judge, .cp3-sec-h, .cp3-ctx, .cp3-score__name, .cp3-modal-p, .ui-input label, .ui-checkbox label, .ui-radio label, h1, h2, h3, .cps-sub';
+const SELECTORS = '.cpm-drag__n, .cpm-drag__li > *, .cpl-src button, .cpl-select, .cpl-st, .tc-chip, .tc-tab, .cpl-line, .tc-card-name, .tc-card-dates, button, .ui-badge, .ui-chip, dt, .cp3-name, .cp3-meta, .cp3-strip__txt, .cp3-day, .cp3-m__when, .cp3-m__vs span, .cp3-st__r > *, .cp3-champ span, .cp3-fold span, .cp3-result, .cp3-result--bad, .cp3-judge, .cp3-sec-h, .cp3-ctx, .cp3-score__name, .cp3-modal-p, .ui-input label, .ui-checkbox label, .ui-radio label, h1, h2, h3, .cps-sub'
+  // 新外觀第 1b／4 批：對調兩句結果（不折行）、冠軍每一行、右上選單、公告時間、名單隊名、組別卡說明
+  + ', .cpm-swap, .cp3-champ__k, .cp3-champ__v, .cps-menu [role="menuitem"], .cpm-ann__time, .cps-li__name, .cps-cap, .cpm-preview';
 
 const browser = await chromium.launch({ args: ['--noerrdialogs'] });
 await mkdir(OUT, { recursive: true });
-const report = { shots: [], consoleErrors: [], overflows: [], wraps: [] };
+const report = { shots: [], consoleErrors: [], blocked: [], overflows: [], wraps: [] };
 const copyMap = new Map();
 for (const [full, sizes, themes, scrollMore] of SCREENS) {
   const [kind, name] = full.split(':');
+  if (ONLY && !ONLY.has(name)) continue;
   for (const [w, h] of sizes) {
+    if (ONLY_W && !ONLY_W.has(w)) continue;
     for (const theme of themes) {
       const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 });
-      const page = await ctx.newPage();
       const tag = `${kind}-${name}-${w}-${theme}`;
+      // 只放行本機：Firestore、Functions、地圖、字型 CDN 一律擋下並記錄
+      await ctx.route('**/*', (route) => {
+        const u = new URL(route.request().url());
+        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.protocol === 'data:' || u.protocol === 'blob:') return route.continue();
+        report.blocked.push(`${tag}: ${u.hostname}${u.pathname}`);
+        return route.abort();
+      });
+      const page = await ctx.newPage();
       page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });
       page.on('pageerror', (e) => report.consoleErrors.push(`${tag}: pageerror ${e.message}`));
       await page.goto(`${BASE}/dev-harness/${kind === 'list' ? 'cp-step3-list' : kind === 'rules' ? 'cp-step3-rules' : kind === 'more' ? 'cp-step3-more' : kind === 'real' ? 'cp-step3-real' : 'cp-step3'}.html?screen=${name}&theme=${theme}`);
@@ -150,5 +221,5 @@ for (const [full, sizes, themes, scrollMore] of SCREENS) {
 await browser.close();
 await writeFile(join(OUT, 'copy.json'), JSON.stringify([...copyMap.values()], null, 2), 'utf8');
 await writeFile(join(OUT, 'report.json'), JSON.stringify(report, null, 2), 'utf8');
-console.log(`截圖 ${report.shots.length} 張；console 錯誤 ${report.consoleErrors.length}；溢出 ${report.overflows.length}；斷行／省略 ${report.wraps.length}`);
-for (const k of ['consoleErrors', 'overflows', 'wraps']) for (const l of report[k]) console.log(k, l);
+console.log(`截圖 ${report.shots.length} 張；console 錯誤 ${report.consoleErrors.length}；外部請求 ${report.blocked.length}；溢出 ${report.overflows.length}；斷行／省略 ${report.wraps.length}`);
+for (const k of ['consoleErrors', 'blocked', 'overflows', 'wraps']) for (const l of report[k]) console.log(k, l);

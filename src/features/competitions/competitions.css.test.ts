@@ -55,6 +55,47 @@ describe('名單頁長暱稱（顧問 §3.471 X-02）', () => {
   });
 });
 
+describe('賽事新外觀色票（第 0 批卡 0-2）', () => {
+  const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/@import[^;]*;/g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: (m[1] ?? '').trim().replace(/\s+/g, ' '), body: m[2] ?? '' }));
+  const varsOf = (body: string) => [...body.matchAll(/(--d2-[\w-]+)\s*:/g)].map((m) => m[1] ?? '');
+
+  it('--d2-* 只宣告在淺色、深色兩條規則裡，每個變數每個主題一次', () => {
+    const declaring = rules.filter((r) => varsOf(r.body).length > 0);
+    expect(declaring.map((r) => r.sel)).toEqual([
+      '.cps-root, .s4-page, .d2-panel, .cp-danger-confirm #app-confirm-modal',
+      '[data-theme="dark"] .cps-root, [data-theme="dark"] .s4-page, [data-theme="dark"] .d2-panel, [data-theme="dark"].cp-danger-confirm #app-confirm-modal',
+    ]);
+    const [light = [], dark = []] = declaring.map((r) => varsOf(r.body));
+    expect(new Set(light).size).toBe(light.length);
+    expect(new Set(dark).size).toBe(dark.length);
+    expect(dark.filter((v) => !light.includes(v))).toEqual([]);
+  });
+
+  it('賽事樣式不用 !important', () => {
+    expect(css).not.toContain('!important');
+  });
+});
+
+describe('記分板共用元件與窄體數字字型（第 0 批卡 0-6）', () => {
+  const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');
+
+  it('字型用新家族名稱、不沿用球員卡的 Bebas Neue，涵蓋數字、冒號、斜線；--d2-num 第一順位是它', () => {
+    const face = css.match(/@font-face \{[^}]*\}/)?.[0] ?? '';
+    expect(face).toContain("font-family: 'CP Score';");
+    expect(face).not.toContain('Bebas Neue');
+    expect(face).toContain('U+002D-003A');
+    expect(face).toContain('font-display: swap;');
+    expect(css).toMatch(/--d2-num: 'CP Score',/);
+  });
+
+  it('記分板 class 存在且只用色票變數', () => {
+    for (const sel of ['.d2-num {', '.d2-sb {', '.d2-sb--lit {', '.d2-sb__st {', '.d2-cells {', '.d2-cell {', '.d2-cell__k {', '.d2-cell__v {', '.d2-sb--lit .d2-cell--now .d2-num {', '.d2-cells--row {']) {
+      expect(css).toContain(sel);
+    }
+  });
+});
+
 describe('積分榜欄寬（實量覆核 7.3：360 寬隊名只剩一個字）', () => {
   it('固定欄縮窄後，360 寬隊名文字至少放得下 4 個中文字加省略號，且仍單行省略', () => {
     const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');

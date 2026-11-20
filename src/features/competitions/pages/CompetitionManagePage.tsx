@@ -566,6 +566,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {rejectEntry ? (
         <BottomSheet
           open
+          class="d2-panel"
           title={ct('rejectTitle')}
           onClose={() => { setRejectId(null); setRejectError(null); }}
           footer={(
@@ -592,6 +593,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {unlockOpen ? (
         <BottomSheet
           open
+          class="d2-panel"
           title={ct('unlockTitle')}
           onClose={() => { setUnlockOpen(false); setUnlockError(null); }}
           footer={(

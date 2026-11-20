@@ -24,9 +24,11 @@ import StaffPage from '@/features/competitions/pages/StaffPage';
 import { createFakeCpRepo } from '@/features/competitions/testing/fake-cp-repo';
 import {
   adminActor,
+  clubRepActor,
   competition,
   hostActor,
   idleActions,
+  LONG_COMP_NAME,
   memberActor,
   screenEnv,
 } from '@/features/competitions/testing/screen-fixtures';
@@ -50,6 +52,18 @@ export const K1112_SCREENS = [
   'detail-hidden',
   'detail-report-done',
   'detail-report-guest',
+  // 新外觀第 4 批第 7 節「要補」：代表自己那一列、邀請清單空的／讀取失敗、撤銷確認框、已下架的管理員視角。
+  'staff-list-rep',
+  'staff-invites-empty',
+  'staff-invites-error',
+  'staff-revoke-confirm',
+  'detail-admin-hidden',
+  // 第 3 批留下的：接受邀請・連結無效、找不到邀請資料、連線錯誤可重按、送出中、22 字賽事名。
+  'accept-bad-link',
+  'accept-no-ticket',
+  'accept-net-error',
+  'accept-sending',
+  'accept-long-name',
 ] as const;
 
 const CODE = 'AbCdEfGhIjKlMnOpQrStUv';
@@ -93,12 +107,13 @@ const REPORTS = [
   { id: 'rp_cccccccc', reason: 'privacy', detail: '名單露出未成年全名', count: 1, lastAt: taipeiMs(2027, 1, 6, 12, 30), status: 'dismissed', reopened: false },
 ] as unknown as ReportDoc[];
 
-function repo() {
+function repo(opts: { name?: string; invites?: InviteDoc[]; clubHost?: boolean } = {}) {
   return createFakeCpRepo({
-    competitions: [competition({ id: 'cup', name: '2027 春季社區足球聯賽' })],
-    staff: { cup: [{ uid: 'uid_host', roles: ['host'] }, { uid: 'uid_co', roles: ['coHost'] }] },
-    assignments: { cup: ASSIGN },
-    invites: { cup: INVITES },
+    // clubHost：俱樂部主辦（hostTeamId＝clubRepActor 代表的 club_host），代表本人沒有主辦 staff 文件。
+    competitions: [competition({ id: 'cup', name: opts.name ?? '2027 春季社區足球聯賽', ...(opts.clubHost ? { hostType: 'club', hostTeamId: 'club_host' } : {}) })],
+    staff: { cup: opts.clubHost ? [{ uid: 'uid_co', roles: ['coHost'] }] : [{ uid: 'uid_host', roles: ['host'] }, { uid: 'uid_co', roles: ['coHost'] }] },
+    assignments: { cup: opts.clubHost ? ASSIGN.filter((row) => row.uid !== 'uid_host') : ASSIGN },
+    invites: { cup: opts.invites ?? INVITES },
     matches: { cup: MATCHES },
     reports: { cup: REPORTS },
   });
@@ -115,7 +130,15 @@ function actions(): CpActions {
   };
 }
 
-function staffEnv(): CpInjectedEnv {
+function staffEnv(screen = 'staff-list'): CpInjectedEnv {
+  if (screen === 'staff-list-rep') {
+    return { actor: clubRepActor, repo: repo({ clubHost: true }), actions: actions(), route: { cid: 'cup' } };
+  }
+  if (screen === 'staff-invites-empty') return { actor: hostActor, repo: repo({ invites: [] }), actions: actions(), route: { cid: 'cup' } };
+  if (screen === 'staff-invites-error') {
+    const base = repo();
+    return { actor: hostActor, repo: { ...base, listInvites: async () => { throw new Error('offline'); } }, actions: actions(), route: { cid: 'cup' } };
+  }
   return { actor: hostActor, repo: repo(), actions: actions(), route: { cid: 'cup' } };
 }
 
@@ -123,6 +146,8 @@ function detailEnv(screen: string): CpInjectedEnv {
   const base = screenEnv('real-recruit');
   const bundle = base.bundle;
   const admin = screen !== 'detail-host-hidden';
+  // 已下架：主辦視角（detail-host-hidden）與管理員視角（detail-admin-hidden，管理員區顯示「已下架」）。
+  const hidden = screen === 'detail-host-hidden' || screen === 'detail-admin-hidden';
   const comp = bundle?.competition;
   return {
     ...base,
@@ -136,7 +161,7 @@ function detailEnv(screen: string): CpInjectedEnv {
     bundle: bundle && comp ? {
       ...bundle,
       staff: admin ? bundle.staff : { uid: 'uid_host', roles: ['host'] },
-      competition: admin ? comp : { ...comp, hidden: true, hiddenReason: '主辦資料與俱樂部登記不符，暫停公開', hiddenAt: comp.regOpenAt },
+      competition: hidden ? { ...comp, hidden: true, hiddenReason: '主辦資料與俱樂部登記不符，暫停公開', hiddenAt: comp.regOpenAt } : comp,
     } : bundle,
   };
 }
@@ -164,14 +189,22 @@ function envOf(screen: string): { env: CpInjectedEnv; Page: ComponentType } {
   if (screen === 'detail-report-done' || screen === 'detail-report-guest') {
     return { env: reportEnv(screen === 'detail-report-guest'), Page: CompetitionDetailPage };
   }
-  if (screen === 'staff-list') return { env: staffEnv(), Page: StaffPage };
+  if (screen === 'staff-list' || screen.startsWith('staff-')) return { env: staffEnv(screen), Page: StaffPage };
   if (screen === 'invite-form' || screen === 'invite-link') return { env: staffEnv(), Page: StaffInvitePage };
   if (screen.startsWith('accept-')) {
+    const base = actions();
+    const acceptInvite: CpActions['acceptInvite'] = screen === 'accept-net-error'
+      // 連線錯誤：沒有 reason（UNKNOWN），邀請留在記憶體，按鈕還在可以再按。
+      ? async () => { throw new Error('network'); }
+      : screen === 'accept-sending'
+        // 送出中：一直不回，截圖停在按鈕轉圈。
+        ? () => new Promise<never>(() => undefined)
+        : base.acceptInvite;
     return {
       env: {
         actor: screen === 'accept-guest' ? { ...memberActor, uid: null } : memberActor,
-        repo: repo(),
-        actions: actions(),
+        repo: repo(screen === 'accept-long-name' ? { name: LONG_COMP_NAME } : {}),
+        actions: { ...base, acceptInvite },
         route: { cid: 'cup' },
         signIn: async () => undefined,
       },
@@ -238,6 +271,28 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('檢舉成功提示', () => hasText('已收到檢舉'));
   },
   'detail-report-guest': () => until('先登入提示', () => hasText('請先登入再檢舉')),
+  'staff-list-rep': () => until('代表看人員清單', () => hasText('陳小明') && hasText('尚未使用的邀請')),
+  'staff-invites-empty': () => until('邀請清單空的', () => hasText('目前沒有尚未使用的邀請')),
+  'staff-invites-error': () => until('邀請清單讀取失敗', () => hasText('陳小明') && hasText('讀取失敗') && buttonsNamed('重試').length > 0),
+  'staff-revoke-confirm': async () => {
+    await until('撤銷鈕', () => buttonsNamed('撤銷').length > 0);
+    buttonsNamed('撤銷')[0]?.click();
+    await until('撤銷確認框', () => hasText('撤銷邀請？') && hasText('撤銷後這個連結就不能使用'));
+  },
+  'detail-admin-hidden': () => until('管理員看已下架', () => hasText('此賽事已被管理員下架')),
+  'accept-bad-link': () => until('連結無效', () => hasText('邀請連結無效')),
+  'accept-no-ticket': () => until('找不到邀請資料', () => hasText('找不到邀請資料')),
+  'accept-net-error': async () => {
+    await until('接受頁', () => buttonsNamed('接受邀請').length > 0);
+    buttonsNamed('接受邀請')[0]?.click();
+    await until('連線錯誤', () => hasText('操作失敗，請稍後再試') && buttonsNamed('接受邀請').length > 0);
+  },
+  'accept-sending': async () => {
+    await until('接受頁', () => buttonsNamed('接受邀請').length > 0);
+    buttonsNamed('接受邀請')[0]?.click();
+    await until('送出中', () => [...document.querySelectorAll('button')].some((node) => node.getAttribute('aria-busy') === 'true' || node.disabled));
+  },
+  'accept-long-name': () => until('長賽事名', () => hasText(LONG_COMP_NAME)),
 };
 
 void start();
@@ -246,8 +301,12 @@ async function start(): Promise<void> {
   const win = window as unknown as { __CPS_READY?: boolean; __CPS_ERROR?: string };
   try {
     if (!(K1112_SCREENS as readonly string[]).includes(screenName)) throw new Error(`沒有這個 screen：${screenName}`);
-    // 接受頁：網址帶 #i=&c=（頁面會立刻拿掉 #）。
-    if (screenName.startsWith('accept-')) {
+    // 接受頁：網址帶 #i=&c=（頁面會立刻拿掉 #）。連結無效＝# 格式不對；找不到邀請資料＝沒有 # 也沒有暫存。
+    if (screenName === 'accept-bad-link') {
+      history.replaceState(null, '', `${location.pathname}${location.search}#i=bad`);
+    } else if (screenName === 'accept-no-ticket') {
+      history.replaceState(null, '', `${location.pathname}${location.search}`);
+    } else if (screenName.startsWith('accept-')) {
       history.replaceState(null, '', `${location.pathname}${location.search}#i=${IV}&c=${CODE}`);
     }
     await setLocale('zh-TW');
