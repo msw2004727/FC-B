@@ -209,7 +209,8 @@ describe('詳情四狀態', () => {
     const head = view.container.querySelector('.cp3-st__r--h');
     expect(head?.textContent).toBe('名次隊名賽勝和負進/失淨勝積分');
     expect(view.container.querySelector('.cp3-st__r--top')?.textContent).toContain('海風隊');
-    expect(view.container.querySelector('.cp3-st .cp3-crest')?.getAttribute('style')?.replace(/\s/g, '')).toContain('width:20px');
+    // 新外觀卡 3-4：積分榜隊徽 20 → 24（字章 12px）
+    expect(view.container.querySelector('.cp3-st .cp3-crest')?.getAttribute('style')?.replace(/\s/g, '')).toContain('width:24px');
     expect(view.container.textContent ?? '').toContain('+7');
     expect(view.container.textContent ?? '').toContain('10/3');
     const ties = view.container.querySelectorAll('.cp3-st__r .rk small');

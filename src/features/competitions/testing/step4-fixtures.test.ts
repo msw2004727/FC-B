@@ -7,7 +7,6 @@ import {
   S4_CONFIRMED,
   S4_CRESTS,
   S4_CREST_URL,
-  S4_DETAIL_ROWS,
   S4_FT_AT,
   S4_FT_EVENTS,
   S4_LIVE_EVENTS,
@@ -142,12 +141,11 @@ describe('第 4 步預覽假資料一致性', () => {
     for (const entry of S4_UNAPPLIED_LOG) expect(entry.at).toBeLessThanOrEqual(S4_NOW);
   });
 
-  it('詳情列是兩場進行中加一場已更正', () => {
-    expect(S4_DETAIL_ROWS.filter((row) => row.live)).toHaveLength(2);
-    expect(S4_DETAIL_ROWS.filter((row) => row.corrected)).toHaveLength(1);
+  // 新外觀卡 3-5（顧問 §3.466）：LiveDetailList 與它的示範畫面 live-detail、假資料 S4_DETAIL_ROWS 已刪，畫面清單 23→22
+  it('U0a 畫面清單不重複', () => {
     expect(new Set(S4A_SCREENS).size).toBe(S4A_SCREENS.length);
-    // 設計總監 04:20 補 score-timeout-over：23 → 24。
-    expect(S4A_SCREENS).toHaveLength(24);
+    // 設計總監 04:20 補 score-timeout-over：23 → 24；公開內頁線刪 LiveDetailList 拿掉 live-detail：24 → 23。
+    expect(S4A_SCREENS).toHaveLength(23);
     expect(S4A_SCREENS).toEqual(expect.arrayContaining([
       'score-paused',
       'score-amend',

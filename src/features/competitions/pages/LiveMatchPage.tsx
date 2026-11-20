@@ -2,12 +2,12 @@
 
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { useLocation, useRoute } from 'preact-iso';
+import { useRoute } from 'preact-iso';
+import { useGoBack } from '@/core/back-guard';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { liveCpActions } from '../actions';
 import {
   bindVisible,
-  isPrefaceStatus,
   showsCorrected,
   summaryVenue,
   type AudienceMatch,
@@ -15,7 +15,7 @@ import {
   type ParsedTimeline,
 } from '../data/audience';
 import { createAudiencePorts } from '../data/audience-watch';
-import { kickoffTimeLabel } from '../data/match-day';
+import { calendarDateTime, kickoffTimeLabel } from '../data/match-day';
 import type { EntryDoc, MatchDoc, RosterPublicDoc } from '../data/types';
 import type { CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
@@ -23,11 +23,11 @@ import { ctOrKey, useCompetitionsT } from '../i18n';
 import { LiveBoundary } from '../live';
 import { clockFromBase, type LiveClock } from '../live/clock';
 import { pkScoreLabel } from '../live/copy';
-import { LiveMatchView } from '../live/LiveMatchView';
+import { LiveMatchView, type LiveKickoff, type LiveOff } from '../live/LiveMatchView';
 import { timelineFrom } from '../live/scoring-adapter';
 import type { TimelineEvent, VoidMark } from '../live/types';
-import { reasonText } from '../ui/feedback';
-import { CpFrame, CpI18nPending } from '../ui/shell';
+import { CpGate, reasonText } from '../ui/feedback';
+import { CpFrame, CpI18nPending, InfoIcon } from '../ui/shell';
 
 function crest(id: string, name: string, logo: string | null): EntryDoc {
   return {
@@ -78,8 +78,8 @@ function asMatchDoc(match: AudienceMatch): MatchDoc {
 
 function toLiveClock(match: AudienceMatch, nowMs: number): LiveClock {
   const reading = clockFromBase(match.clockBase, nowMs);
-  // 已終場（含已確認）顯示「終場」，不再落到上半場（11-20 走查）。
-  const ended = match.status === 'finished' || match.status === 'confirmed' || reading.period === 'ft';
+  // 已終場（含已確認）顯示「終場」，不再落到上半場（11-20 走查）。棄權也是終場類（第 3 批 3.1.2，顧問 §3.466 第 6 題同意這個設計）。
+  const ended = match.status === 'finished' || match.status === 'confirmed' || match.status === 'walkover' || reading.period === 'ft';
   const period: LiveClock['period'] = ended
     ? 'ft'
     : reading.period === 'ht' || reading.period === 'h2' || reading.period === 'pk'
@@ -124,7 +124,8 @@ export function LiveMatchScreen({
 }): JSX.Element {
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
-  const { route } = useLocation();
+  // 返回：不是起點就上一頁；從分享連結直接進來（起點）就把這筆取代成賽事詳情頁（第 3 批 3.1.1）。要在所有提早 return 之前。
+  const goBack = useGoBack(`/competitions/${cid}`);
   const [result, setResult] = useState<AudienceMatchResult | null>(null);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [voids, setVoids] = useState<VoidMark[]>([]);
@@ -219,55 +220,79 @@ export function LiveMatchScreen({
   }, [result]);
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
-  const back = () => route(`/competitions/${cid}`);
   if (!result) return <div class="cps-root"><PageSpinner /></div>;
   if (result.kind === 'missing') {
+    // 「找不到比賽」也用同一個返回（顧問 §3.466 第 8 題）
     return (
-      <CpFrame title={ct('liveMatchTitle')} onBack={back}>
-        <p class="cps-note">{reasonText(ct, 'MATCH_NOT_FOUND')}</p>
+      <CpFrame title={ct('liveMatchTitle')} onBack={goBack}>
+        <CpGate icon={<InfoIcon />} text={reasonText(ct, 'MATCH_NOT_FOUND')} />
       </CpFrame>
     );
   }
 
   const match = result.match;
   const nowMs = env.now ?? tick;
-  const preface = isPrefaceStatus(match.status)
-    ? (() => {
-      const time = match.kickoffAt == null
-        ? ct('timeTbd')
-        : kickoffTimeLabel(match.kickoffAt, (timeText) => ct('nextDayTime', { time: timeText }));
-      const venue = summaryVenue({ st: match.status, v: match.venueName, vi: match.venueIdx });
-      return venue ? `${time}　${venue}` : time;
-    })()
-    : null;
+  // 開賽時間與場地分開擺（不再拼成一句）；場地所有狀態都放。這一頁沒有賽事文件，venueIdx 對不到名稱時留空。
+  const venue = summaryVenue({ st: match.status, v: match.venueName, vi: match.venueIdx });
+  let kickoff: LiveKickoff | null = null;
+  if (match.status === 'scheduled') {
+    if (match.kickoffAt == null) {
+      kickoff = { time: ct('timeTbd'), nextDay: null, tbd: true };
+    } else {
+      // 「隔日 {time}」那條模板拆成前段小字＋窄體時間，不新增字串
+      const mark = '\u0001';
+      const label = kickoffTimeLabel(match.kickoffAt, (timeText) => `${mark}${timeText}`);
+      const nextDay = label.startsWith(mark);
+      kickoff = {
+        time: nextDay ? label.slice(mark.length) : label,
+        nextDay: nextDay ? ct('nextDayTime', { time: '' }).trim() : null,
+        tbd: false,
+      };
+    }
+  }
+  let off: LiveOff | null = null;
+  if (match.status === 'cancelled') {
+    off = { label: ct('matchCancelled'), cancelled: true, detail: match.cancelReason ? `${ct('reasonPrefix')}　${match.cancelReason}` : null };
+  } else if (match.status === 'postponed') {
+    // 改期帶日期（只看時刻會以為是當天）；沒有時間＝時間待定
+    off = { label: ct('matchMoved'), cancelled: false, detail: match.kickoffAt == null ? ct('timeTbd') : calendarDateTime(match.kickoffAt) };
+  }
   const pk = match.penaltyScore ? pkScoreLabel(match.penaltyScore.home, match.penaltyScore.away) : null;
   const corrected = showsCorrected({ st: match.status, cx: match.scoreCorrectedAt });
 
   return (
-    <LiveMatchView
-      match={asMatchDoc(match)}
-      clock={toLiveClock(match, nowMs)}
-      events={events}
-      voids={voids}
-      homeRoster={homeRoster}
-      awayRoster={awayRoster}
-      crests={[
-        crest(match.home.teamId, match.home.name, match.home.logo),
-        crest(match.away.teamId, match.away.name, match.away.logo),
-      ]}
-      pk={pk}
-      corrected={corrected}
-      preface={preface}
-      showVoided
-      onLog={(next) => {
-        openRef.current = next;
-        if (!next) {
-          readGen.current += 1;
-          return;
-        }
-        void readLog(true);
-      }}
-    />
+    <CpFrame title={ct('liveMatchTitle')} crumb={ct('title')} onBack={goBack}>
+      <h1 class="cps-vh">{ct('liveMatchTitle')}</h1>
+      <LiveMatchView
+        match={asMatchDoc(match)}
+        clock={toLiveClock(match, nowMs)}
+        events={events}
+        voids={voids}
+        homeRoster={homeRoster}
+        awayRoster={awayRoster}
+        crests={[
+          crest(match.home.teamId, match.home.name, match.home.logo),
+          crest(match.away.teamId, match.away.name, match.away.logo),
+        ]}
+        pk={pk}
+        penalty={match.penaltyScore}
+        corrected={corrected}
+        kickoff={kickoff}
+        venue={venue}
+        off={off}
+        hasLog={match.rev > match.resetRev}
+        stageText={match.status === 'walkover' ? ct('matchForfeit') : undefined}
+        showVoided
+        onLog={(next) => {
+          openRef.current = next;
+          if (!next) {
+            readGen.current += 1;
+            return;
+          }
+          void readLog(true);
+        }}
+      />
+    </CpFrame>
   );
 }
 
