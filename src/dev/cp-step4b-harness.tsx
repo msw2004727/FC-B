@@ -12,7 +12,7 @@ import { renderStep4bScreen } from '@/features/competitions/step4b';
 import { STEP4B_SCREENS, type Step4bScreen } from '@/features/competitions/testing/step4b-fixtures';
 
 const params = new URLSearchParams(location.search);
-const screenName = params.get('screen') || 'staff-list';
+const screenName = params.get('screen') || 'staff-list-cohost';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 document.documentElement.setAttribute('data-theme', theme);
 
