@@ -649,7 +649,7 @@ export function OpenInviteList(props: {
       <h2 class="s4b-h s4b-inv__h">{props.title}</h2>
       {props.failed ? (
         <div class="s4b-gap">
-          <p class="s4b-alert" role="alert">{props.failed.message}</p>
+          <p class="s4b-alert s4b-inv__once" role="alert"><InfoIcon /><span>{props.failed.message}</span></p>
           <span class="s4b-mini">
             <Button variant="secondary" size="sm" onClick={props.failed.onRetry}>{props.failed.retryLabel}</Button>
           </span>
