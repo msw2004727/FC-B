@@ -25,6 +25,7 @@ import type { CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { LiveBoundary } from '../live';
+import { cpSignIn } from '../sign-in';
 import { S4bCard, S4bFrame } from '../step4b/ui';
 import { errorOf, reasonText } from '../ui/feedback';
 import { CpI18nPending } from '../ui/shell';
@@ -48,16 +49,6 @@ function takeTicket(cid: string): { ticket: InviteTicket | null; badLink: boolea
   const stored = cid ? readInviteTicket(cid) : null;
   // 網址帶了 # 但格式不對＝連結無效；沒有 # 也沒有暫存（換瀏覽器、LINE 登入回來暫存不見）＝找不到邀請資料（顧問 11-20）。
   return { ticket: stored, badLink: !stored && hash.length > 1 };
-}
-
-async function defaultSignIn(): Promise<void> {
-  const auth = await import('@/data/auth');
-  try {
-    await auth.signIn();
-  } catch (err) {
-    // 導向 LINE 時會丟 LoginRedirectingError，不算失敗。
-    if (!auth.isLoginRedirectingError(err)) throw err;
-  }
 }
 
 function InviteAcceptView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Element {
@@ -140,7 +131,7 @@ function InviteAcceptView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
     loginLock.current = true;
     try {
       if (ticket) saveInviteTicket(ticket);
-      await (env.signIn ?? defaultSignIn)();
+      await (env.signIn ?? cpSignIn)();
     } catch {
       toast.show({ message: reasonText(ct, 'UNKNOWN'), tone: 'error' });
     } finally {

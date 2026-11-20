@@ -1,16 +1,19 @@
 // 正式記分頁。預覽記分板不變；這裡只接工作階段、權限與空狀態。
 
 import type { JSX } from 'preact';
-import { useEffect } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { Button } from '@/ui/Button';
 import { PageSpinner } from '@/ui/PageSpinner';
+import { resolveHostAccess } from '../data/host-access';
+import { getCompetitionsRepo } from '../data/cp-repo';
 import { scoreAccess } from '../live/access';
 import { LIVE_COPY } from '../live/copy';
 import { ScorePad } from '../live/ScorePad';
 import { scorePadPropsFrom } from '../live/scoring-adapter';
 import { useScoring, type ScoringDeps } from '../live/useScoring';
 import { LiveBoundary } from '../live';
+import { loadRepClubs } from '../rep-clubs';
 import { useCompetitionsT } from '../i18n';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 import '../live/score-fullscreen.css';
@@ -40,22 +43,67 @@ function useScoreDocumentTitle(title: string | null): void {
   }, [title]);
 }
 
+/**
+ * 俱樂部賽事的目前代表（沒有主辦 staff 文件）。代表清單走 session 快取；
+ * 有代表俱樂部才讀賽事主文件（+1 讀）。只在沒有本場指派、staff 也不是主辦時才問。
+ */
+export async function scoringClubRep(cid: string, uid: string): Promise<boolean> {
+  const clubs = await loadRepClubs(uid);
+  const access = await resolveHostAccess({
+    repo: getCompetitionsRepo(),
+    cid,
+    staffRoles: [],
+    repClubIds: clubs.map((club) => club.id),
+    isAdmin: false,
+  });
+  return access.clubRep;
+}
+
 export function ScoringScreen({
   cid,
   mtId,
   deps,
   nowMs,
+  clubRepCheck,
 }: {
   cid: string;
   mtId: string;
   deps?: ScoringDeps;
   nowMs?: number;
+  /** 沒有本場指派時用來判斷是不是俱樂部目前代表（顯示「先指派自己」提示）。省略＝不判斷。 */
+  clubRepCheck?: () => Promise<boolean>;
 }): JSX.Element {
   const cpDict = useCompetitionsT();
   const ct = cpDict.ct;
   const { route } = useLocation();
   const view = useScoring(cid, mtId, deps);
   const now = nowMs ?? Date.now();
+  const [clubRep, setClubRep] = useState(false);
+  const staffAccess = view.loading ? null : scoreAccess({
+    roles: view.staff.roles,
+    matchIds: view.staff.matchIds,
+    expiresAt: view.staff.expiresAt,
+    mtId,
+    nowMs: now,
+  });
+  const askRep = !!clubRepCheck && staffAccess != null && !staffAccess.pad && !staffAccess.hint;
+  useEffect(() => {
+    if (!askRep || !clubRepCheck) return undefined;
+    let alive = true;
+    void (async () => {
+      try {
+        const ok = await clubRepCheck();
+        if (alive) setClubRep(ok);
+      } catch {
+        // 判斷失敗只是不顯示提示。
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // 只在需要判斷時問一次。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askRep]);
   useScoreDocumentTitle(ct ? ct('scoreTitle') : null);
   if (!ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   if (view.loading) return <div class="cps-root"><PageSpinner /></div>;
@@ -65,6 +113,7 @@ export function ScoringScreen({
     expiresAt: view.staff.expiresAt,
     mtId,
     nowMs: now,
+    clubRep,
   });
   const back = () => route(`/competitions/${cid}/schedule`);
   if (!access.pad) {
@@ -130,7 +179,12 @@ export default function ScoringPage(): JSX.Element {
         ) : !actor.uid ? (
           <SignedOut cid={cid} />
         ) : (
-          <ScoringScreen cid={cid} mtId={mtId} deps={{ uid: actor.uid }} />
+          <ScoringScreen
+            cid={cid}
+            mtId={mtId}
+            deps={{ uid: actor.uid }}
+            clubRepCheck={() => scoringClubRep(cid, actor.uid ?? '')}
+          />
         )
       )}
     </LiveBoundary>

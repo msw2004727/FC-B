@@ -71,6 +71,9 @@ export const CP_REASON_CODES = [
   // Opus 複審 P3：使用者看得到的其餘 match-host 代碼。FIELD_TYPE、FIELD_FORMAT 各自有句子。
   'COMPETITION_HIDDEN',
   'COMPETITION_DELETING',
+  // 刪除賽事（host.ts deleteCompetition）。
+  'DELETE_AFTER_START',
+  'DELETE_FAILED',
   'MATCH_CORRUPT',
   'SCHEDULE_REPLACE_TOO_LARGE',
   'TIMELINE_TOO_LONG',

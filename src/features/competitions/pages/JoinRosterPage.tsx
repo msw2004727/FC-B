@@ -20,7 +20,7 @@ import { isMinorAt } from '../format';
 import { LiveBoundary } from '../live';
 import { loadMyBirthday } from '../rep-clubs';
 import { buildJoinInput, type PositionChoice } from '../payload';
-import { CpError, errorOf, RosterBlocked } from '../ui/feedback';
+import { CpError, CpLoadFailed, errorOf, loadFailOf, RosterBlocked } from '../ui/feedback';
 import { POSITION_TEXT_MAX, PositionField } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 
@@ -68,8 +68,8 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
       if (!alive) return;
       setBundle(next);
       setPhase(next.competition ? 'ready' : 'error');
-    }).catch(() => {
-      if (alive) setPhase('error');
+    }).catch((err: unknown) => {
+      if (alive) setPhase(loadFailOf(err));
     });
     return () => {
       alive = false;
@@ -161,12 +161,8 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   }
 
   if (phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
-  if (!competition || phase === 'error') {
-    return (
-      <CpFrame title={ct('joinTitle')}>
-        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
-      </CpFrame>
-    );
+  if (!competition || phase === 'error' || phase === 'hidden') {
+    return <CpLoadFailed title={ct('joinTitle')} fail={phase === 'hidden' ? 'hidden' : 'error'} />;
   }
 
   // 代表清單還沒回來時，空陣列不代表「不是成員」。

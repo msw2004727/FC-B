@@ -22,6 +22,7 @@ import { CpEnvProvider, type CpInjectedEnv } from '../env';
 import { createFakeCpRepo, type FakeCpRepo } from '../testing/fake-cp-repo';
 import {
   adminActor,
+  clubRepActor,
   coHostActor,
   competition,
   hostActor,
@@ -253,6 +254,21 @@ describe('邀請表單（K11）', () => {
     draw({ actor: hostActor, repo: staffRepo(), actions: { ...idleActions(), createInvite }, route: { cid: 'cup' } }, <StaffInvitePage />);
     fireEvent.click(await screen.findByText('產生邀請連結'));
     expect(await screen.findByText('邀請已達 30 張上限')).toBeTruthy();
+  });
+
+  it('俱樂部目前代表可以產生邀請；前代表進不來', async () => {
+    const createInvite = vi.fn(async () => ({ ivId: IV, code: CODE, expiresAt: EXP }));
+    const repo = staffRepo();
+    draw({ actor: clubRepActor, repo, actions: { ...idleActions(), createInvite }, route: { cid: 'cup' } }, <StaffInvitePage />);
+    fireEvent.click(await screen.findByText('產生邀請連結'));
+    await waitFor(() => expect(createInvite).toHaveBeenCalled());
+    expect(repo.calls().filter((name) => name === 'getCompetition').length).toBeLessThanOrEqual(1);
+    cleanup();
+
+    const former = staffRepo();
+    draw({ actor: { ...clubRepActor, repClubs: [] }, repo: former, actions: idleActions(), route: { cid: 'cup' } }, <StaffInvitePage />);
+    expect(await screen.findByText('你沒有這場賽事的管理權限')).toBeTruthy();
+    expect(former.calls()).toEqual(['getStaff']);
   });
 
   it('一般會員進不來，只讀自己的 staff', async () => {

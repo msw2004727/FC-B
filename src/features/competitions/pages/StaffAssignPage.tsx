@@ -5,7 +5,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { toast } from '@/ui/Toast';
-import { canHostOrCo, isCpAdmin } from '../access';
+import { isCpAdmin } from '../access';
 import { liveCpActions } from '../actions';
 import {
   assignPeople,
@@ -17,6 +17,7 @@ import {
   vsText,
   type ScoreRole,
 } from '../data/staff-assign';
+import { resolveHostAccess } from '../data/host-access';
 import type { CompetitionDoc, MatchDoc, StaffAssignment } from '../data/types';
 import type { CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
@@ -78,8 +79,12 @@ function StaffAssignView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const repKey = env.actor.repClubs.map((club) => club.id).join('\n');
+  const repPending = env.actor.repClubsPending === true;
+
   useEffect(() => {
-    if (env.actor.authPending) return undefined;
+    // 代表清單還在讀：空清單不代表不是代表，先等（不發讀取）。
+    if (env.actor.authPending || repPending) return undefined;
     let alive = true;
     setPhase('loading');
     void (async () => {
@@ -90,7 +95,15 @@ function StaffAssignView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       }
       const staff = await env.repo.getStaff(cid, uid);
       if (!alive) return;
-      if (!canHostOrCo({ staffRoles: staff?.roles ?? [], isAdmin: isCpAdmin(env.actor.role) })) {
+      const access = await resolveHostAccess({
+        repo: env.repo,
+        cid,
+        staffRoles: staff?.roles ?? [],
+        repClubIds: env.actor.repClubs.map((club) => club.id),
+        isAdmin: isCpAdmin(env.actor.role),
+      });
+      if (!alive) return;
+      if (!access.allowed) {
         setPhase('denied');
         return;
       }
@@ -100,7 +113,8 @@ function StaffAssignView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       ]);
       if (!alive) return;
       const needVenue = matchList.some((match) => !match.venueName && match.venueIdx != null);
-      const competition = needVenue ? await env.repo.getCompetition(cid) : null;
+      // 代表判斷已讀過賽事就沿用，不再讀。
+      const competition = needVenue ? (access.competition ?? await env.repo.getCompetition(cid)) : null;
       if (!alive) return;
       setVenues(competition?.venues ?? []);
       setList(staffList);
@@ -116,7 +130,9 @@ function StaffAssignView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
     return () => {
       alive = false;
     };
-  }, [cid, env.actor.authPending, env.actor.role, env.actor.uid, env.repo, env.route?.uid]);
+    // repKey 代表 env.actor.repClubs 的內容。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cid, env.actor.authPending, env.actor.role, env.actor.uid, env.repo, env.route?.uid, repKey, repPending]);
 
   useEffect(() => {
     if (phase !== 'ready') return;
@@ -153,7 +169,7 @@ function StaffAssignView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const back = () => route(`/competitions/${cid}/staff`);
-  if (env.actor.authPending || phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
+  if (env.actor.authPending || repPending || phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
   if (phase === 'denied' || !env.actor.uid) {
     return (
       <StaffDeniedScreen

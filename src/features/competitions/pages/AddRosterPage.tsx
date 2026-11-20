@@ -19,7 +19,7 @@ import { useInjectedEnv } from '../env';
 import { isMinorAt } from '../format';
 import { LiveBoundary } from '../live';
 import { buildAddInput, type PositionChoice } from '../payload';
-import { CpError, errorOf, RosterBlocked } from '../ui/feedback';
+import { CpError, CpLoadFailed, errorOf, loadFailOf, RosterBlocked } from '../ui/feedback';
 import { DateField, POSITION_TEXT_MAX, PositionField } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 
@@ -65,8 +65,8 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
       if (!alive) return;
       setBundle(next);
       setPhase(next.competition ? 'ready' : 'error');
-    }).catch(() => {
-      if (alive) setPhase('error');
+    }).catch((err: unknown) => {
+      if (alive) setPhase(loadFailOf(err));
     });
     return () => {
       alive = false;
@@ -146,12 +146,8 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
   }
 
   if (phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
-  if (!competition || phase === 'error') {
-    return (
-      <CpFrame title={ct('addTitle')}>
-        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
-      </CpFrame>
-    );
+  if (!competition || phase === 'error' || phase === 'hidden') {
+    return <CpLoadFailed title={ct('addTitle')} fail={phase === 'hidden' ? 'hidden' : 'error'} />;
   }
 
   const block = rosterFormBlock({

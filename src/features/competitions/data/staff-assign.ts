@@ -5,7 +5,7 @@
 import { competitionDay, weekdayIndex } from '../testing/step4b-fixtures';
 
 export { clockLabel } from '../testing/step4b-fixtures';
-import type { MatchStatus, StaffAssignmentRole } from './types';
+import type { MatchStatus, StaffAssignment, StaffAssignmentRole } from './types';
 
 export type StaffViewerKind = 'host' | 'coHost';
 export type ScoreRole = 'scorer' | 'referee';
@@ -30,10 +30,26 @@ const NAME_LABELS: StaffNameLabels = {
   memberN: (n) => `成員 ${n}`,
 };
 
-export function viewerKind(roles: readonly string[], isAdmin: boolean): StaffViewerKind | null {
-  if (isAdmin || roles.includes('host')) return 'host';
+/** clubRep：俱樂部賽事的目前代表，後端 hostAccess 算主辦（primary），與管理員、個人主辦同一級。 */
+export function viewerKind(roles: readonly string[], isAdmin: boolean, clubRep = false): StaffViewerKind | null {
+  if (isAdmin || clubRep || roles.includes('host')) return 'host';
   if (roles.includes('coHost')) return 'coHost';
   return null;
+}
+
+/**
+ * 俱樂部賽事的目前代表沒有主辦 staff 文件（後端只認鏡像）。自己那一列補上 host：
+ * 已被指派記分時保留記分角色、場次與到期（標籤顯示主辦＋記分員）；沒有文件就補一列。
+ * 編號當 1，與個人主辦一樣排最前（後端建俱樂部賽事時 1 號先占著）。
+ */
+export function withRepSelf(list: readonly StaffAssignment[], selfUid: string): StaffAssignment[] {
+  const own = list.find((row) => row.uid === selfUid);
+  const others = list.filter((row) => row.uid !== selfUid);
+  const roles: StaffAssignmentRole[] = ['host', ...(own?.roles ?? []).filter((role) => role !== 'host')];
+  const self: StaffAssignment = own
+    ? { ...own, roles, memberNo: 1 }
+    : { uid: selfUid, roles, matchIds: [], expiresAt: null, memberNo: 1 };
+  return [self, ...others];
 }
 
 /** 一列只掛一個角色標籤。主辦優先於共同主辦，再來記分員、裁判。 */

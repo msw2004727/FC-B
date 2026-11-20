@@ -14,7 +14,7 @@ import { useInjectedEnv } from '../env';
 import { positionLabel } from '../format';
 import { LiveBoundary } from '../live';
 import type { EntryStatus, RosterPublicDoc } from '../data/types';
-import { CpError, errorOf } from '../ui/feedback';
+import { CpError, CpLoadFailed, errorOf, loadFailOf, type CpLoadFail } from '../ui/feedback';
 import { CpCard, CpFrame, CpI18nPending, TrashIcon } from '../ui/shell';
 import { TeamCrest } from '../ui/TeamCrest';
 
@@ -80,7 +80,7 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   const [bundle, setBundle] = useState<CpBundle | null>(env.bundle ?? null);
-  const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>(env.bundle ? 'ready' : 'loading');
+  const [phase, setPhase] = useState<'loading' | 'ready' | CpLoadFail>(env.bundle ? 'ready' : 'loading');
   const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -91,8 +91,8 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
       if (!alive) return;
       setBundle(next);
       setPhase(next.competition ? 'ready' : 'error');
-    }).catch(() => {
-      if (alive) setPhase('error');
+    }).catch((err: unknown) => {
+      if (alive) setPhase(loadFailOf(err));
     });
     return () => {
       alive = false;
@@ -105,12 +105,8 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const competition = bundle?.competition;
   const entry = bundle?.entries.find((row) => row.id === enId);
   const division = bundle?.divisions.find((row) => row.dvId === entry?.dvId);
-  if (!competition || !entry || !division || phase === 'error') {
-    return (
-      <CpFrame title={ct('rosterTitle')}>
-        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
-      </CpFrame>
-    );
+  if (!competition || !entry || !division || phase === 'error' || phase === 'hidden') {
+    return <CpLoadFailed title={ct('rosterTitle')} fail={phase === 'hidden' ? 'hidden' : 'error'} />;
   }
 
   const players = bundle?.roster.filter((row) => row.enId === enId) ?? [];

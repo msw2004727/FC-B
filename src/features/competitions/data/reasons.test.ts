@@ -20,11 +20,20 @@ describe('cpReasonKey（契約 §5 全覆蓋）', () => {
     expect(cpReasonKey('not-a-code')).toBe(CP_REASON_FALLBACK_KEY);
   });
 
-  it('七語都是同一份繁中，而且每個 reason 都有非空文案', () => {
+  it('七語都是同一份繁中（刪除賽事兩句另有翻譯），而且每個 reason 都有非空文案', () => {
     const base = readLocale('zh-TW');
     const parsed = JSON.parse(base) as { reason: Record<string, string> };
     for (const locale of LOCALES) {
-      expect(readLocale(locale), locale).toBe(base);
+      // 顧問 §3.444：只有「比賽已開始無法刪除」「刪除沒有完成」兩句七語各自翻譯（指向首頁右下角信封聯繫站長），其餘仍須逐字相同。
+      const other = JSON.parse(readLocale(locale)) as { reason: Record<string, string>; deleteStuckAdmin?: string };
+      expect(other.reason.DELETE_AFTER_START?.trim().length, locale).toBeGreaterThan(0);
+      expect(other.deleteStuckAdmin?.trim().length, locale).toBeGreaterThan(0);
+      const strip = (dict: { reason: Record<string, string>; deleteStuckAdmin?: string }) => {
+        const { DELETE_AFTER_START: _a, ...reason } = dict.reason;
+        const { deleteStuckAdmin: _b, ...rest } = dict;
+        return { ...rest, reason };
+      };
+      expect(strip(other), locale).toEqual(strip(parsed));
     }
     for (const code of CP_REASON_CODES) {
       expect(parsed.reason[code], code).toEqual(expect.any(String));

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getCurrentLocale } from '@/i18n/i18n';
 import { scoreAccess } from '../live/access';
 import { MemoryActionLog, type ActionLog } from '../live/data/action-log';
@@ -161,10 +161,10 @@ async function deps(options: Parameters<typeof backend>[0] & {
   };
 }
 
-function draw(screenDeps: ScoringDeps): void {
+function draw(screenDeps: ScoringDeps, clubRepCheck?: () => Promise<boolean>): void {
   render(
     <LocationProvider>
-      <ScoringScreen cid={CID} mtId={MT} deps={screenDeps} nowMs={NOW} />
+      <ScoringScreen cid={CID} mtId={MT} deps={screenDeps} nowMs={NOW} clubRepCheck={clubRepCheck} />
     </LocationProvider>,
   );
 }
@@ -188,6 +188,33 @@ describe('正式記分頁權限', () => {
     draw(made.deps);
     expect(await screen.findByText(LIVE_COPY.noScorePermission)).toBeTruthy();
     expect(screen.getByText(LIVE_COPY.assignScorerHint)).toBeTruthy();
+  });
+
+  it('俱樂部目前代表沒有主辦 staff 文件，也看得到說明；前代表與陌生人看不到', async () => {
+    const rep = await deps({ staffRoles: [], matchIds: [] });
+    const check = vi.fn(async () => true);
+    draw(rep.deps, check);
+    expect(await screen.findByText(LIVE_COPY.assignScorerHint)).toBeTruthy();
+    expect(check).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    const former = await deps({ staffRoles: [], matchIds: [] });
+    draw(former.deps, async () => false);
+    expect(await screen.findByText(LIVE_COPY.noScorePermission)).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(screen.queryByText(LIVE_COPY.assignScorerHint)).toBeNull();
+    cleanup();
+
+    // 已有本場指派或 staff 已是主辦：不再問代表（不多讀）
+    const assigned = await deps({ staffRoles: ['scorer'], matchIds: [MT] });
+    const unused = vi.fn(async () => true);
+    draw(assigned.deps, unused);
+    expect(await screen.findByRole('button', { name: '開賽' })).toBeTruthy();
+    cleanup();
+    const host = await deps({ staffRoles: ['host'], matchIds: [] });
+    draw(host.deps, unused);
+    expect(await screen.findByText(LIVE_COPY.assignScorerHint)).toBeTruthy();
+    expect(unused).not.toHaveBeenCalled();
   });
 
   it('指派過期不開記分板', async () => {
@@ -472,5 +499,8 @@ describe('scoreAccess', () => {
     expect(scoreAccess({
       ...base, roles: ['host', 'scorer'], matchIds: [MT], expiresAt: NOW - 1,
     })).toEqual({ pad: false, hint: true });
+    // 俱樂部目前代表：沒有指派時看提示；代表指派自己記分後開記分板
+    expect(scoreAccess({ ...base, roles: [], clubRep: true })).toEqual({ pad: false, hint: true });
+    expect(scoreAccess({ ...base, roles: ['scorer'], matchIds: [MT], clubRep: true })).toEqual({ pad: true, hint: false });
   });
 });

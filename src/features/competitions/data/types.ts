@@ -84,6 +84,11 @@ export interface CompetitionDoc {
   hiddenReason?: string | null;
   /** 下架時間（毫秒）。恢復後是 null。 */
   hiddenAt?: number | null;
+  /**
+   * 刪除到一半的封鎖時間（毫秒）。deleteCompetition 先寫 hidden＋deletingAt 再刪子集合，根文件最後才刪；
+   * 有值代表上次中途失敗，主辦／管理員可再按一次續刪。舊文件沒有這欄。
+   */
+  deletingAt?: number | null;
   regOpenAt: number;
   regCloseAt: number;
   firstMatchAt: number;

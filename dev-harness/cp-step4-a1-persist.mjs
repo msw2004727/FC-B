@@ -5,6 +5,7 @@
 // 必須在 firebase emulators:exec 底下跑（見 C:/t/fc-cp4/bin 的腳本）：
 //   ... emulators:exec ... "node dev-harness/cp-step4-a1-persist.mjs <輸出資料夾>"
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { chromium } from '@playwright/test';
@@ -256,6 +257,13 @@ try {
   await server?.close().catch(() => {});
   await writeFile(RULES_TARGET, backup);
   await pause(1500);
+  // 證據檔自動記下跑的是哪個 commit（顧問 §3.448：避免只能靠資料夾名稱推定）。
+  try {
+    report.commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    report.dirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim() !== '';
+  } catch {
+    report.commit = null;
+  }
   await writeFile(join(OUT, 'persist-report.json'), JSON.stringify(report, null, 2), 'utf8');
   console.log(`[persist] ok=${report.ok}`);
 }

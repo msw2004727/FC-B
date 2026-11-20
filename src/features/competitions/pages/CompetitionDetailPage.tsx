@@ -15,6 +15,7 @@ import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
 import { canHostOrCo, canManageCompetition, canRegisterClubEntry, canRestoreCompetition, isCpAdmin } from '../access';
+import { canDeleteCompetition, isPrimaryHostView } from '../delete-access';
 import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import type { CpBundle, CpInjectedEnv } from '../env';
@@ -23,6 +24,7 @@ import { HOST_NOTICE_MAX, hostNoticeCount, noticeTextProblem } from '../data/fle
 import { boundedReason } from '../data/host-write';
 import { formatTaipeiDate, formatTaipeiShort, taipeiParts, venueMapUrl } from '../format';
 import { LiveBoundary } from '../live';
+import { cpSignIn } from '../sign-in';
 import { buildRegisterInput, buildReportInput } from '../payload';
 import { competitionPhase, type CompetitionPhase } from '../data/present';
 import { hasPendingTie } from '../data/tie-present';
@@ -39,11 +41,12 @@ import { createAudiencePorts } from '../data/audience-watch';
 import { matchDayOf } from '../data/match-day';
 import { loadFullSchedule, loadScheduleDetail } from '../data/schedule-load';
 import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason, StaffAssignment, StandingDoc, SummaryEntry } from '../data/types';
-import { CpError, errorOf, reasonText } from '../ui/feedback';
+import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, type CpLoadFail } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
 import { CategoryCover, categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
 import { TieWorkspace } from '../ui/tie-panel';
 import { AdminPanel, HiddenNotice } from '../ui/admin-moderation';
+import { DeleteCompetition, teamCountOf } from '../ui/delete-competition';
 import { PublicBoard } from '../ui/public-board';
 import { CpCard, CpFrame, CpI18nPending, CpRow, MoreIcon } from '../ui/shell';
 import { TeamCrest } from '../ui/TeamCrest';
@@ -168,12 +171,14 @@ async function loadDetail(env: CpInjectedEnv, cid: string, mine: MineReadCache):
   };
 }
 
+type LoadState = 'loading' | 'ready' | CpLoadFail;
+
 function applyDetail(
   next: DetailData,
   setBundle: (value: CpBundle | null) => void,
   setSummary: (value: SummaryEntry[]) => void,
   setStandings: (value: StandingDoc[]) => void,
-  setLoadState: (value: 'loading' | 'ready' | 'error') => void,
+  setLoadState: (value: LoadState) => void,
   setMine: (value: StaffAssignment | null) => void,
 ): void {
   setBundle(next.bundle);
@@ -191,7 +196,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [summary, setSummary] = useState<SummaryEntry[]>(env.schedule?.summary ?? []);
   const [standings, setStandings] = useState<StandingDoc[]>(env.schedule?.standings ?? []);
   const [myAssignment, setMyAssignment] = useState<StaffAssignment | null>(null);
-  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>(env.bundle ? 'ready' : 'loading');
+  const [loadState, setLoadState] = useState<LoadState>(env.bundle ? 'ready' : 'loading');
   const [menuOpen, setMenuOpen] = useState(env.preview?.menuOpen === true);
   const [reportOpen, setReportOpen] = useState(env.preview?.reportOpen === true);
   const [reportReason, setReportReason] = useState<ReportReason>('fake');
@@ -203,6 +208,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [registerError, setRegisterError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [reportError, setReportError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loginBusy, setLoginBusy] = useState(false);
   // 全部賽程只在按下後讀，結果留在這一頁。換賽事 id 才清掉。
   const [fullSchedule, setFullSchedule] = useState<SummaryEntry[] | null>(null);
   const [scorerState, setScorerState] = useState<{ dvId: string; tables: ScorerTables | null } | null>(null);
@@ -232,6 +238,11 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   useEffect(() => () => {
     mounted.current = false;
   }, []);
+
+  // 伺服器回要先登入後，在原頁登入成功（沒有整頁導向）：清掉錯誤，檢舉面板回到表單。
+  useEffect(() => {
+    if (env.actor.uid) setReportError(null);
+  }, [env.actor.uid]);
 
   // 只在換賽事時清全部賽程快取。首次掛載不清：effect 晚於第一次繪製，
   // 使用者若在那之前就按展開，剛讀到的全集會被清掉、展開後一片空白（截圖驗收抓到）。
@@ -302,8 +313,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     void loadDetail(env, cid, mineCache.current).then((next) => {
       if (!alive) return;
       applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
-    }).catch(() => {
-      if (alive) setLoadState('error');
+    }).catch((err: unknown) => {
+      if (alive) setLoadState(loadFailOf(err));
     });
     return () => {
       alive = false;
@@ -403,35 +414,36 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const competition = bundle?.competition ?? null;
-  if (loadState === 'loading') {
+  // 登入還在確認時先轉圈：主辦從深連結進來，uid 到之前會被拒，不先閃「不公開」（uid 到了 effect 會重讀）。
+  if (loadState === 'loading' || (loadState === 'hidden' && env.actor.authPending)) {
     return <div class="cps-root"><PageSpinner /></div>;
   }
-  if (!competition || loadState === 'error') {
+  if (!competition || loadState === 'error' || loadState === 'hidden') {
+    // 權限被拒＝不公開：不放重試，也不說是下架、草稿還是內部期。網路或其他錯誤才給重試。
     return (
-      <CpFrame title={ct('detailTitle')}>
-        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
-        <Button variant="secondary" onClick={() => {
+      <CpLoadFailed
+        title={ct('detailTitle')}
+        fail={loadState === 'hidden' ? 'hidden' : 'error'}
+        onRetry={() => {
           setLoadState('loading');
           void loadDetail(env, cid, mineCache.current).then((next) => {
             applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
-          }).catch(() => setLoadState('error'));
+          }).catch((err: unknown) => setLoadState(loadFailOf(err)));
         }}
-        >{ct('retry')}</Button>
-      </CpFrame>
+      />
     );
   }
 
-  const manage = canManageCompetition({
+  const hostInput = {
     staffRoles: bundle?.staff?.roles ?? [],
     hostType: competition.hostType,
     hostTeamId: competition.hostTeamId,
     repClubIds: clubs.map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
-  });
-  const hostOps = canHostOrCo({
-    staffRoles: bundle?.staff?.roles ?? [],
-    isAdmin: isCpAdmin(env.actor.role),
-  });
+  };
+  const manage = canManageCompetition(hostInput);
+  // 俱樂部目前代表也算（後端 hostAccess）：排賽程、賽程管理、公告、同分裁定。
+  const hostOps = canHostOrCo(hostInput);
   const showMyMatches = hasScoreRole(myAssignment?.roles ?? []);
   const showRegister = canRegisterClubEntry({
     repClubIds: clubs.map((club) => club.id),
@@ -453,6 +465,33 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const allowRestore = canRestoreCompetition(competition, isCpAdmin(env.actor.role));
   const isAdmin = isCpAdmin(env.actor.role);
   const divisions = bundle?.divisions ?? [];
+  // 刪除：只給後端會放行的人（delete-access.ts）。deletingAt 有值＝上次刪到一半，同一顆鈕改成續刪。
+  const deletingAt = competition.deletingAt ?? null;
+  const showDelete = canDeleteCompetition({
+    uid: env.actor.uid,
+    role: env.actor.role,
+    hostType: competition.hostType,
+    hostTeamId: competition.hostTeamId,
+    staffRoles: bundle?.staff?.roles ?? [],
+    repClubIds: clubs.map((club) => club.id),
+    hidden: competition.hidden,
+    deletingAt,
+    firstMatchAt: competition.firstMatchAt,
+    now,
+  });
+  // 刪到一半：只留續刪入口與返回，其他主辦操作一律藏起來（後端也會回 COMPETITION_DELETING）。
+  const frozen = deletingAt != null;
+  // 卡住時的說明：能續刪的人按下方；主辦但首場已過（只剩管理員能續刪）請聯絡管理員；共同主辦只看到刪除中。
+  const stuckText = showDelete
+    ? ct('deleteStuck')
+    : isPrimaryHostView({
+      hostType: competition.hostType,
+      hostTeamId: competition.hostTeamId,
+      staffRoles: bundle?.staff?.roles ?? [],
+      repClubIds: clubs.map((club) => club.id),
+    })
+      ? ct('deleteStuckAdmin')
+      : reasonText(ct, 'COMPETITION_DELETING');
   const entries = bundle?.entries ?? [];
   const sameYear = taipeiParts(competition.regOpenAt).year === taipeiParts(competition.regCloseAt).year;
 
@@ -489,10 +528,23 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       await env.actions.report(buildReportInput({ cid, reason: reportReason, detail: reportDetail }));
       setReportOpen(false);
       setReportError(null);
+      toast.show({ message: ct('reportDone'), tone: 'success' });
     } catch (err) {
       setReportError(errorOf(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function reportLogin(): Promise<void> {
+    if (loginBusy) return;
+    setLoginBusy(true);
+    try {
+      await (env.signIn ?? cpSignIn)();
+    } catch {
+      toast.show({ message: reasonText(ct, 'UNKNOWN'), tone: 'error' });
+    } finally {
+      if (mounted.current) setLoginBusy(false);
     }
   }
 
@@ -640,6 +692,9 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     }
   }
 
+  // 未登入（登入狀態已確定）或伺服器回要先登入：面板只放「請先登入再檢舉」與登入鈕，不給填表。
+  const reportGuest = (!env.actor.uid && !env.actor.authPending) || reportError?.reason === 'SIGN_IN_REQUIRED';
+
   const reportLabels: Record<ReportReason, string> = {
     impersonation: ct('reportImpersonation'),
     fake: ct('reportFake'),
@@ -648,7 +703,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     other: ct('reportOther'),
   };
 
-  const manageActions = (
+  const hostButtons = (
     <>
       {error ? <CpError reason={error.reason} params={error.params} /> : null}
       {showRegister ? (
@@ -682,10 +737,38 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     </>
   );
 
+  const manageActions = (
+    <>
+      {frozen ? null : hostButtons}
+      {showDelete ? (
+        <DeleteCompetition
+          ct={ct}
+          cid={cid}
+          name={competition.name}
+          teams={divisions.length > 0 ? teamCountOf(divisions) : null}
+          loadTeams={async () => teamCountOf(await env.repo.listDivisions(cid))}
+          resume={deletingAt != null}
+          actions={env.actions}
+          reload={() => env.repo.getCompetition(cid)}
+          onDeleted={() => {
+            toast.show({ message: ct('deleteDone') });
+            env.repo.invalidateCrests(cid);
+            // 取代目前這筆歷史：返回不會回到已刪除的賽事。列表每次進入都重讀公開清單與 cpMine。
+            route('/tournaments', true);
+          }}
+          onStuck={(doc) => {
+            setBundle((current) => (current ? { ...current, competition: doc } : current));
+          }}
+          previewOpen={env.preview?.deleteDialog}
+        />
+      ) : null}
+    </>
+  );
+
   return (
     <CpFrame
       title={phase === 'recruit' ? ct('detailTitle') : competition.name}
-      menu={(
+      menu={frozen ? undefined : (
         <>
           <button
             type="button"
@@ -711,15 +794,19 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         </>
       )}
     >
-      {/* 下架後一般人讀不到根文件（走讀取失敗畫面）；Rules 只放行管理員與主辦／共同主辦（俱樂部主辦的賽事，俱樂部代表算主辦）。 */}
-      {competition.hidden ? <HiddenNotice ct={ct} reason={competition.hiddenReason} /> : null}
+      {/* 下架後一般人讀不到根文件（走不公開畫面）；Rules 只放行管理員與主辦／共同主辦（俱樂部主辦的賽事，俱樂部代表算主辦）。 */}
+      {competition.hidden && deletingAt == null ? <HiddenNotice ct={ct} reason={competition.hiddenReason} /> : null}
+      {/* 刪到一半：後端也寫了 hidden，但不是管理員下架。能續刪的人看到續刪提示，其他人（共同主辦）只看到刪除中。 */}
+      {deletingAt != null ? (
+        <p class="cpa-hidden" role="status" style="white-space:pre-line">{stuckText}</p>
+      ) : null}
       <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
       {showHostEnd ? (
         <CpCard>
           <p class="cpm-ended">{ct(competition.endedBy === 'auto' ? 'endedAutoLine' : 'endedLine', { date: formatTaipeiDate(competition.endedAt ?? now) })}</p>
           {competition.endReason ? <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{competition.endReason}</p> : null}
           {hasPendingTie(standings) ? <p class="cpm-hint">{ct('endTieHint')}</p> : null}
-          {allowRestore ? (
+          {allowRestore && !frozen ? (
             <div class="cpm-endact">
               <Button variant="secondary" disabled={busy} onClick={() => { setRestoreReason(''); setRestoreMessage(null); setRestoreOpen(true); }}>
                 {ct('restore')}
@@ -766,7 +853,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         notices={competition.notices}
         contactNote={competition.contactNote}
         hostName={hostName(competition, env)}
-        hostOps={hostOps}
+        hostOps={hostOps && !frozen}
         busy={busy}
         clubTeamId={competition.hostType === 'club' ? competition.hostTeamId : null}
         onOpenClub={openClub}
@@ -859,7 +946,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                 docs={docs}
                 crests={entries}
                 divisions={divisions}
-                canHost={hostOps}
+                canHost={hostOps && !frozen}
                 cid={cid}
                 actions={env.actions}
                 summary={fullSchedule ?? summary}
@@ -876,7 +963,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         </>
       )}
 
-      {isAdmin ? (
+      {isAdmin && !frozen ? (
         <AdminPanel
           ct={ct}
           cid={cid}
@@ -935,10 +1022,17 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           footer={(
             <div class="cps-footer">
               <Button variant="secondary" onClick={() => { setReportOpen(false); setReportError(null); }}>{ct('cancel')}</Button>
-              <Button variant="primary" loading={busy} onClick={() => { void sendReport(); }}>{ct('reportSubmit')}</Button>
+              {reportGuest
+                ? <Button variant="primary" loading={loginBusy} onClick={() => { void reportLogin(); }}>{ct('createLogin')}</Button>
+                : <Button variant="primary" loading={busy} onClick={() => { void sendReport(); }}>{ct('reportSubmit')}</Button>}
             </div>
           )}
         >
+          {reportGuest ? (
+            <div class="cps-sheet-body">
+              <p class="cps-note cps-nowrap" data-cp-report="login">{ct('reportLoginHint')}</p>
+            </div>
+          ) : (
           <div class="cps-sheet-body">
             <RadioGroup
               label={ct('reportReason')}
@@ -956,6 +1050,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             />
             {reportError ? <CpError reason={reportError.reason} params={reportError.params} /> : null}
           </div>
+          )}
         </BottomSheet>
       ) : null}
     </CpFrame>

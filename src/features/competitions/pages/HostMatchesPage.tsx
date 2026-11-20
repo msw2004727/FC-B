@@ -15,6 +15,7 @@ import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
 import { canEndCompetition, canHostOrCo, canShowFlexSchedule, isCpAdmin } from '../access';
+import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import {
   applyDayShift,
@@ -53,7 +54,7 @@ import { useInjectedEnv } from '../env';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { undoClock } from '../live/clock';
 import { LiveBoundary } from '../live';
-import { errorOf, reasonText } from '../ui/feedback';
+import { CpLoadFailed, errorOf, loadFailOf, reasonText } from '../ui/feedback';
 import { DateField } from '../ui/fields';
 import { scheduleLabels } from '../ui/schedule-board';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
@@ -83,9 +84,12 @@ function showScoreEntry(match: MatchDoc, nowMs: number): boolean {
   return false;
 }
 
-function allowedOf(env: CpInjectedEnv, staff: StaffDoc | null): boolean {
+function allowedOf(env: CpInjectedEnv, competition: CompetitionDoc | null, staff: StaffDoc | null): boolean {
   return canHostOrCo({
     staffRoles: staff?.roles ?? [],
+    hostType: competition?.hostType ?? 'personal',
+    hostTeamId: competition?.hostTeamId ?? null,
+    repClubIds: representativeClubs(env.actor).map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
   });
 }
@@ -99,7 +103,7 @@ async function loadBundle(env: CpInjectedEnv, cid: string): Promise<CpBundle | n
   ]);
   if (!competition) return null;
   // 無權限的人進這頁不讀隊徽。隊徽只在看得到場次時才需要。
-  if (!allowedOf(env, staff)) {
+  if (!allowedOf(env, competition, staff)) {
     return { competition, divisions, entries: [], roster: [], privates: [], staff };
   }
   const entries = await env.repo.listEntriesForCrest(cid);
@@ -174,10 +178,12 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   const lock = useRef(false);
   const scoreConfirmRef = useRef(true);
   const now = env.now ?? Date.now();
+  const repKey = representativeClubs(env.actor).map((club) => club.id).join('\n');
+  const repPending = env.actor.repClubsPending === true;
 
   useEffect(() => {
     if (env.bundle) {
-      if (!env.matches && allowedOf(env, env.bundle.staff)) {
+      if (!env.matches && allowedOf(env, env.bundle.competition, env.bundle.staff)) {
         let alive = true;
         void env.repo.listMatches(cid).then((rows) => {
           if (alive) setMatches(rows);
@@ -188,6 +194,8 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       }
       return undefined;
     }
+    // 登入判定中或代表清單還在讀：先等，不用空身分先讀一輪（冷開多讀），也不把代表當成無權限。
+    if (env.actor.authPending || repPending) return undefined;
     let alive = true;
     void (async () => {
       const next = await loadBundle(env, cid);
@@ -197,16 +205,16 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
         return;
       }
       setBundle(next);
-      if (allowedOf(env, next.staff)) setMatches(await env.repo.listMatches(cid));
+      if (allowedOf(env, next.competition, next.staff)) setMatches(await env.repo.listMatches(cid));
       if (alive) setPhase('ready');
-    })().catch(() => {
-      if (alive) setPhase('error');
+    })().catch((err: unknown) => {
+      if (alive) setPhase(loadFailOf(err));
     });
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cid, env.actor.uid, env.actor.role, env.bundle, env.matches]);
+  }, [cid, env.actor.authPending, env.actor.uid, env.actor.role, env.bundle, env.matches, repKey, repPending]);
 
   const competition = bundle?.competition ?? null;
   const divisions = bundle?.divisions ?? [];
@@ -214,14 +222,10 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   if (env.actor.authPending || phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
-  if (phase === 'error' || !competition) {
-    return (
-      <CpFrame title={ct('hostListTitle')}>
-        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
-      </CpFrame>
-    );
+  if (phase === 'error' || phase === 'hidden' || !competition) {
+    return <CpLoadFailed title={ct('hostListTitle')} fail={phase === 'hidden' ? 'hidden' : 'error'} />;
   }
-  if (!allowedOf(env, bundle?.staff ?? null)) {
+  if (!allowedOf(env, competition, bundle?.staff ?? null)) {
     return (
       <CpFrame title={ct('hostListTitle')}>
         <p class="cps-note" role="alert">{ct('reason.NOT_HOST')}</p>

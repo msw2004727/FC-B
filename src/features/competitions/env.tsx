@@ -74,6 +74,8 @@ export interface CpPreview {
   moderateOpen?: boolean;
   /** 詳情頁管理員：首屏展開檢舉紀錄。 */
   reportsOpen?: boolean;
+  /** 詳情頁刪除確認框：首屏打開。ack＝已勾；armed 省略時照 0.6 秒計時；error＝顯示這個錯誤碼。 */
+  deleteDialog?: { ack: boolean; armed?: boolean; error?: string };
 }
 
 export interface CpScheduleSnapshot {
@@ -114,7 +116,7 @@ export interface CpInjectedEnv {
   matches?: readonly MatchDoc[];
   preview?: CpPreview;
   wizardSeed?: WizardSeed;
-  /** 接受邀請頁的登入。省略時用站內既有的 signIn（LINE 登入，回跳到目前網址）。 */
+  /** 接受邀請頁與檢舉的登入。省略時用站內既有的 signIn（LINE 登入，回跳到目前網址）。 */
   signIn?: () => Promise<void>;
 }
 
