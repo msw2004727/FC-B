@@ -12,6 +12,7 @@ import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { toast } from '@/ui/Toast';
 import { canHostOrCo, isCpAdmin } from '../access';
+import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import type { CpGenerateScheduleInput } from '../data/cp-callables';
 import {
@@ -22,7 +23,7 @@ import {
   type DayDraft,
   type ParsedSchedule,
 } from '../data/host-write';
-import type { StaffDoc } from '../data/types';
+import type { CompetitionDoc, StaffDoc } from '../data/types';
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { ctOrKey, useCompetitionsT } from '../i18n';
@@ -38,9 +39,12 @@ interface HeldPreview {
 
 type PreviewCard = { kind: 'ok'; m: number; d: number; p: number } | { kind: 'bad'; n: number };
 
-function allowedOf(env: CpInjectedEnv, staff: StaffDoc | null): boolean {
+function allowedOf(env: CpInjectedEnv, competition: CompetitionDoc | null, staff: StaffDoc | null): boolean {
   return canHostOrCo({
     staffRoles: staff?.roles ?? [],
+    hostType: competition?.hostType ?? 'personal',
+    hostTeamId: competition?.hostTeamId ?? null,
+    repClubIds: representativeClubs(env.actor).map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
   });
 }
@@ -246,7 +250,10 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
     );
   }
   // ASSUMPTION: 「無權限」沿用 reason.NOT_HOST，不另造句子。俱樂部代表不是 staff 時擋下。
-  if (!allowedOf(env, bundle?.staff ?? null)) {
+  const allowed = allowedOf(env, competition, bundle?.staff ?? null);
+  // 代表清單還在讀時先等，不先顯示沒有權限。
+  if (!allowed && env.actor.repClubsPending === true) return <div class="cps-root"><PageSpinner /></div>;
+  if (!allowed) {
     return (
       <CpFrame title={ct('hostSchedTitle')}>
         <p class="cps-note" role="alert">{ct('reason.NOT_HOST')}</p>

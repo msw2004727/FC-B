@@ -126,17 +126,16 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   }, [bundle?.competition?.contactNote]);
 
   const competition = bundle?.competition;
-  const manage = competition ? canManageCompetition({
+  const hostInput = competition ? {
     staffRoles: bundle?.staff?.roles ?? [],
     hostType: competition.hostType,
     hostTeamId: competition.hostTeamId,
     repClubIds: representativeClubs(env.actor).map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
-  }) : false;
-  const hostOps = canHostOrCo({
-    staffRoles: bundle?.staff?.roles ?? [],
-    isAdmin: isCpAdmin(env.actor.role),
-  });
+  } : null;
+  const manage = hostInput ? canManageCompetition(hostInput) : false;
+  // 俱樂部目前代表也算（後端 hostAccess）。
+  const hostOps = hostInput ? canHostOrCo(hostInput) : false;
   const locked = competition?.rostersLockedAt != null;
   const entries = bundle?.entries ?? [];
   const pending = entries.filter((entry) => entry.status === 'pending');

@@ -15,6 +15,7 @@ import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
 import { canEndCompetition, canHostOrCo, canShowFlexSchedule, isCpAdmin } from '../access';
+import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import {
   applyDayShift,
@@ -83,9 +84,12 @@ function showScoreEntry(match: MatchDoc, nowMs: number): boolean {
   return false;
 }
 
-function allowedOf(env: CpInjectedEnv, staff: StaffDoc | null): boolean {
+function allowedOf(env: CpInjectedEnv, competition: CompetitionDoc | null, staff: StaffDoc | null): boolean {
   return canHostOrCo({
     staffRoles: staff?.roles ?? [],
+    hostType: competition?.hostType ?? 'personal',
+    hostTeamId: competition?.hostTeamId ?? null,
+    repClubIds: representativeClubs(env.actor).map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
   });
 }
@@ -99,7 +103,7 @@ async function loadBundle(env: CpInjectedEnv, cid: string): Promise<CpBundle | n
   ]);
   if (!competition) return null;
   // 無權限的人進這頁不讀隊徽。隊徽只在看得到場次時才需要。
-  if (!allowedOf(env, staff)) {
+  if (!allowedOf(env, competition, staff)) {
     return { competition, divisions, entries: [], roster: [], privates: [], staff };
   }
   const entries = await env.repo.listEntriesForCrest(cid);
@@ -174,10 +178,12 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   const lock = useRef(false);
   const scoreConfirmRef = useRef(true);
   const now = env.now ?? Date.now();
+  const repKey = representativeClubs(env.actor).map((club) => club.id).join('\n');
+  const repPending = env.actor.repClubsPending === true;
 
   useEffect(() => {
     if (env.bundle) {
-      if (!env.matches && allowedOf(env, env.bundle.staff)) {
+      if (!env.matches && allowedOf(env, env.bundle.competition, env.bundle.staff)) {
         let alive = true;
         void env.repo.listMatches(cid).then((rows) => {
           if (alive) setMatches(rows);
@@ -188,6 +194,8 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       }
       return undefined;
     }
+    // 代表清單還在讀：先等，避免把代表當成無權限而少讀隊徽與場次。
+    if (repPending) return undefined;
     let alive = true;
     void (async () => {
       const next = await loadBundle(env, cid);
@@ -197,7 +205,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
         return;
       }
       setBundle(next);
-      if (allowedOf(env, next.staff)) setMatches(await env.repo.listMatches(cid));
+      if (allowedOf(env, next.competition, next.staff)) setMatches(await env.repo.listMatches(cid));
       if (alive) setPhase('ready');
     })().catch(() => {
       if (alive) setPhase('error');
@@ -206,7 +214,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cid, env.actor.uid, env.actor.role, env.bundle, env.matches]);
+  }, [cid, env.actor.uid, env.actor.role, env.bundle, env.matches, repKey, repPending]);
 
   const competition = bundle?.competition ?? null;
   const divisions = bundle?.divisions ?? [];
@@ -221,7 +229,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       </CpFrame>
     );
   }
-  if (!allowedOf(env, bundle?.staff ?? null)) {
+  if (!allowedOf(env, competition, bundle?.staff ?? null)) {
     return (
       <CpFrame title={ct('hostListTitle')}>
         <p class="cps-note" role="alert">{ct('reason.NOT_HOST')}</p>
