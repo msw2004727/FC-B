@@ -82,7 +82,6 @@ export interface TimeoutView {
   side: MatchSideName;
   leftSec: number;
   collapsed?: boolean;
-  over?: boolean;
   /** 這次暫停的事件時間。正式頁用來對上同一段倒數。 */
   startedAt?: number;
 }
@@ -185,7 +184,6 @@ interface TeamTimeoutState {
   side: MatchSideName;
   leftSec: number;
   collapsed: boolean;
-  over: boolean;
   done: boolean;
   /** 正式頁這段倒數的事件時間。預覽本機倒數沒有。 */
   startedAt?: number;
@@ -217,7 +215,6 @@ function previewTimeout(view: TimeoutView | undefined): TeamTimeoutState | null 
     side: view.side,
     leftSec: Math.max(0, view.leftSec),
     collapsed: view.collapsed ?? false,
-    over: view.over ?? false,
     done: view.leftSec <= 0,
     ...(view.startedAt != null ? { startedAt: view.startedAt } : {}),
   };
@@ -227,7 +224,6 @@ function sameTimeout(current: TeamTimeoutState, next: TeamTimeoutState): boolean
   return current.side === next.side
     && current.leftSec === next.leftSec
     && current.collapsed === next.collapsed
-    && current.over === next.over
     && current.done === next.done
     && current.startedAt === next.startedAt;
 }
@@ -249,7 +245,6 @@ function controlledTimeout(
     side: view.side,
     leftSec: Math.max(0, view.leftSec),
     collapsed: current != null && current.startedAt === view.startedAt ? current.collapsed : (view.collapsed ?? false),
-    over: view.over ?? false,
     done: view.leftSec <= 0,
     ...(view.startedAt != null ? { startedAt: view.startedAt } : {}),
   };
@@ -546,13 +541,11 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       setTimeoutOpen(false);
       return;
     }
-    const over = timeoutLeft(side) <= 0;
     setTimeoutUses((prev) => ({ ...prev, [side]: prev[side] + 1 }));
     setTeamTimeout({
       side,
       leftSec: TEAM_TIMEOUT_SEC,
       collapsed: false,
-      over,
       done: false,
     });
     setTimeoutOpen(false);
@@ -971,7 +964,6 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
               {LIVE_COPY.collapseTimeout}
             </button>
           </div>
-          {teamTimeout.over && !teamTimeout.done ? <p class="s4-timeout__over">{LIVE_COPY.timeoutOver}</p> : null}
         </>
       )}
     </div>

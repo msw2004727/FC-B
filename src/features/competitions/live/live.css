@@ -1032,15 +1032,6 @@ button.s4-ev__main:active { opacity: 0.7; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.s4-timeout__over {
-  margin: 0 0 4px;
-  height: 16px;
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 600;
-  color: var(--d2-text-2);
-  white-space: nowrap;
-}
 .s4-timeout__btn,
 .s4-timeout__mini {
   position: relative;
