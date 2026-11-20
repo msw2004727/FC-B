@@ -542,10 +542,12 @@
 }
 .cpm-ann__foot .ui-button { flex: 0 0 auto; white-space: nowrap; }
 .cpm-ann__btns { display: flex; gap: var(--space-2); flex: 0 0 auto; }
+/* 取消（ghost）不吃 120px 最小寬，避免「已發 n／20 則」被壓到疊在取消上（11-20 外框驗收 P2-1）。 */
+.cpm-ann__btns .ui-button--ghost { min-inline-size: 0; padding-inline: var(--space-3); }
 /* 顧問 §3.294 P3：深色停用的「發布公告」幾乎看不見；只在公告列提高對比，不動全站按鈕 token */
 [data-theme="dark"] .cpm-ann__foot .ui-button[aria-disabled="true"] { opacity: 1; color: var(--color-text-muted); }
 [data-theme="dark"] .cpm-ann__foot .ui-button[aria-disabled="true"]::before { background: var(--color-bg-hover); border-color: var(--color-border); }
-.cpm-ann__foot .cpm-meta { margin: 0; white-space: nowrap; }
+.cpm-ann__foot .cpm-meta { margin: 0; white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cpm-contact {
   display: flex;
   align-items: center;
