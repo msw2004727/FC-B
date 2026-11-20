@@ -98,6 +98,7 @@ function audienceMatch(partial: Partial<AudienceMatch> & Pick<AudienceMatch, 'st
     away: { teamId: 'en_a', name: '海風隊', logo: null },
     penaltyScore: null,
     scoreCorrectedAt: null,
+    cancelReason: null,
     ...partial,
   };
 }

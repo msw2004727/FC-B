@@ -97,6 +97,14 @@ describe('場次文件', () => {
     expect(audienceMatchFromDoc('mt_bad', { status: 'nope' })).toBeNull();
   });
 
+  it('新外觀卡 3-5：已取消的原因從同一份場次文件解析，沒有或空白是 null', () => {
+    const base = { status: 'cancelled', home: { teamId: 'en_h', name: '雷霆隊' }, away: { teamId: 'en_a', name: '海風隊' } };
+    expect(audienceMatchFromDoc('mt1', { ...base, cancelReason: ' 大雨，場地無法使用 ' })?.cancelReason).toBe('大雨，場地無法使用');
+    expect(audienceMatchFromDoc('mt1', { ...base, cancelReason: '  ' })?.cancelReason).toBeNull();
+    expect(audienceMatchFromDoc('mt1', base)?.cancelReason).toBeNull();
+    expect(audienceMatchFromDoc('mt1', { ...base, cancelReason: 3 })?.cancelReason).toBeNull();
+  });
+
   it('時間軸有 n、no 就留下', () => {
     expect(parseTimelineDoc({
       seq: 4, type: 'goal', side: 'home', plId: 'pl1', goalKind: 'normal', n: ' 劉冠廷 ', no: 9, matchSecond: 300,
