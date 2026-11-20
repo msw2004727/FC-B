@@ -150,13 +150,36 @@
   white-space: nowrap;
 }
 .s4-clockrow {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  column-gap: 8px;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
   height: 32px;
   min-height: 32px;
   min-width: 0;
+}
+/* 時間固定在中欄。節次貼時間右側，連線或「比分已更正」靠左。未開賽只有節次時整列置中。 */
+.s4-clockrow > .s4-clock {
+  grid-column: 2;
+  grid-row: 1;
+}
+.s4-clockrow > .s4-stage {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: start;
+}
+.s4-clockrow > .ui-badge,
+.s4-clockrow > .s4-live {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.s4-clockrow > .s4-stage:only-child {
+  grid-column: 1 / -1;
+  justify-self: center;
 }
 .s4-clock {
   font-size: 32px;
@@ -307,7 +330,14 @@
   outline-offset: 2px;
 }
 .s4-hit:active { transform: scale(0.98); filter: brightness(0.92); }
-.s4-hit:disabled { cursor: not-allowed; opacity: 0.45; }
+.s4-hit:disabled,
+.s4-kickoff:disabled {
+  cursor: not-allowed;
+  opacity: 1;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  box-shadow: inset 0 0 0 2px var(--color-border), inset 0 -6px 0 0 var(--s4-hue, var(--color-border));
+}
 .s4-hit--goal,
 .s4-hit--pk {
   height: 104px;
@@ -338,6 +368,13 @@
   color: var(--color-text-primary);
   box-shadow: inset 0 0 0 2px var(--color-border);
 }
+/* 停用色條沿用按鈕本體的寫死色。進球鈕沒有色票變數。 */
+.s4-hit--home:disabled,
+.s4-kickoff:disabled { --s4-hue: #0b6b4e; }
+.s4-hit--away:disabled { --s4-hue: #1d4ed8; }
+.s4-hit--yellow:disabled { --s4-hue: #ffe14a; }
+.s4-hit--red:disabled { --s4-hue: #ff2d2d; }
+.s4-hit--miss:disabled { --s4-hue: var(--color-border); }
 .s4-kickoff {
   appearance: none;
   width: 100%;
@@ -363,12 +400,11 @@
   outline-offset: 2px;
 }
 .s4-kickoff:active { transform: scale(0.98); filter: brightness(0.92); }
-.s4-kickoff:disabled { cursor: not-allowed; opacity: 0.45; }
 
 .s4-events {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -382,6 +418,7 @@
   min-width: 0;
   height: 48px;
   min-height: 48px;
+  border-bottom: 1px solid var(--color-border);
 }
 .s4-sr {
   position: absolute;
@@ -426,6 +463,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: default;
+}
+.s4-page .s4-ev,
+.s4-page .s4-ev__main {
+  height: 40px;
+  min-height: 40px;
+  line-height: 40px;
 }
 button.s4-ev__main { cursor: pointer; }
 button.s4-ev__main:focus-visible {
@@ -498,7 +541,28 @@ button.s4-ev__main:active { opacity: 0.7; }
   --comp-button-foreground-default: #141414;
   --comp-button-border-default: #ff2d2d;
 }
-.s4-ctrl .s4-menu-btn { flex: 0 0 auto; min-width: 48px; }
+.s4-ctrl .s4-end[aria-disabled="true"] {
+  --comp-button-background-default: var(--color-bg-elevated);
+  --comp-button-foreground-default: var(--color-text-muted);
+  --comp-button-border-default: var(--color-border-strong);
+  opacity: 1;
+  color: var(--comp-button-foreground-default);
+}
+.s4-ctrl .s4-end[aria-disabled="true"]::before {
+  background: var(--comp-button-background-default);
+  border-color: var(--comp-button-border-default);
+}
+.s4-ctrl .s4-menu-btn {
+  --comp-button-border-default: var(--color-border-strong);
+  --comp-button-foreground-default: var(--color-text-primary);
+  flex: 0 0 auto;
+  min-width: 48px;
+  height: 48px;
+}
+/* ghost 的 ::before 把框線寫成透明，變數單獨改不到。 */
+.s4-ctrl .s4-menu-btn.ui-button--ghost:not([aria-disabled="true"])::before {
+  border-color: var(--comp-button-border-default);
+}
 .s4-menu-wrap { position: relative; flex: 0 0 auto; }
 .s4-menu {
   position: absolute;
@@ -703,6 +767,17 @@ button.s4-ev__main:active { opacity: 0.7; }
 }
 .s4-sheet .ui-button,
 .s4-dialog .ui-button { min-inline-size: 0; max-width: 100%; }
+.s4-sheet .ui-button[aria-disabled="true"] {
+  --comp-button-background-default: var(--color-bg-elevated);
+  --comp-button-foreground-default: var(--color-text-muted);
+  --comp-button-border-default: var(--color-border-strong);
+  opacity: 1;
+  color: var(--comp-button-foreground-default);
+}
+.s4-sheet .ui-button[aria-disabled="true"]::before {
+  background: var(--comp-button-background-default);
+  border-color: var(--comp-button-border-default);
+}
 .s4-kinds {
   display: flex;
   flex-wrap: nowrap;
@@ -908,7 +983,7 @@ button.s4-ev__main:active { opacity: 0.7; }
 .s4-table th,
 .s4-table td {
   padding: 8px 4px;
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border);
   font-size: var(--font-size-body-sm);
   line-height: var(--line-height-body-sm);
   font-weight: 600;
@@ -938,7 +1013,7 @@ button.s4-ev__main:active { opacity: 0.7; }
   .s4-flash:active { transform: none; }
 }
 
-/* 待送小標。列距已是 6px，再留 2px 才到 8px。名字仍由 .s4-ev__main 省略。 */
+/* 待送小標。名字仍由 .s4-ev__main 省略。 */
 .s4-pending {
   flex: 0 0 auto;
   margin-inline-start: 2px;

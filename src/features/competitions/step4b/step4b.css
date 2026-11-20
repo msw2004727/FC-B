@@ -105,20 +105,54 @@ h3.s4b-h {
   gap: 8px;
   min-width: 0;
   padding: 8px 0;
-  border-top: 1px solid var(--color-border-subtle);
+  border-top: 1px solid var(--color-border);
 }
 .s4b-li:first-child { border-top: 0; padding-top: 0; }
 .s4b-li:last-child { padding-bottom: 0; }
 
-.s4b-staff { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; }
+/* 只套人員清單。邀請列也用 .s4b-li，但是兩行，不進這個選擇器。 */
+.s4b-staff-list > .s4b-li {
+  min-height: 56px;
+  height: 56px;
+  padding-block: 0;
+  align-items: center;
+}
+.s4b-staff-list > .s4b-li:first-child,
+.s4b-staff-list > .s4b-li:last-child {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.s4b-staff {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) 4.5em 64px;
+  column-gap: 8px;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+}
 .s4b-staff__name { font-weight: 700; white-space: nowrap; font-size: var(--font-size-body); }
+.s4b-staff .s4b-staff__name {
+  grid-column: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.s4b-staff > .ui-badge { grid-column: 2; justify-self: start; }
 .s4b-staff__meta {
   white-space: nowrap;
   color: var(--color-text-secondary);
   font-size: var(--font-size-body-sm);
 }
+.s4b-staff .s4b-staff__meta {
+  grid-column: 4;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
 .s4b-staff__gap { flex: 1 1 auto; min-width: 0; }
-.s4b-staff .ui-badge { flex: 0 0 auto; }
+.s4b-staff > .s4b-staff__gap { grid-column: 3; }
+.s4b-staff > .s4b-mini { grid-column: 5; justify-self: end; min-width: 0; max-width: 100%; }
+.s4b-staff .ui-badge { justify-self: start; }
 
 .s4b-day {
   margin: var(--space-3) 0 var(--space-2);
@@ -130,8 +164,24 @@ h3.s4b-h {
 }
 .s4b-day:first-child { margin-top: 0; }
 
-.s4b-m { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px 0; border-top: 1px solid var(--color-border-subtle); }
+.s4b-m {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border-strong);
+}
 .s4b-m:first-child { border-top: 0; padding-top: 0; }
+/* 日期標題是第一個子元素，:first-child 選不到第一場。 */
+.s4b-day + .s4b-m { border-top: 0; padding-top: 0; }
+/* 兩天之間。兄弟選擇器是規格寫法；每一天現在包在 div 裡，所以再加上一組。 */
+.s4b-m + .s4b-day,
+div:has(> .s4b-day):has(> .s4b-m) + div > .s4b-day {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-strong);
+}
 .s4b-m__top, .s4b-between {
   display: flex;
   align-items: center;
@@ -255,6 +305,9 @@ h3.s4b-h {
   border: 1px solid var(--color-border-strong);
   border-radius: 2px;
 }
+
+[data-theme="dark"] .s4b .ui-checkbox input,
+[data-theme="dark"] .s4b .ui-radio input { color-scheme: dark; }
 
 .s4b-num {
   flex: 0 0 auto;

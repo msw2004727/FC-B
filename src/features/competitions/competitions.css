@@ -172,7 +172,7 @@
 .cp3-day { margin: 0 0 var(--space-2); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-weight: 700; color: var(--color-text-secondary); white-space: nowrap; }
 .cp3-ml { list-style: none; margin: 0 0 var(--space-4); padding: 0; }
 .cp3-ml:last-child { margin-bottom: 0; }
-.cp3-m { padding: 10px 0; border-top: 1px solid var(--color-border-subtle); min-width: 0; }
+.cp3-m { padding: 10px 0; border-top: 1px solid var(--color-border); min-width: 0; }
 .cp3-m:first-child { border-top: 0; padding-top: 0; }
 .cp3-m:last-child { padding-bottom: 0; }
 .cp3-m__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 22px; }
