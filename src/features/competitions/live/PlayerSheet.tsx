@@ -2,7 +2,7 @@ import type { JSX } from 'preact';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
 import { Chip } from '@/ui/Chip';
-import type { RosterPublicDoc } from '../data/types';
+import type { MatchSideName, RosterPublicDoc } from '../data/types';
 import { LIVE_COPY, minuteMark, playerChoiceLabel } from './copy';
 import type { RecordAction } from './present';
 import type { GoalKind } from './types';
@@ -63,6 +63,7 @@ export function PlayerSheet({
   onGoalKind,
   onPick,
   onClose,
+  side,
 }: {
   open: boolean;
   teamName: string;
@@ -73,6 +74,8 @@ export function PlayerSheet({
   onGoalKind: (kind: GoalKind) => void;
   onPick: (plId: string | null) => void;
   onClose: () => void;
+  /** 哪一隊在記：面板上緣一條隊色。 */
+  side?: MatchSideName;
 }): JSX.Element {
   const label = actionLabel(action);
   const allowSkip = action === 'goal' || action === 'pk-in' || action === 'pk-miss';
@@ -85,7 +88,7 @@ export function PlayerSheet({
   return (
     <BottomSheet
       open={open}
-      class={roster.length > 8 ? 's4-sheet s4-sheet--long' : 's4-sheet'}
+      class={`s4-sheet${roster.length > 8 ? ' s4-sheet--long' : ''} d2-panel${side ? ` s4-sheet--${side}` : ''}`}
       title={`${teamName} ${label} ${minuteMark(minute)}`}
       onClose={onClose}
     >
@@ -106,7 +109,7 @@ export function PlayerSheet({
       <div class="s4-pick">
         <RosterGrid roster={roster} onPick={onPick} />
         {allowSkip ? (
-          <Button class="s4-unspecified" variant="secondary" onClick={() => onPick(null)}>
+          <Button class="s4-unspecified s4-unspecified--pin" variant="secondary" onClick={() => onPick(null)}>
             {LIVE_COPY.unspecified}
           </Button>
         ) : null}

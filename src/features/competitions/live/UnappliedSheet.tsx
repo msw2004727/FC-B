@@ -19,11 +19,11 @@ export function UnappliedSheet({
   onClose: () => void;
 }): JSX.Element {
   return (
-    <BottomSheet open={open} class="s4-sheet" title={LIVE_COPY.unappliedTitle} onClose={onClose}>
+    <BottomSheet open={open} class="s4-sheet d2-panel" title={LIVE_COPY.unappliedTitle} onClose={onClose}>
       <p class="s4-hint">{LIVE_COPY.unappliedHint}</p>
       <ul class="s4-events">
         {entries.map((entry) => (
-          <li key={entry.id} class="s4-log">
+          <li key={entry.id} class={entry.state === 'rejected' ? 's4-log s4-log--rejected' : 's4-log'}>
             <span class="s4-log__intent">{entry.intent}</span>
             <span class="s4-log__st">{entry.state === 'pending' ? LIVE_COPY.pending : rejectText(entry.rejectReason)}</span>
             {entry.state === 'rejected' ? (
@@ -37,7 +37,7 @@ export function UnappliedSheet({
                   </Button>
                 ) : null}
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   aria-label={withEvent(LIVE_COPY.discard, entry.intent)}
                   onClick={() => onDiscard(entry.id)}
                 >

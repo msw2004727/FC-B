@@ -56,6 +56,23 @@ export function ConfirmFooter({
   );
 }
 
+/** 紀錄列與事件面板原紀錄前的小圖示：進球圓點、牌色小方塊、PK 進／沒進。（從 ScorePad 搬來，EventSheet 也要用） */
+export function Mark({
+  kind,
+  second,
+  scored,
+}: {
+  kind: 'goal' | 'yellow' | 'red' | 'pk';
+  second: boolean;
+  scored?: boolean;
+}): JSX.Element {
+  if (kind === 'pk') {
+    return <i class={scored ? 's4-mark s4-mark--goal' : 's4-mark s4-mark--miss'} aria-hidden="true" />;
+  }
+  const tone = kind === 'goal' ? 'goal' : second || kind === 'red' ? 'red' : 'yellow';
+  return <i class={`s4-mark s4-mark--${tone}`} aria-hidden="true" />;
+}
+
 export function PendingTag(): JSX.Element {
   return <span class="s4-pending">{LIVE_COPY.pending}</span>;
 }
@@ -71,7 +88,7 @@ export function PkConfirmDialog({
   return (
     <Modal
       open
-      class="s4-dialog"
+      class="s4-dialog d2-panel"
       title={LIVE_COPY.pkConfirmTitle}
       onClose={onCancel}
       footer={(
@@ -79,6 +96,7 @@ export function PkConfirmDialog({
           armed={armed}
           confirmLabel={LIVE_COPY.pkConfirmGo}
           cancelLabel={LIVE_COPY.pkConfirmCancel}
+          confirmVariant="danger"
           onConfirm={onConfirm}
           onCancel={onCancel}
         />
@@ -102,7 +120,7 @@ export function KickoffConfirmDialog({
   return (
     <Modal
       open
-      class="s4-dialog"
+      class="s4-dialog d2-panel"
       title={LIVE_COPY.kickoffConfirmTitle}
       onClose={onCancel}
       footer={(

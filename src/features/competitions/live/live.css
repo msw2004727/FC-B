@@ -423,7 +423,9 @@
 /* 卡 2-1（3.9）：記分頁提示列的尺寸與圖示。顏色在 competitions.css 提示那兩條（一般級、資料可能遺失級）；
    基底 .s4-banner, .s4-wake 射手榜也在用，不動。尺寸比 competitions.css 一般級那條多一層 class，不靠兩支檔的載入順序。 */
 .s4-root .s4-alerts .s4-banner,
-.s4-root .s4-alerts .s4-wake {
+.s4-root .s4-alerts .s4-wake,
+.s4-sheet.d2-panel .s4-hint,
+.s4-sheet.d2-panel .s4-goal-lock {
   position: relative;
   min-height: 28px;
   padding: 4px 10px 4px 34px;
@@ -436,7 +438,9 @@
   text-overflow: ellipsis;
 }
 .s4-alerts .s4-banner::before,
-.s4-alerts .s4-wake::before {
+.s4-alerts .s4-wake::before,
+.s4-sheet .s4-hint::before,
+.s4-sheet .s4-goal-lock::before {
   content: '';
   position: absolute;
   left: 10px;
@@ -803,17 +807,25 @@ button.s4-ev__main:active { opacity: 0.7; }
 .s4-feed .s4-ev { gap: 10px; border-bottom-color: var(--d2-line); }
 .s4-feed .s4-ev__main { font-size: 15px; font-weight: 600; color: var(--d2-text); font-variant-numeric: tabular-nums; }
 .s4-feed .s4-mark--goal,
-.s4-feed .s4-mark--miss { width: 12px; height: 12px; margin: 0 1px; }
-.s4-feed .s4-mark--goal { background: var(--d2-text-3); }
-.s4-feed .s4-mark--miss { box-shadow: inset 0 0 0 2px var(--d2-text-3); }
+.s4-feed .s4-mark--miss,
+.s4-evsum .s4-mark--goal,
+.s4-evsum .s4-mark--miss { width: 12px; height: 12px; margin: 0 1px; }
+.s4-feed .s4-mark--goal,
+.s4-evsum .s4-mark--goal { background: var(--d2-text-3); }
+.s4-feed .s4-mark--miss,
+.s4-evsum .s4-mark--miss { box-shadow: inset 0 0 0 2px var(--d2-text-3); }
 .s4-feed .s4-ev--void .s4-ev__main { color: var(--d2-text-3); font-weight: 400; }
 .s4-feed .s4-ev--void .s4-mark { opacity: .45; }
 .s4-feed .s4-ev__tag { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--d2-text-3); }
 /* 卡 2-2：進球圓點、PK 進／沒進照主客隊上色（列帶 s4-ev--home／--away；沒有就維持中性） */
-.s4-feed .s4-ev--home .s4-mark--goal { background: var(--d2-home); }
-.s4-feed .s4-ev--away .s4-mark--goal { background: var(--d2-away); }
-.s4-feed .s4-ev--home .s4-mark--miss { box-shadow: inset 0 0 0 2px var(--d2-home); }
-.s4-feed .s4-ev--away .s4-mark--miss { box-shadow: inset 0 0 0 2px var(--d2-away); }
+.s4-feed .s4-ev--home .s4-mark--goal,
+.s4-evsum--home .s4-mark--goal { background: var(--d2-home); }
+.s4-feed .s4-ev--away .s4-mark--goal,
+.s4-evsum--away .s4-mark--goal { background: var(--d2-away); }
+.s4-feed .s4-ev--home .s4-mark--miss,
+.s4-evsum--home .s4-mark--miss { box-shadow: inset 0 0 0 2px var(--d2-home); }
+.s4-feed .s4-ev--away .s4-mark--miss,
+.s4-evsum--away .s4-mark--miss { box-shadow: inset 0 0 0 2px var(--d2-away); }
 
 /* 卡 2-2（3.10）：整區不能按時，原因與出路放在隊名標籤正上方（紀錄區與按鈕區之間）。
    句子是「擋住」級：一般級的顏色（competitions.css 提示那一條）＋ 44px、15px 粗體、鎖頭 18px；不是按鈕，沒有框與陰影。
@@ -1109,14 +1121,37 @@ button.s4-ev__main:active { opacity: 0.7; }
   outline: 3px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
+/* 卡 2-4（3.22）：球隊暫停選隊——兩顆並排等寬、72 高、跟進球鈕同色同左右；一律兩行（隊名放不下省略、「剩 N 次」不縮），兩顆永遠等高。
+   停用（規則開啟而且次數用完）＝停用底＋底緣 6px 隊色。 */
 .s4-timeout-picks {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
 }
 .s4-timeout-picks .ui-button {
   width: 100%;
   min-height: 56px;
+}
+.s4-sheet .s4-timeout-picks .ui-button {
+  --s4-hue: var(--d2-home);
+  --comp-button-foreground-default: #fff;
+  flex-direction: column;
+  gap: 0;
+  min-height: 72px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 700;
+}
+.s4-sheet .s4-timeout-picks .ui-button + .ui-button { --s4-hue: var(--d2-away); }
+.s4-timeout-picks .ui-button::before { top: 0; bottom: 0; }
+.s4-sheet .s4-timeout-picks .ui-button.ui-button--primary { color: #fff; }
+.s4-sheet .s4-timeout-picks .ui-button.ui-button--primary:not([aria-disabled="true"])::before { background: var(--s4-hue); }
+.s4-sheet .s4-timeout-picks .ui-button__label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.s4-timeout-picks .s4-tp__left { font-size: 15px; line-height: 20px; font-weight: 600; white-space: nowrap; }
+.s4-sheet .s4-timeout-picks .ui-button[aria-disabled="true"]::before {
+  box-shadow: inset 0 0 0 1px var(--d2-off-line), inset 0 -6px 0 0 var(--s4-hue);
 }
 
 /* 卡 2-1（3.15）：終場已送出＝20＋28＋6＋56＝110px，一分都不能多（360×640 紀錄區只剩 1～5px 的三塊之一） */
@@ -1201,16 +1236,31 @@ button.s4-ev__main:active { opacity: 0.7; }
   white-space: nowrap;
 }
 
-.s4-sheet .ui-modal__title,
-.s4-sheet .ui-modal__title .ui-text,
-.s4-dialog .ui-modal__title,
-.s4-dialog .ui-modal__title .ui-text {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  overflow-wrap: normal;
-  word-break: keep-all;
+/* 卡 2-4（施工-第2批 3.18）：記分頁 8 個面板都掛 .d2-panel，外殼、標題一行、停用樣子、元件長相來自 competitions.css；
+   記分頁面板只差三件：主要鈕是墨色（深色反白）、底部按鈕 56 高圓角 12 字 17px、文字鈕改中性玻璃（標記改 secondary）。
+   面板內容一律間距 16px（設計總監 11-21 03:38）。 */
+.s4-sheet.d2-panel .ui-button--primary,
+.s4-dialog.d2-panel .ui-button--primary { --comp-button-foreground-default: var(--d2-go-btn-fg); font-weight: 700; }
+.s4-sheet.d2-panel .ui-button--primary:not([aria-disabled="true"])::before,
+.s4-dialog.d2-panel .ui-button--primary:not([aria-disabled="true"])::before { background: var(--d2-go-btn); }
+.s4-sheet.d2-panel .ui-modal__footer .ui-button,
+.s4-dialog.d2-panel .ui-modal__footer .ui-button {
+  min-height: 56px;
+  border-radius: 12px;
+  font-size: 17px;
+  line-height: 24px;
 }
+.s4-sheet.d2-panel .ui-button:focus-visible,
+.s4-dialog.d2-panel .ui-button:focus-visible { outline-color: var(--d2-text); }
+.s4-sheet.d2-panel .ui-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* 說明句：對話框內文 15px、兩句之間 4px（359 寬以下 13px，「開始 PK」第二句 320 寬才放得下）；底頁裡 13px 次要色 */
+.s4-dialog .s4-note { font-size: 15px; line-height: 24px; font-weight: 400; color: var(--d2-text); }
+.s4-dialog .s4-note + .s4-note { margin-top: 4px; }
+.s4-sheet .s4-note { font-size: 13px; line-height: 20px; font-weight: 400; color: var(--d2-text-2); }
 .s4-sheet .ui-button,
 .s4-dialog .ui-button,
 .s4-kinds .ui-chip__select {
@@ -1227,29 +1277,59 @@ button.s4-ev__main:active { opacity: 0.7; }
 }
 .s4-sheet .ui-button,
 .s4-dialog .ui-button { min-inline-size: 0; max-width: 100%; }
-.s4-sheet .ui-button[aria-disabled="true"] {
-  --comp-button-background-default: var(--color-bg-elevated);
-  --comp-button-foreground-default: var(--color-text-muted);
-  --comp-button-border-default: var(--color-border-strong);
-  opacity: 1;
-  color: var(--comp-button-foreground-default);
-}
-.s4-sheet .ui-button[aria-disabled="true"]::before {
-  background: var(--comp-button-background-default);
-  border-color: var(--comp-button-border-default);
-}
+/* 進球種類／牌色：一整片玻璃分段、片內細線；選中是白底＋2px 深色內框的小塊（記分頁上綠色＝主隊，這是「選中用淡青綠」唯一的例外） */
 .s4-kinds {
   display: flex;
   flex-wrap: nowrap;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 0;
+  height: 48px;
+  margin: 0;
+  padding: 2px;
+  border-radius: 12px;
+  background: var(--d2-glass-gloss), var(--d2-glass-base);
+  box-shadow: var(--d2-glass-sh);
 }
 .s4-kinds .ui-chip { flex: 1 1 0; min-width: 0; justify-content: center; }
+.s4-sheet .s4-kinds .ui-chip {
+  --comp-chip-foreground-default: var(--d2-text-2);
+  border-radius: 8px;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 600;
+}
+.s4-sheet .s4-kinds .ui-chip::before { top: 0; bottom: 0; border-radius: 8px; background: none; box-shadow: none; }
+.s4-kinds .ui-chip + .ui-chip::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 1px;
+  background: var(--d2-divider);
+}
+.s4-kinds .ui-chip--selected::after,
+.s4-kinds .ui-chip--selected + .ui-chip::after { display: none; }
+.s4-sheet .s4-kinds .ui-chip--selected { --comp-chip-foreground-default: var(--d2-text); color: var(--d2-text); font-weight: 700; }
+.s4-sheet .s4-kinds .ui-chip--selected::before { background: var(--d2-field-bg); box-shadow: inset 0 0 0 2px var(--d2-text); }
+/* 牌色那兩顆：字前一個 12×16 的牌色小方塊 */
+.s4-kinds--card .ui-chip__label::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 16px;
+  margin-right: 8px;
+  border-radius: 3px;
+  background: var(--d2-card-y);
+  box-shadow: inset 0 0 0 1px var(--d2-card-y-edge);
+  vertical-align: -3px;
+}
+.s4-kinds--card .ui-chip + .ui-chip .ui-chip__label::before { background: var(--d2-card-r); box-shadow: none; }
 .s4-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
+/* 背號格：玻璃片、圓角 12、最小高 72（4 欄、點了就送出都不動）；改判時目前選到的人整格反白成墨色 */
 .s4-pl {
   display: flex;
   flex-direction: column;
@@ -1259,34 +1339,37 @@ button.s4-ev__main:active { opacity: 0.7; }
   min-height: 72px;
   margin: 0;
   padding: 4px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-elevated);
-  color: var(--color-text-primary);
+  border: 0;
+  border-radius: 12px;
+  background: var(--d2-glass-gloss), var(--d2-glass-base);
+  box-shadow: var(--d2-glass-sh);
+  color: var(--d2-text);
   font-family: inherit;
   cursor: pointer;
   touch-action: manipulation;
 }
 .s4-pl:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: 2px solid var(--d2-text);
   outline-offset: 2px;
 }
-.s4-pl:active { transform: scale(0.97); background: var(--color-bg-active); }
-.s4-pl--on { box-shadow: inset 0 0 0 3px var(--color-focus-ring); }
+.s4-pl:active { transform: scale(0.97); filter: brightness(0.95); }
+.s4-pl--on { background: var(--d2-go-btn); box-shadow: none; color: var(--d2-go-btn-fg); }
+.s4-pl--on .s4-pl__name { color: var(--d2-go-btn-fg); }
 .s4-pl__no {
   display: block;
   font-size: 40px;
-  line-height: 48px;
-  font-weight: 800;
+  line-height: 44px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .s4-pl__name {
   display: block;
   max-width: 100%;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 16px;
   font-weight: 600;
+  color: var(--d2-text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1301,37 +1384,56 @@ button.s4-ev__main:active { opacity: 0.7; }
   max-height: 58vh;
   max-height: 58dvh;
 }
+/* 長名單在高度 700 以下放到 76%：多看到約一列半背號（設計總監裁定） */
+@media (max-height: 700px) {
+  .s4-sheet--long.ui-bottom-sheet .ui-modal__panel {
+    max-height: 76vh;
+    max-height: 76dvh;
+  }
+}
+/* 選球員面板上緣一條 4px 隊色（標題維持純文字，顧問裁定不動 Modal.tsx） */
+.s4-sheet--home.d2-panel .ui-modal__panel { box-shadow: inset 0 4px 0 var(--d2-home), var(--d2-panel-sh); }
+.s4-sheet--away.d2-panel .ui-modal__panel { box-shadow: inset 0 4px 0 var(--d2-away), var(--d2-panel-sh); }
 .s4-unspecified { width: 100%; min-height: 56px; margin-top: 0; }
-.s4-amend-act {
-  display: flex;
-  gap: 8px;
-  margin: 8px 0;
+.s4-sheet .ui-button.s4-unspecified { border-radius: 12px; font-size: 17px; line-height: 24px; }
+/* 選球員的「不指定球員」釘在面板底，下面墊面板底色與一條上緣細線，名單從它後面捲過去 */
+.s4-sheet .s4-unspecified--pin {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  box-shadow: 0 0 0 12px var(--d2-frame), 0 -1px 0 12px var(--d2-line);
 }
-.s4-amend-act .ui-button { flex: 1 1 0; min-height: 56px; min-inline-size: 0; }
+/* 改判面板裡的「不指定球員」是選項：選中時多 2px 深色內框 */
+.s4-sheet .ui-button.s4-unspecified[aria-pressed="true"]::before { box-shadow: var(--d2-glass-sh), inset 0 0 0 2px var(--d2-text); }
+/* 原紀錄一行：前面補上與紀錄列一樣的圖示（進球圓點照隊色、牌是牌色小方塊） */
 .s4-evsum {
-  margin: 4px 0 0;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.s4-hint {
-  margin: 0 0 8px;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  font-weight: 700;
-  white-space: nowrap;
-  overflow-wrap: normal;
-  word-break: keep-all;
+/* 未套用面板那一句、PK 鎖定說明＝提示列（顏色在 competitions.css 一般級那一條，尺寸與圖示併在提示列那幾條的清單裡） */
+.s4-sheet.d2-panel .s4-hint,
+.s4-sheet.d2-panel .s4-goal-lock { margin: 0; }
+.s4-sheet .s4-goal-lock::before {
+  -webkit-mask-image: var(--d2-ico-lock);
+  mask-image: var(--d2-ico-lock);
 }
+/* 未套用的動作：每筆上下內距 12、之間 1px 細線（第一筆沒有上線）；被拒的狀態字紅色 */
 .s4-log {
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  padding: 8px 0;
-  border-top: 1px solid var(--color-border-subtle);
+  padding: 12px 0;
+  border-top: 1px solid var(--d2-line);
 }
+.s4-log:first-child { padding-top: 0; border-top: 0; }
 .s4-log__intent,
 .s4-log__st {
   min-width: 0;
@@ -1343,10 +1445,11 @@ button.s4-ev__main:active { opacity: 0.7; }
   font-size: var(--font-size-body-sm);
   line-height: var(--line-height-body-sm);
 }
-.s4-log__intent { font-weight: 700; }
-.s4-log__st { color: var(--color-text-secondary); font-weight: 600; }
-.s4-log__act { display: flex; gap: 8px; }
-.s4-log__act .ui-button { flex: 1 1 0; min-height: 44px; }
+.s4-log__intent { font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
+.s4-log__st { font-size: 13px; line-height: 20px; color: var(--d2-text-2); font-weight: 400; }
+.s4-log--rejected .s4-log__st { color: var(--d2-danger); font-weight: 600; }
+.s4-log__act { display: flex; gap: 8px; margin-top: 8px; }
+.s4-log__act .ui-button { flex: 1 1 0; min-height: 48px; }
 .s4-note {
   margin: 0;
   font-size: var(--font-size-body-sm);
@@ -1356,12 +1459,6 @@ button.s4-ev__main:active { opacity: 0.7; }
   overflow-wrap: normal;
   word-break: keep-all;
 }
-.s4-dialog .ui-modal__footer {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
-}
-.s4-dialog .ui-modal__footer .ui-button { flex: 1 1 0; min-height: 56px; }
 
 .s4-live {
   display: inline-flex;
@@ -1490,9 +1587,6 @@ button.s4-ev__main:active { opacity: 0.7; }
 /* PK 期間一般進球不能復原或改判。不改既有 .s4-note 的顏色。 */
 .s4-goal-lock {
   margin: 0;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  color: var(--color-text-secondary);
   white-space: nowrap;
   overflow-wrap: normal;
   word-break: keep-all;
@@ -1512,9 +1606,14 @@ button.s4-ev__main:active { opacity: 0.7; }
 /* 提示列 359 寬以下 12px（3.9 的 11-21 實量門檻，取代原型的 340） */
 @media (max-width: 359px) {
   .s4-root .s4-alerts .s4-banner,
-  .s4-root .s4-alerts .s4-wake { padding-left: 30px; padding-right: 8px; font-size: 12px; }
+  .s4-root .s4-alerts .s4-wake,
+  .s4-sheet.d2-panel .s4-hint,
+  .s4-sheet.d2-panel .s4-goal-lock { padding-left: 30px; padding-right: 8px; font-size: 12px; }
   .s4-alerts .s4-banner::before,
-  .s4-alerts .s4-wake::before { left: 8px; }
+  .s4-alerts .s4-wake::before,
+  .s4-sheet .s4-hint::before,
+  .s4-sheet .s4-goal-lock::before { left: 8px; }
+  .s4-dialog .s4-note { font-size: 13px; }
 }
 /* 320 寬：單行隊名 13px（3.5 的 11-21 補充）；控制鈕內距與最小寬收一點，四顆才排得下、不折行 */
 @media (max-width: 340px) {
