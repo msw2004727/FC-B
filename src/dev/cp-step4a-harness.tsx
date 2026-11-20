@@ -3,6 +3,8 @@
 import { render } from 'preact';
 import '../styles/tokens.css';
 import '../styles/base.css';
+// 卡 2-0（施工-第2批 3.0）：記分頁新規則吃 competitions.css 檔頭的 --d2-* 變數；正式頁經 ui/shell 匯入，這裡補上同一順序。
+import '@/features/competitions/competitions.css';
 import '@/features/competitions/live/live.css';
 import './cp-step4a-harness.css';
 import { setLocale } from '@/i18n/i18n';
@@ -152,6 +154,11 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('事件面板', () => hasText('會先復原原紀錄，再記新的'));
     clickButton('復原');
     await until('確認', () => hasText('會一併復原第二張黃牌'));
+    // 確認鈕跳出後 0.6 秒才可按（記分小批的防誤觸）；直接點會被吃掉、畫面停在確認框（卡 2-0 量測時發現）。
+    await until('確定復原可按', () => {
+      const go = buttonsNamed('確定復原')[0];
+      return !!go && !go.disabled && go.getAttribute('aria-disabled') !== 'true' && go.getAttribute('data-confirm-armed') !== 'false';
+    });
     clickButton('確定復原');
     await until('半成功', () => hasText('第二張黃牌已復原，第一張黃牌仍在'));
   },

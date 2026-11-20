@@ -728,6 +728,31 @@ function tieStandings(): StandingDoc {
   });
 }
 
+/** 同分兩隊的相關場次（1：1）。 */
+function tieSummary(): SummaryEntry[] {
+  return [summaryEntry({
+    id: 'mt_rel',
+    k: taipeiMs(2027, 1, 9, 9, 0),
+    st: 'confirmed',
+    s: [1, 1],
+    h: { id: 'en_b', n: '銀河隊' },
+    a: { id: 'en_c', n: '雷霆隊' },
+  })];
+}
+
+/** tieStandings 已由主辦裁定：銀河隊第 2、雷霆隊第 3，列上 decidedBy，文件帶 manualOverride。 */
+function decidedStandings(): StandingDoc {
+  const tied = tieStandings();
+  return standingDoc({
+    hasUnresolvedTie: false,
+    version: 5,
+    manualOverride: { method: 'host', reason: '兩隊所有比較項目相同，依賽前公告規則由主辦裁定', at: taipeiMs(2027, 1, 10, 20, 0) },
+    rows: tied.rows.map((row) => (row.teamId === 'en_b' || row.teamId === 'en_c'
+      ? { ...row, hasUnresolvedTie: false, tiedWith: [], decidedBy: 'host' as const, rank: row.teamId === 'en_b' ? 2 : 3 }
+      : row)),
+  });
+}
+
 function statusMatches(): MatchDoc[] {
   const rows: Array<Partial<MatchDoc> & Pick<MatchDoc, 'id' | 'status'>> = [
     { id: 'mt_sched', status: 'scheduled', matchNo: 1, kickoffAt: taipeiMs(2027, 1, 9, 9, 0), home: { teamId: 'en_h', name: '海風隊' }, away: { teamId: 'en_a', name: '山貓隊' }, teamIds: ['en_h', 'en_a'] },
@@ -969,18 +994,50 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
         DONE_NOW,
         {},
         {
-          summary: [summaryEntry({
-            id: 'mt_rel',
-            k: taipeiMs(2027, 1, 9, 9, 0),
-            st: 'confirmed',
-            s: [1, 1],
-            h: { id: 'en_b', n: '銀河隊' },
-            a: { id: 'en_c', n: '雷霆隊' },
-          })],
+          summary: tieSummary(),
           standings: [tieStandings()],
         },
         HOST_STAFF,
         { ...actions, explainTie: async () => TIE_EXPLAINED },
+      );
+    case 'real-forfeit-sheet':
+      // 卡 2-0（施工-第2批 3.27 #1）：登錄比分面板裡點「改登錄棄權」。資料同 real-score-sheet。
+      return hostEnv([matchDoc({ id: 'mt_1', status: 'scheduled', home: { teamId: 'en_h', name: '海風隊' }, away: { teamId: 'en_a', name: '山貓隊' } })], actions);
+    case 'real-reset-dialog':
+      // 卡 2-0（3.27 #2）：已確認、棄權、已取消的場次才有「重置」。
+      return hostEnv(statusMatches(), actions);
+    case 'real-clear-schedule':
+      // 卡 2-0（3.27 #3）：預覽丟 SCHEDULE_REPLACE_TOO_LARGE，頁面才出現「清除賽程」。
+      return {
+        ...base({
+          ...actions,
+          generateSchedule: async () => { throw new CpCallError('SCHEDULE_REPLACE_TOO_LARGE', {}); },
+        }, hostActor, manageBundle(HOST_STAFF)),
+        now: NOW,
+      };
+    case 'real-tie-exists':
+      // 卡 2-0（3.25 另外兩張卡之一）：儲存裁定時後端回「已有裁定」，出現「已有裁定，請先撤銷」那張卡。
+      return detailEnv(
+        hostActor,
+        DONE_NOW,
+        {},
+        { summary: tieSummary(), standings: [tieStandings()] },
+        HOST_STAFF,
+        {
+          ...actions,
+          explainTie: async () => TIE_EXPLAINED,
+          resolveTie: async () => { throw new CpCallError('TIE_DECISION_EXISTS', {}); },
+        },
+      );
+    case 'real-tie-decision':
+      // 卡 2-0（3.25 另外兩張卡之二）：已裁定的組，點名次欄「裁定」打開 DecisionCard（主辦可撤銷）。
+      return detailEnv(
+        hostActor,
+        DONE_NOW,
+        {},
+        { summary: tieSummary(), standings: [decidedStandings()] },
+        HOST_STAFF,
+        actions,
       );
     case 'real-end-dialog':
       return hostEnv(

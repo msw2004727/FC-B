@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // 賽事第 4 步 U2 正式記分頁截圖（由 cp-step4a-shots.mjs 複製改寫，PM 用）：對已打包的 harness（vite preview）逐畫面、逐寬度、逐主題截圖（固定視窗高度，不截整頁；
 // 內容超過一個視窗時再往下捲、補截後續分段），並檢查 console 錯誤、橫向溢出與介面文字被動斷行。
-// 用法：node dev-harness/cp-step4a-shots.mjs <輸出資料夾> [base url，預設 http://localhost:5195]
+// 用法：node dev-harness/cp-step4-u2-shots.mjs <輸出資料夾> [base url，預設 http://localhost:5197]
+// 卡 2-0：只放行本機請求（取代只擋 Firebase 網域）；360×640 的完整量法在 cp-scoreboard-fit360.mjs。
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
@@ -24,6 +25,30 @@ const ANCHORS = {
   'u2-no-permission': '你沒有這場的記分權限',
   'u2-storage-unavailable': '離線紀錄無法保存',
   'u2-long-name': '34:00',
+  // 卡 2-0（施工-第2批 3.27）新增的示範狀態
+  'u2-fulltime-undo': '撤回終場',
+  'u2-fulltime-undo-blocked': '先處理沒送出的紀錄，才能撤回終場',
+  'a1-held-offline': '離線中，已存',
+  'a1-held-pause-reserved': '為保留記分額度，停錶已停用',
+  'a1-held-timeout': '結束暫停',
+  'a1-held-timeout-collapsed': '前一筆沒送出',
+  'u2-timeout-collapsed': '雷霆隊',
+  'u2-near-cap': '本場紀錄接近上限',
+  'u2-reader-cap': '紀錄已達上限，請由主辦在賽後登錄比分',
+  'u2-menu': '離開記分',
+  'u2-timeout-sheet': '每半場重新計算',
+  'u2-amend-card': '看這張牌',
+  'a1-amend-confirm': '確定改判',
+  'u2-no-permission-host': '請先在指派頁把自己指派為記分員',
+  'u2-load-failed-network': '讀取失敗，連線恢復後會自動重試',
+  'u2-load-failed-error': '讀取失敗',
+  'u2-pre-wake-off': '開賽',
+  'u2-long-6': '34:00',
+  'u2-long-7': '34:00',
+  'u2-long-10': '34:00',
+  'u2-long-11': '34:00',
+  'u2-long-13': '34:00',
+  'u2-long-similar': '34:00',
 };
 // [畫面, 寬度組, 主題組, 是否可往下補截（面板／亮牌不補）]
 const SCREENS = [
@@ -39,6 +64,29 @@ const SCREENS = [
   ['u2-no-permission', ALL, THEMES, true],
   ['u2-storage-unavailable', ALL, THEMES, true],
   ['u2-long-name', ALL, THEMES, true],
+  ['u2-fulltime-undo', ALL, THEMES, true],
+  ['u2-fulltime-undo-blocked', ALL, THEMES, true],
+  ['a1-held-offline', ALL, THEMES, true],
+  ['a1-held-pause-reserved', ALL, THEMES, true],
+  ['a1-held-timeout', ALL, THEMES, true],
+  ['a1-held-timeout-collapsed', ALL, THEMES, true],
+  ['u2-timeout-collapsed', ALL, THEMES, true],
+  ['u2-near-cap', ALL, THEMES, true],
+  ['u2-reader-cap', ALL, THEMES, true],
+  ['u2-menu', ALL, THEMES, false],
+  ['u2-timeout-sheet', ALL, THEMES, false],
+  ['u2-amend-card', ALL, THEMES, false],
+  ['a1-amend-confirm', ALL, THEMES, false],
+  ['u2-no-permission-host', ALL, THEMES, true],
+  ['u2-load-failed-network', ALL, THEMES, true],
+  ['u2-load-failed-error', ALL, THEMES, true],
+  ['u2-pre-wake-off', ALL, THEMES, true],
+  ['u2-long-6', ALL, THEMES, true],
+  ['u2-long-7', ALL, THEMES, true],
+  ['u2-long-10', ALL, THEMES, true],
+  ['u2-long-11', ALL, THEMES, true],
+  ['u2-long-13', ALL, THEMES, true],
+  ['u2-long-similar', ALL, THEMES, true],
 ];
 
 const SELECTORS = '.s4-team, .s4-col__name, .s4-clock, .s4-stage, .s4-hold, .s4-banner, .s4-wake, .s4-ev__main, .s4-ev__tag, .s4-evsum, .s4-flash__no, .s4-flash__name, .s4-flash__kind, .s4-flash__close, .s4-sent__st, .s4-sent__cd, .s4-hint, .s4-note, .s4-log__intent, .s4-log__st, .s4-pl__name, .s4-dlist__when, .s4-vs__score, .cpm-drag__n, .cpm-drag__li > *, .cpl-src button, .cpl-select, .cpl-st, .tc-chip, .tc-tab, .cpl-line, .tc-card-name, .tc-card-dates, button, .ui-badge, .ui-chip, dt, .cp3-name, .cp3-meta, .cp3-strip__txt, .cp3-day, .cp3-m__when, .cp3-m__vs span, .cp3-st__r > *, .cp3-champ span, .cp3-fold span, .cp3-result, .cp3-result--bad, .cp3-judge, .cp3-sec-h, .cp3-ctx, .cp3-score__name, .cp3-modal-p, .ui-input label, .ui-checkbox label, .ui-radio label, h1, h2, h3, .cps-sub, th';
@@ -50,7 +98,7 @@ const copyMap = new Map();
 for (const [name, sizes, themes, scrollMore] of SCREENS) {
   for (const [w, h] of sizes) {
     for (const theme of themes) {
-      const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 }); await ctx.route(/googleapis\.com|firebaseio\.com|firebaseapp\.com/, (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });
+      const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 }); await ctx.route((u) => !/^(127\.0\.0\.1|localhost|\[::1\])$/.test(u.hostname), (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });
       const page = await ctx.newPage();
       const tag = `s4-${name}-${w}-${theme}`;
       page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });
@@ -204,7 +252,7 @@ const FIRST = ['u2-pre', 'u2-live', 'u2-pending', 'u2-pk-live', 'u2-timeout-stop
 for (const name of FIRST) {
   for (const [w, h] of [...ALL, [375, 812]]) {
     for (const theme of THEMES) {
-    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 }); await ctx.route(/googleapis\.com|firebaseio\.com|firebaseapp\.com/, (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 }); await ctx.route((u) => !/^(127\.0\.0\.1|localhost|\[::1\])$/.test(u.hostname), (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });
     const page = await ctx.newPage();
     const tag = `s4-${name}-${w}x${h}-${theme}`;
     page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });

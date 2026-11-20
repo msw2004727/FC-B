@@ -51,6 +51,12 @@ const PAGES: Record<string, ComponentType> = {
   'real-end-dialog': HostMatchesPage,
   'real-cancel-sheet': HostMatchesPage,
   'real-wizard-personal': NewCompetitionPage,
+  // 卡 2-0（施工-第2批 3.25、3.27）：登錄棄權、重置比分、清除賽程、同分裁定另外兩張卡。
+  'real-forfeit-sheet': HostMatchesPage,
+  'real-reset-dialog': HostMatchesPage,
+  'real-clear-schedule': HostSchedulePage,
+  'real-tie-exists': CompetitionDetailPage,
+  'real-tie-decision': CompetitionDetailPage,
 };
 
 /** 正式賽事頁的上方來源切換與分類頁籤在 TournamentsPage，且要等開賽閘門。這裡只畫站內清單，外層套上同一頁的版面鉤子，封面色才吃得到。 */
@@ -197,6 +203,41 @@ const OPEN: Record<string, () => Promise<void>> = {
   'real-cancel-sheet': async () => {
     clickButton('取消這場');
     await until('取消面板', () => hasText('取消原因會公開'));
+  },
+  'real-forfeit-sheet': async () => {
+    clickButton('登錄比分');
+    await until('登錄比分面板', () => buttonsNamed('改登錄棄權').length > 0);
+    clickButton('改登錄棄權');
+    await until('登錄棄權面板', () => buttonsNamed('確認棄權').length > 0 && hasText('棄權方判 0：2'));
+  },
+  'real-reset-dialog': async () => {
+    await until('重置鈕', () => buttonsNamed('重置').length > 0);
+    clickButton('重置');
+    await until('重置比分面板', () => hasText('重置後比分歸零，積分榜會重算'));
+  },
+  'real-clear-schedule': async () => {
+    // 產生鈕要先預覽過才能按；預覽丟 SCHEDULE_REPLACE_TOO_LARGE 後才出現「清除賽程」。
+    await until('預覽鈕', () => buttonsNamed('預覽').length > 0);
+    clickButton('預覽');
+    await until('清除賽程鈕', () => buttonsNamed('清除賽程').length > 0);
+    clickButton('清除賽程');
+    await until('清除確認', () => hasText('清除後這個組別的賽程會刪掉，確定要清除？'));
+  },
+  'real-tie-exists': async () => {
+    clickButton('同分');
+    await until('裁定表單', () => hasText('裁定原因') && buttonsNamed('儲存').length > 0);
+    setField('.cpm-form textarea, textarea', '兩隊所有比較項目相同，依規則由主辦裁定');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    clickButton('儲存');
+    await until('已有裁定卡', () => hasText('已有裁定，請先撤銷原本的裁定') && buttonsNamed('撤銷裁定').length > 0);
+  },
+  'real-tie-decision': async () => {
+    const tag = () => [...document.querySelectorAll<HTMLButtonElement>('button.cpm-tiebtn')].find((el) => el.getAttribute('aria-label') === '主辦裁定');
+    // 與 real-tie-panel 同一頁：積分榜直接在詳情頁上；有「積分」分頁鈕時才點。
+    if (!tag() && buttonsNamed('積分').length > 0) clickButton('積分');
+    await until('裁定小標', () => tag() != null);
+    tag()?.click();
+    await until('裁定卡', () => buttonsNamed('撤銷裁定').length > 0);
   },
 };
 

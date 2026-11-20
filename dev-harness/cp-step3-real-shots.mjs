@@ -20,6 +20,9 @@ const ANCHORS = {
   'real-recruit': '報名期間', 'real-done': '18:00', 'real-ended-host': '剩餘場次不再進行', 'real-postponed': '場地整修',
   'real-cancelled-comp': '報名隊伍不足', 'real-notices': '領隊會議', 'real-contact-club': '聯絡主辦',
   'real-contact-personal': '聯絡主辦', 'real-host-schedule': '每場分鐘數', 'real-shift-day': '順延', 'real-wizard-personal': '賽事名稱',
+  // 卡 2-0（施工-第2批 3.25、3.27）
+  'real-forfeit-sheet': '確認棄權', 'real-reset-dialog': '重置後比分歸零', 'real-clear-schedule': '確定要清除',
+  'real-tie-exists': '已有裁定，請先撤銷原本的裁定', 'real-tie-decision': '撤銷裁定',
 };
 const SCREENS = [
   ['real:list-in', ALL, THEMES, true],
@@ -43,6 +46,11 @@ const SCREENS = [
   ['real:real-host-schedule', ONE, THEMES, true],
   ['real:real-shift-day', ONE, THEMES, true],
   ['real:real-wizard-personal', ONE, THEMES, true],
+  ['real:real-forfeit-sheet', ALL, THEMES, false],
+  ['real:real-reset-dialog', ALL, THEMES, false],
+  ['real:real-clear-schedule', ALL, THEMES, false],
+  ['real:real-tie-exists', ALL, THEMES, true],
+  ['real:real-tie-decision', ALL, THEMES, true],
 ];
 
 const SELECTORS = '.cpm-drag__n, .cpm-drag__li > *, .cpl-src button, .cpl-select, .cpl-st, .tc-chip, .tc-tab, .cpl-line, .tc-card-name, .tc-card-dates, button, .ui-badge, .ui-chip, dt, .cp3-name, .cp3-meta, .cp3-strip__txt, .cp3-day, .cp3-m__when, .cp3-m__vs span, .cp3-st__r > *, .cp3-champ span, .cp3-fold span, .cp3-result, .cp3-result--bad, .cp3-judge, .cp3-sec-h, .cp3-ctx, .cp3-score__name, .cp3-modal-p, .ui-input label, .ui-checkbox label, .ui-radio label, h1, h2, h3, .cps-sub';

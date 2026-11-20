@@ -5,6 +5,7 @@
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
+import { ACCEPTED_SHORT, PK_SCREENS, ROW_TARGET } from './cp-scoreboard-fit-rules.mjs';
 
 const OUT = resolve(process.argv[2] || 'cp-step4a-shots');
 const BASE = process.argv[3] || 'http://localhost:5195';
@@ -67,7 +68,7 @@ const SELECTORS = '.s4-team, .s4-col__name, .s4-clock, .s4-stage, .s4-hold, .s4-
 
 const browser = await chromium.launch({ args: ['--noerrdialogs'] });
 await mkdir(OUT, { recursive: true });
-const report = { shots: [], consoleErrors: [], overflows: [], wraps: [], firstScreen: [] };
+const report = { shots: [], consoleErrors: [], overflows: [], wraps: [], firstScreen: [], firstScreenAccepted: [] };
 const copyMap = new Map();
 for (const [name, sizes, themes, scrollMore] of SCREENS) {
   for (const [w, h] of sizes) {
@@ -222,6 +223,7 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
   }
 }
 // 顧問 §3.308：360×640 第一屏。標籤用 360x640，避免蓋掉既有 360×780 的 s4-*-360-*。
+// 卡 2-0：完整量法（區塊位置、點得到、重疊、可容列數）改用 cp-scoreboard-fit360.mjs；這裡只留快速檢查，例外清單與它共用。
 const FIRST = ['score-live', 'score-offline', 'score-cap', 'score-pause-reserved', 'score-timeout', 'score-pk'];
 for (const name of FIRST) {
   for (const theme of THEMES) {
@@ -242,7 +244,8 @@ for (const name of FIRST) {
     }
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(300);
-    const missing = await page.evaluate((screen) => {
+    // 卡 2-0：PK 不看時鐘與節次（PK_SCREENS）；不到四列時，已被顧問接受的狀態（ACCEPTED_SHORT）記成 accepted，不算 missing。
+    const { missing, rowsShort } = await page.evaluate(({ screen, pk, target }) => {
       const vh = window.innerHeight;
       const vw = window.innerWidth;
       const missing = [];
@@ -269,10 +272,12 @@ for (const name of FIRST) {
         return ((el.getAttribute('aria-label') || el.textContent || '').trim()).slice(0, 24);
       }
       need(document.querySelector('.s4-score'), '比分');
-      need(document.querySelector('.s4-clock'), '計時');
-      need(document.querySelector('.s4-stage'), '節次');
+      if (!pk) {
+        need(document.querySelector('.s4-clock'), '計時');
+        need(document.querySelector('.s4-stage'), '節次');
+      }
       // PK 進行中沒有一般進球鈕：四顆進／沒進，頂列要有 PK 比分。
-      if (screen === 'score-pk') {
+      if (pk) {
         if (!document.querySelector('.s4-pk')) missing.push('頂列沒有 PK 比分');
         const hits = [...document.querySelectorAll('.s4-goals .s4-hit')];
         if (hits.length !== 4) missing.push(`PK 應有 4 顆進／沒進，實際 ${hits.length}`);
@@ -292,9 +297,11 @@ for (const name of FIRST) {
       for (const el of bar) need(el, `底欄 ${labelOf(el)}`);
       const rows = [...document.querySelectorAll('.s4-feed .s4-ev')];
       const visible = rows.filter((el) => !clipped(el));
-      if (visible.length < 4) missing.push(`紀錄列只完整露出 ${visible.length} 列`);
-      return missing;
-    }, name);
+      const rowsShort = visible.length < target ? `紀錄列只完整露出 ${visible.length} 列` : null;
+      return { missing, rowsShort };
+    }, { screen: name, pk: PK_SCREENS.has(name), target: ROW_TARGET });
+    if (rowsShort && ACCEPTED_SHORT[name]) report.firstScreenAccepted.push({ tag, rowsShort, reason: ACCEPTED_SHORT[name] });
+    else if (rowsShort) missing.push(rowsShort);
     report.firstScreen.push({ tag, missing });
     const file = `${tag}.png`;
     await page.screenshot({ path: join(OUT, file), fullPage: false });
@@ -308,3 +315,4 @@ await writeFile(join(OUT, 'report.json'), JSON.stringify(report, null, 2), 'utf8
 console.log(`截圖 ${report.shots.length} 張；console 錯誤 ${report.consoleErrors.length}；溢出 ${report.overflows.length}；斷行／省略 ${report.wraps.length}；第一屏 ${report.firstScreen.length}`);
 for (const k of ['consoleErrors', 'overflows', 'wraps']) for (const l of report[k]) console.log(k, l);
 for (const row of report.firstScreen) if (row.missing.length) console.log('firstScreen', row.tag, row.missing.join('、'));
+for (const row of report.firstScreenAccepted) console.log('firstScreen（已接受）', row.tag, row.rowsShort, row.reason);
