@@ -78,11 +78,6 @@
 [data-theme="dark"] #page-tournaments .tc-tab.active::after {
   background: #3e4555;
 }
-/* 新增賽事（主按鈕）：加一道上半光澤，底色不變 */
-#page-tournaments .tc-tabs .tc-add-btn {
-  background-image: linear-gradient(180deg, rgba(255,255,255,.36) 0%, rgba(255,255,255,.1) 46%, rgba(255,255,255,0) 54%);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), inset 0 -4px 8px -4px rgba(15,23,42,.3), 0 6px 14px -8px rgba(13,148,136,.55);
-}
 
 /* ── 內容區：整片玻璃（光澤帶固定 34～40px，落在「顯示已結束」那一列） ── */
 #page-tournaments .tc-panel {
