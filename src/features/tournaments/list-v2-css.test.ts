@@ -71,9 +71,12 @@ describe('list-v2.css：清單頁新外觀（清-3）', () => {
     expect(shared).toBeGreaterThanOrEqual(16);
   });
 
-  it('深色專屬規則只有色票那一條；沒有 !important、color-mix、backdrop-filter、:has(、:is(', () => {
+  it('深色專屬規則只有色票那一條（含確認框那個選擇器）；沒有 !important、color-mix、backdrop-filter、:has(、:is(', () => {
     const darkRules = rules.filter((rule) => rule.selector.startsWith('[data-theme="dark"]'));
-    expect(darkRules.map((rule) => rule.selector)).toEqual(['[data-theme="dark"] .tournaments-root[data-d2]']);
+    expect(darkRules.map((rule) => rule.selector)).toEqual([
+      '[data-theme="dark"] .tournaments-root[data-d2]',
+      '[data-theme="dark"].cp-danger-confirm #app-confirm-modal',
+    ]);
     expect(raw).not.toContain('!important');
     expect(raw).not.toMatch(/color-mix|backdrop-filter|:has\(|:is\(/);
   });

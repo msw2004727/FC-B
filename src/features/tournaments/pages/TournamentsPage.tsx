@@ -16,7 +16,6 @@ import { lt, useT } from '@/i18n/i18n';
 import { getLastKnownAuthUid } from '@/data/auth';
 import { readAuthHint } from '@/data/auth-hint';
 import { useViewer } from '@/features/profile/data/viewer';
-import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 import { TournamentCardForm } from '../components/TournamentCardForm';
 import {
@@ -48,6 +47,7 @@ import {
   type CompetitionSource,
 } from '../source';
 import { readInAppHint, writeInAppHint } from '../inapp-hint';
+import { dangerConfirm } from '../danger-confirm';
 
 /** 讀取超過這麼久沒回來就走既有的錯誤＋重試；晚到的結果照常收尾。 */
 export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
@@ -317,7 +317,8 @@ export default function TournamentsPage(): JSX.Element {
       toast.show({ message: t('tournaments.toast.denied'), tone: 'error' });
       return;
     }
-    if (!(await appConfirm(t('tournaments.confirmDelete', { name: card.name })))) return;
+    // 危險確認框（清-5）：確定鈕畫成紅框；訊息、流程照舊。
+    if (!(await dangerConfirm(t('tournaments.confirmDelete', { name: card.name })))) return;
     busyRef.current = true;
     setBusy(true);
     try {
