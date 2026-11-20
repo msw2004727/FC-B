@@ -34,13 +34,13 @@ const ANCHORS = {
   'real-tie-exists': '已有裁定，請先撤銷原本的裁定', 'real-tie-decision': '撤銷裁定',
   // 新外觀第 1b 批第 7 節
   'real-live-twin-next': '綠洲隊', 'real-live-no-today': '晨光隊', 'real-warm-no-schedule': '距開賽',
-  'real-recruit-nocap': '已核准', 'real-recruit-nodiv': '報名期間', 'real-done-five': '赤焰隊', 'real-done-nochamp': '已結束',
+  'real-recruit-nodiv': '報名期間', 'real-done-five': '第一級別組', 'real-done-nochamp': '已結束',
   'real-done-pending': '冠軍待主辦裁定', 'real-long': '三重示範青年足球俱樂部隊', 'real-long-recruit': '三重區示範運動公園第一足球場',
   'real-draft-host': '發布', 'real-scorer': '我的場次', 'real-admin-menu': '下架', 'real-club-entry-one': '送出報名',
   'real-club-entry-two': '送出報名', 'real-club-entry-error': '還有必填項目沒填', 'real-notice-delete': '確定要刪除這則公告？',
   'real-notice-delete-sys': '這是系統公告，確定要刪除？', 'real-load-failed': '讀取失敗', 'real-crest-live': '雷霆隊', 'real-corrected-pk': '藍鯨隊',
   // 新外觀第 4 批第 7 節
-  'real-swap-open': '確認對調', 'real-shift-clash': '仍要順延', 'real-pending-fresh': '登錄比分', 'real-host-matches-empty': '請先排賽程',
+  'real-swap-open': '確認對調', 'real-shift-clash': '仍要順延', 'real-shift-clash-settled': '仍要順延', 'real-pending-fresh': '登錄比分', 'real-host-matches-empty': '請先排賽程',
   'real-schedule-preview': '共 12 場、需 2 天、每隊 3 場', 'real-schedule-unplaced': '還有 4 場排不下', 'real-schedule-too-many': '場次太多，請調整賽制',
   'real-schedule-replace': '清除賽程',
 };
@@ -75,7 +75,6 @@ const SCREENS = [
   ['real:real-live-twin-next', NEW, THEMES, true],
   ['real:real-live-no-today', NEW, THEMES, true],
   ['real:real-warm-no-schedule', NEW, THEMES, true],
-  ['real:real-recruit-nocap', NEW, THEMES, true],
   ['real:real-recruit-nodiv', NEW, THEMES, true],
   ['real:real-done-five', NEW, THEMES, true],
   ['real:real-done-nochamp', NEW, THEMES, true],
@@ -96,6 +95,7 @@ const SCREENS = [
   // 新外觀第 4 批第 7 節「要補」
   ['real:real-swap-open', NEW, THEMES, true],
   ['real:real-shift-clash', NEW, THEMES, true],
+  ['real:real-shift-clash-settled', NEW, THEMES, true],
   ['real:real-pending-fresh', NEW, THEMES, true],
   ['real:real-host-matches-empty', NEW, THEMES, false],
   ['real:real-host-matches-denied', NEW, THEMES, false],
