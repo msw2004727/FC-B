@@ -124,6 +124,8 @@ function paint(): void {
     options: relay.options,
     busy: relay.busy,
     tryLater: relay.tryLater,
+    // 送出中或待重試時標出剛按的數字（站長 11-20：點下後要看得出有點到）。
+    picked: relay.busy || relay.tryLater ? relay.lastPick : null,
   }, relayHandlers);
 }
 

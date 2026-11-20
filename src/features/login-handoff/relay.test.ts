@@ -93,7 +93,7 @@ describe('relay', () => {
     const options = pickOptions();
     const pick = options[0] ?? 10;
     handlers().onPick(pick);
-    expect(lastView()).toMatchObject({ kind: 'pick', busy: true, tryLater: false });
+    expect(lastView()).toMatchObject({ kind: 'pick', busy: true, tryLater: false, picked: pick });
     expect(callFn).toHaveBeenCalledTimes(1);
     handlers().onPick(options[1] ?? pick);
     expect(callFn).toHaveBeenCalledTimes(1);

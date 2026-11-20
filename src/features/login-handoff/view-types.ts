@@ -4,7 +4,7 @@ export type WaitView =
   | { kind: 'notYet'; number: number; expiresAt: number }                // ⑤ 還沒收到
   | { kind: 'timeout' };                                                 // ⑥ 逾時
 export type RelayView =
-  | { kind: 'pick'; options: number[]; busy: boolean; tryLater: boolean } // ① 選數字；tryLater＝顯示「稍後再試」與重試
+  | { kind: 'pick'; options: number[]; busy: boolean; tryLater: boolean; picked?: number | null } // ① 選數字；tryLater＝顯示「稍後再試」與重試；picked＝已按下的數字
   | { kind: 'done' }                                                     // ② 已轉交
   | { kind: 'wrong' }                                                    // ③ 數字不符或已失效
   | { kind: 'sentOrExpired' };                                           // 已送出或已失效（不顯示失敗）

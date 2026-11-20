@@ -123,6 +123,15 @@ describe('轉交頁', () => {
     expect((screen.getByText('27') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('按下後：按的那組加框並標 aria-pressed，其他兩組變暗', () => {
+    render(<RelayScreen view={{ kind: 'pick', options: [27, 81, 46], busy: true, tryLater: false, picked: 81 }} handlers={relayHandlers()} />);
+    const picked = screen.getByText('81');
+    expect(picked.className).toContain('login-handoff-num--picked');
+    expect(picked.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('27').className).toContain('login-handoff-num--dim');
+    expect(screen.getByText('46').className).toContain('login-handoff-num--dim');
+  });
+
   it('稍後再試：顯示提示與重試鈕，重試＝onRetry', () => {
     const h = relayHandlers();
     render(<RelayScreen view={{ kind: 'pick', options: [27, 81, 46], busy: false, tryLater: true }} handlers={h} />);

@@ -159,6 +159,12 @@ export function WaitScreen({ view, handlers }: { view: WaitView; handlers: WaitH
   );
 }
 
+/** 已按下的數字加框，其他兩組變暗（站長 11-20）。 */
+function pickedClass(picked: number | null | undefined, n: number): string {
+  if (picked === null || picked === undefined) return '';
+  return picked === n ? ' login-handoff-num--picked' : ' login-handoff-num--dim';
+}
+
 export function RelayScreen({ view, handlers }: { view: RelayView; handlers: RelayHandlers }): JSX.Element {
   const text = handoffText(getCurrentLocale());
   if (view.kind === 'done' || view.kind === 'sentOrExpired') {
@@ -190,9 +196,10 @@ export function RelayScreen({ view, handlers }: { view: RelayView; handlers: Rel
         {view.options.map((n) => (
           <button
             key={n}
-            class="login-handoff-num"
+            class={`login-handoff-num${pickedClass(view.picked, n)}`}
             type="button"
             disabled={view.busy}
+            aria-pressed={view.picked === n}
             onClick={() => handlers.onPick(n)}
           >
             {n}

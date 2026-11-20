@@ -146,3 +146,26 @@
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
+
+/* 點數字的回饋（站長 11-20）：按下即縮一下；送出中與待重試時，按下的那組加綠框、其他兩組變暗。 */
+.login-handoff .login-handoff-num {
+  transition: transform .08s ease, opacity .15s ease, box-shadow .15s ease;
+}
+
+.login-handoff .login-handoff-num:active:not(:disabled) {
+  transform: scale(.95);
+}
+
+.login-handoff .login-handoff-num.login-handoff-num--picked,
+.login-handoff .login-handoff-num.login-handoff-num--picked:disabled {
+  opacity: 1;
+  background: rgba(6, 199, 85, .12);
+  box-shadow:
+    inset 0 0 0 2.5px #06C755,
+    0 6px 14px -8px rgba(6, 199, 85, .7);
+}
+
+.login-handoff .login-handoff-num.login-handoff-num--dim,
+.login-handoff .login-handoff-num.login-handoff-num--dim:disabled {
+  opacity: .3;
+}
