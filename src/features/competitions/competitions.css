@@ -752,9 +752,13 @@
 .cp3-st__r--top .t, .cp3-st__r--top .rk { color: var(--color-brand-soft-fg); }
 [data-theme="dark"] .cp3-st__r--top .t, [data-theme="dark"] .cp3-st__r--top .rk { color: var(--palette-emerald-300); }
 
-.cp3-fold { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: var(--color-text-primary); font: inherit; font-size: var(--font-size-body); font-weight: 600; white-space: nowrap; cursor: pointer; }
-.cp3-fold svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* 收合列（共用，第 3 批引用）：卡片 .d2-foldcard＋收合鈕 .cp3-fold；收起來跟入口列一樣高，展開後鈕下緣一條細線、內容才撐開 */
+.cps-card.d2-foldcard { padding: 0 14px 0 16px; }
+.cp3-fold { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; padding: 0; border: 0; background: none; color: var(--d2-text); font: inherit; font-size: 15px; line-height: 24px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.cp3-fold svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; color: var(--d2-text-3); }
+.cp3-fold--open { border-bottom: 1px solid var(--d2-line); }
 .cp3-fold--open svg { transform: rotate(180deg); }
+.cp3-fold--open + * { padding: 12px 2px 16px 0; }
 
 .cps-card--ok { border-left: 3px solid var(--color-success); }
 

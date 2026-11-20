@@ -441,7 +441,7 @@ export function DetailPhaseBody({
             <ScorerBlock ct={ct} choices={divisionChoices} state={scorerState} onPick={(id) => onOpenScorers?.(id)} />
           ) : null}
         </CpCard>
-        <CpCard>
+        <CpCard class="d2-foldcard">
           <button
             type="button"
             class={`cp3-fold${open ? ' cp3-fold--open' : ''}`}
@@ -458,7 +458,7 @@ export function DetailPhaseBody({
             <ChevronIcon />
           </button>
           {open && loadedRows ? (
-            <div style="margin-top:12px">
+            <div>
               <MatchSchedule ct={ct} groups={foldGroups} standings={standings} crests={crests} clock={clock} onOpenMatch={onOpenMatch} />
             </div>
           ) : null}
