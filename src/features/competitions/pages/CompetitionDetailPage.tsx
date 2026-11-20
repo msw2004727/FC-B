@@ -26,7 +26,7 @@ import { LiveBoundary } from '../live';
 import { cpSignIn } from '../sign-in';
 import { buildRegisterInput, buildReportInput } from '../payload';
 import { competitionPhase, type CompetitionPhase } from '../data/present';
-import { detailHero } from '../data/schedule-present';
+import { detailHero, nextUp } from '../data/schedule-present';
 import { firstVenueName, formatInAppDates } from '../data/list-cards';
 import { hasPendingTie } from '../data/tie-present';
 import { hasScoreRole } from '../data/staff-assign';
@@ -967,6 +967,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             fullSchedule={fullSchedule}
             onRequestFull={requestFullSchedule}
             clock={clock}
+            nextIds={phase === 'live' && clock === 'keep' ? new Set((nextUp(summary, now)?.rows ?? []).map((row) => row.id)) : undefined}
             onOpenStandings={needRanking}
             venues={competition.venues}
             onOpenMatch={(mtId) => route(`/competitions/${cid}/matches/${mtId}/live`)}

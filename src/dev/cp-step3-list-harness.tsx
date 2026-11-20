@@ -1,209 +1,206 @@
-// 賽事第 3 步「賽事列表 v2」預覽 harness（只在本機打包截圖；正式 build 不含）。
-// 站長 2026-11-18：列表對應現行「賽事」頁籤分類、站內與外部賽事各自分頁與篩選、每場比賽有封面、分類固定專屬色。
-// 版面直接用正式賽事頁的 class（tournaments.css＋液態玻璃），新增的部分以 cpl- 前綴另寫。
-// 參數：?screen=in|in-cup|in-mine|ext|gate-off&theme=light|dark
+// 賽事清單頁示範頁（新外觀清-6，第 1a 批第 7 節、第 5 批第 7 節）：畫正式的 TournamentsPage（含動態載入的站內區塊），
+// 外部賽事、登入者由 src/dev/cp-list-fakes 的假模組給（dev-harness/vite.cp-list.config.ts 換模組），
+// 站內賽事走 CpEnvProvider 注入的記憶體假資料。不連 Firestore、不呼叫 Functions。只在本機截圖用，正式 build 不含。
+// 外框照正式 App（.ui-app-shell／.app-main：800px 以下最寬 560、以上 640），1280 寬時是置中的一欄。
+// 參數：?screen=<下方 SCREENS 的名稱>&theme=light|dark；站內畫面另帶 &src=in（截圖腳本會帶）。
+// （舊版這支是手寫標記的預覽，cp-step3-list-harness.css 的分類色變數 category-tokens.test.ts 還在讀，檔案留著、這裡不再匯入。）
 import { render } from 'preact';
-import type { JSX } from 'preact';
+import { LocationProvider } from 'preact-iso';
 import '../styles/legacy-vars.css';
 import '../styles/tokens.css';
 import '../styles/base.css';
 import '../styles/legacy/base.css';
 import '../styles/legacy/layout.css';
+import '../styles/legacy-body-state.css';
 import '../styles/legacy-line-height.css';
-import '@/features/tournaments/tournaments.css';
-import '@/features/tournaments/legacy/tournaments-glass.css';
-import './cp-step3-list-harness.css';
+import '@/ui/app-shell.css';
 import { setLocale } from '@/i18n/i18n';
+import { AppConfirmHost } from '@/ui/AppConfirm';
+import { ToastHost } from '@/ui/ToastHost';
+import type { ViewerView } from '@/features/profile/data/viewer';
+import type { TournamentCard } from '@/features/tournaments/data/card-model';
+import { CpEnvProvider, type CpInjectedEnv } from '@/features/competitions/env';
+import { createFakeCpRepo } from '@/features/competitions/testing/fake-cp-repo';
+import {
+  LONG_COMP_NAME,
+  LONG_VENUE,
+  NOW,
+  competition,
+  idleActions,
+  memberActor,
+} from '@/features/competitions/testing/screen-fixtures';
+import { summaryShardIdOf } from '@/features/competitions/data/schedule-load';
+import { taipeiMs } from '@/features/competitions/format';
+import type { CompetitionDoc, CpMineItem, SummaryEntry } from '@/features/competitions/data/types';
+import { AUTH_HINT_KEY } from '@/data/auth-hint';
+import { CP_INAPP_HINT_KEY } from '@/features/tournaments/inapp-hint';
+import type { CplState } from './cp-list-fakes/state';
+import TournamentsPage from '@/features/tournaments/pages/TournamentsPage';
 
 const params = new URLSearchParams(location.search);
 const screenName = params.get('screen') || 'in';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 document.documentElement.setAttribute('data-theme', theme);
 
-interface CopyItem { key: string; where: string; text: string }
-const COPY: CopyItem[] = [];
-function c(key: string, where: string, text: string): string {
-  if (!COPY.some((x) => x.key === key)) COPY.push({ key, where, text });
-  return text;
+// ── 外部賽事（日期對真實今天 2026-11 下旬：未來有圖、未來沒圖兩張、已結束有圖、已結束沒圖） ──
+function thumb(a: string, b: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="60"><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="160" height="60" fill="url(#g)"/><circle cx="118" cy="30" r="18" fill="#fff" fill-opacity=".55"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
-(window as unknown as { __CPS_COPY: CopyItem[] }).__CPS_COPY = COPY;
+function ext(id: string, name: string, type: TournamentCard['type'], startDate: string, endDate: string, image = ''): TournamentCard {
+  return { id, name, type, startDate, endDate, url: `https://example.com/${id}`, image, imagePath: '' };
+}
+const EXT_CARDS: TournamentCard[] = [
+  ext('tc_a', '2027 全國青年足球公開賽', 'cup', '2027-03-12', '2027-03-14', thumb('#e11d48', '#f59e0b')),
+  ext('tc_b', '北區社區足球聯賽', 'league', '2026-12-12', '2027-02-27'),
+  ext('tc_c', '週末三對三友誼賽', 'friendly', '2026-12-06', '2026-12-06'),
+  ext('tc_d', '2026 秋季邀請賽', 'cup', '2026-10-09', '2026-10-11', thumb('#2563eb', '#22c55e')),
+  // 已結束、沒有照片：預設縮圖也要跟著變淡
+  ext('tc_e', '夏季五人制聯賽', 'league', '2026-08-01', '2026-08-30'),
+];
+const EXT_LONG: TournamentCard[] = [
+  ext('tc_l1', '二〇二七年新北市三重區春季社區五人制足球邀請賽', 'cup', '2026-12-27', '2027-01-03'),
+  ext('tc_l2', 'FEDA CUP 2027 Taiwan International Youth Football Festival', 'league', '2027-04-02', '2027-04-05', thumb('#7c3aed', '#06b6d4')),
+  ext('tc_l3', '週末友誼賽', 'friendly', '2026-12-13', '2026-12-13'),
+];
 
-type Cat = 'league' | 'cup' | 'friendly';
-const CAT_LABEL: Record<Cat, string> = { league: '聯賽', cup: '盃賽', friendly: '友誼賽' };
-type St = 'recruit' | 'warm' | 'live' | 'done';
-const ST_LABEL: Record<St, string> = { recruit: '招募中', warm: '預熱中', live: '進行中', done: '已結束' };
+function viewer(kind: 'member' | 'manager' | 'guest'): ViewerView {
+  return {
+    uid: kind === 'guest' ? null : kind === 'manager' ? 'uid_admin' : 'uid_member',
+    role: kind === 'manager' ? 'super_admin' : 'user',
+    roleLevel: 0,
+    teamIds: new Set(),
+    capabilities: [],
+    displayName: '示範',
+    pictureUrl: null,
+    hasPermission: (code: string) => kind === 'manager' && code === 'admin.tournaments.manage_all',
+  } as ViewerView;
+}
 
-const T = {
-  srcIn: () => c('srcIn', '賽事頁最上方切換：站內賽事', '站內賽事'),
-  srcOut: () => c('srcOut', '賽事頁最上方切換：外部賽事', '外部賽事'),
-  statusAll: () => c('statusAll', '站內賽事篩選：狀態預設值', '未結束'),
-  mine: () => c('mine', '站內賽事篩選：只看自己主辦或參賽的', '只看我的'),
-  showEnded: () => c('showEnded', '外部賽事篩選（沿用現行）', '顯示已結束'),
+// ── 站內賽事（NOW＝2026/12/10 12:00 台北） ──
+function entry(id: string, k: number, st: SummaryEntry['st']): SummaryEntry {
+  return { id, k, st, dv: 'dv', r: 1, no: 1, v: null, h: { id: 'h', n: '主' }, a: { id: 'a', n: '客' }, s: [0, 0], wo: null } as SummaryEntry;
+}
+const SHARD = summaryShardIdOf(NOW);
+const todayShard = (n = 3) => [{
+  id: SHARD,
+  entries: [
+    entry('m1', taipeiMs(2026, 12, 10, 10, 0), 'finished'),
+    entry('m2', taipeiMs(2026, 12, 10, 14, 30), 'scheduled'),
+    entry('m3', taipeiMs(2026, 12, 10, 16, 0), 'scheduled'),
+  ].slice(0, n),
+}];
+const P = { hostType: 'personal', hostTeamId: null, feeNote: null } as const;
+const live = (id: string, name: string, category: CompetitionDoc['category'], venue: string, hoursAgo = 1) => competition({
+  ...P, id, name, category, regCloseAt: taipeiMs(2026, 12, 1, 23, 59),
+  firstMatchAt: NOW - hoursAgo * 3_600_000, lastMatchAt: NOW + 2 * 86_400_000, venues: [{ name: venue }],
+} as Partial<CompetitionDoc>);
+const warm = (id: string, name: string, extra: Partial<CompetitionDoc> = {}) => competition({
+  ...P, id, name, category: 'league', regCloseAt: taipeiMs(2026, 12, 9, 23, 59),
+  firstMatchAt: taipeiMs(2026, 12, 13, 9, 0), lastMatchAt: taipeiMs(2026, 12, 14, 18, 0), venues: [{ name: '河濱足球場' }], ...extra,
+} as Partial<CompetitionDoc>);
+const recruit = (id: string, name: string, extra: Partial<CompetitionDoc> = {}) => competition({
+  ...P, id, name, category: 'friendly', venues: [{ name: '示範國小' }], ...extra,
+} as Partial<CompetitionDoc>);
+const done = (id: string, name: string) => competition({
+  ...P, id, name, category: 'league', regCloseAt: taipeiMs(2026, 9, 1, 23, 59),
+  firstMatchAt: taipeiMs(2026, 10, 3, 8, 0), lastMatchAt: taipeiMs(2026, 11, 21, 18, 0), venues: [{ name: '示範運動公園' }],
+} as Partial<CompetitionDoc>);
+const BASIC = [live('live_cup', '示範盃五人制足球賽', 'cup', '示範運動公園'), warm('warm_lg', '冬季聯賽'), recruit('rec_fr', '新春迎新友誼賽')];
+const NAMED: CpMineItem[] = [
+  { id: 'm_a', cid: 'old_a', roles: ['host'], host: true, name: '去年秋季盃', category: 'cup' } as CpMineItem,
+  { id: 'm_b', cid: 'old_b', roles: ['host'], host: true, name: '社區友誼賽', category: 'friendly' } as CpMineItem,
+];
+
+interface Seed {
+  comps?: CompetitionDoc[];
+  summary?: Record<string, ReturnType<typeof todayShard>>;
+  mine?: CpMineItem[];
+  isPublic?: boolean;
+  hang?: boolean;
+  guest?: boolean;
+}
+function env(seed: Seed): CpInjectedEnv {
+  const repo = createFakeCpRepo({
+    launch: { isPublic: seed.isPublic ?? true, bannedWords: [] },
+    competitions: seed.comps ?? BASIC,
+    summary: seed.summary ?? { live_cup: todayShard() },
+    mine: { uid_member: seed.mine ?? [] },
+  });
+  if (seed.hang) repo.getLaunch = () => new Promise(() => undefined);
+  const actor = seed.guest ? { ...memberActor, uid: null } : memberActor;
+  return { actor, repo, actions: idleActions(), now: NOW } as CpInjectedEnv;
+}
+
+interface Screen { seed: Seed; viewer?: 'member' | 'manager' | 'guest'; cards?: TournamentCard[]; ext?: CplState['ext']; hint?: boolean }
+const OFF: Seed = { isPublic: false };
+const SCREENS: Record<string, Screen> = {
+  // 站內（截圖腳本帶 &src=in）
+  in: { seed: {} },
+  'in-cup': { seed: {} },
+  'in-mine': { seed: { mine: NAMED } },
+  'in-done': { seed: { comps: [...BASIC, done('done_a', '秋季聯賽'), done('done_b', '中秋友誼盃')] } },
+  'in-nolive': { seed: { comps: [warm('warm_lg', '冬季聯賽'), recruit('rec_fr', '新春迎新友誼賽'), recruit('rec_lg', '春季社區聯賽', { category: 'league' })] } },
+  'in-twolive': { seed: { comps: [...BASIC, live('live_lg', '城市五人制聯賽', 'league', '河濱足球場', 2)], summary: { live_cup: todayShard(), live_lg: todayShard(2) } } },
+  'in-live-noline': { seed: { comps: BASIC, summary: {} } },
+  'in-recruit-board': { seed: { comps: [recruit('rec_fr', '新春迎新友誼賽'), recruit('rec_cup', '春季盃', { category: 'cup' })] } },
+  'in-marks': { seed: { comps: [warm('warm_lg', '冬季聯賽'), warm('pp_lg', '延期聯賽', { status: 'postponed' }), recruit('cc_fr', '取消友誼賽', { status: 'cancelled' })] } },
+  'in-noboard': { seed: { comps: [], summary: {}, mine: NAMED } },
+  'in-long': { seed: { comps: [live('live_long', LONG_COMP_NAME, 'cup', LONG_VENUE), warm('warm_long', LONG_COMP_NAME, { venues: [{ name: LONG_VENUE }] })], summary: { live_long: todayShard() } } },
+  'in-guest': { seed: { guest: true }, viewer: 'guest' },
+  'in-menu': { seed: {} },
+  'in-menu-empty': { seed: {} },
+  'in-menu-two': { seed: { comps: [...BASIC, done('done_a', '秋季聯賽'), done('done_b', '中秋友誼盃')] } },
+  'in-loading': { seed: { hang: true }, hint: true },
+  // 外部（有切換）
+  ext: { seed: {} },
+  'ext-admin': { seed: {}, viewer: 'manager' },
+  'ext-long': { seed: {}, viewer: 'manager', cards: EXT_LONG },
+  'ext-loading': { seed: {}, ext: 'loading' },
+  'ext-empty': { seed: {}, cards: [] },
+  'ext-error': { seed: {}, ext: 'error' },
+  'ext-delete': { seed: {}, viewer: 'manager' },
+  // 沒有切換（閘門沒過；與功能開關關閉、閘門不回應的標記相同，見 TournamentsPage.no-switch-parity.test.tsx）
+  'gate-off': { seed: OFF },
+  'gate-off-admin': { seed: OFF, viewer: 'manager' },
+  'gate-off-long': { seed: OFF, cards: EXT_LONG },
+  'gate-off-loading': { seed: OFF, ext: 'loading' },
+  'gate-off-empty': { seed: OFF, cards: [] },
+  'gate-off-error': { seed: OFF, ext: 'error' },
 };
+const screen = SCREENS[screenName] ?? SCREENS.in!;
 
-// 假封面：代表主辦上傳的照片（預覽用向量圖，正式為上傳圖片）。
-function photo(hue: number): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="hsl(${hue},45%,62%)"/><stop offset="1" stop-color="hsl(${hue},55%,30%)"/></linearGradient></defs><rect width="800" height="300" fill="url(#g)"/><g fill="none" stroke="rgba(255,255,255,.55)" stroke-width="4"><rect x="40" y="150" width="720" height="140"/><line x1="400" y1="150" x2="400" y2="290"/><circle cx="400" cy="220" r="40"/></g><circle cx="640" cy="80" r="34" fill="rgba(255,255,255,.75)"/></svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
-function TrophyGlyph(): JSX.Element {
-  return (<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8M9 17h6" /></svg>);
-}
-function BallGlyph(): JSX.Element {
-  return (<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7l4 3-1.5 4.5h-5L8 10z" /><path d="M12 3v4M21 10l-5 0M3 10l5 0M7 20l2.5-5.5M17 20l-2.5-5.5" /></svg>);
-}
-function HandGlyph(): JSX.Element {
-  return (<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" /></svg>);
-}
-
-/** 沒上傳封面時的預設封面：分類色漸層＋分類圖示（只吃 CSS，不另讀圖）。 */
-function DefaultCover({ cat }: { cat: Cat }): JSX.Element {
-  return (
-    <div class={`tc-card-img cpl-cover cpl-cover--${cat}`} aria-hidden="true">
-      <span class="cpl-cover__glyph">{cat === 'cup' ? <TrophyGlyph /> : cat === 'league' ? <BallGlyph /> : <HandGlyph />}</span>
-    </div>
-  );
-}
-
-function CatChip({ cat }: { cat: Cat }): JSX.Element {
-  return <span class={`tc-chip cpl-chip cpl-chip--${cat}`}>{CAT_LABEL[cat]}</span>;
-}
-
-interface InComp { name: string; cat: Cat; st: St; dates: string; line: string; cover?: number }
-const IN: InComp[] = [
-  { name: '示範盃五人制足球賽', cat: 'league', st: 'live', dates: '2027/01/09 – 01/10　示範運動公園', line: '今天 3 場・下一場 14:30' },
-  { name: '冬季友誼盃', cat: 'cup', st: 'warm', dates: '2027/01/16 – 01/17　河濱足球場', line: '距開賽 3 天' },
-  { name: '新春迎新友誼賽', cat: 'friendly', st: 'recruit', dates: '2027/02/06　示範國小', line: '報名截止　12/20 23:59' },
-  { name: '春季社區聯賽', cat: 'league', st: 'recruit', dates: '2027/03/06 – 04/24　示範運動公園', line: '報名截止　01/31 23:59' },
-];
-const IN_DONE: InComp = { name: '秋季聯賽', cat: 'league', st: 'done', dates: '2026/10/03 – 11/21', line: '冠軍　海風隊' };
-
-function InCard({ x }: { x: InComp }): JSX.Element {
-  return (
-    <div class={`tc-card cpl-card${x.st === 'done' ? ' ended' : ''}`}>
-      <a class="tc-card-link" href="#" onClick={(e) => e.preventDefault()}>
-        <div class="cpl-cover-wrap">
-          {x.cover !== undefined ? <img class="tc-card-img img-preloaded" src={photo(x.cover)} alt="" /> : <DefaultCover cat={x.cat} />}
-          <span class={`cpl-st cpl-st--${x.st}`}><i />{ST_LABEL[x.st]}</span>
-        </div>
-        <div class="tc-card-body">
-          <div class="tc-card-text">
-            <div class="tc-card-name">{x.name}</div>
-            <div class="tc-card-dates">{x.dates}</div>
-            <div class={`cpl-line${x.st === 'recruit' ? '' : ' cpl-line--hl'}`}>{x.line}</div>
-          </div>
-          <CatChip cat={x.cat} />
-        </div>
-      </a>
-    </div>
-  );
-}
-
-interface OutComp { name: string; cat: Cat; dates: string; hue: number; ended?: boolean }
-const OUT: OutComp[] = [
-  { name: '全國青年足球公開賽', cat: 'cup', dates: '2027/03/12 – 2027/03/14', hue: 120 },
-  { name: '北區社區足球聯賽', cat: 'league', dates: '2027/02/20 – 2027/05/29', hue: 190 },
-  { name: '春節三對三友誼賽', cat: 'friendly', dates: '2027/02/13', hue: 30 },
-];
-
-function OutCard({ x }: { x: OutComp }): JSX.Element {
-  return (
-    <div class={`tc-card${x.ended ? ' ended' : ''}`}>
-      <a class="tc-card-link" href="#" onClick={(e) => e.preventDefault()}>
-        <img class="tc-card-img img-preloaded" src={photo(x.hue)} alt="" />
-        <div class="tc-card-body">
-          <div class="tc-card-text">
-            <div class="tc-card-name">{x.name}</div>
-            <div class="tc-card-dates">{x.dates}</div>
-          </div>
-          <CatChip cat={x.cat} />
-        </div>
-      </a>
-    </div>
-  );
-}
-
-function Toggle({ label, on }: { label: string; on: boolean }): JSX.Element {
-  return (
-    <label>
-      <span>{label}</span>
-      <span class="toggle-switch"><input type="checkbox" checked={on} /><span class="toggle-slider" /></span>
-    </label>
-  );
-}
-
-const TABS = ['all', 'league', 'cup', 'friendly'] as const;
-const TAB_LABEL: Record<(typeof TABS)[number], string> = { all: '全部', ...CAT_LABEL };
-
-function Page({ src, tab, mine, gate }: { src: 'in' | 'out'; tab: (typeof TABS)[number]; mine?: boolean; gate: boolean }): JSX.Element {
-  const inList = IN.filter((x) => tab === 'all' || x.cat === tab);
-  const outList = OUT.filter((x) => tab === 'all' || x.cat === tab);
-  return (
-    <div class="legacy-ui tournaments-root">
-      <section class="page active tc-page" id="page-tournaments">
-        <div class="page-header">
-          <button class="back-btn" type="button" aria-label="返回">
-            <svg class="back-btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
-          </button>
-          <h2 class="page-header-title">賽事</h2>
-        </div>
-
-        {gate && (
-          <div class="cpl-src" role="tablist" aria-label="賽事來源">
-            <button type="button" role="tab" aria-selected={src === 'in'} class={src === 'in' ? 'on' : ''}>{T.srcIn()}</button>
-            <button type="button" role="tab" aria-selected={src === 'out'} class={src === 'out' ? 'on' : ''}>{T.srcOut()}</button>
-          </div>
-        )}
-
-        <div class="tc-tabs" role="tablist">
-          {TABS.map((v) => (
-            <button key={v} type="button" role="tab" class={`tc-tab${tab === v ? ' active' : ''}`} aria-selected={tab === v}>{TAB_LABEL[v]}</button>
-          ))}
-        </div>
-        <div class="tc-panel" role="tabpanel">
-          {src === 'in' ? (
-            <div class="tc-toolbar cpl-toolbar">
-              <span class="cpl-select" role="button" aria-haspopup="listbox">{T.statusAll()}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg></span>
-              <Toggle label={T.mine()} on={!!mine} />
-            </div>
-          ) : (
-            <div class="tc-toolbar"><Toggle label={T.showEnded()} on /></div>
-          )}
-          {src === 'in'
-            ? (mine ? [IN[0]!, IN[2]!] : inList).map((x) => <InCard key={x.name} x={x} />)
-            : outList.map((x) => <OutCard key={x.name} x={x} />)}
-          {src === 'out' && tab === 'all' && <OutCard x={{ name: '2026 秋季邀請賽', cat: 'cup', dates: '2026/10/10 – 2026/10/11', hue: 260, ended: true }} />}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function DoneDemo(): JSX.Element {
-  return (
-    <div class="legacy-ui tournaments-root">
-      <section class="page active tc-page" id="page-tournaments">
-        <div class="tc-panel" role="tabpanel" style="margin-top:12px">
-          <InCard x={IN_DONE} />
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function Screen(): JSX.Element {
-  switch (screenName) {
-    case 'in-cup': return <Page src="in" tab="cup" gate />;
-    case 'in-mine': return <Page src="in" tab="all" mine gate />;
-    case 'ext': return <Page src="out" tab="all" gate />;
-    case 'gate-off': return <Page src="out" tab="all" gate={false} />;
-    case 'in-done': return <DoneDemo />;
-    default: return <Page src="in" tab="all" gate />;
+(window as unknown as { __CPL: CplState }).__CPL = {
+  viewer: viewer(screen.viewer ?? 'member'),
+  cards: screen.cards ?? EXT_CARDS,
+  ext: screen.ext ?? 'ready',
+};
+try {
+  localStorage.clear();
+  if (screen.hint) {
+    localStorage.setItem(AUTH_HINT_KEY, '1');
+    localStorage.setItem(CP_INAPP_HINT_KEY, '1');
   }
+} catch {
+  // 截圖環境一定有 localStorage；拿不到就照沒有線索畫。
 }
 
-void setLocale('zh-TW').then(() => {
-  render(<Screen />, document.getElementById('app')!);
-  (window as unknown as { __CPS_READY: boolean }).__CPS_READY = true;
-});
+async function boot(): Promise<void> {
+  await setLocale('zh-TW');
+  render(
+    <LocationProvider>
+      <CpEnvProvider value={env(screen.seed)}>
+        <div class="ui-app-shell">
+          <main class="app-main" style="padding-top:8px;padding-bottom:24px">
+            <TournamentsPage />
+          </main>
+        </div>
+        <AppConfirmHost />
+        <ToastHost />
+      </CpEnvProvider>
+    </LocationProvider>,
+    document.getElementById('app')!,
+  );
+  (window as unknown as { __CPL_READY: boolean }).__CPL_READY = true;
+}
+void boot();

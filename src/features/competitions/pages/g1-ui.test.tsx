@@ -635,6 +635,58 @@ describe('同分比較表：引擎比到後段三項時的文字', () => {
   });
 });
 
+// 設計總監 04:20：三隊以上比較表改直排（項目名自己一行、數字平均分欄），兩隊維持原本的欄寬字串。
+describe('同分比較表：兩隊橫排、三隊以上直排', () => {
+  function explainedFor(n: number) {
+    const teamIds = ['en_b', 'en_c', 'en_d', 'en_e', 'en_f', 'en_g'].slice(0, n);
+    return {
+      dvId: 'dv_adult',
+      groupId: 'A',
+      naturalOrder: teamIds,
+      steps: [
+        { teamIds, criterion: 'points', values: teamIds.map((teamId) => ({ teamId, value: 4 })), split: false },
+        { teamIds, criterion: 'fairPlay', values: teamIds.map((teamId, i) => ({ teamId, value: -i })), split: true },
+      ],
+      pending: false,
+      matchIds: [],
+    };
+  }
+
+  async function tableFor(n: number): Promise<HTMLElement> {
+    draw(detailEnv({
+      actor: hostActor,
+      staff: { uid: 'uid_host', roles: ['host'] },
+      actions: { ...idleActions(), explainTie: vi.fn(async () => explainedFor(n)) },
+    }), CompetitionDetailPage);
+    fireEvent.click(screen.getAllByRole('button', { name: '同分' })[0]!);
+    await screen.findByText('在這一項分出高下');
+    const table = document.querySelector('.cpm-cmp');
+    if (!(table instanceof HTMLElement)) throw new Error('找不到比較表');
+    return table;
+  }
+
+  function columnsOf(table: HTMLElement): string[] {
+    return [...table.querySelectorAll<HTMLElement>('.cpm-cmp__r')].map((row) => row.style.gridTemplateColumns);
+  }
+
+  it('兩隊不帶 --stack，欄寬維持「項目名＋每隊 4.5em」', async () => {
+    const table = await tableFor(2);
+    expect(table.className).toBe('cpm-cmp');
+    expect(new Set(columnsOf(table))).toEqual(new Set(['minmax(0,1fr) repeat(2,4.5em)']));
+  });
+
+  it.each([3, 4, 6])('%i 隊帶 --stack，表頭與每列的欄數等於隊數、平均分', async (n) => {
+    const table = await tableFor(n);
+    expect(table.classList.contains('cpm-cmp--stack')).toBe(true);
+    const cols = columnsOf(table);
+    expect(cols.length).toBe(3);
+    expect(new Set(cols)).toEqual(new Set([`repeat(${n},minmax(34px,1fr))`]));
+    // 項目名照樣在每列第一格（直排靠樣式把它放成一整行）
+    expect(within(table).getByText('公平競賽（行為分）')).toBeTruthy();
+    expect(table.querySelectorAll('.cpm-cmp__r--h > span').length).toBe(n + 1);
+  });
+});
+
 describe('整場延期與取消', () => {
   it('詳情頂部寫原因，賽程改成待定或已取消', () => {
     const rows = [summary({ id: 'mt_1', h: { id: 'en_h', n: '海風隊' }, a: { id: 'en_a', n: '山貓隊' }, st: 'scheduled', k: taipeiMs(2027, 1, 9, 9, 0) })];
