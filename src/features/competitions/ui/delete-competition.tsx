@@ -201,6 +201,7 @@ function DeleteDialog({
     <Modal
       open
       size="sm"
+      class="d2-panel"
       title={resume ? ct('deleteResume') : ct('deleteComp')}
       busy={busy}
       onClose={onClose}

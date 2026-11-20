@@ -60,6 +60,7 @@ export function ModerateDialog({
   return (
     <Modal
       open
+      class="d2-panel"
       title={ct('moderateHideTitle')}
       busy={busy}
       error={error ?? undefined}

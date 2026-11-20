@@ -800,7 +800,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
         </div>
       ) : null}
       {panel?.kind === 'score' && active ? (
-        <BottomSheet open title={ct('scoreSheetTitle')} onClose={closePanel} busy={busy}>
+        <BottomSheet open class="d2-panel" title={ct('scoreSheetTitle')} onClose={closePanel} busy={busy}>
           <div class="cps-sheet-body">
             <p class="cp3-ctx">
               {active.kickoffAt == null ? ct('timeTbd') : `${formatKickoffClock(active.kickoffAt)}${active.venueName ? `　${active.venueName}` : ''}`}
@@ -836,6 +836,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       {panel?.kind === 'forfeit' && active ? (
         <BottomSheet
           open
+          class="d2-panel"
           title={ct('forfeitTitle')}
           onClose={closePanel}
           busy={busy}
@@ -873,6 +874,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       {panel?.kind === 'reset' && active ? (
         <Modal
           open
+          class="d2-panel"
           title={ct('resetTitle')}
           onClose={closePanel}
           busy={busy}
@@ -899,6 +901,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       {panel?.kind === 'cancel' && active ? (
         <BottomSheet
           open
+          class="d2-panel"
           title={ct('cancelMatch')}
           onClose={closePanel}
           busy={busy}
@@ -932,6 +935,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       {endOpen ? (
         <Modal
           open
+          class="d2-panel"
           title={ct('endTitle')}
           onClose={() => { if (!lock.current) setEndOpen(false); }}
           busy={busy}
@@ -962,6 +966,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       {panel?.kind === 'reschedule' && active ? (
         <BottomSheet
           open
+          class="d2-panel"
           title={ct('reschedTitle')}
           onClose={closePanel}
           busy={busy}

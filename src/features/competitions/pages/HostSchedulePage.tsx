@@ -381,6 +381,7 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
       {clearOpen ? (
         <Modal
           open
+          class="d2-panel"
           title={ct('schedClear')}
           onClose={() => { if (!lock.current) setClearOpen(false); }}
           busy={busy}

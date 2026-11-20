@@ -175,6 +175,7 @@ export function StaffListScreen(props: {
       {props.confirm ? (
         <Modal
           open
+          class="d2-panel"
           title={props.confirm.title}
           busy={props.confirmBusy}
           error={props.confirm.error}

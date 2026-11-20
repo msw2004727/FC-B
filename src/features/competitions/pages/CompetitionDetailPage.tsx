@@ -1010,6 +1010,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {registerOpen ? (
         <BottomSheet
           open
+          class="d2-panel"
           title={ct('registerClub')}
           onClose={() => { setRegisterOpen(false); setRegisterError(null); }}
           footer={(
@@ -1046,6 +1047,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {reportOpen ? (
         <BottomSheet
           open
+          class="d2-panel"
           title={ct('reportTitle')}
           onClose={() => { setReportOpen(false); setReportError(null); }}
           footer={(
