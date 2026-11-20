@@ -193,6 +193,8 @@ h3.s4b-h {
 .s4b-m__top span, .s4b-between span { white-space: nowrap; }
 .s4b-between { justify-content: space-between; }
 .s4b-between .ui-button { flex: 0 0 auto; min-inline-size: 0; }
+/* 對戰文字可縮並省略，長隊名不撐破版面、不把「進入記分」擠出畫面（11-20 外框驗收 P2-2）。 */
+.s4b-between > .s4b-k { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .s4b-m__top .ui-badge { flex: 0 0 auto; }
 
 .s4b-warn {
