@@ -16,22 +16,24 @@ import type { CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { LiveBoundary } from '../live';
-import { ScorerMatchesScreen, type ScorerDay } from '../step4b/staff';
+import { markScorerBoard, ScorerMatchesScreen, type ScorerDay } from '../step4b/staff';
 import type { S4bMatch } from '../testing/step4b-fixtures';
 import { CpI18nPending } from '../ui/shell';
+import type { StatusKind } from '../ui/status-tag';
 
 const WEEKDAYS = ['weekdaySun', 'weekdayMon', 'weekdayTue', 'weekdayWed', 'weekdayThu', 'weekdayFri', 'weekdaySat'] as const;
 const MATCH_CAP = 100;
 
-function statusOf(ct: CompetitionsT, status: MatchStatus): { label: string; tone: 'brand' | 'neutral' } {
-  if (status === 'scheduled') return { label: ct('matchNotStarted'), tone: 'neutral' };
-  if (status === 'live') return { label: ct('phaseLive'), tone: 'brand' };
-  if (status === 'halftime') return { label: ct('matchHalftime'), tone: 'brand' };
-  if (status === 'finished') return { label: ct('phaseDone'), tone: 'neutral' };
-  if (status === 'confirmed') return { label: ct('matchConfirmed'), tone: 'neutral' };
-  if (status === 'walkover') return { label: ct('matchForfeit'), tone: 'neutral' };
-  if (status === 'postponed') return { label: ct('matchMoved'), tone: 'neutral' };
-  return { label: ct('matchCancelled'), tone: 'neutral' };
+/** 每列的狀態字與標籤長相（3.0.5）：進行中、中場＝亮燈；已取消＝紅字描邊；未開賽＝不放標籤（null）；其餘中性。 */
+function statusOf(ct: CompetitionsT, status: MatchStatus): { label: string; kind: StatusKind | null } {
+  if (status === 'scheduled') return { label: ct('matchNotStarted'), kind: null };
+  if (status === 'live') return { label: ct('phaseLive'), kind: 'live' };
+  if (status === 'halftime') return { label: ct('matchHalftime'), kind: 'live' };
+  if (status === 'finished') return { label: ct('phaseDone'), kind: 'neutral' };
+  if (status === 'confirmed') return { label: ct('matchConfirmed'), kind: 'neutral' };
+  if (status === 'walkover') return { label: ct('matchForfeit'), kind: 'neutral' };
+  if (status === 'postponed') return { label: ct('matchMoved'), kind: 'neutral' };
+  return { label: ct('matchCancelled'), kind: 'cancelled' };
 }
 
 function previewMatch(match: MatchDoc, venue: string): S4bMatch {
@@ -65,7 +67,7 @@ function toDays(
           id: match.id,
           match: previewMatch(match, venue),
           statusLabel: badge.label,
-          statusTone: badge.tone,
+          statusKind: badge.kind,
           showEnter: showScoreEntry(match.status, match.finishedAt, now),
           ...(match.kickoffAt == null ? { timeLabel: ct('timeTbd') } : {}),
         };
@@ -78,7 +80,8 @@ function toDays(
     group.items,
   ));
   if (grouped.undated.length > 0) days.push(block('tbd', ct('timeTbd'), grouped.undated));
-  return days;
+  // 板卡用每列的狀態種類挑，不看 previewMatch 的 status（它把中場歸成 done）。
+  return markScorerBoard(days);
 }
 
 function ScorerView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Element {

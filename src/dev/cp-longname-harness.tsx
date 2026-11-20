@@ -1,6 +1,6 @@
 // 長賽事名稱／長隊名量測（顧問 §3.460）：正式頁面＋記憶體假資料，不連 Firestore、不呼叫 Functions。
-// ?page=list|detail|detail-live|manage|matches|schedule|staff|roster|wizard-3|wizard-done|accept|live
-// ?name=short|22|24（賽事名稱）、?team=short|long（隊名）、?nick=long（名單 20 字暱稱）、?theme=light|dark。畫完設 window.__CPS_READY。
+// ?page=list|detail|detail-live|manage|matches|schedule|staff|roster|join|add|wizard-3|wizard-done|accept|live
+// ?name=short|22|24（賽事名稱）、?team=short|long|24（隊名；24＝24 個字，第 3 批卡 3-2 驗收）、?nick=long（名單 20 字暱稱）、?theme=light|dark。畫完設 window.__CPS_READY。
 import { render } from 'preact';
 import type { ComponentChildren, ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
@@ -28,6 +28,8 @@ import HostSchedulePage from '@/features/competitions/pages/HostSchedulePage';
 import InviteAcceptPage from '@/features/competitions/pages/InviteAcceptPage';
 import NewCompetitionPage from '@/features/competitions/pages/NewCompetitionPage';
 import RosterPage from '@/features/competitions/pages/RosterPage';
+import JoinRosterPage from '@/features/competitions/pages/JoinRosterPage';
+import AddRosterPage from '@/features/competitions/pages/AddRosterPage';
 import StaffPage from '@/features/competitions/pages/StaffPage';
 import { createFakeCpRepo } from '@/features/competitions/testing/fake-cp-repo';
 import {
@@ -52,12 +54,14 @@ const COMP_NAMES: Record<string, string | null> = {
   '24': '新北市三重區二〇二七年春季社區五人制足球邀請聯賽',
 };
 const COMP = COMP_NAMES[params.get('name') ?? 'short'] ?? null;
-const LONG_TEAM = params.get('team') === 'long';
+const LONG_TEAM = params.get('team') === 'long' || params.get('team') === '24';
 // ?nick=long：名單第一位球員換成 20 字暱稱（顧問 §3.471 X-02，比照第二輪模擬測試）。
 const LONG_NICK = params.get('nick') === 'long' ? '小飛'.repeat(10) : null;
 let nickUsed = false;
 // 13 字隊名，三個輪流套，主客隊認得出是哪一隊。
-const TEAMS = ['新北市三重區社區足球俱樂部', '桃園市中壢區青年足球俱樂部', '高雄市前鎮區海風足球俱樂部'];
+const TEAMS = params.get('team') === '24'
+  ? ['新北市三重區光榮國民小學社區五人制足球俱樂部聯隊', '桃園市中壢區青埔國民小學社區五人制足球俱樂部聯隊', '高雄市前鎮區海風國民小學社區五人制足球俱樂部聯隊']
+  : ['新北市三重區社區足球俱樂部', '桃園市中壢區青年足球俱樂部', '高雄市前鎮區海風足球俱樂部'];
 const teamMap = new Map<string, string>();
 function longTeam(name: string): string {
   let next = teamMap.get(name);
@@ -141,6 +145,8 @@ const PAGES: Record<string, { env: () => CpInjectedEnv; Page: ComponentType; anc
   schedule: { env: () => renamed(screenEnv('real-host-schedule')), Page: HostSchedulePage, anchor: () => !!document.querySelector('.cps-sub') },
   staff: { env: () => ({ actor: hostActor, repo: staffRepo(), actions: idleActions(), route: { cid: 'cup' } }), Page: StaffPage, anchor: () => hasText('陳小明') },
   roster: { env: () => renamed(screenEnv('roster')), Page: RosterPage, anchor: () => !!document.querySelector('.cps-title') },
+  join: { env: () => renamed(screenEnv('form-self-adult')), Page: JoinRosterPage, anchor: () => !!document.querySelector('.cps-title') },
+  add: { env: () => renamed(screenEnv('form-rep')), Page: AddRosterPage, anchor: () => !!document.querySelector('.cps-title') },
   'wizard-3': { env: () => wizardEnv('wizard-3'), Page: NewCompetitionPage, anchor: () => !!document.querySelector('.cps-title') },
   'wizard-done': { env: () => wizardEnv('wizard-done'), Page: NewCompetitionPage, anchor: () => !!document.querySelector('.cps-title') },
   accept: {

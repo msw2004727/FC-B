@@ -64,8 +64,9 @@ describe('賽事新外觀色票（第 0 批卡 0-2）', () => {
   it('--d2-* 只宣告在淺色、深色兩條規則裡，每個變數每個主題一次', () => {
     const declaring = rules.filter((r) => varsOf(r.body).length > 0);
     expect(declaring.map((r) => r.sel)).toEqual([
-      '.cps-root, .s4-page, .d2-panel, .cp-danger-confirm #app-confirm-modal',
-      '[data-theme="dark"] .cps-root, [data-theme="dark"] .s4-page, [data-theme="dark"] .d2-panel, [data-theme="dark"].cp-danger-confirm #app-confirm-modal',
+      // 第 2 批卡 2-1 把記分頁根節點 .s4-root 加進兩條（施工-第2批 3.0）；清-2 把賽事清單根節點 .tournaments-root[data-d2] 加進兩條
+      '.cps-root, .s4-page, .s4-root, .d2-panel, .tournaments-root[data-d2], .cp-danger-confirm #app-confirm-modal',
+      '[data-theme="dark"] .cps-root, [data-theme="dark"] .s4-page, [data-theme="dark"] .s4-root, [data-theme="dark"] .d2-panel, [data-theme="dark"] .tournaments-root[data-d2], [data-theme="dark"].cp-danger-confirm #app-confirm-modal',
     ]);
     const [light = [], dark = []] = declaring.map((r) => varsOf(r.body));
     expect(new Set(light).size).toBe(light.length);
@@ -106,8 +107,8 @@ describe('積分榜欄寬（實量覆核 7.3：360 寬隊名只剩一個字）',
     const gap = Number(row.match(/column-gap: (\d+)(?:px)?;/)?.[1] ?? NaN);
     const fixed = cols.split(' ').filter((c) => c.endsWith('px')).reduce((sum, c) => sum + Number.parseFloat(c), 0);
     const pad = Number(css.match(/\.cp3-st__r \.t \{[^}]*padding-left: (\d+)px;/)?.[1] ?? NaN);
-    // 360 寬正式站：頁面內距 16×2、外框 .app-main 8×2、卡片內距 10×2、卡片邊框 1×2 → 列寬 290；隊徽 20、隊徽與字距 6
-    const text = 290 - fixed - gap * 8 - pad - 20 - 6;
+    // 360 寬正式站：頁面內距 8×2（新外觀卡 1b-2 由 16 改 8，外框另計）、外框 .app-main 8×2、卡片內距 10×2、卡片邊框 1×2 → 列寬 306；隊徽 20、隊徽與字距 6
+    const text = 306 - fixed - gap * 8 - pad - 20 - 6;
     // 正文小字 13px：4 個字 52 加省略號約 13
     expect(text).toBeGreaterThanOrEqual(13 * 4 + 13);
     expect(css).toMatch(/\.cp3-st__r > \* \{[^}]*min-width: 0;[^}]*white-space: nowrap;/);

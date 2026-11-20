@@ -186,13 +186,14 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   }
 
   return (
-    <CpFrame title={ct('joinTitle')} onBack={backToRoster}>
-      <CpCard>
+    <CpFrame title={ct('joinTitle')} context={competition.name} onBack={backToRoster}>
+      {/* 新外觀卡 3-2：隊伍卡縮成一列（隊名可縮並省略、組別賽制不換行） */}
+      <CpCard class="cp3-jteam">
         <h2 class="cps-title">{entry?.name ?? ''}</h2>
         {division ? <p class="cps-sub">{division.name}　{ct('formatN', { n: division.playersOnField })}</p> : null}
       </CpCard>
       <CpCard>
-        <div class="cps-fields">
+        <div class="cps-fields cp3-jform">
           <div class="cps-grid2">
             <Input label={ct('number')} type="number" value={number} min={0} max={99} onValueChange={setNumber} />
             <div />
@@ -201,17 +202,17 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
           {minor ? (
             <>
               <Input label={ct('realName')} required value={realName} maxLength={40} onValueChange={setRealName} />
-              {masked ? <p class="cps-sub" data-public-name>{ct('maskedPreview', { name: masked })}</p> : null}
+              {masked ? <p class="cps-sub cp3-pubname" data-public-name>{ct('maskedPreview', { name: masked })}</p> : null}
               <p class="cps-privacy cps-pre">{ct('minorPublic')}{'\n'}{ct('minorRealName')}</p>
               <Checkbox label={ct('guardianConsent')} checked={guardian} onCheckedChange={setGuardian} />
             </>
           ) : (
             <>
               {division?.requireRealName ? (
-                <>
+                <div>
                   <Input label={ct('realName')} required value={realName} maxLength={40} onValueChange={setRealName} />
-                  <p class="cps-cap">{ct('minorRealName')}</p>
-                </>
+                  <p class="cps-cap cp3-cap">{ct('minorRealName')}</p>
+                </div>
               ) : null}
               <Input label={ct('nickname')} value={nickname} maxLength={20} onValueChange={setNickname} />
             </>
@@ -220,7 +221,7 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
           {error ? <CpError reason={error.reason} params={error.params} /> : null}
         </div>
       </CpCard>
-      <div class="cps-actions">
+      <div class="cps-actions cp3-jact">
         <Button variant="secondary" onClick={backToRoster}>{ct('cancel')}</Button>
         <Button variant="primary" loading={busy} onClick={() => { void submit(); }}>{ct('submit')}</Button>
       </div>

@@ -24,16 +24,9 @@ function flat(rel: string, scope: boolean): Flat[] {
   return out;
 }
 const withoutComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '');
-/** 簡易權重 [id, class/attr/pseudo-class, element]。 */
-function specificity(selector: string): [number, number, number] {
-  const s = selector.replace(/::[\w-]+/g, '');
-  return [(s.match(/#[\w-]+/g) ?? []).length, (s.match(/\.[\w-]+|\[[^\]]+\]|:[\w-]+/g) ?? []).length, 0];
-}
-const gt = (a: [number, number, number], b: [number, number, number]) => (a[0] !== b[0] ? a[0] > b[0] : a[1] > b[1]);
 
 describe('tournaments.css：.tc-card 只作用在賽事頁（既有跨頁外溢修正）', () => {
   const rules = flat('src/features/tournaments/tournaments.css', false);
-  const team = flat('src/features/clubs/legacy/team.css', true);
 
   it('沒有不限定頁面、會碰到俱樂部卡（.tc-card 本身）的規則', () => {
     const bare = rules.filter((r) => /(^|[\s>+~])\.tc-card(?![\w-])/.test(r.selector) && !/#page-tournaments|\.tc-page/.test(r.selector));
@@ -42,15 +35,17 @@ describe('tournaments.css：.tc-card 只作用在賽事頁（既有跨頁外溢�
     expect(bare.every((r) => !('margin-bottom' in r.decls))).toBe(true);
   });
 
-  it('賽事卡外層：本頁保留 12px 間距，並還原 team.css 外溢的框線、底色、圓角、裁切、浮起；權重高於 team.css 的 hover', () => {
-    const r = rules.find((x) => x.selector === '#page-tournaments .tc-card');
-    expect(r?.decls).toMatchObject({
-      position: 'relative', 'margin-bottom': '12px', border: '0', 'border-radius': '0', background: 'none',
-      'box-shadow': 'none', overflow: 'visible', transform: 'none', 'content-visibility': 'visible',
-    });
-    const leaking = team.filter((x) => /^\.legacy-ui \.tc-card(:hover)?$/.test(x.selector));
-    expect(leaking.length).toBeGreaterThan(0);
-    for (const x of leaking) expect(gt(specificity('#page-tournaments .tc-card'), specificity(x.selector)), x.selector).toBe(true);
+  // 新外觀清-3 改寫（顧問待點頭，第 5 批第 5 節）：賽事頁不再輸出 tc-card，外溢不可能發生；改守「賽事頁三支樣式與頁面元件不再出現 tc-card」。
+  it('賽事頁不再出現 tc-card 這個 class（頁面元件與三支樣式）', () => {
+    for (const rel of [
+      'src/features/tournaments/pages/TournamentsPage.tsx',
+      'src/features/tournaments/tournaments.css',
+      'src/features/tournaments/list-v2.css',
+      'src/features/tournaments/legacy/tournaments-glass.css',
+    ]) {
+      const text = withoutComments(readFileSync(resolve(process.cwd(), rel), 'utf8'));
+      expect(text, rel).not.toMatch(/\btc-card(?![\w-])/);
+    }
   });
 });
 
@@ -60,7 +55,8 @@ describe('tournaments-glass.css：賽事頁液態光澤', () => {
   const raw = withoutComments(readFileSync(resolve(process.cwd(), GLASS), 'utf8'));
 
   it('每條規則都限定在賽事頁（#page-tournaments 或外層 .tournaments-root）', () => {
-    expect(rules.length).toBeGreaterThan(15);
+    // 清-3 之後只剩頁面底色三條與返回鈕三條。
+    expect(rules.length).toBeGreaterThanOrEqual(6);
     for (const r of rules) expect(r.selector, r.selector).toMatch(/#page-tournaments|\.legacy-ui\.tournaments-root/);
   });
 
@@ -68,14 +64,6 @@ describe('tournaments-glass.css：賽事頁液態光澤', () => {
     expect(raw).not.toMatch(/(^|[;{\s])--[\w-]+\s*:/m);
     expect(raw).not.toMatch(/color-mix/);
     expect(raw).not.toMatch(/backdrop-filter/);
-  });
-
-  it('選中頁籤與內容區接縫同色（淺 #fff、深 #3e4555）', () => {
-    const get = (s: string) => rules.find((r) => r.selector === s)?.decls.background ?? '';
-    expect(get('.legacy-ui #page-tournaments .tc-tab.active')).toBe('#fff');
-    expect(get('.legacy-ui #page-tournaments .tc-tab.active::after')).toBe('#fff');
-    expect(get('[data-theme="dark"] .legacy-ui #page-tournaments .tc-tab.active')).toMatch(/#3e4555$/);
-    expect(get('[data-theme="dark"] .legacy-ui #page-tournaments .tc-tab.active::after')).toBe('#3e4555');
   });
 
   it('返回鈕改 position: relative 時 top／left 歸零；點擊區補到 44px', () => {
