@@ -63,8 +63,9 @@ describe('賽事新外觀色票（第 0 批卡 0-2）', () => {
   it('--d2-* 只宣告在淺色、深色兩條規則裡，每個變數每個主題一次', () => {
     const declaring = rules.filter((r) => varsOf(r.body).length > 0);
     expect(declaring.map((r) => r.sel)).toEqual([
-      '.cps-root, .s4-page, .d2-panel, .cp-danger-confirm #app-confirm-modal',
-      '[data-theme="dark"] .cps-root, [data-theme="dark"] .s4-page, [data-theme="dark"] .d2-panel, [data-theme="dark"].cp-danger-confirm #app-confirm-modal',
+      // 第 2 批卡 2-1 把記分頁根節點 .s4-root 加進兩條（施工-第2批 3.0）
+      '.cps-root, .s4-page, .s4-root, .d2-panel, .cp-danger-confirm #app-confirm-modal',
+      '[data-theme="dark"] .cps-root, [data-theme="dark"] .s4-page, [data-theme="dark"] .s4-root, [data-theme="dark"] .d2-panel, [data-theme="dark"].cp-danger-confirm #app-confirm-modal',
     ]);
     const [light = [], dark = []] = declaring.map((r) => varsOf(r.body));
     expect(new Set(light).size).toBe(light.length);
