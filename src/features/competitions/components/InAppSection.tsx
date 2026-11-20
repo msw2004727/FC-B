@@ -222,7 +222,7 @@ function SectionBody({
     () => filterInAppCards(cards, tab, status, onlyMine),
     [cards, tab, status, onlyMine],
   );
-  // 卡板那一張移到第一張。boardCid 由第 1a 批卡 1a-5 傳給 InAppCardList 換成卡板長相。
+  // 卡板那一張移到第一張；boardCid 傳給 InAppCardList 換成卡板長相。
   const board = useMemo(() => pickInAppBoard(visible, todaySettled), [visible, todaySettled]);
   // 空字串＝現在沒有畫在畫面上的進行中卡（含來源切到外部、字典未到）。
   const liveKey = !uidStale && phase === 'ready' && active && cpDict.ct
@@ -289,6 +289,7 @@ function SectionBody({
       status={status}
       onlyMine={onlyMine}
       showCreate={showCreate}
+      boardCid={board.boardCid}
       onStatus={setStatus}
       onOnlyMine={setOnlyMine}
       onCreate={() => route('/competitions/new')}

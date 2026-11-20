@@ -5,11 +5,12 @@
 
 /* 賽事新外觀「記分板」色票（第 0 批）：只宣告在下面淺色、深色這兩條規則裡，每個變數每個主題一次；
  * 深淺色差異全靠這兩條換值，不另寫深色專屬規則。面板畫在頁面最上層、不在根節點內，所以 .d2-panel 一起列。
- * 後面的批次要用新變數或新根節點，加進這兩條，不另開一份。 */
+ * 後面的批次要用新變數或新根節點，加進這兩條，不另開一份。賽事清單頁用帶開關的根節點 .tournaments-root[data-d2]（清-2）。 */
 .cps-root,
 .s4-page,
 .s4-root,
 .d2-panel,
+.tournaments-root[data-d2],
 .cp-danger-confirm #app-confirm-modal {
   --d2-accent: #0d9488;
   --d2-accent-ink: #0f766e;
@@ -80,6 +81,7 @@
 [data-theme="dark"] .s4-page,
 [data-theme="dark"] .s4-root,
 [data-theme="dark"] .d2-panel,
+[data-theme="dark"] .tournaments-root[data-d2],
 [data-theme="dark"].cp-danger-confirm #app-confirm-modal {
   --d2-accent: #34d399;
   --d2-accent-ink: #34d399;
@@ -138,7 +140,8 @@
 .cps-root .ui-button,
 .s4-root .ui-button,
 .s4-page .ui-button,
-.d2-panel .ui-button {
+.d2-panel .ui-button,
+.tournaments-root[data-d2] .ui-button {
   --comp-button-background-default: var(--d2-accent-ink);
   --comp-button-background-hover: var(--d2-accent-ink);
   --comp-button-background-active: var(--d2-accent-ink);
@@ -154,11 +157,13 @@
 .cps-root .ui-button__label,
 .s4-root .ui-button__label,
 .s4-page .ui-button__label,
-.d2-panel .ui-button__label { white-space: nowrap; overflow-wrap: normal; word-break: keep-all; }
+.d2-panel .ui-button__label,
+.tournaments-root[data-d2] .ui-button__label { white-space: nowrap; overflow-wrap: normal; word-break: keep-all; }
 .cps-root .ui-button--sm,
 .s4-root .ui-button--sm,
 .s4-page .ui-button--sm,
-.d2-panel .ui-button--sm { font-size: 13px; line-height: 20px; }
+.d2-panel .ui-button--sm,
+.tournaments-root[data-d2] .ui-button--sm { font-size: 13px; line-height: 20px; }
 .cps-root .ui-button--ghost,
 .s4-root .ui-button--ghost,
 .s4-page .ui-button--ghost,
@@ -170,7 +175,8 @@
 .cps-root .ui-button.ui-button--secondary,
 .s4-root .ui-button.ui-button--secondary,
 .s4-page .ui-button.ui-button--secondary,
-.d2-panel .ui-button.ui-button--secondary {
+.d2-panel .ui-button.ui-button--secondary,
+.tournaments-root[data-d2] .ui-button.ui-button--secondary {
   --comp-button-background-hover: var(--d2-glass-gloss), var(--d2-glass-base);
   --comp-button-background-active: var(--d2-glass-gloss), var(--d2-glass-base);
   color: var(--d2-text);
@@ -178,7 +184,8 @@
 .cps-root .ui-button.ui-button--secondary::before,
 .s4-root .ui-button.ui-button--secondary::before,
 .s4-page .ui-button.ui-button--secondary::before,
-.d2-panel .ui-button.ui-button--secondary::before { border-color: transparent; background: var(--d2-glass-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh); }
+.d2-panel .ui-button.ui-button--secondary::before,
+.tournaments-root[data-d2] .ui-button.ui-button--secondary::before { border-color: transparent; background: var(--d2-glass-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh); }
 .cps-root .ui-button.ui-button--danger,
 .s4-root .ui-button.ui-button--danger,
 .s4-page .ui-button.ui-button--danger,
@@ -200,9 +207,11 @@
 .s4-page .ui-button.ui-button--danger.ui-button--sm::before,
 .d2-panel .ui-button.ui-button--danger.ui-button--sm::before { background: none; box-shadow: none; }
 .cps-root .ui-button.ui-button--secondary[aria-expanded="true"],
-.d2-panel .ui-button.ui-button--secondary[aria-expanded="true"] { color: var(--d2-seg-fg); }
+.d2-panel .ui-button.ui-button--secondary[aria-expanded="true"],
+.tournaments-root[data-d2] .ui-button.ui-button--secondary[aria-expanded="true"] { color: var(--d2-seg-fg); }
 .cps-root .ui-button.ui-button--secondary[aria-expanded="true"]::before,
-.d2-panel .ui-button.ui-button--secondary[aria-expanded="true"]::before { background: var(--d2-seg-on), var(--d2-glass-base); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
+.d2-panel .ui-button.ui-button--secondary[aria-expanded="true"]::before,
+.tournaments-root[data-d2] .ui-button.ui-button--secondary[aria-expanded="true"]::before { background: var(--d2-seg-on), var(--d2-glass-base); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
 .cps-root .ui-button[aria-disabled="true"],
 .s4-root .ui-button[aria-disabled="true"],
 .s4-page .ui-button[aria-disabled="true"],
@@ -223,7 +232,9 @@
 .cps-root .ui-tabs__tab:focus-visible,
 .s4-page .ui-tabs__tab:focus-visible,
 .d2-panel .ui-button:focus-visible,
-.d2-panel .ui-tabs__tab:focus-visible { outline: 2px solid var(--d2-accent); outline-offset: 2px; }
+.d2-panel .ui-tabs__tab:focus-visible,
+.tournaments-root[data-d2] .ui-button:focus-visible,
+.cpl-card__link:focus-visible { outline: 2px solid var(--d2-accent); outline-offset: 2px; }
 .cps-root .ui-tabs .ui-tabs__list,
 .s4-page .ui-tabs .ui-tabs__list,
 .d2-panel .ui-tabs .ui-tabs__list {
@@ -283,10 +294,12 @@
 .d2-panel .ui-badge__label { white-space: nowrap; overflow-wrap: normal; }
 .cps-root .d2-tag--live,
 .s4-page .d2-tag--live,
-.d2-panel .d2-tag--live { background: var(--d2-sb-bg); color: var(--d2-sb-now); font-weight: 700; box-shadow: var(--d2-sb-sh-lit); }
+.d2-panel .d2-tag--live,
+.cpl-card .cpl-st--live { background: var(--d2-sb-bg); color: var(--d2-sb-now); font-weight: 700; box-shadow: var(--d2-sb-sh-lit); }
 .cps-root .d2-tag--live::before,
 .s4-page .d2-tag--live::before,
-.d2-panel .d2-tag--live::before { content: ''; flex: 0 0 auto; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--d2-sb-now); }
+.d2-panel .d2-tag--live::before,
+.cpl-card .cpl-st--live::before { content: ''; flex: 0 0 auto; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--d2-sb-now); }
 .cps-root .d2-tag--cancelled,
 .s4-page .d2-tag--cancelled,
 .d2-panel .d2-tag--cancelled { color: var(--d2-danger); box-shadow: inset 0 0 0 1px var(--d2-danger-line); }
@@ -477,6 +490,26 @@
 .d2-sb .ui-badge { background: none; box-shadow: inset 0 0 0 1px var(--d2-sb-line); color: var(--d2-sb-fg2); }
 .d2-sb .cp3-crest.cp3-crest--txt { background: rgba(255,255,255,.1); color: var(--d2-sb-fg); box-shadow: inset 0 0 0 1px rgba(255,255,255,.22); }
 
+/* 站內下拉選單（清-2，ui/menu-select.tsx）：收合是借來的小顆玻璃次要鈕（外觀 36px、點擊區 44px）加向下箭頭，
+ * 展開中照第 0 批「工具鈕展開中」；清單關著時用 hidden 屬性，所以 .d2-menu 本身不設 display。 */
+.d2-dd { position: relative; flex: 0 0 auto; }
+.d2-dd .d2-dd__btn { min-inline-size: 0; padding: 0 32px 0 12px; border-radius: 10px; }
+.d2-dd .d2-dd__btn::before { top: 4px; bottom: 4px; }
+.d2-dd__caret { position: absolute; top: 50%; right: 10px; width: 16px; height: 16px; margin-top: -8px; color: var(--d2-text-2); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.d2-menu {
+  position: absolute; z-index: 6; top: 100%; left: 0; min-width: 100%; width: max-content; padding: 4px;
+  border-radius: 14px; background: var(--d2-menu-bg); box-shadow: var(--d2-menu-sh);
+}
+.d2-menu__opt {
+  display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; min-width: 148px; min-height: 44px; margin: 0; padding: 0 12px;
+  border: 0; border-radius: 10px; background: none; color: var(--d2-text); font: inherit; font-size: 15px; line-height: 24px; font-weight: 400;
+  text-align: left; white-space: nowrap; cursor: pointer;
+}
+.d2-menu__opt[aria-selected="true"] { background: var(--d2-seg-on); color: var(--d2-seg-fg); font-weight: 700; }
+.d2-menu__opt:focus-visible { outline: 2px solid var(--d2-accent); outline-offset: -2px; }
+.d2-menu__chk { flex: 0 0 auto; width: 16px; height: 16px; visibility: hidden; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.d2-menu__opt[aria-selected="true"] .d2-menu__chk { visibility: visible; }
+
 /* 頁框（卡 1b-2）：左右 8px，加外框 .app-main 的 8px 合計 16px，與清單頁相同。
  * 底色鋪滿視窗：根節點自己不鋪底，同一組漸層鋪在固定在視窗上的 ::before（清單頁 .tournaments-root::before 同做法），
  * 短頁面底色不會中途斷掉。根節點自成一層（z-index 0），底色層在它裡面排最後（-1）；外框上方列與底部導覽不受影響。 */
@@ -545,8 +578,9 @@
 
 .cps-stack { display: flex; flex-direction: column; gap: var(--space-3); }
 
-/* 玻璃卡：沒有邊框，光澤固定在頂端 36px 內；卡中卡攤平 */
-.cps-card {
+/* 玻璃卡：沒有邊框，光澤固定在頂端 36px 內；卡中卡攤平。賽事清單的站內卡（.cpl-card__link）同一張卡面 */
+.cps-card,
+.cpl-card__link {
   position: relative; padding: 16px; border: 0; border-radius: 14px;
   background: var(--d2-card-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh);
 }
@@ -1110,8 +1144,39 @@
   line-height: var(--line-height-body-sm);
 }
 .cpm-rules li:first-child { border-top: 0; padding-top: 0; }
-#page-tournaments .cpl-card .cpl-st--postponed i { background: #fbbf24; }
-#page-tournaments .cpl-card .cpl-st--cancelled i { background: #f87171; }
+/* 賽事清單站內卡（清-4，第 1a 批 3.9）：玻璃卡第一行「狀態｜重點句」、名稱、最後一行「分類｜日期・場地」；
+ * 卡板是一圈玻璃框（只有底、不疊光澤）包一塊記分板（.d2-sb 共用元件）。class 是清單才有的新名字，不帶根節點前綴。 */
+/* 站內清單容器最小高度：清單頁吃到舊站 .page 的 overflow，卡片少時展開的站內選單會被裁（規格 3.6：篩選列 36＋4＋選單 272＋16） */
+[data-inapp="competitions"] { min-height: 328px; }
+.cpl-card { margin-bottom: 10px; }
+.cpl-card__link { display: block; padding: 10px 14px 12px; color: var(--d2-text); text-decoration: none; }
+.cpl-card__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 20px; margin-bottom: 2px; }
+.cpl-st { flex: 0 0 auto; font-size: 12px; line-height: 20px; font-weight: 600; letter-spacing: .04em; color: var(--d2-text-2); white-space: nowrap; }
+.cpl-card .cpl-st--live { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 8px; line-height: 22px; }
+.cpl-card .cpl-st--cancelled { color: var(--d2-danger); font-weight: 700; }
+.cpl-line {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-text); font-variant-numeric: tabular-nums;
+}
+.cpl-card__name { font-size: 17px; line-height: 24px; font-weight: 700; color: var(--d2-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cpl-card.ended .cpl-card__name { color: var(--d2-text-2); }
+.cpl-meta {
+  display: flex; align-items: center; min-width: 0; overflow: hidden; white-space: nowrap;
+  font-size: 13px; line-height: 20px; font-weight: 400; color: var(--d2-text-2); font-variant-numeric: tabular-nums;
+}
+.cpl-meta__cat { flex: 0 0 auto; margin-right: 8px; padding-right: 8px; border-right: 1px solid var(--d2-line-strong); line-height: 14px; }
+.cpl-meta__cat:last-child { margin-right: 0; padding-right: 0; border-right: 0; }
+.cpl-meta__date { flex: 0 0 auto; }
+.cpl-meta__venue { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cpl-meta__date + .cpl-meta__venue::before {
+  content: ''; display: inline-block; width: 3px; height: 3px; margin: 0 7px; border-radius: 50%; background: currentColor; vertical-align: middle;
+}
+.cpl-card--board .cpl-card__link { padding: 6px; background: var(--d2-glass-base); }
+.cpl-card--board .d2-sb { --sb-pad: 11px 14px; }
+.cpl-sb__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cpl-sb__cat { font-size: 12px; line-height: 16px; color: var(--d2-sb-fg2); }
+.cpl-card--board .cpl-card__name { margin-top: 5px; font-size: 19px; line-height: 28px; color: var(--d2-sb-fg); }
+.cpl-card--board .cpl-meta { color: var(--d2-sb-fg2); }
 
 .cpm-cap {
   margin: 0;
