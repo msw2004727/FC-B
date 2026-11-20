@@ -12,6 +12,7 @@ import { liveCpActions } from '../actions';
 import { buildInviteUrl } from '../data/invite-link';
 import type { ScoreRole } from '../data/staff-assign';
 import { resolveHostAccess } from '../data/host-access';
+import { recallCompName, rememberCompName } from '../data/comp-name-hint';
 import type { CompetitionDoc, MatchDoc } from '../data/types';
 import type { CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
@@ -75,6 +76,8 @@ function StaffInviteView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   const [phase, setPhase] = useState<'loading' | 'denied' | 'ready' | 'error'>('loading');
   const [matches, setMatches] = useState<MatchDoc[]>([]);
   const [venues, setVenues] = useState<CompetitionDoc['venues']>([]);
+  // 頁首賽事名小字：這頁讀到賽事文件（代表那條路、或需要場地名）就用它，否則用報隊管理、排賽程記下的名稱（不為名稱多讀）。
+  const [compName, setCompName] = useState<string | undefined>(() => recallCompName(cid));
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [role, setRole] = useState<ScoreRole>('scorer');
   const [saving, setSaving] = useState(false);
@@ -116,6 +119,9 @@ function StaffInviteView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       const competition = needVenue ? (access.competition ?? await env.repo.getCompetition(cid)) : null;
       if (!alive) return;
       setVenues(competition?.venues ?? []);
+      const loadedComp = competition ?? access.competition;
+      if (loadedComp) rememberCompName(cid, loadedComp.name);
+      setCompName(loadedComp?.name ?? recallCompName(cid));
       setMatches(matchList);
       setPhase('ready');
     })().catch(() => {
@@ -155,6 +161,7 @@ function StaffInviteView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       <StaffDeniedScreen
         title={ct('staffInvite')}
         message={phase === 'error' ? ct('loadFailed') : ct('staffNoPermission')}
+        failed={phase === 'error'}
         backLabel={ct('backToCompetition')}
         onBack={() => route(`/competitions/${cid}`)}
       />
@@ -163,7 +170,7 @@ function StaffInviteView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   if (created) {
     const url = created.url;
     return (
-      <S4bFrame title={ct('staffInvite')} admin screen="staff-invite-link" onBack={back}>
+      <S4bFrame title={ct('staffInvite')} screen="staff-invite-link" context={compName} onBack={back}>
         <InviteLinkCard
           title={ct('inviteLinkTitle')}
           url={url}
@@ -186,6 +193,7 @@ function StaffInviteView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
     <StaffAssignScreen
       title={ct('staffInvite')}
       screen="staff-invite-form"
+      context={compName}
       showPerson={false}
       days={assignDays(ct, matches, venues)}
       picked={picked}

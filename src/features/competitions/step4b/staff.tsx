@@ -1,4 +1,4 @@
-// A. 指派與邀請。主辦三頁是後台，平面卡片；受邀者與記分員沿用賽事頁卡片。
+// A. 指派與邀請。新外觀起主辦三頁與受邀者、記分員同一種玻璃卡。
 
 import type { ComponentChildren, JSX } from 'preact';
 import { useState } from 'preact/hooks';
@@ -7,7 +7,8 @@ import { Checkbox } from '@/ui/Checkbox';
 import { Modal } from '@/ui/Modal';
 import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
-import { CpFrame } from '../ui/shell';
+import { CpGate } from '../ui/feedback';
+import { CpFrame, InfoIcon, LockIcon, TrashIcon } from '../ui/shell';
 import { StatusTag, type StatusKind } from '../ui/status-tag';
 import {
   S4B_ASSIGN_PEOPLE,
@@ -92,6 +93,10 @@ export function StaffListScreen(props: {
   onInvite?: () => void;
   /** 按鈕下方的區塊（尚未使用的邀請）。 */
   children?: ComponentChildren;
+  /** 頁首賽事名小字（拿不到就不畫）。 */
+  context?: string;
+  /** 垃圾桶的報讀名稱（帶對象）；沒給時用「移除」加名字。 */
+  removeLabel?: (name: string) => string;
 } = {}): JSX.Element {
   const viewerRole = props.viewerRole ?? 'host';
   const controlled = props.rows != null;
@@ -108,15 +113,15 @@ export function StaffListScreen(props: {
       removable: canRemoveStaff(viewerRole, staff.role),
     }));
   return (
-    <S4bFrame title={props.title ?? copy.staffTitle} admin screen={screen} onBack={props.onBack}>
-      <S4bCard plain>
+    <S4bFrame title={props.title ?? copy.staffTitle} screen={screen} context={props.context} onBack={props.onBack}>
+      <S4bCard class="s4b-listcard">
         <ul class="cps-list s4b-staff-list">
           {rows.map((staff) => {
             // 主辦兼記分：第一列只放名字、場次、移除鈕；角色標籤（不壓縮、不拆字、放不下整顆換行）與到期放第二列。
             const multi = (staff.extraRoles?.length ?? 0) > 0;
             const twoLine = multi || !!staff.expiresLabel;
             return (
-            <li key={staff.id} class={twoLine ? 's4b-li s4b-li--exp' : 's4b-li'}>
+            <li key={staff.id} class="s4b-li">
               <div class={`s4b-staff${twoLine ? ' s4b-staff--exp' : ''}${multi ? ' s4b-staff--multi' : ''}`}>
                 <span class="s4b-staff__name">{staff.name}</span>
                 {multi ? (
@@ -133,16 +138,17 @@ export function StaffListScreen(props: {
                 {!multi && staff.expiresLabel ? <span class="s4b-staff__exp">{staff.expiresLabel}</span> : null}
                 {staff.removable ? (
                   <span class="s4b-mini">
-                    <Button
-                      variant="danger"
-                      size="sm"
+                    <button
+                      type="button"
+                      class="cps-iconbtn cps-iconbtn--flat"
+                      aria-label={props.removeLabel ? props.removeLabel(staff.name) : `${copy.remove} ${staff.name}`}
                       onClick={() => {
                         if (controlled) props.onRemove?.(staff.id);
                         else setLocal((prev) => prev.filter((row) => row.id !== staff.id));
                       }}
                     >
-                      {copy.remove}
-                    </Button>
+                      <TrashIcon />
+                    </button>
                   </span>
                 ) : <span class="s4b-mini" aria-hidden="true" />}
               </div>
@@ -185,7 +191,45 @@ export function StaffListScreen(props: {
 export interface AssignDayGroup {
   key: string;
   heading: string;
-  matches: readonly { id: string; label: string }[];
+  /**
+   * label 是完整的一句（勾選框的報讀名稱）。有 vs 時畫成三段：時間（跨日的日期 day 放在上面）｜場地｜對戰；
+   * 沒有 vs（示範畫面的內建資料）時畫成共用勾選、整句一行。
+   */
+  matches: readonly { id: string; label: string; day?: string; time?: string; venue?: string; vs?: string }[];
+}
+
+/** 指派表單的一場：外觀沿用勾選元件的 class，標記自己畫（共用 Checkbox 的標籤只收字串）；可及名稱仍是整句。 */
+function MatchCheckRow({
+  match,
+  checked,
+  onToggle,
+}: {
+  match: AssignDayGroup['matches'][number];
+  checked: boolean;
+  onToggle: (on: boolean) => void;
+}): JSX.Element {
+  return (
+    <div class={`ui-checkbox s4b-mrow${checked ? ' ui-checkbox--checked' : ''}`}>
+      <label class="ui-checkbox__label">
+        <input
+          type="checkbox"
+          checked={checked}
+          aria-label={match.label}
+          onChange={(event) => {
+            onToggle(event.currentTarget.checked);
+            // 受控：畫面上的勾選以 props 為準，下一次重繪才換（同共用 Checkbox）。
+            event.currentTarget.checked = checked;
+          }}
+        />
+        <span class="s4b-mrow__when" aria-hidden="true">
+          {match.day ? <small>{match.day}</small> : null}
+          {match.time ? <b class="d2-num">{match.time}</b> : null}
+        </span>
+        <span class="s4b-mrow__court" aria-hidden="true">{match.venue}</span>
+        <span class="s4b-mrow__vs" aria-hidden="true">{match.vs}</span>
+      </label>
+    </div>
+  );
 }
 
 export function StaffAssignScreen(props: {
@@ -211,6 +255,8 @@ export function StaffAssignScreen(props: {
   showPerson?: boolean;
   /** 外框標題旁的 data-screen。 */
   screen?: string;
+  /** 頁首賽事名小字（拿不到就不畫）。 */
+  context?: string;
 } = {}): JSX.Element {
   const controlled = props.days != null;
   const [personState, setPersonState] = useState<string>(S4B_ASSIGN_PEOPLE[0].id);
@@ -222,7 +268,7 @@ export function StaffAssignScreen(props: {
   const people = controlled
     ? (props.people ?? [])
     : S4B_ASSIGN_PEOPLE.map((item) => ({ id: item.id, name: item.name }));
-  const days = controlled
+  const days: readonly AssignDayGroup[] = controlled
     ? props.days ?? []
     : groupMatches(S4B_MATCHES).map((group) => ({
       key: group.key,
@@ -250,8 +296,8 @@ export function StaffAssignScreen(props: {
   }
   const error = props.error ?? '';
   return (
-    <S4bFrame title={props.title ?? copy.assignTitle} admin screen={props.screen ?? 'staff-assign'} onBack={props.onBack}>
-      <S4bCard plain>
+    <S4bFrame title={props.title ?? copy.assignTitle} screen={props.screen ?? 'staff-assign'} context={props.context} onBack={props.onBack}>
+      <S4bCard>
         <div class="s4b-gap">
           {props.showPerson === false ? null : <Select
             label={props.personLabel ?? copy.person}
@@ -265,14 +311,16 @@ export function StaffAssignScreen(props: {
           {days.map((group) => (
             <div key={group.key} class="s4b-daygroup">
               <p class="s4b-day">{group.heading}</p>
-              {group.matches.map((match) => (
+              {group.matches.map((match) => (match.vs != null ? (
+                <MatchCheckRow key={match.id} match={match} checked={picked.has(match.id)} onToggle={(on) => toggle(match.id, on)} />
+              ) : (
                 <Checkbox
                   key={match.id}
                   label={match.label}
                   checked={picked.has(match.id)}
                   onCheckedChange={(on) => toggle(match.id, on)}
                 />
-              ))}
+              )))}
             </div>
           ))}
           <RadioGroup
@@ -561,18 +609,20 @@ export function StaffDeniedScreen({
   message,
   backLabel,
   onBack,
+  failed = false,
 }: {
   title: string;
   message: string;
   backLabel: string;
   onBack: () => void;
+  /** 讀取失敗用圓圈 i；沒有權限（預設）用鎖頭。 */
+  failed?: boolean;
 }): JSX.Element {
   return (
     <CpFrame title={title} onBack={onBack}>
-      <p class="cps-note cps-nowrap" role="alert">{message}</p>
-      <div class="cps-actions">
-        <Button variant="secondary" onClick={onBack}>{backLabel}</Button>
-      </div>
+      <CpGate icon={failed ? <InfoIcon /> : <LockIcon />} text={message}>
+        <Button variant="primary" onClick={onBack}>{backLabel}</Button>
+      </CpGate>
     </CpFrame>
   );
 }
@@ -595,11 +645,11 @@ export function OpenInviteList(props: {
   failed?: { message: string; retryLabel: string; onRetry: () => void } | null;
 }): JSX.Element {
   return (
-    <S4bCard plain>
+    <S4bCard>
       <h2 class="s4b-h s4b-inv__h">{props.title}</h2>
       {props.failed ? (
         <div class="s4b-gap">
-          <p class="cps-note cps-warn" role="alert">{props.failed.message}</p>
+          <p class="s4b-alert" role="alert">{props.failed.message}</p>
           <span class="s4b-mini">
             <Button variant="secondary" size="sm" onClick={props.failed.onRetry}>{props.failed.retryLabel}</Button>
           </span>
@@ -610,14 +660,14 @@ export function OpenInviteList(props: {
             <li key={row.id} class="s4b-li" data-invite={row.id}>
               <div class="s4b-gap s4b-inv">
                 <div class="s4b-m__top">
-                  <span class="s4b-k">{row.roleLabel}</span>
+                  <span class="s4b-k s4b-inv__role">{row.roleLabel}</span>
                   <span class="s4b-k s4b-inv__n">{row.countLabel}</span>
                   <span class="s4b-staff__gap" />
                   <span class="s4b-mini">
                     <Button variant="danger" size="sm" onClick={() => props.onRevoke(row.id)}>{props.revokeLabel}</Button>
                   </span>
                 </div>
-                <p class="s4b-status">{row.expiresLabel}</p>
+                <p class="s4b-inv__exp">{row.expiresLabel}</p>
               </div>
             </li>
           ))}
@@ -640,16 +690,16 @@ export function InviteLinkCard(props: {
   onShare: () => void;
 }): JSX.Element {
   return (
-    <S4bCard plain>
-      <div class="s4b-gap">
+    <S4bCard>
+      <div class="s4b-gap s4b-link">
         <h2 class="s4b-h">{props.title}</h2>
         <Line text={props.roleLine} />
         <Line text={props.expiresLine} />
         <p class="s4b-inv__url" data-invite-url>{props.url}</p>
-        <p class="s4b-alert s4b-inv__once" role="note">{props.once}</p>
+        <p class="s4b-alert s4b-inv__once" role="note"><InfoIcon /><span>{props.once}</span></p>
         <div class="s4b-pair">
-          <Button variant="primary" size="sm" onClick={props.onCopy}>{props.copyLabel}</Button>
-          <Button variant="secondary" size="sm" onClick={props.onShare}>{props.shareLabel}</Button>
+          <Button variant="primary" onClick={props.onCopy}>{props.copyLabel}</Button>
+          <Button variant="secondary" onClick={props.onShare}>{props.shareLabel}</Button>
         </div>
       </div>
     </S4bCard>

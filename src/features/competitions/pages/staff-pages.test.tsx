@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { LocationProvider } from 'preact-iso';
 import type { CpActions } from '../actions';
 import { CpCallError } from '../data/cp-callables';
+import { forgetCompNames, rememberCompName } from '../data/comp-name-hint';
 import type { MatchDoc, StaffRole } from '../data/types';
 import { taipeiMs } from '../format';
 import { loadCompetitionsDict } from '../i18n';
@@ -110,7 +111,8 @@ function rowOf(view: { container: Element }, name: string): Element | null {
 
 function removeIn(row: Element | null): HTMLButtonElement | null {
   if (!row) return null;
-  return [...row.querySelectorAll('button')].find((button) => (button.textContent ?? '').trim() === '移除') ?? null;
+  // 新外觀卡 4-D：移除改成垃圾桶圖示鈕，報讀名稱帶對象（「移除 成員 3」），用 aria-label 開頭找。
+  return [...row.querySelectorAll('button')].find((button) => (button.getAttribute('aria-label') ?? '').startsWith('移除')) ?? null;
 }
 
 function staffNames(view: { container: Element }): string[] {
@@ -192,6 +194,23 @@ describe('指派頁與我的場次', () => {
     // 主辦（primary）可以移除共同主辦以外的記分角色，與個人主辦相同
     expect(removeIn(rowOf(view, '成員 3'))).not.toBeNull();
     expect(view.container.textContent ?? '').toContain('指派記分員');
+    // 新外觀卡 4-D：垃圾桶報讀名稱帶對象；代表那條路已讀到賽事，頁首放賽事名小字（不多讀）
+    expect(removeIn(rowOf(view, '成員 3'))?.getAttribute('aria-label')).toBe('移除 成員 3');
+    expect(view.container.querySelector('.cps-top__ctx')?.textContent ?? '').not.toBe('');
+  });
+
+  it('頁首賽事名小字：主辦那條路不讀賽事，用報隊管理、排賽程記下的名稱；沒記過就不畫（第 4 批 3.2）', async () => {
+    rememberCompName('cup', '記憶示範盃');
+    const repo = staffRepo();
+    const view = draw({ actor: hostActor, repo, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
+    expect(await screen.findByText('我自己')).toBeTruthy();
+    expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites']);
+    expect(view.container.querySelector('.cps-top__ctx')?.textContent).toBe('記憶示範盃');
+    view.unmount();
+    forgetCompNames();
+    const bare = draw({ actor: hostActor, repo: staffRepo(), actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
+    expect(await screen.findByText('我自己')).toBeTruthy();
+    expect(bare.container.querySelector('.cps-top__ctx')).toBeNull();
   });
 
   it('代表指派自己當記分員後，staff 只有記分角色，標籤顯示主辦＋記分員', async () => {

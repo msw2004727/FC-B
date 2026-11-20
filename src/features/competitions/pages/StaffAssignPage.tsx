@@ -18,6 +18,7 @@ import {
   type ScoreRole,
 } from '../data/staff-assign';
 import { resolveHostAccess } from '../data/host-access';
+import { recallCompName, rememberCompName } from '../data/comp-name-hint';
 import type { CompetitionDoc, MatchDoc, StaffAssignment } from '../data/types';
 import type { CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
@@ -35,26 +36,35 @@ function routeUid(env: CpInjectedEnv): string {
   return new URLSearchParams(window.location.search).get('uid') ?? '';
 }
 
-function checkboxLabel(match: MatchDoc, venues: CompetitionDoc['venues']): string {
+/** 一場的三段（時間、場地、對戰）與完整的一句（報讀名稱）。跨日的時間是「M/D HH:MM」，日期拆出來放在時間上面。 */
+function checkboxParts(match: MatchDoc, venues: CompetitionDoc['venues']): { label: string; day?: string; time: string; venue: string; vs: string } {
   const venue = matchVenueName(match, venues);
   const vs = vsText(match.home.name, match.away.name);
-  if (match.kickoffAt == null) return `${venue} ${vs}`.trim();
-  return `${clockLabel(match.kickoffAt).time} ${venue} ${vs}`.trim();
+  if (match.kickoffAt == null) return { label: `${venue} ${vs}`.trim(), time: '', venue, vs };
+  const clock = clockLabel(match.kickoffAt).time;
+  const cut = clock.lastIndexOf(' ');
+  return {
+    label: `${clock} ${venue} ${vs}`.trim(),
+    ...(cut > 0 ? { day: clock.slice(0, cut) } : {}),
+    time: cut > 0 ? clock.slice(cut + 1) : clock,
+    venue,
+    vs,
+  };
 }
 
 export function assignDays(ct: CompetitionsT, matches: readonly MatchDoc[], venues: CompetitionDoc['venues']): AssignDayGroup[] {
-  const labeled = matches.map((match) => ({ match, label: checkboxLabel(match, venues) }));
+  const labeled = matches.map((match) => ({ match, parts: checkboxParts(match, venues) }));
   const grouped = groupByCompetitionDay(labeled.map((row) => ({ ...row, kickoffAt: row.match.kickoffAt })));
   const days = grouped.days.map((group) => ({
     key: group.key,
     heading: dayHeadingText(group.month, group.day, ct(WEEKDAYS[group.weekday] ?? 'weekdaySun')),
-    matches: group.items.map((item) => ({ id: item.match.id, label: item.label })),
+    matches: group.items.map((item) => ({ id: item.match.id, ...item.parts })),
   }));
   if (grouped.undated.length > 0) {
     days.push({
       key: 'tbd',
       heading: ct('timeTbd'),
-      matches: grouped.undated.map((item) => ({ id: item.match.id, label: item.label })),
+      matches: grouped.undated.map((item) => ({ id: item.match.id, ...item.parts })),
     });
   }
   return days;
@@ -73,6 +83,8 @@ function StaffAssignView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   const [list, setList] = useState<StaffAssignment[]>([]);
   const [matches, setMatches] = useState<MatchDoc[]>([]);
   const [venues, setVenues] = useState<CompetitionDoc['venues']>([]);
+  // 頁首賽事名小字：這頁讀到賽事文件（代表那條路、或需要場地名）就用它，否則用報隊管理、排賽程記下的名稱（不為名稱多讀）。
+  const [compName, setCompName] = useState<string | undefined>(() => recallCompName(cid));
   const [person, setPerson] = useState('');
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [role, setRole] = useState<ScoreRole>('scorer');
@@ -117,6 +129,9 @@ function StaffAssignView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       const competition = needVenue ? (access.competition ?? await env.repo.getCompetition(cid)) : null;
       if (!alive) return;
       setVenues(competition?.venues ?? []);
+      const loadedComp = competition ?? access.competition;
+      if (loadedComp) rememberCompName(cid, loadedComp.name);
+      setCompName(loadedComp?.name ?? recallCompName(cid));
       setList(staffList);
       setMatches(matchList);
       const wanted = routeUid(env);
@@ -187,6 +202,7 @@ function StaffAssignView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
         message={ct('loadFailed')}
         backLabel={ct('backToCompetition')}
         onBack={() => route(`/competitions/${cid}`)}
+        failed
       />
     );
   }
@@ -199,6 +215,7 @@ function StaffAssignView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   return (
     <StaffAssignScreen
       title={ct('staffTitle')}
+      context={compName}
       people={assignPeople(list, uid, labels).map((item) => ({ id: item.uid, name: item.name }))}
       person={person}
       onPerson={setPerson}

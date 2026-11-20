@@ -1,4 +1,4 @@
-// 預覽共用骨架。主辦後台走平面卡片；球員與公開頁沿用賽事 cps 卡片。
+// 預覽共用骨架。新外觀起主辦後台與球員、公開頁同一種玻璃卡（cps-card）。
 
 import type { ComponentChildren, JSX } from 'preact';
 import { useState } from 'preact/hooks';
@@ -58,13 +58,15 @@ export function S4bFrame({
 }
 
 export function S4bCard({
-  plain = false,
+  class: className,
   children,
 }: {
+  /** 舊參數：主辦後台原本是平面卡；新外觀（第 4 批卡 4-D）一律玻璃卡，參數留著讓示範畫面不必改。 */
   plain?: boolean;
+  class?: string;
   children: ComponentChildren;
 }): JSX.Element {
-  return <section class={plain ? 's4b-plain' : 'cps-card'}>{children}</section>;
+  return <section class={className ? `cps-card ${className}` : 'cps-card'}>{children}</section>;
 }
 
 export function Line({

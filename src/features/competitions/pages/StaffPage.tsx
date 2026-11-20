@@ -18,6 +18,7 @@ import {
   type StaffViewerKind,
 } from '../data/staff-assign';
 import { resolveHostAccess } from '../data/host-access';
+import { recallCompName, rememberCompName } from '../data/comp-name-hint';
 import type { InviteDoc, StaffAssignment, StaffAssignmentRole } from '../data/types';
 import { formatTaipeiShort } from '../format';
 import type { CpInjectedEnv } from '../env';
@@ -103,6 +104,8 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
   const [removeError, setRemoveError] = useState<string | null>(null);
   // 俱樂部目前代表：自己那一列顯示主辦（後端沒有代表的主辦 staff 文件）。
   const [clubRep, setClubRep] = useState(false);
+  // 頁首賽事名小字：代表那條路已讀到賽事就用它，否則用報隊管理、排賽程記下的名稱（不為名稱多讀）。
+  const [compName, setCompName] = useState<string | undefined>(() => recallCompName(cid));
   const repKey = env.actor.repClubs.map((club) => club.id).join('\n');
   const repPending = env.actor.repClubsPending === true;
 
@@ -140,6 +143,8 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
       setInvites(open.rows);
       setInvitesFailed(!open.ok);
       setClubRep(access.clubRep);
+      if (access.competition) rememberCompName(cid, access.competition.name);
+      setCompName(access.competition?.name ?? recallCompName(cid));
       setViewer(viewerKind(staff?.roles ?? [], isCpAdmin(env.actor.role), access.clubRep));
       setPhase('ready');
     })().catch(() => {
@@ -196,7 +201,7 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
   if (env.actor.authPending || repPending || phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
   if (phase === 'error') {
     return (
-      <StaffDeniedScreen title={ct('staffTitle')} message={ct('loadFailed')} backLabel={ct('backToCompetition')} onBack={back} />
+      <StaffDeniedScreen title={ct('staffTitle')} message={ct('loadFailed')} backLabel={ct('backToCompetition')} onBack={back} failed />
     );
   }
   if (phase === 'denied' || !viewer || !env.actor.uid) {
@@ -217,6 +222,8 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
     <StaffListScreen
       viewerRole={viewer}
       title={ct('staffTitle')}
+      context={compName}
+      removeLabel={(name) => ct('removePlayer', { name })}
       rows={toRows(ct, clubRep ? withRepSelf(list, uid) : list, uid, viewer)}
       onBack={back}
       onAssign={() => route(`/competitions/${cid}/staff/assign`)}
