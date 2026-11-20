@@ -423,8 +423,8 @@ describe('射手榜分頁', () => {
     }), CompetitionDetailPage);
     fireEvent.click(await screen.findByRole('tab', { name: '射手榜' }));
     const stalled = await screen.findByText('射手榜已停止更新');
-    expect(stalled.classList.contains('s4-banner')).toBe(true);
-    expect(stalled.classList.contains('s4-banner--quiet')).toBe(true);
+    // 新外觀卡 3-4：停更提示換成這一頁自己的 class（原本斷言 s4-banner、s4-banner--quiet 兩個 class）
+    expect(stalled.classList.contains('cp-sc__stall')).toBe(true);
     expect(screen.getAllByText('王一').length).toBeGreaterThan(0);
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
     expect(screen.queryByText('mt_secret')).toBeNull();

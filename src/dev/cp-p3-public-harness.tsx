@@ -51,11 +51,11 @@ export const P3_SHOTS: Record<string, Shot> = {
     clicks: ['積分'],
     anchor: '屏東墾丁南國陽光示範隊',
   },
-  // 排序規則：正式版沒有收合列（規則卡一直展開），這裡第一張直接捲到規則卡
+  // 排序規則：新外觀卡 3-4 改成積分表卡片底部的收合列，這裡點開後捲到規則清單
   'p3-stand-rules': {
     page: CompetitionDetailPage,
     env: () => detailLiveEnv(),
-    clicks: ['積分'],
+    clicks: ['積分', '排序規則'],
     anchor: '先比積分，高者在前',
     scrollTo: '.cpm-rules',
   },

@@ -496,7 +496,14 @@ describe('同分查詢、裁定與恢復', () => {
     draw(detailEnv({
       standings: [standing({ ranking: 'goalDiffFirst', rows: TIE_ROWS, hasUnresolvedTie: false })],
     }), CompetitionDetailPage);
+    // 新外觀卡 3-4：排序規則預設收合，按了才出現清單
+    expect(screen.queryByRole('list')).toBeNull();
+    const fold = screen.getByRole('button', { name: '排序規則' });
+    expect(fold.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(fold);
+    expect(fold.getAttribute('aria-expanded')).toBe('true');
     const rules = screen.getByRole('list');
+    expect(fold.getAttribute('aria-controls')).toBe(rules.id);
     expect(rules.textContent ?? '').toContain('先比積分，高者在前');
     expect(rules.textContent ?? '').toContain('積分相同，比全組淨勝');
     expect(rules.textContent ?? '').toContain('再比直接對戰積分');

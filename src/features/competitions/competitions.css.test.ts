@@ -98,20 +98,24 @@ describe('記分板共用元件與窄體數字字型（第 0 批卡 0-6）', () 
   });
 });
 
-describe('積分榜欄寬（實量覆核 7.3：360 寬隊名只剩一個字）', () => {
-  it('固定欄縮窄後，360 寬隊名文字至少放得下 4 個中文字加省略號，且仍單行省略', () => {
+describe('積分榜欄寬（實量覆核 7.3；新外觀卡 3-4 改成 <table>，整段取代原本 .cp3-st__r 格線那一條）', () => {
+  it('固定欄寬照 3.2，360 寬隊名文字至少放得下 4 個中文字加省略號，且仍單行省略', () => {
     const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');
-    const row = css.match(/\.cp3-st__r \{([^}]*)\}/)?.[1] ?? '';
-    const cols = row.match(/grid-template-columns: ([^;]+);/)?.[1] ?? '';
-    expect(cols).toBe('24px minmax(0, 1fr) 18px 18px 18px 18px 36px 28px 28px');
-    const gap = Number(row.match(/column-gap: (\d+)(?:px)?;/)?.[1] ?? NaN);
-    const fixed = cols.split(' ').filter((c) => c.endsWith('px')).reduce((sum, c) => sum + Number.parseFloat(c), 0);
-    const pad = Number(css.match(/\.cp3-st__r \.t \{[^}]*padding-left: (\d+)px;/)?.[1] ?? NaN);
-    // 360 寬正式站：頁面內距 8×2（新外觀卡 1b-2 由 16 改 8，外框另計）、外框 .app-main 8×2、卡片內距 10×2、卡片邊框 1×2 → 列寬 306；隊徽 20、隊徽與字距 6
-    const text = 306 - fixed - gap * 8 - pad - 20 - 6;
-    // 正文小字 13px：4 個字 52 加省略號約 13
+    const num = (re: RegExp) => Number(css.match(re)?.[1] ?? NaN);
+    const fixed = num(/\.cp-tbl--st th:nth-child\(1\) \{ width: (\d+)px; \}/)
+      + num(/\.cp-tbl--st th:nth-child\(6\) \{ width: (\d+)px; \}/) * 4
+      + num(/\.cp-tbl--st th:nth-child\(7\) \{ width: (\d+)px; \}/)
+      + num(/\.cp-tbl--st th:nth-child\(8\) \{ width: (\d+)px; \}/)
+      + num(/\.cp-tbl--st th:nth-child\(9\) \{ width: (\d+)px; \}/);
+    expect(fixed).toBe(24 + 18 * 4 + 36 + 28 + 44);
+    // 360 寬：.app-main 8×2、.cps-root 8×2、表格卡左 10 右 1 → 表格 317；隊名格內距 2＋4、隊徽 24、隊徽與字距 6
+    const text = 360 - 16 - 16 - 11 - fixed - 6 - 24 - 6;
+    // 13px：4 個字 52 加省略號約 13
     expect(text).toBeGreaterThanOrEqual(13 * 4 + 13);
-    expect(css).toMatch(/\.cp3-st__r > \* \{[^}]*min-width: 0;[^}]*white-space: nowrap;/);
-    expect(css).toMatch(/\.cp3-st__r \.t \{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
+    expect(css).toMatch(/\.cp-tbl \{[^}]*table-layout: fixed;/);
+    expect(css).toMatch(/\.cp-tbl th, \.cp-tbl td \{[^}]*white-space: nowrap;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
+    expect(css).toMatch(/\.cp3-tn em \{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
+    // 名次格不裁：「同分／裁定」往外擴的點擊區不被 overflow 裁掉
+    expect(css).toMatch(/\.cp-tbl td\.rk \{[^}]*overflow: visible;/);
   });
 });
