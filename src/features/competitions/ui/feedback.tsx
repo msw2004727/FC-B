@@ -143,7 +143,10 @@ export function CpError({
   return <p class="cps-note cps-warn" role="alert">{text}</p>;
 }
 
-/** 登錄表單不符資格時：原因＋回名單頁。ENTRY_STATUS 不是伺服器代碼，不走 reasonText。 */
+/**
+ * 登錄表單不符資格時：原因＋回名單頁。ENTRY_STATUS 不是伺服器代碼，不走 reasonText。
+ * 長相與記分頁「沒有記分權限＋回賽程」同一種（設計總監 11-21 05:08）：一張卡、中性字色的一句話、整列寬的次要鈕；紅色只留給取消與危險。
+ */
 export function RosterBlocked({
   reason,
   cid,
@@ -157,26 +160,14 @@ export function RosterBlocked({
   const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
-  const href = `/competitions/${cid}/entries/${enId}`;
+  const text = reason === 'ENTRY_STATUS' ? ct('rosterEntryClosed') : reasonText(ct, reason);
   return (
     <CpFrame title={ct('rosterTitle')}>
       <CpCard>
-        {reason === 'ENTRY_STATUS'
-          ? <p class="cps-note cps-warn" role="alert">{ct('rosterEntryClosed')}</p>
-          : <CpError reason={reason} />}
-        <p style="margin-top:12px">
-          <a
-            class="cps-link"
-            href={href}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation(); // 不讓 preact-iso LocationProvider 的全域連結攔截再推一筆歷史（11-20 預演：返回要按兩次）。
-              route(href);
-            }}
-          >
-            {ct('backToRoster')}
-          </a>
-        </p>
+        <p class="cps-note" role="alert">{text}</p>
+        <div class="cps-actions">
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/entries/${enId}`)}>{ct('backToRoster')}</Button>
+        </div>
       </CpCard>
     </CpFrame>
   );

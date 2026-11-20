@@ -413,6 +413,14 @@ export function scheduleHeading(
  * 積分相同但該列已分出名次（hasUnresolvedTie 不是 true）不標、不改名次，但 samePoints 仍是 true。
  * decidedBy 有值時不當待裁定，同分小標也不掛（改由裁定小標負責）。
  */
+/**
+ * 積分榜這一組要不要用寬的「進/失」「淨勝」欄（設計總監 11-21 05:12）：有人進球或失球 ≥ 100、或淨勝絕對值 ≥ 100 時才要。
+ * 同一張表欄寬一致；不同組別各自判斷。
+ */
+export function standingsNeedWide(lines: readonly Pick<StandingLine, 'goalsFor' | 'goalsAgainst' | 'goalDiff'>[]): boolean {
+  return lines.some((line) => line.goalsFor >= 100 || line.goalsAgainst >= 100 || Math.abs(line.goalDiff) >= 100);
+}
+
 export function standingLines(doc: StandingDoc): StandingLine[] {
   const rows = doc.rows.map((row, index) => ({ row, index }))
     .sort((a, b) => a.row.rank - b.row.rank || a.index - b.index)

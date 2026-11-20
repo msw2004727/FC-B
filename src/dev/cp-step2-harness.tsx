@@ -67,7 +67,12 @@ const PAGES: Record<string, ComponentType> = {
   'form-error': JoinRosterPage,
   'form-custom-pos': JoinRosterPage,
   'form-ineligible': JoinRosterPage,
+  // 第 3 批小修補拍（設計總監 05:08）：代為新增表單填 24 字真實姓名（資料同 form-rep，畫完後由 OPEN 填字）
+  'form-long-name': AddRosterPage,
 };
+
+/** 沿用既有資料的畫面：畫面名稱 → screenEnv 的狀態名。 */
+const ENV_OF: Record<string, string> = { 'form-long-name': 'form-rep' };
 
 function buttonsNamed(name: string): HTMLButtonElement[] {
   return [...document.querySelectorAll('button')].filter((node) => (node.textContent ?? '').replace(/\s+/g, ' ').trim() === name);
@@ -119,6 +124,14 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('自訂位置輸入框', () => [...document.querySelectorAll('label')].some((node) => (node.textContent ?? '').trim().startsWith('自訂')));
   },
   'form-ineligible': () => until('資格不符', () => hasText('只有俱樂部成員可以做這個操作')),
+  'form-long-name': async () => {
+    await until('真實姓名欄', () => !!document.querySelector('.ui-input input'));
+    const input = document.querySelector<HTMLInputElement>('.ui-input input');
+    if (!input) return;
+    input.value = '上官歐陽司徒長孫東方西門南宮慕容令狐皇甫尉遲諸葛';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await until('24 字姓名', () => input.value.length === 24 && !!document.querySelector('[data-public-name]'));
+  },
 };
 
 const Page = PAGES[screenName] ?? NewCompetitionPage;
@@ -134,13 +147,13 @@ async function start(): Promise<void> {
       {framed ? (
         <div class="app-shell ui-app-shell">
           <main class="app-main">
-            <CpEnvProvider value={screenEnv(screenName)}>
+            <CpEnvProvider value={screenEnv(ENV_OF[screenName] ?? screenName)}>
               <Page />
             </CpEnvProvider>
           </main>
         </div>
       ) : (
-        <CpEnvProvider value={screenEnv(screenName)}>
+        <CpEnvProvider value={screenEnv(ENV_OF[screenName] ?? screenName)}>
           <Page />
         </CpEnvProvider>
       )}

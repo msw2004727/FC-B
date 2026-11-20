@@ -16,7 +16,8 @@ afterEach(() => {
 });
 
 describe('賽事連結只推一筆歷史', () => {
-  it('名單擋下頁的「回本隊名單」連結：點一次 history.length 只加 1', () => {
+  // 新外觀第 3 批小修（設計總監 05:08）：「返回名單」從帶底線的連結改成整列寬的次要鈕（原本找 role=link、href 是名單頁）
+  it('名單擋下頁的「返回名單」：點一次 history.length 只加 1', () => {
     history.replaceState(null, '', '/competitions/cp_1/entries/en_1/add');
     render(
       <LocationProvider>
@@ -24,9 +25,10 @@ describe('賽事連結只推一筆歷史', () => {
       </LocationProvider>,
     );
     const before = history.length;
-    const link = screen.getAllByRole('link').find((el) => el.getAttribute('href') === '/competitions/cp_1/entries/en_1');
-    expect(link).toBeTruthy();
-    fireEvent.click(link!);
+    const back = screen.getByRole('button', { name: '返回名單' });
+    expect(back.className).toContain('ui-button--secondary');
+    expect(screen.getByRole('alert').textContent).toBe('這份報隊目前不能登錄名單');
+    fireEvent.click(back);
     expect(location.pathname).toBe('/competitions/cp_1/entries/en_1');
     expect(history.length).toBe(before + 1);
   });
