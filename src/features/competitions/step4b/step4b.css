@@ -206,17 +206,6 @@ h3.s4b-h {
 .s4b-between > .s4b-k { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .s4b-m__top .ui-badge { flex: 0 0 auto; }
 
-.s4b-alert {
-  margin: 0;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--d2-line);
-  color: var(--d2-text);
-  font-size: 13px;
-  line-height: 20px;
-  font-weight: 600;
-  white-space: nowrap;
-}
 .s4b-err {
   margin: 0;
   color: var(--color-danger-fg);
