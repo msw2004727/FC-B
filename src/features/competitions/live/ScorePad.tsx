@@ -728,14 +728,33 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   if (props.topBanner) {
     alerts.push(<p key="tab" class="s4-banner" role="status">{props.topBanner}</p>);
   }
+  const hasQueuedLine = (props.heldLines ?? []).some((line) => line.key === 'queued');
   for (const line of props.heldLines ?? []) {
+    // 顧問 §3.459 (a)：紅色那行整行可點，點了開同一個「未套用的動作」面板（360×640 紀錄多時原本那顆鈕會被擠出畫面）。
+    // 外層 <p role> 保留讓讀屏照舊念；文字包進原生按鈕。不改行高與排版；可點範圍用 ::after 往上下延伸，
+    // 上方不超過與記分板之間的 8px 空隙；下方有黃色那行時可蓋到它（s4-banner--tapq），沒有時也只到 8px 空隙。
+    const tap = line.key === 'held';
     alerts.push(
       <p
         key={`held-${line.key}`}
-        class={line.key === 'queued' ? 's4-banner s4-banner--saved' : 's4-banner s4-banner--held'}
+        class={line.key === 'queued'
+          ? 's4-banner s4-banner--saved'
+          : `s4-banner s4-banner--held${tap ? ` s4-banner--tap${hasQueuedLine ? ' s4-banner--tapq' : ''}` : ''}`}
         role={line.alert ? 'alert' : 'status'}
       >
-        {line.text}
+        {tap ? (
+          <button
+            type="button"
+            class="s4-banner__tap"
+            disabled={padOff}
+            onClick={() => {
+              // 記分區停用（被接手、唯讀）時不開；不只靠 disabled 屬性。
+              if (!padOff) setUnappliedOpen(true);
+            }}
+          >
+            {line.text}
+          </button>
+        ) : line.text}
       </p>,
     );
   }

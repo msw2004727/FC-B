@@ -43,6 +43,7 @@ export const U2_SCREENS = [
   'u2-long-name',
   // 第 4 步 A（顧問 11-20）：被拒擋住送出、階段動作被擋、不能復原的確認框、看這張牌。
   'a1-held',
+  'a1-held-many',
   'a1-held-sheet',
   'a1-blocked-ht',
   'a1-resumed',
@@ -70,6 +71,7 @@ const ANCHORS: Record<string, string> = {
   'u2-storage-unavailable': '離線紀錄無法保存',
   'u2-long-name': '34:00',
   'a1-held': '之後記的 2 筆先存在這支手機',
+  'a1-held-many': '之後記的 2 筆先存在這支手機',
   'a1-held-sheet': '重新套用',
   'a1-blocked-ht': '先處理沒送出的紀錄，才能開始下半場',
   'a1-resumed': '終場',
@@ -364,6 +366,18 @@ function seedOf(name: string): Seed {
       reader: true,
     };
   }
+  if (name === 'a1-held-many') {
+    // 顧問 §3.459 (a)：360×640 紀錄超過約 4 筆時「未套用的動作」鈕被擠出畫面；紅色那行可點的量測用。
+    return {
+      match: match({ status: 'live', rev: 4, score: { home: 3, away: 1 }, clockBase: clock(31 * 60, 'h1', true) }),
+      events: [goalAt(1, 'home', 3), goalAt(2, 'away', 9), goalAt(3, 'home', 15), goalAt(4, 'home', 22)],
+      pending: [
+        rejectedEntry('rej-goal-away-00011', { kind: 'goal', side: 'away', plId: 'pl_hf10', goalKind: 'normal', matchSecond: 1500 }, 5, 'conflict', NOW - 60_000),
+        pendingGoal('pend-goal-home-00012', 'home', 'pl_th9', NOW - 30_000),
+        pendingGoal('pend-goal-home-00013', 'home', 'pl_th9', NOW - 10_000),
+      ],
+    };
+  }
   if (name === 'a1-held' || name === 'a1-held-sheet') {
     return {
       match: match({ status: 'live', rev: 1, score: { home: 1, away: 0 }, clockBase: clock(31 * 60, 'h1', true) }),
@@ -538,6 +552,9 @@ async function until(label: string, ready: () => boolean): Promise<void> {
 
 const OPEN: Record<string, () => Promise<void>> = {
   'a1-held': async () => {
+    await until('待送列', () => document.querySelectorAll('.s4-pending').length >= 2);
+  },
+  'a1-held-many': async () => {
     await until('待送列', () => document.querySelectorAll('.s4-pending').length >= 2);
   },
   'a1-held-sheet': async () => {

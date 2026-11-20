@@ -257,6 +257,38 @@
   background: var(--color-danger-bg);
   color: var(--color-danger-fg);
 }
+/* 顧問 §3.459 (a)：紅色那行整行可點。外觀與行高不變；::after 相對 <p> 往上下延伸補可點範圍：
+   上方 8px（＝.s4-root 與記分板之間的 gap，不蓋到記分板）；下方沒有黃色那行時 8px（不蓋到紀錄列），
+   有黃色那行時 12px（4px 行距＋黃色那行 8px，蓋到黃色那行沒關係）。總高 24＋8＋8＝40 或 24＋8＋12＝44。 */
+.s4-banner--tap { position: relative; }
+.s4-banner__tap {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.s4-banner__tap::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8px;
+  bottom: -8px;
+}
+.s4-banner--tapq .s4-banner__tap::after { bottom: -12px; }
+.s4-banner__tap:disabled { cursor: default; }
+.s4-banner__tap:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}
 .s4-wake {
   background: var(--color-bg-elevated);
   color: var(--color-text-primary);
