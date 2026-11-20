@@ -186,22 +186,18 @@ export function HostLine({
   onOpenClub: (teamId: string) => void;
 }): JSX.Element | null {
   if (!hostLineShown(clubTeamId, contactNote)) return null;
-  if (!clubTeamId) {
-    return (
-      <>
-        <span class="cpm-h">{ct('host')}</span>
-        <p class="cpm-public">{contactNote}</p>
-      </>
-    );
-  }
-  const clubPath = clubPagePath(clubTeamId);
+  // 個人主辦與俱樂部主辦同一種結構，只是沒有「聯絡主辦」鈕（設計 07:35；原本個人主辦分支只畫「主辦」＋聯絡文字，
+  // 招募卡的主辦列又因頂部已有主辦列而藏起來，名稱與「個人主辦」標籤兩邊都不見——獨立審 B P2）。
+  // 個人主辦的名稱只在招募中顯示（hostType 只在招募中傳），與 409c4d77 公開範圍相同。
+  const clubPath = clubTeamId ? clubPagePath(clubTeamId) : null;
+  const showName = hostName !== '' && (clubTeamId != null || hostType != null);
   return (
     <>
       <div class="cpm-contact">
         <span class="cpm-h">{ct('host')}</span>
-        {hostName ? <span class="cpm-host">{hostName}</span> : null}
+        {showName ? <span class="cpm-host">{hostName}</span> : null}
         {hostType ? <StatusTag kind="neutral" label={hostType} /> : null}
-        <Button
+        {clubTeamId && clubPath ? <Button
           href={clubPath}
           variant="secondary"
           size="sm"
@@ -212,7 +208,7 @@ export function HostLine({
           }}
         >
           {ct('contactHost')}
-        </Button>
+        </Button> : null}
       </div>
       {contactNote ? <p class="cpm-public">{contactNote}</p> : null}
     </>

@@ -691,8 +691,8 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
     cells.push({ k: ct('boardNext'), n: time, now: true, say: `${ct('boardNext')} ${time}` });
   }
   if (sb && sb.today > 0) {
-    const say = ct('todayOnly', { n: sb.today });
-    const cut = splitCount((n) => ct('todayOnly', { n }), sb.today, 0);
+    const say = ct('lineTodayOnly', { n: sb.today });
+    const cut = splitCount((n) => ct('lineTodayOnly', { n }), sb.today, 0);
     cells.push(cut ? { k: cut.k, n: String(cut.n), tail: cut.tail, say } : { k: say, n: '', say });
   }
   if (sb && sb.pending > 0) {

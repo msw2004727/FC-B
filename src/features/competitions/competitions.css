@@ -305,6 +305,16 @@
 .cps-root .ui-textarea textarea::placeholder,
 .d2-panel .ui-input input::placeholder,
 .d2-panel .ui-textarea textarea::placeholder { color: var(--d2-text-3); }
+/* 停用欄位：補回被上面欄位規則蓋掉的停用樣子；text-fill 與 opacity 給 iOS LINE（設計 07:25） */
+.cps-root .ui-input input:disabled,
+.cps-root .ui-select select:disabled,
+.cps-root .ui-textarea textarea:disabled,
+.d2-panel .ui-input input:disabled,
+.d2-panel .ui-select select:disabled,
+.d2-panel .ui-textarea textarea:disabled {
+  background: var(--d2-off-bg); box-shadow: inset 0 0 0 1px var(--d2-off-line);
+  color: var(--d2-text-3); -webkit-text-fill-color: var(--d2-text-3); opacity: 1;
+}
 .cps-root .ui-input label,
 .cps-root .ui-select label,
 .cps-root .ui-textarea label,
@@ -757,12 +767,10 @@
 /* 主辦列（頂部下半）：小字「主辦」｜名稱｜（招募中）主辦類型｜靠右「聯絡主辦」小鈕；聯絡文字接下一行 */
 .cpm-contact { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 52px; }
 .d2-foot .cpm-h { flex: 0 0 auto; font-size: 12px; line-height: 20px; font-weight: 400; color: var(--d2-text-2); }
-.d2-foot > .cpm-h { display: block; padding-top: 10px; }
 .cpm-host { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
 .cpm-contact .ui-badge { flex: 0 0 auto; }
 .cpm-contact .ui-button { flex: 0 0 auto; min-inline-size: 0; margin-left: auto; padding: 0 12px; }
 .cpm-public { margin: -4px 0 12px; font-size: 13px; line-height: 20px; color: var(--d2-text-2); overflow-wrap: anywhere; }
-.d2-foot > .cpm-h + .cpm-public { margin: 0 0 12px; font-size: 15px; line-height: 24px; color: var(--d2-text); }
 
 /* 細線分列（共用，第 3、4 批引用）：直接子層每列最小高 44、列與列之間 1px 細線；--48 是列高 48 的變體。只管列高與分線，列內怎麼排由各頁決定 */
 .d2-lines > * { min-height: 44px; }

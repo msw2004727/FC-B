@@ -443,6 +443,9 @@ describe('賽程管理按鈕', () => {
     const keys = [...view.container.querySelectorAll('.cph-sb .d2-cell__k')].map((el) => el.textContent);
     expect(keys[0]).toBe('進行中');
     expect(keys).toContain('待確認');
+    // 今天那一格用字典鍵 lineTodayOnly；鍵名寫錯時 ct() 會回傳鍵名本身，整格變成英文（設計 07:26）
+    expect(keys).toContain('今天');
+    expect(view.container.querySelector('.cph-sb')?.textContent ?? '').not.toMatch(/[A-Za-z]{4,}/);
     expect(view.container.querySelector('.cph-sb .d2-cells')?.getAttribute('aria-hidden')).toBe('true');
     expect(view.container.querySelector('.cph-sb .cps-vh')?.textContent ?? '').toContain('待確認 1 場');
     view.unmount();
@@ -984,6 +987,9 @@ describe('聯絡主辦', () => {
     expect(foot?.querySelector('.cpm-h')?.textContent).toBe('主辦');
     expect(screen.queryByRole('heading', { name: '聯絡主辦' })).toBeNull();
     expect(foot?.querySelector('.cpm-public')?.textContent).toBe('賽前到集合點找王示範');
+    // 獨立審 B P2：招募中個人主辦有聯絡文字時，主辦名稱與「個人主辦」標籤要在頂部主辦列（招募卡的主辦列因此藏起來）
+    expect(foot?.querySelector('.cpm-contact .cpm-host')?.textContent ?? '').not.toBe('');
+    expect(foot?.querySelector('.cpm-contact')?.textContent ?? '').toContain('個人主辦');
     expect(screen.queryByRole('link', { name: '聯絡主辦' })).toBeNull();
     expect(screen.queryByRole('button', { name: '私訊主辦' })).toBeNull();
   });
