@@ -13,7 +13,7 @@ import type { LockManager } from '../live/data/tab-lock';
 import { RELEASE_WAIT_MS, useScoring, type ScoringDeps } from '../live/useScoring';
 import { LIVE_COPY, pauseRemain, teamAction } from '../live/copy';
 import { loadCompetitionsDict } from '../i18n';
-import { SCORE_FULLSCREEN_CLASS, ScoringScreen, SignedOut, scoringExitPath } from './ScoringPage';
+import { SCORE_FULLSCREEN_CLASS, ScoringScreen, SignedOut, scoringBackLabel, scoringExitPath } from './ScoringPage';
 
 const CID = 'comp-u2';
 const MT = 'mt-u2';
@@ -176,11 +176,12 @@ describe('正式記分頁權限', () => {
     expect(await screen.findByText(LIVE_COPY.noScorePermission)).toBeTruthy();
     expect(screen.queryByText(LIVE_COPY.assignScorerHint)).toBeNull();
     expect(screen.queryByRole('button', { name: '開賽' })).toBeNull();
-    expect(screen.getByRole('button', { name: LIVE_COPY.backToSchedule })).toBeTruthy();
+    // §3.508：陌生人（已登入、沒有任何角色）的回去鈕去自己的場次，鈕字跟著是「回我的場次」。
+    expect(screen.getByRole('button', { name: LIVE_COPY.backToMyMatches })).toBeTruthy();
     // 卡 2-6（施工-第2批 3.26）：第 1b 批「一句話＋回去的鈕」版面，鎖頭；「回賽程」是實心主要鈕。
     expect(document.querySelector('.cps-gate .cps-ico')).toBeTruthy();
     expect(screen.getByText(LIVE_COPY.noScorePermission).className).toBe('cps-gate__text');
-    expect(screen.getByRole('button', { name: LIVE_COPY.backToSchedule }).classList.contains('ui-button--primary')).toBe(true);
+    expect(screen.getByRole('button', { name: LIVE_COPY.backToMyMatches }).classList.contains('ui-button--primary')).toBe(true);
     expect(document.querySelector('.cps-top')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '記分' })).toBeTruthy();
     // 沒有記分權限時保留 App 外框（顧問審 a7026243 P2-1）。
@@ -908,8 +909,14 @@ describe('§3.506「回賽程」與「離開記分」依身分導頁', () => {
     );
   }
 
+  /** §3.508：鈕字跟著去處——去自己的場次是「回我的場次」，其餘「回賽程」；另一個字不能同時出現。 */
   async function backFromGate(expected: string): Promise<void> {
-    fireEvent.click(await screen.findByRole('button', { name: LIVE_COPY.backToSchedule }));
+    const label = expected === MINE_PAGE ? LIVE_COPY.backToMyMatches : LIVE_COPY.backToSchedule;
+    const other = expected === MINE_PAGE ? LIVE_COPY.backToSchedule : LIVE_COPY.backToMyMatches;
+    const button = await screen.findByRole('button', { name: label });
+    expect(button.closest('.cps-gate__btns')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: other })).toBeNull();
+    fireEvent.click(button);
     await waitFor(() => expect(window.location.pathname).toBe(expected));
   }
 
@@ -937,8 +944,18 @@ describe('§3.506「回賽程」與「離開記分」依身分導頁', () => {
     expect(scoringExitPath(CID, { signedIn: false, isAdmin: true, roles: ['host'], clubRep: true })).toBe(PUBLIC_PAGE);
   });
 
+  it('§3.508 鈕字跟著去處：去自己的場次是「回我的場次」，賽程管理與賽事頁照舊「回賽程」', () => {
+    expect(scoringBackLabel(MINE_PAGE)).toBe('回我的場次');
+    expect(scoringBackLabel(HOST_PAGE)).toBe('回賽程');
+    expect(scoringBackLabel(PUBLIC_PAGE)).toBe('回賽程');
+    expect(LIVE_COPY.backToMyMatches).toBe('回我的場次');
+    expect(LIVE_COPY.signInToScore).toBe('請先登入再記分');
+    expect(LIVE_COPY.noScorePermission).toBe('你沒有這場的記分權限');
+  });
+
   it('主辦：沒有權限畫面的回賽程、記分板的離開記分都去賽程管理', async () => {
     drawAs((await deps({ staffRoles: ['host'], matchIds: [] })).deps);
+    expect(await screen.findByText(LIVE_COPY.noScorePermission)).toBeTruthy();
     await backFromGate(HOST_PAGE);
     cleanup();
     window.history.pushState(null, '', previous);
@@ -965,8 +982,9 @@ describe('§3.506「回賽程」與「離開記分」依身分導頁', () => {
     await backFromGate(HOST_PAGE);
   });
 
-  it('純記分員：回賽程、離開記分都去自己的場次', async () => {
+  it('純記分員：沒有權限畫面是「回我的場次」，離開記分不改字，兩者都去自己的場次', async () => {
     drawAs((await deps({ staffRoles: ['scorer'], matchIds: [MT], expiresAt: NOW })).deps);
+    expect(await screen.findByText(LIVE_COPY.noScorePermission)).toBeTruthy();
     await backFromGate(MINE_PAGE);
     cleanup();
     window.history.pushState(null, '', previous);
@@ -974,8 +992,9 @@ describe('§3.506「回賽程」與「離開記分」依身分導頁', () => {
     await leaveFromPad(MINE_PAGE);
   });
 
-  it('裁判：回賽程、離開記分都去自己的場次', async () => {
+  it('裁判：沒有權限畫面是「回我的場次」，離開記分不改字，兩者都去自己的場次', async () => {
     drawAs((await deps({ staffRoles: ['referee'], matchIds: ['other'] })).deps);
+    expect(await screen.findByText(LIVE_COPY.noScorePermission)).toBeTruthy();
     await backFromGate(MINE_PAGE);
     cleanup();
     window.history.pushState(null, '', previous);
@@ -983,12 +1002,14 @@ describe('§3.506「回賽程」與「離開記分」依身分導頁', () => {
     await leaveFromPad(MINE_PAGE);
   });
 
-  it('未登入：回賽程回公開賽事頁', async () => {
+  it('未登入：句子是「請先登入再記分」（不是沒有權限），回賽程回公開賽事頁', async () => {
     render(
       <LocationProvider>
         <SignedOut cid={CID} />
       </LocationProvider>,
     );
+    expect((await screen.findByText(LIVE_COPY.signInToScore)).className).toBe('cps-gate__text');
+    expect(screen.queryByText(LIVE_COPY.noScorePermission)).toBeNull();
     await backFromGate(PUBLIC_PAGE);
   });
 
