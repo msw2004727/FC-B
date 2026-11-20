@@ -3,7 +3,7 @@
 
 import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { useViewer } from '@/features/profile/data/viewer';
+import { useSettledViewerRole, useViewer } from '@/features/profile/data/viewer';
 import { isViewerPermissionsLoaded } from '@/features/admin-users/data/viewer-ready';
 import type { CpClub } from './access';
 import { getCompetitionsRepo } from './data/cp-repo';
@@ -52,11 +52,15 @@ export function LiveBoundary({
     };
   }, [viewer.uid, loadClubs]);
 
+  // 角色只等 users 文件（settledRole），不等球隊掃描等其餘 viewer 欄位（顧問 11-20：閘門只等角色確定）。
+  // 完整 viewer 到了就以 viewer.role 為準；兩者都沒到時 rolePending，閘門先不判定（Opus 審 P2-1）。
+  const settledRole = useSettledViewerRole(viewer.uid);
+  const fullLoaded = !!viewer.uid && isViewerPermissionsLoaded(viewer);
   const actor: CpActor = {
     uid: viewer.uid,
     authPending: viewer.authPending === true,
-    rolePending: !!viewer.uid && !isViewerPermissionsLoaded(viewer),
-    role: viewer.role,
+    rolePending: !!viewer.uid && !fullLoaded && settledRole === null,
+    role: fullLoaded || settledRole === null ? viewer.role : settledRole,
     displayName: viewer.displayName,
     repClubs,
     repClubsPending,

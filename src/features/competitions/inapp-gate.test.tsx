@@ -32,9 +32,13 @@ const repoBox = vi.hoisted(() => ({
 }));
 
 // createMinimalViewer 保留真的：live.tsx 用它辨認「角色還沒讀到」的最小 viewer。
+const settledBox = vi.hoisted(() => ({ role: null as string | null }));
+
 vi.mock('@/features/profile/data/viewer', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/profile/data/viewer')>()),
   useViewer: () => viewerBox.current,
+  // 「users 文件已讀到、角色已確定」訊號（顧問 11-20）。預設沒有。
+  useSettledViewerRole: (uid: string | null | undefined) => (uid ? settledBox.role : null),
 }));
 
 vi.mock('./rep-clubs', async (importOriginal) => {
@@ -63,6 +67,7 @@ function draw() {
 
 afterEach(() => {
   cleanup();
+  settledBox.role = null;
   gateBox.isPublic = false;
   viewerBox.current.role = 'user';
   viewerBox.current.uid = 'uid_user';
@@ -194,6 +199,68 @@ describe('角色還沒讀到不判定閘門', () => {
       );
       await waitFor(() => expect(onGate).toHaveBeenCalledWith(true, undefined));
       expect(onGate).not.toHaveBeenCalledWith(false, 'denied');
+    } finally {
+      viewerBox.current = saved;
+    }
+  });
+});
+
+// 顧問 11-20：閘門只等角色確定（users 文件），不等球隊掃描等其餘 viewer 欄位。
+describe('角色一確定就判定，不等完整 viewer', () => {
+  async function minimalViewer() {
+    const { createMinimalViewer } = await import('@/features/profile/data/viewer');
+    return createMinimalViewer('uid_user').permissionSources;
+  }
+
+  it('完整 viewer 還沒到、角色已確定是管理員：直接通過，不讀測試員名單', async () => {
+    const saved = viewerBox.current;
+    viewerBox.current = { ...saved, role: 'user', permissionSources: await minimalViewer() } as typeof saved;
+    settledBox.role = 'super_admin';
+    const onGate = vi.fn();
+    try {
+      render(
+        <LocationProvider>
+          <InAppSection onGate={onGate} />
+        </LocationProvider>,
+      );
+      await waitFor(() => expect(onGate).toHaveBeenCalledWith(true, undefined));
+      expect(repoBox.getLaunchTester).not.toHaveBeenCalled();
+    } finally {
+      viewerBox.current = saved;
+    }
+  });
+
+  it('完整 viewer 還沒到、角色已確定是一般用戶且未公開：照常查測試員，不是就 denied', async () => {
+    const saved = viewerBox.current;
+    viewerBox.current = { ...saved, role: 'user', permissionSources: await minimalViewer() } as typeof saved;
+    settledBox.role = 'user';
+    const onGate = vi.fn();
+    try {
+      render(
+        <LocationProvider>
+          <InAppSection onGate={onGate} />
+        </LocationProvider>,
+      );
+      await waitFor(() => expect(onGate).toHaveBeenCalledWith(false, 'denied'));
+      expect(repoBox.getLaunchTester).toHaveBeenCalledWith('uid_user');
+    } finally {
+      viewerBox.current = saved;
+    }
+  });
+
+  it('完整 viewer 到了以它的角色為準（已確定的角色只是先行）', async () => {
+    const saved = viewerBox.current;
+    viewerBox.current = { ...saved, role: 'super_admin', permissionSources: { rolePermissions: null, userGrants: [], customRoles: [] } } as typeof saved;
+    settledBox.role = 'user';
+    const onGate = vi.fn();
+    try {
+      render(
+        <LocationProvider>
+          <InAppSection onGate={onGate} />
+        </LocationProvider>,
+      );
+      await waitFor(() => expect(onGate).toHaveBeenCalledWith(true, undefined));
+      expect(repoBox.getLaunchTester).not.toHaveBeenCalled();
     } finally {
       viewerBox.current = saved;
     }

@@ -26,8 +26,8 @@ export interface CpActor {
   uid: string | null;
   authPending: boolean;
   /**
-   * true＝已登入但完整 viewer（真正的角色）還沒讀到，role 暫時是最小 viewer 的 'user'。
-   * 省略＝已定案（測試與 harness）。
+   * true＝已登入但角色還沒確定（users 文件還沒讀到、完整 viewer 也還沒到），role 暫時是最小 viewer 的 'user'。
+   * users 文件讀到就不再 pending，role 改用已確定的角色，不等球隊掃描（顧問 11-20）。省略＝已定案（測試與 harness）。
    */
   rolePending?: boolean;
   role: string;
