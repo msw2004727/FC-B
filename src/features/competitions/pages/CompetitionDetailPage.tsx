@@ -792,6 +792,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   return (
     <CpFrame
       title={phase === 'recruit' ? ct('detailTitle') : competition.name}
+      userTitle={phase !== 'recruit'}
       menu={frozen ? undefined : (
         <>
           <button
@@ -895,7 +896,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             size="sm"
           />
         </div>
-        <h2 class="cps-title" style="margin-bottom:12px">{competition.name}</h2>
+        <h2 class="cps-title cps-title--user" style="margin-bottom:12px">{competition.name}</h2>
         <dl class="cps-rows">
           <CpRow k={ct('host')}>{hostName(competition, env)}</CpRow>
           <CpRow k={ct('regPeriod')}>
@@ -1136,7 +1137,8 @@ function DivisionBlock({
                 </span>
               </a>
             </div>
-            <Badge tone="success" label={ct('approved')} size="sm" />
+            {/* 顧問 §3.463：長隊名時「已核准」被擠成兩行。只在這一列讓標籤不縮、不換行，隊名讓位省略；不動共用 Badge。 */}
+            <Badge tone="success" label={ct('approved')} size="sm" class="cps-li__tag" />
           </li>
         ))}
       </ul>

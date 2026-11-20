@@ -23,6 +23,16 @@
   flex: 1 1 auto; min-width: 0; margin: 0; font-size: var(--font-size-body-lg);
   line-height: var(--line-height-body-lg); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.cps-top h1.cps-top__user {
+  /* 顧問 §3.460：頂列標題是賽事名稱時（進行中、已結束的詳情頁）最多兩行、超過才省略；固定文字標題維持一行。 */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: var(--line-height-body);
+}
 .cps-iconbtn {
   position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; color: var(--color-text-primary); cursor: pointer;
@@ -72,6 +82,17 @@
 
 .cps-h { margin: 0 0 var(--space-3); font-size: var(--font-size-body-lg); line-height: var(--line-height-body-lg); font-weight: 600; white-space: nowrap; }
 .cps-title { margin: 0; font-size: var(--font-size-title); line-height: var(--line-height-title); font-weight: 700; white-space: nowrap; }
+/* 顧問 §3.460：使用者取的賽事名稱（詳情、建立確認）。長名稱在 360 寬撐出橫向捲動；只在名稱標題加修飾 class，
+   最多兩行、超過才省略，不動共用的 .cps-title（固定文字標題仍不換行）。 */
+.cps-title.cps-title--user {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
 .cps-sub { margin: 0; font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--color-text-muted); }
 .cps-note { margin: 0; font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--color-text-secondary); }
 .cps-cap { font-size: var(--font-size-caption); line-height: var(--line-height-caption); color: var(--color-text-muted); }
@@ -106,6 +127,7 @@
 .cps-li:first-child { border-top: 0; padding-top: 0; }
 .cps-li:last-child { padding-bottom: 0; }
 .cps-li__main { flex: 1 1 auto; min-width: 0; }
+.cps-li > .cps-li__tag { flex: 0 0 auto; white-space: nowrap; } /* 顧問 §3.463：詳情頁隊伍清單標籤不縮不換行，隊名（.cps-li__main min-width:0）讓位省略 */
 .cps-li__name { display: block; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cps-li__meta { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin-top: 2px; }
 .cps-li__meta .cps-cap { white-space: nowrap; }
@@ -122,6 +144,8 @@
   flex: 0 0 auto; white-space: nowrap; font-size: var(--font-size-body); line-height: var(--line-height-body);
 }
 .cps-player__name { font-weight: 600; }
+/* 顧問 §3.471 X-02：使用者取的暱稱（名單頁）。長暱稱可縮、超過省略，背號、位置、標籤、刪除鈕不讓位（取代上方「不截斷」只對暱稱）。 */
+.cps-player__name.cps-player__name--fit { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cps-player .ui-badge { flex: 0 0 auto; white-space: nowrap; }
 
 .cps-bar { height: 6px; border-radius: 3px; background: var(--color-border); overflow: hidden; margin: var(--space-2) 0; }
@@ -151,6 +175,18 @@
 .cps-inapp { margin: 0 0 var(--space-4); }
 .cps-head-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .cps-head-row .cps-h { margin: 0; }
+/* 刪除確認框（顧問 §3.459）：賽事名稱是使用者內容，允許換行、最多兩行、超過才省略號；只套這個框。 */
+.cps-sheet-body .cps-h.cps-del-name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+/* 刪除確認框的警告句：可以換行（中文在標點處斷）。 */
+.cps-sheet-body .cps-del-warn { white-space: normal; line-break: strict; }
 
 /* 第 3 步詳情：class 對照預覽 harness 的 cp3-*。字級只用字級 token。
  * 隊徽底色與分類漸層用 category-tokens，不在這裡重抄色值。 */

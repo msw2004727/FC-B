@@ -79,7 +79,7 @@ export function ScoringScreen({
   const view = useScoring(cid, mtId, deps);
   const now = nowMs ?? Date.now();
   const [clubRep, setClubRep] = useState(false);
-  const staffAccess = view.loading ? null : scoreAccess({
+  const staffAccess = view.loading || view.loadError ? null : scoreAccess({
     roles: view.staff.roles,
     matchIds: view.staff.matchIds,
     expiresAt: view.staff.expiresAt,
@@ -107,6 +107,23 @@ export function ScoringScreen({
   useScoreDocumentTitle(ct ? ct('scoreTitle') : null);
   if (!ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   if (view.loading) return <div class="cps-root"><PageSpinner /></div>;
+  const back = () => route(`/competitions/${cid}/schedule`);
+  // 進場丟錯是讀取失敗，不是沒有權限（G-06）。網路類會自動重試，兩種都可手動重試。
+  if (view.loadError) {
+    return (
+      <CpFrame title={ct('scoreTitle')} onBack={back}>
+        <CpCard>
+          <p class="cps-note" data-score-load-error={view.loadError}>
+            {view.loadError === 'network' ? LIVE_COPY.loadFailedAuto : LIVE_COPY.loadFailed}
+          </p>
+          <div class="cps-actions">
+            <Button variant="secondary" onClick={back}>{LIVE_COPY.backToSchedule}</Button>
+            <Button onClick={() => view.retry?.()}>{LIVE_COPY.retry}</Button>
+          </div>
+        </CpCard>
+      </CpFrame>
+    );
+  }
   const access = scoreAccess({
     roles: view.staff.roles,
     matchIds: view.staff.matchIds,
@@ -115,7 +132,6 @@ export function ScoringScreen({
     nowMs: now,
     clubRep,
   });
-  const back = () => route(`/competitions/${cid}/schedule`);
   if (!access.pad) {
     return (
       <CpFrame title={ct('scoreTitle')} onBack={back}>

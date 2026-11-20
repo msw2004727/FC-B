@@ -92,6 +92,11 @@ export const LIVE_COPY = {
   cardNoRoster: '這隊名單沒有球員，無法記牌',
   noScorePermission: '你沒有這場的記分權限',
   backToSchedule: '回賽程',
+  /** 進場讀取失敗（網路類，會自動重試）。 */
+  loadFailedAuto: '讀取失敗，連線恢復後會自動重試',
+  /** 進場讀取失敗（其他錯誤，只能按重試）。 */
+  loadFailed: '讀取失敗',
+  retry: '重試',
   leaveScore: '離開記分',
   assignScorerHint: '請先在指派頁把自己指派為記分員',
 } as const;

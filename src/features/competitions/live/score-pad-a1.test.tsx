@@ -76,7 +76,7 @@ describe('不能復原的確認框：取消在左、確認在右，打開後 600
     fireEvent.click(button(LIVE_COPY.pkStart));
     expect(screen.queryByText(LIVE_COPY.pkConfirmTitle)).toBeNull();
     expect(start).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('先處理沒送出的紀錄，才能開始 PK').getAttribute('role')).toBe('alert');
+    expect(screen.getByText('先處理沒送出的紀錄，才能開始 PK').closest('p')?.getAttribute('role')).toBe('alert');
   });
 
   it('開賽：正式頁先確認（標題、說明、取消在左）', () => {
@@ -135,6 +135,47 @@ describe('不能復原的確認框：取消在左、確認在右，打開後 600
   });
 });
 
+describe('顧問 §3.459 (a)：紅色提示整行可點', () => {
+  const lines = [
+    { key: 'held', text: heldRejected(1), alert: false },
+    { key: 'queued', text: heldQueued(2), alert: false },
+  ] as const;
+  it('點紅色那行會開「未套用的動作」面板（和原本那顆鈕同一個）；誤點不送出也不刪除', () => {
+    const onReapply = vi.fn();
+    const onDiscard = vi.fn();
+    render(<ScorePad {...S4_SCENE_LIVE} heldLines={lines} onReapply={onReapply} onDiscard={onDiscard} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const tap = screen.getByRole('button', { name: heldRejected(1) });
+    expect(tap.closest('p')?.className).toContain('s4-banner--held');
+    fireEvent.click(tap);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.textContent ?? '').toContain(LIVE_COPY.unappliedTitle);
+    expect(onReapply).not.toHaveBeenCalled();
+    expect(onDiscard).not.toHaveBeenCalled();
+  });
+  it('黃色那行不可點；排版類別不變（只多 s4-banner--tap，有黃色那行時另加 s4-banner--tapq）', () => {
+    const { rerender } = render(<ScorePad {...S4_SCENE_LIVE} heldLines={lines} />);
+    const yellow = screen.getByText(heldQueued(2));
+    expect(yellow.tagName).toBe('P');
+    expect(yellow.querySelector('button')).toBeNull();
+    const red = screen.getByRole('button', { name: heldRejected(1) }).closest('p') as HTMLElement;
+    expect(red.className.split(' ').sort()).toEqual(['s4-banner', 's4-banner--held', 's4-banner--tap', 's4-banner--tapq'].sort());
+    rerender(<ScorePad {...S4_SCENE_LIVE} heldLines={[lines[0]]} />);
+    const solo = screen.getByRole('button', { name: heldRejected(1) }).closest('p') as HTMLElement;
+    expect(solo.className.split(' ').sort()).toEqual(['s4-banner', 's4-banner--held', 's4-banner--tap'].sort());
+  });
+  it('被接手（記分區停用）時紅色那行的按鈕停用，點了不開面板', () => {
+    render(<ScorePad {...S4_SCENE_TAKEOVER} heldLines={lines} />);
+    const tap = screen.getByText(heldRejected(1)).closest('button') as HTMLButtonElement;
+    expect(tap.disabled).toBe(true);
+    const before = screen.queryAllByRole('dialog').length;
+    fireEvent.click(tap);
+    // 被接手時可能開著接手對話框；點紅色那行不會多開「未套用的動作」面板（P3-3：直接數對話框、查面板文字）。
+    expect(screen.queryAllByRole('dialog')).toHaveLength(before);
+    expect(screen.queryAllByRole('dialog').some((d) => (d.textContent ?? '').includes(LIVE_COPY.unappliedTitle))).toBe(false);
+  });
+});
+
 describe('被拒擋住送出的提示', () => {
   it('常駐兩行：哪一筆沒送出、之後記的幾筆先存在手機；剛被擋的階段動作用 alert', () => {
     const { rerender } = render(
@@ -146,7 +187,8 @@ describe('被拒擋住送出的提示', () => {
         ]}
       />,
     );
-    const first = screen.getByText(heldRejected(1));
+    // 顧問 §3.459 (a)：紅色那行的文字包在按鈕裡，role 與樣式在外層 <p>。
+    const first = screen.getByText(heldRejected(1)).closest('p') as HTMLElement;
     expect(first.getAttribute('role')).toBe('status');
     expect(first.className).toContain('s4-banner--held');
     expect(screen.getByText(heldQueued(2)).className).toContain('s4-banner--saved');
@@ -156,7 +198,7 @@ describe('被拒擋住送出的提示', () => {
         heldLines={[{ key: 'held', text: blockedStep('resume'), alert: true }]}
       />,
     );
-    expect(screen.getByText(blockedStep('resume')).getAttribute('role')).toBe('alert');
+    expect(screen.getByText(blockedStep('resume')).closest('p')?.getAttribute('role')).toBe('alert');
     expect(screen.queryByText(heldQueued(2))).toBeNull();
   });
 

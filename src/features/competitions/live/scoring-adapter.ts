@@ -335,17 +335,23 @@ function matchDoc(view: ScoringView, nowMs: number): MatchDoc {
 }
 
 function sendRecord(view: ScoringView, pick: ScorePick): void {
+  // 改判（ScorePad submitAmend）會帶原事件的 matchSecond；要傳下去，否則新事件用按改判當下的時間，
+  // 比賽紀錄與射手分鐘會被改掉（顧問 §3.454，模擬測試 G-14）。新記的沒有這個欄，照舊用當下時間。
+  const keepSecond = typeof pick.matchSecond === 'number' && Number.isFinite(pick.matchSecond)
+    ? { matchSecond: pick.matchSecond }
+    : {};
   if (pick.action === 'goal') {
     void view.actions.goal({
       side: pick.side,
       ...(pick.plId ? { plId: pick.plId } : {}),
       goalKind: pick.goalKind === 'penalty' || pick.goalKind === 'own' ? pick.goalKind : 'normal',
+      ...keepSecond,
     });
     return;
   }
   if (pick.action === 'yellow' || pick.action === 'red') {
     if (!pick.plId) return;
-    void view.actions.card({ side: pick.side, plId: pick.plId, cardType: pick.action });
+    void view.actions.card({ side: pick.side, plId: pick.plId, cardType: pick.action, ...keepSecond });
     return;
   }
   void view.actions.pk({
