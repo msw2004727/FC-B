@@ -175,14 +175,31 @@ describe('沒有線索：路徑不變（條件 1）', () => {
     ['有站內線索但上次未登入', () => seed(false)],
   ])('%s：先畫外部清單、閘門等外部讀完才開始、沒有切換列', async (_label, prep) => {
     prep();
+    let release!: () => void;
+    sdk.getDocs.mockReturnValue(new Promise((resolve) => {
+      release = () => resolve({ docs: DOCS.map((doc) => ({ id: doc.id, data: () => doc.data })) });
+    }));
     draw();
+    await tick();
     expect(pendingSkeleton()).toBeNull();
     expect(srcTab('站內賽事')).toBeNull();
     expect(gateCtl.mounts).toBe(0);
+    release();
     await tick();
     expect(extCard()).toBeTruthy();
     expect(gateCtl.mounts).toBe(1);
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it('網址明確 ?src=ext：即使有線索，外部讀完前也不開始閘門', async () => {
+    seed();
+    history.replaceState(null, '', '/tournaments?src=ext');
+    sdk.getDocs.mockReturnValue(new Promise(() => undefined));
+    draw();
+    await tick();
+    expect(gateCtl.mounts).toBe(0);
+    expect(pendingSkeleton()).toBeNull();
+    expect(srcTab('站內賽事')).toBeNull();
   });
 
   it('網址明確 ?src=ext：即使有線索也走原路徑', async () => {

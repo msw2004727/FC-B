@@ -178,6 +178,8 @@ beforeEach(async () => {
   history.replaceState(null, '', '/tournaments');
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
   vi.setSystemTime(new Date('2026-11-02T04:00:00Z'));
+  // 閘門通過會寫「上次有過」線索（顧問 11-20 方案 2）；每案清掉，避免前一案影響下一案。
+  localStorage.clear();
   sdk.getDocs.mockReset();
   sdk.getDocs.mockResolvedValue({ docs: DOCS.map((doc) => ({ id: doc.id, data: () => doc.data })) });
   mockUseViewer.mockReturnValue(viewer('u_user'));
