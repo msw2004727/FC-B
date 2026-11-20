@@ -772,7 +772,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {competition.hidden && deletingAt == null ? <HiddenNotice ct={ct} reason={competition.hiddenReason} /> : null}
       {/* 刪到一半：後端也寫了 hidden，但不是管理員下架。能續刪的人看到續刪提示，其他人（共同主辦）只看到刪除中。 */}
       {deletingAt != null ? (
-        <p class="cpa-hidden" role="status">{stuckText}</p>
+        <p class="cpa-hidden" role="status" style="white-space:pre-line">{stuckText}</p>
       ) : null}
       <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
       {showHostEnd ? (
