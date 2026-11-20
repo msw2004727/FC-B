@@ -54,3 +54,21 @@ describe('名單頁長暱稱（顧問 §3.471 X-02）', () => {
     expect(css).toMatch(/\.cps-player \.ui-badge \{[^}]*flex: 0 0 auto;[^}]*white-space: nowrap;/);
   });
 });
+
+describe('積分榜欄寬（實量覆核 7.3：360 寬隊名只剩一個字）', () => {
+  it('固定欄縮窄後，360 寬隊名文字至少放得下 4 個中文字加省略號，且仍單行省略', () => {
+    const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');
+    const row = css.match(/\.cp3-st__r \{([^}]*)\}/)?.[1] ?? '';
+    const cols = row.match(/grid-template-columns: ([^;]+);/)?.[1] ?? '';
+    expect(cols).toBe('24px minmax(0, 1fr) 18px 18px 18px 18px 36px 28px 28px');
+    const gap = Number(row.match(/column-gap: (\d+)(?:px)?;/)?.[1] ?? NaN);
+    const fixed = cols.split(' ').filter((c) => c.endsWith('px')).reduce((sum, c) => sum + Number.parseFloat(c), 0);
+    const pad = Number(css.match(/\.cp3-st__r \.t \{[^}]*padding-left: (\d+)px;/)?.[1] ?? NaN);
+    // 360 寬正式站：頁面內距 16×2、外框 .app-main 8×2、卡片內距 10×2、卡片邊框 1×2 → 列寬 290；隊徽 20、隊徽與字距 6
+    const text = 290 - fixed - gap * 8 - pad - 20 - 6;
+    // 正文小字 13px：4 個字 52 加省略號約 13
+    expect(text).toBeGreaterThanOrEqual(13 * 4 + 13);
+    expect(css).toMatch(/\.cp3-st__r > \* \{[^}]*min-width: 0;[^}]*white-space: nowrap;/);
+    expect(css).toMatch(/\.cp3-st__r \.t \{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
+  });
+});
