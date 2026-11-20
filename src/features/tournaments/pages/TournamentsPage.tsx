@@ -404,7 +404,8 @@ export default function TournamentsPage(): JSX.Element {
               {t(`tournaments.tab.${value}`)}
             </button>
           ))}
-          {canManage ? (
+          {/* 站內分頁已有「建立賽事」，「＋ 新增賽事」（外部卡）只在外部分頁出現（站長 11-20：不要出現兩顆新增鈕）。 */}
+          {canManage && !showInApp ? (
             <button
               type="button"
               class="primary-btn small tc-add-btn"
