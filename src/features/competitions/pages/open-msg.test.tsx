@@ -102,7 +102,8 @@ describe('詳情頁讀不到根文件', () => {
     expect(screen.queryByText('這場賽事目前不公開')).toBeNull();
     expect(button('返回賽事列表')).toBeNull();
     fireEvent.click(button('重試') as HTMLButtonElement);
-    expect(await screen.findByText('賽事詳情')).toBeTruthy();
+    // 新外觀卡 1b-3：頁首不再寫「賽事詳情」，詳情出現＝板內的賽事名稱 h1 出現
+    expect(await screen.findByRole('heading', { level: 1 })).toBeTruthy();
     await waitFor(() => expect(screen.queryByText('讀取失敗')).toBeNull());
     expect(repo.reads()).toBe(2);
   });

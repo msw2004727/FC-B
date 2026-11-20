@@ -148,7 +148,8 @@ describe('詳情頁即時', () => {
         },
       }),
     }, CompetitionDetailPage);
-    expect(await screen.findByText('海風隊')).toBeTruthy();
+    // 新外觀卡 1b-3：頂部「下一場」也寫出對戰隊名，海風隊會出現兩次（頂部＋賽程列）
+    expect((await screen.findAllByText('海風隊')).length).toBeGreaterThan(0);
     expect(watches).toBe(0);
     expect(repo.calls().filter((name) => name === 'getSummaryShard')).toEqual(['getSummaryShard']);
     view.unmount();

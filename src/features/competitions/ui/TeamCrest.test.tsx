@@ -2,7 +2,7 @@ import { fireEvent, render } from '@testing-library/preact';
 import { describe, expect, it } from 'vitest';
 import { FIREBASE_CONFIG } from '@/data/firebase-config';
 import { crestIndex } from '../data/present';
-import { CREST_SIZES, crestFromEntry, isInlinePngCrest, isProjectStorageDownloadUrl, TeamCrest } from './TeamCrest';
+import { CREST_SIZES, crestFontSize, crestFromEntry, isInlinePngCrest, isProjectStorageDownloadUrl, TeamCrest } from './TeamCrest';
 
 const BUCKET = FIREBASE_CONFIG.storageBucket;
 const STORAGE_URL = `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/crests%2Fa.png?alt=media&token=t`;
@@ -80,12 +80,19 @@ describe('TeamCrest', () => {
     }
   });
 
-  it('五種尺寸都畫得出圓形框', () => {
+  it('每一種尺寸都畫得出圓形框', () => {
     for (const size of CREST_SIZES) {
       const view = render(<TeamCrest teamId="club_size" name="晨星隊" teamLogo={null} size={size} />);
       expect(view.container.querySelector('.cp3-crest')?.getAttribute('style')?.replace(/\s/g, '')).toContain(`width:${size}px`);
       view.unmount();
     }
+  });
+
+  it('文字章字級照表：48→19、44→17、28→13、24→12，表外照 0.48 四捨五入', () => {
+    expect([48, 44, 28, 24, 64, 32, 22, 20].map((size) => crestFontSize(size as (typeof CREST_SIZES)[number])))
+      .toEqual([19, 17, 13, 12, 31, 15, 11, 10]);
+    const view = render(<TeamCrest teamId="club_size" name="晨星隊" teamLogo={null} size={24} />);
+    expect(view.container.querySelector('.cp3-crest')?.getAttribute('style')?.replace(/\s/g, '')).toContain('font-size:12px');
   });
 
   it('首字跟畫面顯示的隊名一致；報隊資料只補隊徽與隊 id', () => {

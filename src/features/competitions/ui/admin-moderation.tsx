@@ -207,30 +207,30 @@ export function AdminPanel(props: AdminPanelProps): JSX.Element {
   return (
     <section class="cpa-panel" data-admin-panel>
       <div class="cpa-head">
-        <h2 class="cpa-h">{ct('adminArea')}</h2>
+        <h2 class="cpm-h">{ct('adminArea')}</h2>
         {props.hidden ? <StatusTag kind="cancelled" label={ct('moderateHidden')} /> : null}
       </div>
       <div class="cpa-btns">
         {props.hidden ? (
           <Button variant="secondary" size="sm" disabled={busy} onClick={() => { void restore(); }}>{ct('moderateRestore')}</Button>
         ) : (
-          <Button variant="danger" size="sm" disabled={busy} onClick={() => { setHideError(null); props.setHideOpen(true); }}>{ct('moderateHide')}</Button>
+          <Button variant="danger" disabled={busy} onClick={() => { setHideError(null); props.setHideOpen(true); }}>{ct('moderateHide')}</Button>
         )}
         <Button variant="secondary" size="sm" aria-expanded={reportsOpen} onClick={toggleReports}>{ct('reportsTitle')}</Button>
       </div>
       {reportsOpen ? (
-        <div class="cpa-reports" data-reports>
+        <div data-reports>
           {reportsFailed ? (
             <div class="cpa-retry">
               <p class="cps-note cps-warn" role="alert">{ct('loadFailed')}</p>
               <Button variant="secondary" size="sm" onClick={() => { void loadReports(); }}>{ct('retry')}</Button>
             </div>
           ) : reports == null ? (
-            <p class="cpa-muted">{ct('reportsLoading')}</p>
+            <p class="cps-note cps-nowrap">{ct('reportsLoading')}</p>
           ) : reports.length === 0 ? (
-            <p class="cpa-muted">{ct('reportsEmpty')}</p>
+            <p class="cps-note cps-nowrap">{ct('reportsEmpty')}</p>
           ) : (
-            <ul class="cpa-list">
+            <ul class="cps-list">
               {reports.map((row) => {
                 const actionable = row.status === 'open' || row.reopened;
                 return (
@@ -242,8 +242,8 @@ export function AdminPanel(props: AdminPanelProps): JSX.Element {
                     </div>
                     {row.detail ? <p class="cpa-detail">{row.detail}</p> : null}
                     <p class="cpa-meta">
-                      <span>{ct('reportCount', { n: row.count })}</span>
-                      {row.lastAt != null ? <span>{ct('reportLastAt', { date: formatTaipeiShort(row.lastAt) })}</span> : null}
+                      <span class="cps-nowrap">{ct('reportCount', { n: row.count })}</span>
+                      {row.lastAt != null ? <span class="cps-nowrap">{ct('reportLastAt', { date: formatTaipeiShort(row.lastAt) })}</span> : null}
                     </p>
                     <div class="cpa-btns">
                       {actionable ? (

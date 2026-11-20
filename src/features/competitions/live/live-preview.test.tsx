@@ -640,8 +640,11 @@ describe('第 4 步預覽元件', () => {
     const css = readFileSync(join(process.cwd(), 'src/features/competitions/live/live.css'), 'utf8');
     expect(css).not.toMatch(/s4-root--thumb/);
     expect(css).toMatch(/\.s4-top\s*\{[^}]*max-height:\s*96px/);
+    // 觀眾即時頁共用的舊規則不動（32／22）；記分頁的板子掛在 .s4-top 底下，比分與時鐘 40px（站長已同意字級破例，施工-第2批 3.1）。
     expect(css).toMatch(/\.s4-clock\s*\{[^}]*font-size:\s*32px/);
     expect(css).toMatch(/\.s4-score\s*\{[^}]*font-size:\s*22px/);
+    expect(css).toMatch(/\.s4-top \.s4-clock\s*\{[^}]*font-size:\s*40px/);
+    expect(css).toMatch(/\.s4-top \.s4-score\s*\{[^}]*font-size:\s*40px/);
     expect(css).toMatch(/\.s4-goals\s*\{[^}]*height:\s*104px/);
     expect(css).toMatch(/\.s4-hit--goal,\s*\n\.s4-hit--pk\s*\{[^}]*height:\s*104px/);
     expect(css).toMatch(/\.s4-cards\s*\{[^}]*height:\s*56px/);
@@ -656,7 +659,9 @@ describe('第 4 步預覽元件', () => {
     expect(css).toMatch(/\.s4-feed\s*\{[^}]*overflow-y:\s*auto/);
     expect(css).toMatch(/\.s4-kickoff\s*\{[^}]*width:\s*100%[^}]*height:\s*104px/);
     expect(css).toMatch(/\.s4-timeout\s*\{[^}]*min-height:\s*48px/);
-    expect(css).toMatch(/\.s4-timeout--mini\s*\{[^}]*height:\s*24px/);
+    // 收合條 24 改 30px、高度 600 以下 32px（施工-第2批 3.14；顧問同意），可點延伸等於區塊間距、合計 44 以上。
+    expect(css).toMatch(/\.s4-timeout--mini\s*\{[^}]*height:\s*30px/);
+    expect(css).toMatch(/@media \(max-height: 600px\)\s*\{[^@]*\.s4-timeout--mini\s*\{[^}]*height:\s*32px/);
     expect(css).not.toMatch(/\.s4-timeout\s*\{[^}]*position:\s*fixed/);
     expect(css).toMatch(/\.s4-sheet--long\.ui-bottom-sheet \.ui-modal__panel\s*\{[^}]*max-height:\s*58dvh/);
   });

@@ -62,9 +62,18 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
   max-height: 96px;
   min-width: 0;
+  /* 卡 2-1（施工-第2批 3.1）：95px 矮記分板＝上下內距 6＋比分列 40＋時鐘列 42（含上外距 1）。
+     外框用陰影畫、不佔版面；不加左側青綠邊條（左邊是主隊）。 */
+  position: relative;
+  margin: 6px 6px 0;
+  padding: 6px 12px;
+  border-radius: 11px;
+  background: var(--d2-sb-bg);
+  color: var(--d2-sb-fg);
+  box-shadow: var(--d2-sb-sh-lit), 0 0 0 6px var(--d2-frame), 0 0 0 7px var(--d2-frame-line), 0 14px 16px -10px var(--d2-frame-drop);
 }
 .s4-board {
   height: 28px;
@@ -195,14 +204,30 @@
   white-space: nowrap;
 }
 .s4-hold {
+  /* 卡 2-1（3.3 先行）：「已停錶／已休息」疊在時鐘列右邊那一格的下半，板高不因停錶多一列（2-2 改成節次格兩行）。 */
+  position: absolute;
+  right: 12px;
+  bottom: 7px;
+  display: flex;
+  align-items: center;
   margin: 0;
   height: 16px;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 16px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  text-align: center;
   white-space: nowrap;
+}
+/* 暫停記號：兩條直槓 */
+.s4-hold::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 3px;
+  height: 10px;
+  margin-right: 10px;
+  border-radius: 1px;
+  background: currentColor;
+  box-shadow: 5px 0 0 0 currentColor;
 }
 /* 壓過 :root:lang .ui-text 與 badge 的兩行裁切，短標籤維持一行。 */
 .s4-root .ui-badge,
@@ -219,6 +244,87 @@
   word-break: keep-all;
   -webkit-line-clamp: unset;
 }
+
+/* 卡 2-1（3.1）：記分頁板內的新值。.s4-board、.s4-team、.s4-score、.s4-pk、.s4-clockrow、.s4-clock、.s4-stage、.ui-badge
+   觀眾即時頁也在用，上面的舊規則不動；記分頁的值掛在只有記分頁才有的 .s4-top 底下，舊規則會漏過來的屬性明寫。 */
+.s4-top .s4-board { height: 40px; min-height: 40px; gap: 8px; }
+.s4-top .s4-board .s4-side { height: 40px; gap: 8px; }
+/* 隊名＝實心隊色塊白字，與隊名標籤、進球鈕同色；寬度跟著字 */
+.s4-top .s4-board .s4-team {
+  flex: 0 1 auto;
+  padding: 2px 10px;
+  border-radius: 8px;
+  background: var(--d2-home);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .26);
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 700;
+  text-align: center;
+}
+.s4-top .s4-board .s4-team--away { background: var(--d2-away); }
+.s4-top .s4-board .cp3-crest--txt { display: none; }
+.s4-top .s4-score {
+  font-family: var(--d2-num);
+  font-size: 40px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: .1em;
+  margin-right: -.1em;
+  color: var(--d2-sb-fg);
+}
+.s4-top .s4-pk { font-family: var(--d2-num); font-size: 19px; line-height: 1; font-weight: 700; color: var(--d2-sb-fg2); }
+.s4-top .s4-clockrow { height: 42px; min-height: 42px; margin-top: 1px; padding-top: 2px; border-top: 1px solid var(--d2-sb-line); }
+/* 窄體數字在行框裡偏高，往下校正 1/16 字高 */
+.s4-top .s4-clock {
+  position: relative;
+  top: .0625em;
+  font-family: var(--d2-num);
+  font-size: 40px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--d2-sb-fg);
+}
+.s4-top .s4-clockrow > .s4-stage { justify-self: end; font-size: 15px; line-height: 24px; font-weight: 700; color: var(--d2-sb-fg); }
+/* 停錶、中場（時鐘列後面跟著 .s4-hold）：節次移到上半，大時鐘降成次要色＝沒在走 */
+.s4-top .s4-clockrow:not(:last-child) > .s4-stage { align-self: start; margin-top: 1px; line-height: 20px; }
+.s4-top .s4-clockrow:not(:last-child) > .s4-clock { color: var(--d2-sb-fg2); }
+/* 連線狀態：板上的小字＋圓點（已連線青綠點；離線白字紅點，不用琥珀）。放不下單行省略。 */
+.s4-top .s4-clockrow > .ui-badge {
+  gap: 6px;
+  height: 24px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--d2-sb-fg2);
+  font-size: 13px;
+  line-height: 24px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.s4-top .s4-clockrow > .ui-badge::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--d2-sb-now);
+}
+.s4-top .s4-clockrow > .ui-badge--warning { color: var(--d2-sb-fg); }
+.s4-top .s4-clockrow > .ui-badge--warning::before { background: var(--d2-sb-alarm); }
+.s4-top .ui-badge .ui-badge__label.ui-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 24px;
+  font-weight: 600;
+}
+.s4-top .ui-badge wbr { display: none; }
 
 .s4-alerts {
   flex: 0 0 auto;
@@ -238,25 +344,55 @@
   font-weight: 800;
   white-space: nowrap;
 }
-.s4-banner--saved {
-  background: var(--color-warning-bg);
-  color: var(--color-warning-fg);
-}
 /* 停更橫幅：沿用 s4-banner 的 12px，次要色、一般字重。不加字級、不寫死色碼。 */
 .s4-banner.s4-banner--quiet {
   color: var(--color-text-secondary);
   font-weight: var(--font-weight-regular);
 }
-/* 儲存不可用：固定亮紅＋黑字，深色模式也維持對比，不跟主題走暗。 */
-.s4-banner--danger {
-  background: #ff2d2d;
-  color: #141414;
+/* 卡 2-1（3.9）：記分頁提示列的尺寸與圖示。顏色在 competitions.css 提示那兩條（一般級、資料可能遺失級）；
+   基底 .s4-banner, .s4-wake 射手榜也在用，不動。尺寸比 competitions.css 一般級那條多一層 class，不靠兩支檔的載入順序。 */
+.s4-root .s4-alerts .s4-banner,
+.s4-root .s4-alerts .s4-wake {
+  position: relative;
+  min-height: 28px;
+  padding: 4px 10px 4px 34px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-/* 被拒擋住送出：跟被拒紅列同一組語意色，跟主題走（不用儲存不可用那條固定亮紅）。 */
-.s4-banner--held {
-  background: var(--color-danger-bg);
-  color: var(--color-danger-fg);
+.s4-alerts .s4-banner::before,
+.s4-alerts .s4-wake::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  background: currentColor;
+  -webkit-mask: var(--d2-ico-info) center / 16px 16px no-repeat;
+  mask: var(--d2-ico-info) center / 16px 16px no-repeat;
 }
+/* 擋住（另一分頁在記；2-2 搬到隊名標籤正上方並改 44px）：鎖頭、粗字 */
+.s4-root .s4-alerts .s4-banner:not(.s4-banner--saved):not(.s4-banner--danger):not(.s4-banner--held) { font-weight: 700; }
+.s4-alerts .s4-banner:not(.s4-banner--saved):not(.s4-banner--danger):not(.s4-banner--held)::before {
+  -webkit-mask-image: var(--d2-ico-lock);
+  mask-image: var(--d2-ico-lock);
+}
+/* 資料可能遺失（離線紀錄無法保存；紅色「沒送出」那一行在 2-3(a) 之前也是這一級的 28px）：三角驚嘆號、粗字 */
+.s4-root .s4-alerts .s4-banner--danger,
+.s4-root .s4-alerts .s4-banner--held { font-weight: 700; }
+.s4-alerts .s4-banner--danger::before,
+.s4-alerts .s4-banner--held::before {
+  -webkit-mask-image: var(--d2-ico-alert);
+  mask-image: var(--d2-ico-alert);
+}
+/* 紅色那一行的 ::after 可點延伸要露出 <p> 外面（記分小批的做法原樣留著，2-3(a) 改 44px 時拿掉） */
+.s4-root .s4-alerts .s4-banner--tap { overflow: visible; }
 /* 顧問 §3.459 (a)：紅色那行整行可點。外觀與行高不變；::after 相對 <p> 往上下延伸補可點範圍：
    上方 8px（＝.s4-root 與記分板之間的 gap，不蓋到記分板）；下方沒有黃色那行時 8px（不蓋到紀錄列），
    有黃色那行時 12px（4px 行距＋黃色那行 8px，蓋到黃色那行沒關係）。總高 24＋8＋8＝40 或 24＋8＋12＝44。 */
@@ -289,9 +425,15 @@
   outline-offset: 4px;
   border-radius: var(--radius-sm);
 }
+/* 提醒級（請關閉手機自動鎖定）：沒有底、只有細框、手機圖示 */
 .s4-wake {
-  background: var(--color-bg-elevated);
-  color: var(--color-text-primary);
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--d2-line-strong);
+  color: var(--d2-text-2);
+}
+.s4-alerts .s4-wake::before {
+  -webkit-mask-image: var(--d2-ico-phone);
+  mask-image: var(--d2-ico-phone);
 }
 
 .s4-goals,
@@ -341,7 +483,7 @@
   min-width: 0;
 }
 .s4-tags {
-  height: 24px;
+  height: 30px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
@@ -353,17 +495,19 @@
   justify-content: center;
   min-width: 0;
   overflow: hidden;
-  --s4-tag-fg: #0b6b4e;
+  /* 卡 2-1（3.6）：實心隊色塊白字；深淺色只換 --d2-home／--d2-away，不寫深色專屬規則 */
+  padding: 0 8px;
+  border-radius: 8px;
+  background: var(--d2-home);
 }
-.s4-tag--away { --s4-tag-fg: #1d4ed8; }
-[data-theme="dark"] .s4-tag { --s4-tag-fg: #34d399; }
-[data-theme="dark"] .s4-tag--away { --s4-tag-fg: #93c5fd; }
+.s4-tag--away { background: var(--d2-away); }
+.s4-tags .s4-tag .cp3-crest { display: none; }
 .s4-tag .s4-side { flex-direction: row; }
 .s4-tag .s4-col__name {
-  color: var(--s4-tag-fg);
-  font-size: var(--font-size-body);
+  color: #fff;
+  font-size: 15px;
   font-weight: 700;
-  line-height: 24px;
+  line-height: 30px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -376,14 +520,15 @@
   width: 2px;
   margin-left: -1px;
   border-radius: 1px;
-  background: var(--color-text-muted);
-  opacity: 0.45;
+  background: var(--d2-text-3);
+  opacity: 0.6;
   pointer-events: none;
 }
 .s4-feed {
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
+  padding: 0 4px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -404,16 +549,16 @@
   appearance: none;
   margin: 0;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   font-family: inherit;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.04em;
   white-space: nowrap;
   cursor: pointer;
   touch-action: manipulation;
 }
 .s4-hit:focus-visible {
-  outline: 3px solid var(--color-focus-ring);
+  outline: 3px solid var(--d2-accent);
   outline-offset: 2px;
 }
 .s4-hit:active { transform: scale(0.98); filter: brightness(0.92); }
@@ -421,9 +566,9 @@
 .s4-kickoff:disabled {
   cursor: not-allowed;
   opacity: 1;
-  background: var(--color-bg-elevated);
-  color: var(--color-text-muted);
-  box-shadow: inset 0 0 0 2px var(--color-border), inset 0 -6px 0 0 var(--s4-hue, var(--color-border));
+  background: var(--d2-off-bg);
+  color: var(--d2-text-3);
+  box-shadow: inset 0 0 0 2px var(--d2-off-line), inset 0 -6px 0 0 var(--s4-hue, var(--d2-off-line));
 }
 .s4-hit--goal,
 .s4-hit--pk {
@@ -435,9 +580,9 @@
   font-size: 22px;
   line-height: 1;
 }
-/* 兩隊進球鈕用固定色，避免深色 token 把白字對比打穿。停用時尺寸不變。 */
-.s4-hit--home { background: #0b6b4e; color: #fff; }
-.s4-hit--away { background: #1d4ed8; color: #fff; }
+/* 兩隊進球鈕：與上方隊名色塊、隊名標籤同一組隊色（--d2-home／--d2-away，深色也維持白字對比）。停用時尺寸不變。 */
+.s4-hit--home { background: var(--d2-home); color: #fff; }
+.s4-hit--away { background: var(--d2-away); color: #fff; }
 .s4-hit--card {
   width: 100%;
   height: 56px;
@@ -445,23 +590,28 @@
   max-height: 56px;
   min-width: 0;
   padding: 0 4px;
-  font-size: 16px;
+  border-radius: 12px;
+  font-size: 17px;
   line-height: 1;
 }
 .s4-hit--yellow { background: #ffe14a; color: #141414; }
 .s4-hit--red { background: #ff2d2d; color: #141414; }
-.s4-hit--miss {
-  background: var(--color-bg-elevated);
-  color: var(--color-text-primary);
-  box-shadow: inset 0 0 0 2px var(--color-border);
+/* PK「沒進」（可按）：玻璃底＋隊色粗框＋深字，不能跟停用的淡灰長一樣；深色主題空心＋3px 框（--d2-miss-bg／--d2-miss-w 換值）。
+   左邊那一對主隊、右邊客隊。 */
+.s4-hit--miss:not(:disabled) {
+  background: var(--d2-miss-bg);
+  color: var(--d2-text);
+  box-shadow: inset 0 0 0 var(--d2-miss-w) var(--d2-home);
 }
-/* 停用色條沿用按鈕本體的寫死色。進球鈕沒有色票變數。 */
+.s4-pkpair + .s4-pkpair .s4-hit--miss:not(:disabled) { box-shadow: inset 0 0 0 var(--d2-miss-w) var(--d2-away); }
+/* 停用：底緣 6px 留原本的隊色或牌色；開賽用中性框色。 */
 .s4-hit--home:disabled,
-.s4-kickoff:disabled { --s4-hue: #0b6b4e; }
-.s4-hit--away:disabled { --s4-hue: #1d4ed8; }
+.s4-hit--miss:disabled { --s4-hue: var(--d2-home); }
+.s4-hit--away:disabled,
+.s4-pkpair + .s4-pkpair .s4-hit--miss:disabled { --s4-hue: var(--d2-away); }
 .s4-hit--yellow:disabled { --s4-hue: #ffe14a; }
 .s4-hit--red:disabled { --s4-hue: #ff2d2d; }
-.s4-hit--miss:disabled { --s4-hue: var(--color-border); }
+.s4-kickoff:disabled { --s4-hue: var(--d2-off-line); }
 .s4-kickoff {
   appearance: none;
   width: 100%;
@@ -470,12 +620,14 @@
   max-height: 104px;
   margin: 0;
   border: 0;
-  border-radius: var(--radius-md);
-  background: #0b6b4e;
-  color: #fff;
+  border-radius: 14px;
+  /* 開賽＝當下該按的那一顆：墨色（深色反白）、沒有陰影 */
+  background: var(--d2-go-btn);
+  color: var(--d2-go-btn-fg);
+  box-shadow: none;
   font-family: inherit;
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1;
   white-space: nowrap;
@@ -581,6 +733,17 @@ button.s4-ev__main:active { opacity: 0.7; }
   white-space: nowrap;
 }
 .s4-ev .ui-button__label { white-space: nowrap; overflow-wrap: normal; }
+/* 卡 2-1（3.7）：記分頁紀錄列。.s4-ev、.s4-ev__main、.s4-mark*、.s4-ev__tag 觀眾即時頁也在用，新值掛在 .s4-feed 底下。
+   進球圓點照主客隊上色要等 2-2 帶 side，這一張先中性。 */
+.s4-feed .s4-ev { gap: 10px; border-bottom-color: var(--d2-line); }
+.s4-feed .s4-ev__main { font-size: 15px; font-weight: 600; color: var(--d2-text); font-variant-numeric: tabular-nums; }
+.s4-feed .s4-mark--goal,
+.s4-feed .s4-mark--miss { width: 12px; height: 12px; margin: 0 1px; }
+.s4-feed .s4-mark--goal { background: var(--d2-text-3); }
+.s4-feed .s4-mark--miss { box-shadow: inset 0 0 0 2px var(--d2-text-3); }
+.s4-feed .s4-ev--void .s4-ev__main { color: var(--d2-text-3); font-weight: 400; }
+.s4-feed .s4-ev--void .s4-mark { opacity: .45; }
+.s4-feed .s4-ev__tag { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--d2-text-3); }
 
 .s4-extra,
 .s4-ctrl {
@@ -590,6 +753,9 @@ button.s4-ev__main:active { opacity: 0.7; }
 }
 .s4-extra { flex: 0 0 auto; flex-direction: column; }
 .s4-extra .ui-button { min-height: 48px; min-block-size: 48px; }
+/* 「未套用的動作」入口：整列寬的玻璃鈕（次要鈕長相來自 competitions.css），外觀撐滿 48px；圓角蓋 .s4-root .ui-button 的 10px */
+.s4-feed .s4-extra .ui-button { border-radius: 12px; }
+.s4-extra .ui-button::before { top: 0; bottom: 0; }
 .s4-root .ui-button .ui-text,
 .s4-page .ui-button .ui-text,
 .s4-sheet .ui-button .ui-text,
@@ -621,34 +787,65 @@ button.s4-ev__main:active { opacity: 0.7; }
   min-width: 16px;
   height: 1px;
 }
-.s4-ctrl .s4-end {
-  --comp-button-background-default: #ff2d2d;
-  --comp-button-background-hover: #ff4d4d;
-  --comp-button-background-active: #e02626;
-  --comp-button-foreground-default: #141414;
-  --comp-button-border-default: #ff2d2d;
+/* 卡 2-1（3.8）：控制鈕＝中性玻璃（半場、停錶是次要鈕，長相來自 competitions.css）；這裡只寫記分頁的差異。
+   圓角、內距、最小寬蓋 competitions.css 的 .s4-root .ui-button（多一層 class，不靠載入順序）。外觀撐滿 48px。 */
+.s4-dock .s4-ctrl .ui-button {
+  min-inline-size: 56px;
+  padding-inline: 14px;
+  border-radius: 12px;
 }
-.s4-ctrl .s4-end[aria-disabled="true"] {
-  --comp-button-background-default: var(--color-bg-elevated);
-  --comp-button-foreground-default: var(--color-text-muted);
-  --comp-button-border-default: var(--color-border-strong);
-  opacity: 1;
-  color: var(--comp-button-foreground-default);
+.s4-ctrl .ui-button::before { top: 0; bottom: 0; }
+/* 文字元件塞的 <wbr> 在不折行底下照樣會斷（「PK 大戰＋繼續計時」那一列差 2px 時折成兩行），控制鈕關掉它 */
+.s4-ctrl .ui-button wbr { display: none; }
+/* 當下該按的那一顆（下半場開始、PK 大戰）：墨色，深色反白；蓋 .s4-root .ui-button 的青綠元件變數 */
+.s4-ctrl .ui-button.ui-button--primary {
+  --comp-button-background-default: var(--d2-go-btn);
+  --comp-button-background-hover: var(--d2-go-btn);
+  --comp-button-background-active: var(--d2-go-btn);
+  --comp-button-foreground-default: var(--d2-go-btn-fg);
+  font-weight: 700;
 }
-.s4-ctrl .s4-end[aria-disabled="true"]::before {
-  background: var(--comp-button-background-default);
-  border-color: var(--comp-button-border-default);
-}
-.s4-ctrl .s4-menu-btn {
-  --comp-button-border-default: var(--color-border-strong);
-  --comp-button-foreground-default: var(--color-text-primary);
+/* 選單鈕（ghost）：中性玻璃深字；蓋 .s4-root .ui-button--ghost 的青綠字與 button.css 的透明底 */
+.s4-ctrl .ui-button.s4-menu-btn {
+  --comp-button-foreground-default: var(--d2-text);
   flex: 0 0 auto;
-  min-width: 48px;
   height: 48px;
 }
-/* ghost 的 ::before 把框線寫成透明，變數單獨改不到。 */
 .s4-ctrl .s4-menu-btn.ui-button--ghost:not([aria-disabled="true"])::before {
-  border-color: var(--comp-button-border-default);
+  border-color: transparent;
+  background: var(--d2-glass-gloss), var(--d2-glass-base);
+  box-shadow: var(--d2-glass-sh);
+}
+/* 終場：墨色（深色是深灰藍底＋亮框，不當全頁最亮的一塊）。標記仍是 variant="danger"，
+   這兩條蓋 competitions.css 的 .s4-root .ui-button.ui-button--danger（白底紅字紅框）。 */
+.s4-dock .s4-ctrl .ui-button.s4-end {
+  min-inline-size: 72px;
+  color: var(--d2-ink-btn-fg);
+  font-weight: 700;
+}
+.s4-dock .s4-ctrl .ui-button.s4-end::before {
+  border-color: transparent;
+  background: var(--d2-ink-btn);
+  box-shadow: var(--d2-ink-btn-line);
+}
+/* 同一列有可按的「當下該按的那一顆」：終場退一階（玻璃底＋2px 深色框） */
+.s4-ctrl .ui-button--primary:not([aria-disabled="true"]) ~ .ui-button.s4-end:not([aria-disabled="true"]) { color: var(--d2-text); }
+.s4-ctrl .ui-button--primary:not([aria-disabled="true"]) ~ .ui-button.s4-end:not([aria-disabled="true"])::before {
+  background: var(--d2-glass-gloss), var(--d2-glass-base);
+  box-shadow: var(--d2-glass-sh), inset 0 0 0 2px var(--d2-text);
+}
+/* 停用：平的淡灰＋細框；深色空心（--d2-ctrl-off-bg／--d2-ctrl-off-fg 換值）。蓋 .s4-root .ui-button[aria-disabled="true"]；
+   終場那兩條另外蓋上面的終場墨色。 */
+.s4-dock .s4-ctrl .ui-button[aria-disabled="true"] { color: var(--d2-ctrl-off-fg); font-weight: 600; }
+.s4-dock .s4-ctrl .ui-button[aria-disabled="true"]::before {
+  border-color: transparent;
+  background: var(--d2-ctrl-off-bg);
+  box-shadow: inset 0 0 0 1px var(--d2-off-line);
+}
+.s4-dock .s4-ctrl .ui-button.s4-end[aria-disabled="true"] { color: var(--d2-ctrl-off-fg); font-weight: 600; }
+.s4-dock .s4-ctrl .ui-button.s4-end[aria-disabled="true"]::before {
+  background: var(--d2-ctrl-off-bg);
+  box-shadow: inset 0 0 0 1px var(--d2-off-line);
 }
 .s4-menu-wrap { position: relative; flex: 0 0 auto; }
 .s4-menu {
@@ -657,14 +854,25 @@ button.s4-ev__main:active { opacity: 0.7; }
   left: 0;
   bottom: 60px;
   z-index: 5;
-  min-width: 128px;
-  padding: 6px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-surface);
-  box-shadow: var(--shadow-md);
+  /* 卡 2-1（3.8）：站內選單的長相 */
+  min-width: 148px;
+  padding: 4px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--d2-menu-bg);
+  box-shadow: var(--d2-menu-sh);
 }
 .s4-menu .ui-button { width: 100%; min-height: 44px; }
+/* 每列 44px、靠左、深字、沒有底；蓋上面 .s4-dock .s4-ctrl .ui-button 的控制鈕尺寸與 .s4-root .ui-button--ghost 的青綠字 */
+.s4-dock .s4-menu .ui-button.ui-button--ghost {
+  --comp-button-foreground-default: var(--d2-text);
+  justify-content: flex-start;
+  min-inline-size: 0;
+  padding-inline: 12px;
+  border-radius: 10px;
+}
+.s4-dock .s4-ctrl .s4-menu .ui-button[aria-disabled="true"] { color: var(--d2-text-3); }
+.s4-dock .s4-ctrl .s4-menu .ui-button[aria-disabled="true"]::before { background: none; box-shadow: none; }
 
 /* 球隊暫停：在紀錄上方佔一列，不蓋住進球、牌、底欄與紀錄。 */
 .s4-timeout {
@@ -674,71 +882,104 @@ button.s4-ev__main:active { opacity: 0.7; }
   justify-content: center;
   min-width: 0;
   min-height: 48px;
-  padding: 0 8px;
-  border-radius: var(--radius-sm);
-  background: var(--color-warning-bg);
-  color: var(--color-warning-fg);
+  /* 卡 2-1（3.14）：玻璃片＋左緣 4px 隊色（誰喊的暫停；2-2 帶主客隊記號前先中性） */
+  padding: 0 6px 0 14px;
+  border-radius: 12px;
+  background: var(--d2-glass-gloss), var(--d2-glass-base);
+  color: var(--d2-text);
+  box-shadow: var(--d2-glass-sh), inset 4px 0 0 0 var(--s4-side, var(--d2-text-3));
 }
+/* 收合條外觀 30px（高度 600 以下 32px），可點範圍往上下延伸「等於區塊間距」，合計 44～46、不疊到別的可點元件 */
 .s4-timeout--mini {
-  height: 24px;
-  min-height: 24px;
+  position: relative;
+  height: 30px;
+  min-height: 30px;
   padding: 0;
+  border-radius: 8px;
 }
 .s4-timeout__row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   height: 48px;
   min-width: 0;
 }
 .s4-timeout__text {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 14px;
-  font-weight: 800;
-  line-height: 1;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 24px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .s4-timeout__over {
   margin: 0 0 4px;
   height: 16px;
   font-size: 12px;
   line-height: 16px;
-  font-weight: 800;
+  font-weight: 600;
+  color: var(--d2-text-2);
   white-space: nowrap;
 }
 .s4-timeout__btn,
 .s4-timeout__mini {
+  position: relative;
   appearance: none;
   margin: 0;
   border: 0;
-  background: var(--color-bg-surface);
-  color: var(--color-text-primary);
+  background: none;
+  color: var(--d2-text);
   font-family: inherit;
-  font-weight: 800;
+  font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
   touch-action: manipulation;
 }
+/* 「結束暫停」＝這一列的主要動作：點擊區 44、外觀 36（上下各縮 4）、白底＋1.5px 深色框 */
 .s4-timeout__btn {
+  z-index: 0;
   flex: 0 0 auto;
-  height: 40px;
-  min-height: 40px;
-  padding: 0 8px;
-  border-radius: var(--radius-sm);
+  height: 44px;
+  min-height: 44px;
+  padding: 0 12px;
   font-size: 13px;
-  line-height: 1;
+  line-height: 20px;
 }
+.s4-timeout__btn::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 4px;
+  right: 0;
+  bottom: 4px;
+  left: 0;
+  border-radius: 10px;
+  background: var(--d2-field-bg);
+  box-shadow: inset 0 0 0 1.5px var(--d2-text);
+}
+/* 「收合」＝文字鈕 */
+.s4-timeout__btn[aria-expanded] { padding: 0 10px; color: var(--d2-text-2); font-weight: 600; }
+.s4-timeout__btn[aria-expanded]::before { content: none; }
 .s4-timeout__mini {
+  display: block;
   width: 100%;
-  height: 24px;
-  padding: 0 8px;
-  background: transparent;
-  color: inherit;
+  height: 100%;
+  padding: 0 10px 0 14px;
   font-size: 12px;
-  line-height: 24px;
-  font-weight: 700;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
   text-align: start;
+}
+.s4-timeout__mini::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  right: 0;
+  bottom: -8px;
+  left: 0;
 }
 .s4-timeout__btn:focus-visible,
 .s4-timeout__mini:focus-visible,
@@ -756,11 +997,12 @@ button.s4-ev__main:active { opacity: 0.7; }
   min-height: 56px;
 }
 
+/* 卡 2-1（3.15）：終場已送出＝20＋28＋6＋56＝110px，一分都不能多（360×640 紀錄區只剩 1～5px 的三塊之一） */
 .s4-sent {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 0;
   min-width: 0;
 }
 .s4-sent__st,
@@ -769,12 +1011,17 @@ button.s4-ev__main:active { opacity: 0.7; }
   font-weight: 700;
   white-space: nowrap;
 }
-.s4-sent__st { font-size: var(--font-size-body); line-height: var(--line-height-body); }
-.s4-sent__cd { font-size: var(--font-size-title); line-height: 1.2; font-variant-numeric: tabular-nums; }
-.s4-sent .ui-button { width: 100%; min-height: 56px; }
-/* 終場後的離開鈕：次要樣式，不比「撤回終場」醒目（P1-B）。 */
+.s4-sent__st { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-text-2); }
+.s4-sent__cd { font-size: 22px; line-height: 28px; color: var(--d2-text); font-variant-numeric: tabular-nums; }
+/* 撤回終場：危險・一頁一顆（白底紅字紅框，來自 competitions.css）；圓角與字級蓋 .s4-root .ui-button */
+.s4-sent .ui-button { width: 100%; min-height: 56px; margin-top: 6px; }
+.s4-dock .s4-sent .ui-button { border-radius: 14px; font-size: 17px; line-height: 24px; font-weight: 700; }
+.s4-sent .ui-button::before { top: 0; bottom: 0; }
+/* 終場後的離開鈕：次要樣式，不比「撤回終場」醒目（P1-B）。外觀上下各縮 4px（點擊區仍 48），不貼齊螢幕下緣。 */
 .s4-leave { display: flex; margin-top: 8px; }
 .s4-leave .ui-button { width: 100%; min-height: 48px; white-space: nowrap; }
+.s4-dock .s4-leave .ui-button { border-radius: 12px; }
+.s4-leave .ui-button::before { top: 4px; bottom: 4px; }
 
 /* 亮牌：整屏固定亮黃／亮紅，字用近黑，淺色與深色對比都過 4.5。 */
 .s4-flash {
@@ -805,15 +1052,15 @@ button.s4-ev__main:active { opacity: 0.7; }
 .s4-flash__no {
   font-size: 112px;
   line-height: 1;
-  font-weight: 800;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .s4-flash__name {
   max-width: 100%;
   font-size: 28px;
-  line-height: 1.2;
-  font-weight: 800;
+  line-height: 36px;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -821,14 +1068,14 @@ button.s4-ev__main:active { opacity: 0.7; }
 .s4-flash__kind {
   max-width: 100%;
   font-size: 22px;
-  line-height: 1.2;
-  font-weight: 800;
+  line-height: 28px;
+  font-weight: 700;
   white-space: nowrap;
 }
 .s4-flash__close {
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-body);
-  font-weight: 700;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1062,15 +1309,18 @@ button.s4-ev__main:active { opacity: 0.7; }
 
 /* 待送小標。名字仍由 .s4-ev__main 省略。 */
 .s4-pending {
+  /* 卡 2-1（3.4）：待送虛線標籤 */
   flex: 0 0 auto;
-  margin-inline-start: 2px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: var(--surface-2, var(--color-bg-elevated));
-  color: var(--text-muted, var(--color-text-muted));
-  font-size: var(--font-size-caption);
-  line-height: 1;
-  font-weight: 700;
+  height: 22px;
+  margin-inline-start: 4px;
+  padding: 0 8px;
+  border: 1px dashed var(--d2-text-3);
+  border-radius: 8px;
+  background: none;
+  color: var(--d2-text-2);
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1083,6 +1333,32 @@ button.s4-ev__main:active { opacity: 0.7; }
   white-space: nowrap;
   overflow-wrap: normal;
   word-break: keep-all;
+}
+
+/* 卡 2-1：矮螢幕只收區塊間距（360×640 那一級 7px、320×568 那一級 6px），比分、時鐘、按鈕不動；
+   收合條的可點延伸跟著間距收，320×568 那一級收合條改 32px。 */
+@media (max-height: 700px) {
+  .s4-root { gap: 7px; }
+  .s4-timeout__mini::after { top: -7px; bottom: -7px; }
+}
+@media (max-height: 600px) {
+  .s4-root { gap: 6px; }
+  .s4-timeout--mini { height: 32px; min-height: 32px; }
+  .s4-timeout__mini::after { top: -6px; bottom: -6px; }
+}
+/* 提示列 359 寬以下 12px（3.9 的 11-21 實量門檻，取代原型的 340） */
+@media (max-width: 359px) {
+  .s4-root .s4-alerts .s4-banner,
+  .s4-root .s4-alerts .s4-wake { padding-left: 30px; padding-right: 8px; font-size: 12px; }
+  .s4-alerts .s4-banner::before,
+  .s4-alerts .s4-wake::before { left: 8px; }
+}
+/* 320 寬：單行隊名 13px（3.5 的 11-21 補充）；控制鈕內距與最小寬收一點，四顆才排得下、不折行 */
+@media (max-width: 340px) {
+  .s4-top .s4-board .s4-team,
+  .s4-tag .s4-col__name { font-size: 13px; }
+  .s4-dock .s4-ctrl .ui-button { min-inline-size: 48px; padding-inline: 10px; }
+  .s4-dock .s4-ctrl .ui-button.s4-end { min-inline-size: 56px; }
 }
 
 /* 寬螢幕：記分板限寬置中，頁面背景仍由外側滿版。 */

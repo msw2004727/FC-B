@@ -88,7 +88,6 @@ export function AlertIcon(): JSX.Element {
  */
 export function CpFrame({
   title,
-  userTitle = false,
   crumb,
   context,
   onBack,
@@ -96,8 +95,6 @@ export function CpFrame({
   children,
 }: {
   title: string;
-  /** 標題是使用者取的名稱（賽事名稱）：最多兩行、超過才省略。 */
-  userTitle?: boolean;
   crumb?: string;
   context?: string;
   onBack?: () => void;
@@ -114,7 +111,7 @@ export function CpFrame({
         <button type="button" class="cps-iconbtn" aria-label={ct('back')} onClick={onBack ?? goBack}>
           <BackIcon />
         </button>
-        {crumb ? <span class="cps-top__crumb">{crumb}</span> : <h1 class={userTitle ? 'cps-top__user' : undefined}>{title}</h1>}
+        {crumb ? <span class="cps-top__crumb">{crumb}</span> : <h1>{title}</h1>}
         {context ? <span class="cps-top__ctx">{context}</span> : null}
         {menu}
       </header>

@@ -40,8 +40,18 @@ export function isProjectStorageDownloadUrl(value: string): boolean {
   return prefixes.some((prefix) => url.pathname.startsWith(prefix) && url.pathname.length > prefix.length);
 }
 
-export const CREST_SIZES = [64, 48, 32, 22, 20] as const;
+export const CREST_SIZES = [64, 48, 44, 32, 28, 24, 22, 20] as const;
 export type CrestSize = (typeof CREST_SIZES)[number];
+
+/**
+ * 文字章的字級（新外觀第 1b 批）：比賽列 24→12、組別卡隊伍列 28→13、名單頁頭 48→19、第 3 批的 44→17。
+ * 表外的尺寸照舊用 size × 0.48 四捨五入。
+ */
+const CREST_FONT: Partial<Record<CrestSize, number>> = { 48: 19, 44: 17, 28: 13, 24: 12 };
+
+export function crestFontSize(size: CrestSize): number {
+  return CREST_FONT[size] ?? Math.round(size * 0.48);
+}
 
 export function TeamCrest({
   teamId,
@@ -81,7 +91,7 @@ export function TeamCrest({
     <span
       class={`cp3-crest cp3-crest--txt cp3-crest--c${index}`}
       aria-hidden="true"
-      style={`${style};font-size:${Math.round(size * 0.48)}px`}
+      style={`${style};font-size:${crestFontSize(size)}px`}
     >
       {crestInitial(name)}
     </span>
