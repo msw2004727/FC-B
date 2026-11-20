@@ -374,7 +374,9 @@ export interface ManualOverride {
 
 /**
  * 契約 §3 的筆數上限，加上第 3 步。
- * 場次沿用契約觸發器「該組 ≤ 240」（16 隊雙循環）。
+ * 場次讀取上限 100：對齊已部署 asia-main Rules matches list `request.query.limit <= 100`（firestore.asia-main.rules:579）。
+ *   原為 240（契約觸發器「該組 ≤ 240」），比 Rules 大，整個查詢被拒、賽程管理與指派頁讀取失敗（11-20 模擬器走查發現）。
+ *   代價：單一賽事超過 100 場時只讀到前 100 場；之後改分頁或 Rules 放寬再提高（列入對外前待辦）。
  * 摘要片 ≤ 14 天（計畫書）。積分榜對齊組別上限 8。隊徽對齊報隊 ≤ 32。
  */
 export const CP_READ_LIMIT = {
@@ -385,7 +387,7 @@ export const CP_READ_LIMIT = {
   entries: 100,
   roster: 60,
   private: 100,
-  matches: 240,
+  matches: 100,
   summary: 14,
   standings: 8,
   crest: 32,

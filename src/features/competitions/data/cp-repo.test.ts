@@ -695,6 +695,9 @@ describe('第 3 步讀取', () => {
       path: 'competitions/cid_1/matches',
       clauses: [{ kind: 'limit', n: CP_READ_LIMIT.matches }],
     });
+    // 已部署 asia-main Rules：matches list 要求 limit <= 100（firestore.asia-main.rules:579）；超過整個查詢被拒（11-20 走查）。
+    expect(CP_READ_LIMIT.matches).toBeLessThanOrEqual(100);
+    expect(queries.at(-1)?.clauses).toEqual([{ kind: 'limit', n: 100 }]);
 
     docs.set('competitions/cid_1/summary/d20261205', {
       m: {

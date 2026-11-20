@@ -325,10 +325,29 @@ function sideOf(value: unknown): AudienceSide | null {
   return { teamId, name, logo: text(value.logo) ?? text(value.l) };
 }
 
+/**
+ * 時間欄位轉毫秒：Firestore Timestamp（toMillis）、{seconds,nanoseconds}、毫秒數字都收，其餘回 null。
+ * 11-20 走查：原本用 finite() 只收數字，Timestamp 讀成 null（觀眾頁時鐘停在暫停秒數等）；
+ * 顧問 §3.381 統一用於 clockBase.startedAt、kickoffAt、scoreCorrectedAt、timeline／voids createdAt（取代各處 finite()）。
+ */
+function timeMillis(value: unknown): number | null {
+  const n = finite(value);
+  if (n != null) return n;
+  if (!isRecord(value)) return null;
+  const toMillis = (value as { toMillis?: unknown }).toMillis;
+  if (typeof toMillis === 'function') {
+    const ms = (toMillis as () => unknown).call(value);
+    return typeof ms === 'number' && Number.isFinite(ms) ? ms : null;
+  }
+  const seconds = finite(value.seconds);
+  if (seconds == null) return null;
+  return seconds * 1000 + Math.floor((finite(value.nanoseconds) ?? 0) / 1e6);
+}
+
 function clockOf(value: unknown): MatchClock {
   const raw = isRecord(value) ? value : {};
   return {
-    startedAt: finite(raw.startedAt),
+    startedAt: timeMillis(raw.startedAt),
     pausedSec: finite(raw.pausedSec) ?? 0,
     running: raw.running === true,
     period: typeof raw.period === 'string' ? raw.period : 'pre',
@@ -361,13 +380,13 @@ export function audienceMatchFromDoc(id: string, raw: unknown): AudienceMatch | 
     resetRev: finite(raw.resetRev) ?? 0,
     score: { home: finite(scoreRaw.home) ?? 0, away: finite(scoreRaw.away) ?? 0 },
     clockBase: clockOf(raw.clockBase),
-    kickoffAt: finite(raw.kickoffAt),
+    kickoffAt: timeMillis(raw.kickoffAt),
     venueName: text(raw.venueName),
     venueIdx: Number.isInteger(raw.venueIdx) ? raw.venueIdx as number : null,
     home,
     away,
     penaltyScore: penaltyOf(raw.penaltyScore),
-    scoreCorrectedAt: finite(raw.scoreCorrectedAt),
+    scoreCorrectedAt: timeMillis(raw.scoreCorrectedAt),
   };
 }
 
@@ -398,7 +417,7 @@ export function parseTimelineDoc(raw: unknown): ParsedTimeline | null {
     ...(text(raw.outPlId) ? { outPlId: text(raw.outPlId) ?? undefined } : {}),
     ...(typeof raw.scored === 'boolean' ? { scored: raw.scored } : {}),
     matchSecond: finite(raw.matchSecond) ?? 0,
-    createdAt: finite(raw.createdAt) ?? 0,
+    createdAt: timeMillis(raw.createdAt) ?? 0,
   };
   const number = finite(raw.no);
   return {
@@ -415,7 +434,7 @@ export function parseVoidDoc(id: string, raw: unknown): VoidMark | null {
   const target = finite(rec.targetSeq) ?? finite(Number(id));
   const seq = finite(rec.seq);
   if (target == null || seq == null) return null;
-  return { targetSeq: target, seq, createdAt: finite(rec.createdAt) ?? 0 };
+  return { targetSeq: target, seq, createdAt: timeMillis(rec.createdAt) ?? 0 };
 }
 
 /**

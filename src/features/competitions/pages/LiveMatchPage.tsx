@@ -78,9 +78,13 @@ function asMatchDoc(match: AudienceMatch): MatchDoc {
 
 function toLiveClock(match: AudienceMatch, nowMs: number): LiveClock {
   const reading = clockFromBase(match.clockBase, nowMs);
-  const period = reading.period === 'ht' || reading.period === 'h2' || reading.period === 'pk'
-    ? reading.period
-    : 'h1';
+  // 已終場（含已確認）顯示「終場」，不再落到上半場（11-20 走查）。
+  const ended = match.status === 'finished' || match.status === 'confirmed' || reading.period === 'ft';
+  const period: LiveClock['period'] = ended
+    ? 'ft'
+    : reading.period === 'ht' || reading.period === 'h2' || reading.period === 'pk'
+      ? reading.period
+      : 'h1';
   return { elapsedSec: reading.elapsedSec, period, addedMin: null };
 }
 
