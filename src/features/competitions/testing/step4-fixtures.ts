@@ -50,7 +50,6 @@ export const STEP4_SCREENS = [
   'invite-accept',
   'scorer-my-matches',
   // 3 觀眾
-  'live-detail',
   'live-match',
   'live-scorers',
   // 4 登錄連結
@@ -463,13 +462,6 @@ export const S4_SCORE_SCENES = {
   'score-pk': S4_SCENE_PK,
 } as const;
 
-/** 詳情頁：兩場進行中、一場比分已更正。長隊名用來確認省略號仍看得出開頭。 */
-export const S4_DETAIL_ROWS = [
-  { id: 'd1', when: '09:00', home: '雷霆隊', away: '海風隊', score: '1:1', live: true, corrected: false },
-  { id: 'd2', when: '09:00', home: '山貓隊', away: '銀河隊', score: '0:2', live: true, corrected: false },
-  { id: 'd3', when: '08:00', home: '藍鯨隊', away: '一二三四五六七八九十示範隊', score: '2:1', live: false, corrected: true },
-] as const;
-
 /** U0a-fix3：紀錄在進球上方、球隊暫停、PK。名稱對齊 harness 與截圖腳本。 */
 export const S4A_SCREENS = [
   'score-pre',
@@ -492,7 +484,6 @@ export const S4A_SCREENS = [
   'score-timeout-collapsed',
   'score-pk-start',
   'score-pk',
-  'live-detail',
   'live-match',
   'live-scorers',
 ] as const;

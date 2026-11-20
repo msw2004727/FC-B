@@ -33,7 +33,6 @@ const ANCHORS = {
   'score-timeout-collapsed': '雷霆隊暫停 0:47',
   'score-pk-start': 'PK 大戰',
   'score-pk': 'PK 3:2',
-  'live-detail': '比分已更正',
   'live-match': '比賽紀錄',
   'live-scorers': '劉冠廷',
 };
@@ -59,7 +58,6 @@ const SCREENS = [
   ['score-timeout-collapsed', ALL, THEMES, true],
   ['score-pk-start', ALL, THEMES, true],
   ['score-pk', ALL, THEMES, true],
-  ['live-detail', ALL, THEMES, true],
   ['live-match', ALL, THEMES, true],
   ['live-scorers', ALL, THEMES, true],
 ];

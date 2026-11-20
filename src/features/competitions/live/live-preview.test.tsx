@@ -8,7 +8,6 @@ import {
   S4_ACTION_LOG,
   S4_CONFIRMED,
   S4_CREST_URL,
-  S4_DETAIL_ROWS,
   S4_NOW,
   S4_PEOPLE,
   S4_SCENE_FT,
@@ -28,7 +27,6 @@ import {
 } from '../testing/step4-fixtures';
 import { CardFlash } from './CardFlash';
 import { stageLabel } from './clock';
-import { LiveDetailList } from './LiveDetailList';
 import { LiveMatchView } from './LiveMatchView';
 import { LiveScoreBadge } from './LiveScoreBadge';
 import { EVENT_MAX, EVENT_RESERVE, EVENT_WARN, PAUSE_MAX, SCORING_RESERVE, TEAM_TIMEOUT_PER_HALF, TEAM_TIMEOUT_SEC, eventLines, linesIfOpen, pauseHeldForScoring, rejectText, shootoutOffered } from './present';
@@ -90,11 +88,6 @@ describe('第 4 步預覽元件', () => {
       </>,
     );
     expect(screen.getByText('即時')).toBeTruthy();
-    expect(screen.getByText('比分已更正')).toBeTruthy();
-    cleanup();
-
-    render(<LiveDetailList rows={S4_DETAIL_ROWS} />);
-    expect(screen.getAllByText('即時')).toHaveLength(2);
     expect(screen.getByText('比分已更正')).toBeTruthy();
     cleanup();
 
