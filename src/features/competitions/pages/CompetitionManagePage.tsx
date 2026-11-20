@@ -417,6 +417,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </CpCard>
         );
       })}
+      {/* s4b-mempty（本頁三處）：樣式在 step4b.css，靠同一支 entry CSS 才套得到；上線後併範圍時收進 .d2- */}
       {pending.length === 0 ? <CpCard><p class="s4b-mempty">{ct('pendingEmpty')}</p></CpCard> : null}
     </div>
   );
