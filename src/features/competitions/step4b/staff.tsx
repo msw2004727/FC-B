@@ -233,7 +233,7 @@ export function StaffAssignScreen(props: {
             options={people.map((item) => ({ value: item.id, label: item.name }))}
           />
           {days.map((group) => (
-            <div key={group.key}>
+            <div key={group.key} class="s4b-daygroup">
               <p class="s4b-day">{group.heading}</p>
               {group.matches.map((match) => (
                 <Checkbox
@@ -429,7 +429,7 @@ export function ScorerMatchesScreen(props: {
       <S4bCard>
         {days.length === 0 ? <p class="s4b-foot">{props.empty ?? ''}</p> : null}
         {days.map((group) => (
-          <div key={group.key}>
+          <div key={group.key} class="s4b-daygroup">
             <p class="s4b-day">{group.heading}</p>
             {group.matches.map((row) => (
               <div key={row.id} class="s4b-m">

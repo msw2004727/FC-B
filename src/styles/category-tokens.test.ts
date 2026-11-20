@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import postcss from 'postcss';
 import { describe, expect, it } from 'vitest';
+import { COMPETITIONS_ENABLED } from '@/feature-overrides';
 
 const ROOT = process.cwd();
 
@@ -142,12 +143,16 @@ describe('分類色不進首頁入口', () => {
     }
   });
 
-  it('賽事頁與站內賽事樣式有匯入，開關仍是 false', () => {
+  it('賽事頁與站內賽事樣式有匯入，開關字面與建置期常數一致', () => {
     const page = css('src/features/tournaments/pages/TournamentsPage.tsx');
     const sheet = css('src/features/competitions/competitions.css');
     expect(page).toContain("import '@/styles/category-tokens.css';");
     expect(sheet.startsWith("@import '../../styles/category-tokens.css';")).toBe(true);
     const flag = css('src/feature-overrides.ts');
-    expect(flag).toContain('export const COMPETITIONS_ENABLED = false;');
+    if (COMPETITIONS_ENABLED) {
+      expect(flag).toContain('export const COMPETITIONS_ENABLED = true;');
+    } else {
+      expect(flag).toContain('export const COMPETITIONS_ENABLED = false;');
+    }
   });
 });

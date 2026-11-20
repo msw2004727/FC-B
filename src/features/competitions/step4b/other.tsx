@@ -128,7 +128,7 @@ export function ScheduleMidnightScreen(): JSX.Element {
     <S4bFrame title={copy.scheduleTitle} screen="schedule-midnight">
       <S4bCard>
         {groups.map((group) => (
-          <div key={group.key}>
+          <div key={group.key} class="s4b-daygroup">
             <p class="s4b-day">{copy.dayHeading(group.month, group.day, weekdayName[weekdayIndex(group.key) ?? 0] ?? '')}</p>
             {group.matches.map((match) => (
               <div key={match.id} class="s4b-m">

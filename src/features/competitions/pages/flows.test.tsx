@@ -3,9 +3,10 @@ import type { ComponentChildren, ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import { AppConfirmHost, _resetAppConfirmForTest } from '@/ui/AppConfirm';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { FEATURE_OVERRIDES } from '@/feature-overrides';
+import { COMPETITIONS_ENABLED, FEATURE_OVERRIDES } from '@/feature-overrides';
 import { ALL_FEATURES } from '@/features.config';
 import { _resetForTest, getActiveRoutes, registerFeatures } from '@/core/feature-registry';
+import { competitionRoutes } from '../index';
 import coreZh from '@/i18n/messages/zh-TW.json';
 import { CpCallError } from '../data/cp-callables';
 import { CpEnvProvider, type CpActor, type CpInjectedEnv } from '../env';
@@ -168,9 +169,15 @@ afterEach(() => {
 });
 
 describe('賽事第 2 步畫面', () => {
-  it('關閉開關時沒有啟用中的 /competitions 路由', () => {
+  it('建置期開關決定 /competitions 路由是否啟用', () => {
+    FEATURE_OVERRIDES.competitions = COMPETITIONS_ENABLED;
     registerFeatures(ALL_FEATURES);
-    expect(getActiveRoutes().some((route) => route.path.startsWith('/competitions'))).toBe(false);
+    const paths = getActiveRoutes().map((route) => route.path).filter((path) => path.startsWith('/competitions'));
+    if (COMPETITIONS_ENABLED) {
+      expect(paths).toEqual(competitionRoutes().map((route) => route.path));
+    } else {
+      expect(paths).toEqual([]);
+    }
   });
 
   it('每個預覽畫面都畫得出標題，而且不出現英文 reason 代碼', () => {
