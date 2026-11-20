@@ -156,8 +156,10 @@
 #page-tournaments .cpl-xmsg p { margin: 0 0 8px; }
 #page-tournaments .cpl-xrow { display: flex; align-items: center; gap: 10px; }
 #page-tournaments .cpl-xrow__link { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 68px; padding: 10px 0; color: var(--d2-text); text-decoration: none; }
-/* 縮圖：沒有照片就不放任何東西。沒有切換時原色；有切換、看外部時降彩；已結束全灰 */
+/* 縮圖：沒有照片放預設縮圖（下一條）。沒有切換時原色；有切換、看外部時降彩；已結束全灰 */
 #page-tournaments .cpl-xrow__img { flex: 0 0 auto; width: 56px; height: 42px; border-radius: 8px; object-fit: cover; }
+/* 沒有照片：同一格中性淡灰底，中間是分類名的第一個字（不讀圖、不新增字串） */
+#page-tournaments .cpl-xrow__ph { display: flex; align-items: center; justify-content: center; background: var(--d2-line); color: var(--d2-text-3); font-size: 15px; line-height: 22px; font-weight: 600; }
 #page-tournaments.d2-ext .cpl-xrow__img { -webkit-filter: grayscale(.85) contrast(.9); filter: grayscale(.85) contrast(.9); opacity: var(--d2-thumb-op); }
 #page-tournaments .cpl-xrow.ended .cpl-xrow__img { -webkit-filter: grayscale(1); filter: grayscale(1); opacity: var(--d2-thumb-end-op); }
 #page-tournaments .cpl-xrow__body { flex: 1 1 auto; min-width: 0; }
@@ -172,6 +174,12 @@
 #page-tournaments .cpl-xrow__name .cpl-xrow__go { display: inline-block; width: 14px; height: 14px; margin-left: 4px; vertical-align: -1px; }
 /* 編輯鈕長相是第 0 批圓形玻璃圖示鈕（.cps-iconbtn，在 competitions.css）；這裡只放位置 */
 #page-tournaments .cpl-xrow__edit { margin-right: -10px; }
+/* 管理者列（右邊多一顆編輯鈕，cpl-xrow--edit）：名稱單行、放不下省略，↗ 固定接在名稱尾端不掉行；
+ * 分類與日期同一行、放不下省略日期，不拆兩行（顧問 §3.494，取代這種列「日期整段換行」的做法）。訪客列不變。 */
+#page-tournaments .cpl-xrow--edit .cpl-xrow__name { position: relative; display: inline-block; max-width: 100%; padding-right: 18px; vertical-align: top; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#page-tournaments .cpl-xrow--edit .cpl-xrow__name .cpl-xrow__go { position: absolute; top: 4px; right: 0; margin-left: 0; }
+#page-tournaments .cpl-xrow--edit .cpl-xrow__meta { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+#page-tournaments .cpl-xrow--edit .cpl-xrow__date { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* 刪除外部賽事的危險確認框（清-5，第 1a 批 3.12）：旗標 class 與兩條樣式與站內賽事那份（competitions.css）逐字相同 */
 .cp-danger-confirm #app-confirm-modal .app-confirm-ok{background:var(--d2-field-bg);color:var(--d2-danger);box-shadow:inset 0 0 0 1.5px var(--d2-danger);font-weight:700}

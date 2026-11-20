@@ -42,7 +42,7 @@
   --d2-panel-sh: 0 -1px 0 rgba(255,255,255,.9), 0 -16px 36px -18px rgba(15,23,42,.5);
   --d2-alert-bg: #b91c1c;
   --d2-alert-fg: #ffffff;
-  --d2-menu-bg: #ffffff;
+  --d2-menu-bg: #ffffff; /* 選單底；管理員區也用 */
   --d2-menu-sh: 0 12px 32px rgba(15,23,42,.18), inset 0 0 0 1px #dfe3ea;
   --d2-page-bg: linear-gradient(180deg, #eef1f6 0%, #e5eaf2 100%);
   --d2-sb-bg: #0d1816;
@@ -1047,6 +1047,13 @@
 .cpm-cmp__r--hit > .cpm-cmp__k { color: inherit; }
 .cpm-cmp__r--skip,
 .cpm-cmp__r--skip > .cpm-cmp__k { color: var(--d2-text-3); }
+/* 三隊以上（設計總監 04:20）：項目名自己一行、數字在下一行平均分欄；九隊以上放不下時表格在卡內左右捲，頁面不捲。
+ * 容器左右各外推 8px，讓淡青綠列的外推留在捲動容器裡。 */
+.cpm-cmp--stack { overflow-x: auto; margin: 0 -8px; padding: 0 8px; }
+.cpm-cmp--stack .cpm-cmp__r { column-gap: 4px; padding-block: 6px; }
+.cpm-cmp--stack .cpm-cmp__k { grid-column: 1 / -1; line-height: 20px; }
+.cpm-cmp--stack .cpm-cmp__r > span:nth-child(n + 2) { text-align: center; overflow: hidden; text-overflow: ellipsis; }
+.cpm-cmp--stack .cpm-cmp__r--h > span:first-child { display: none; }
 .cpm-mark {
   margin: var(--space-2) 0 0;
   font-size: 13px;
@@ -1327,6 +1334,8 @@
 .cpa-btns { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
 .cpa-btns .ui-button { width: auto; min-inline-size: 0; }
 .cpa-btns .ui-button--ghost { --comp-button-foreground-default: var(--d2-text-2); }
+/* 中性文字鈕排在列首：字對齊內容左緣，點擊區不變 */
+.cpa-btns > .ui-button--ghost:first-child { margin-inline-start: -16px; }
 .cpa-retry { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
 .cpa-li { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: var(--space-3) 0; }
 .cpa-li + .cpa-li { border-top: 1px solid var(--d2-line); }
