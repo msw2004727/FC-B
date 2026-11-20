@@ -5,7 +5,6 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { appConfirm } from '@/ui/AppConfirm';
-import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Modal } from '@/ui/Modal';
 import { Textarea } from '@/ui/Textarea';
@@ -18,6 +17,7 @@ import { formatTaipeiShort } from '../format';
 import type { CompetitionsT } from '../i18n';
 import { errorOf, reasonText } from './feedback';
 import { AlertIcon } from './shell';
+import { StatusTag } from './status-tag';
 
 export const MODERATE_REASON_MIN = 2;
 export const MODERATE_REASON_MAX = 200;
@@ -39,10 +39,10 @@ export function reportReasonLabel(ct: CompetitionsT, reason: ReportReason): stri
   return ct('reportOther');
 }
 
-function statusBadge(ct: CompetitionsT, status: ReportReviewStatus): { label: string; tone: 'warning' | 'success' | 'neutral' } {
-  if (status === 'resolved') return { label: ct('reportStatusResolved'), tone: 'success' };
-  if (status === 'dismissed') return { label: ct('reportStatusDismissed'), tone: 'neutral' };
-  return { label: ct('reportStatusOpen'), tone: 'warning' };
+function statusLabel(ct: CompetitionsT, status: ReportReviewStatus): string {
+  if (status === 'resolved') return ct('reportStatusResolved');
+  if (status === 'dismissed') return ct('reportStatusDismissed');
+  return ct('reportStatusOpen');
 }
 
 export function ModerateDialog({
@@ -208,7 +208,7 @@ export function AdminPanel(props: AdminPanelProps): JSX.Element {
     <section class="cpa-panel" data-admin-panel>
       <div class="cpa-head">
         <h2 class="cpa-h">{ct('adminArea')}</h2>
-        {props.hidden ? <Badge tone="danger" size="sm" label={ct('moderateHidden')} /> : null}
+        {props.hidden ? <StatusTag kind="cancelled" label={ct('moderateHidden')} /> : null}
       </div>
       <div class="cpa-btns">
         {props.hidden ? (
@@ -232,14 +232,13 @@ export function AdminPanel(props: AdminPanelProps): JSX.Element {
           ) : (
             <ul class="cpa-list">
               {reports.map((row) => {
-                const badge = statusBadge(ct, row.status);
                 const actionable = row.status === 'open' || row.reopened;
                 return (
                   <li key={row.id} class="cpa-li" data-report={row.id}>
                     <div class="cpa-li__top">
                       <span class="cpa-reason">{reportReasonLabel(ct, row.reason)}</span>
-                      <Badge tone={badge.tone} size="sm" label={badge.label} />
-                      {row.reopened ? <Badge tone="danger" size="sm" label={ct('reportReopened')} /> : null}
+                      <StatusTag kind="neutral" label={statusLabel(ct, row.status)} />
+                      {row.reopened ? <StatusTag kind="neutral" label={ct('reportReopened')} /> : null}
                     </div>
                     {row.detail ? <p class="cpa-detail">{row.detail}</p> : null}
                     <p class="cpa-meta">

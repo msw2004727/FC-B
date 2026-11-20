@@ -9,6 +9,7 @@ import { Modal } from '@/ui/Modal';
 import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { CpFrame } from '../ui/shell';
+import { StatusTag } from '../ui/status-tag';
 import {
   S4B_ASSIGN_PEOPLE,
   S4B_COMP_NAME,
@@ -39,30 +40,16 @@ import {
 import { assignRoleLabel, copy, inviteLifeLabel, matchStatusLabel, staffRoleLabel, weekdayName } from './copy';
 import { Line, MatchBits, S4bCard, S4bFrame, vsLabel } from './ui';
 
-function roleTone(role: S4bStaff['role']): 'brand' | 'neutral' | 'info' | 'warning' {
-  if (role === 'host') return 'brand';
-  if (role === 'scorer') return 'info';
-  if (role === 'referee') return 'warning';
-  return 'neutral';
-}
-
 /**
  * 主辦兼記分那一列的角色標籤。外觀沿用 Badge 的類別，但不經過 Text：Text 會在中文詞之間插 <wbr>
  *（ui/Text.tsx 的斷詞設計），窄寬時標籤被壓縮就會把「記分員」拆成兩行（顧問 11-20 staging 量測）。
  */
-function RoleTag({ role, label }: { role: S4bStaff['role']; label: string }): JSX.Element {
+function RoleTag({ label }: { label: string }): JSX.Element {
   return (
-    <span class={`ui-badge ui-badge--${roleTone(role)} ui-badge--soft ui-badge--sm s4b-role-tag`} title={label}>
+    <span class="ui-badge ui-badge--soft ui-badge--sm d2-tag d2-tag--neutral s4b-role-tag" title={label}>
       <span class="ui-badge__label">{label}</span>
     </span>
   );
-}
-
-function lifeTone(life: ReturnType<typeof inviteLife>): 'success' | 'neutral' | 'danger' | 'warning' {
-  if (life === 'active') return 'success';
-  if (life === 'revoked') return 'danger';
-  if (life === 'expired') return 'warning';
-  return 'neutral';
 }
 
 function dayText(month: number, day: number, weekday: number): string {
@@ -135,12 +122,12 @@ export function StaffListScreen(props: {
                 <span class="s4b-staff__name">{staff.name}</span>
                 {multi ? (
                   <span class="s4b-staff__roles">
-                    <RoleTag role={staff.role} label={staff.roleLabel} />
-                    {(staff.extraRoles ?? []).map((extra) => <RoleTag key={extra.role} role={extra.role} label={extra.label} />)}
+                    <RoleTag label={staff.roleLabel} />
+                    {(staff.extraRoles ?? []).map((extra) => <RoleTag key={extra.role} label={extra.label} />)}
                     {staff.expiresLabel ? <span class="s4b-staff__exp-inline">{staff.expiresLabel}</span> : null}
                   </span>
                 ) : (
-                  <Badge tone={roleTone(staff.role)} size="sm" label={staff.roleLabel} />
+                  <StatusTag kind="neutral" label={staff.roleLabel} />
                 )}
                 <span class="s4b-staff__meta">{staff.countLabel}</span>
                 <span class="s4b-staff__gap" />
@@ -325,7 +312,7 @@ function InviteRow({ row, onRevoke }: { row: S4bInvite; onRevoke: (id: string) =
         <div class="s4b-m__top">
           <span class="s4b-k">{assignRoleLabel[row.role]}</span>
           {match ? <span class="s4b-k">{clockLabel(match.kickoffAt).time}</span> : null}
-          <Badge tone={lifeTone(life)} size="sm" label={inviteLifeLabel[life]} />
+          <StatusTag kind="neutral" label={inviteLifeLabel[life]} />
           <span class="s4b-staff__gap" />
           {canRevokeInvite(life) ? (
             <span class="s4b-mini">

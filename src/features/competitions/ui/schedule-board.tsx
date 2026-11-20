@@ -2,7 +2,6 @@
 
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { Badge, type BadgeTone } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Tabs } from '@/ui/Tabs';
 import type { CompetitionsT } from '../i18n';
@@ -28,6 +27,7 @@ import { pkScoreLabel } from '../live/copy';
 import { LiveScoreBadge } from '../live/LiveScoreBadge';
 import { crestFromEntry, TeamCrest } from './TeamCrest';
 import { CpCard } from './shell';
+import { StatusTag, type StatusKind } from './status-tag';
 
 function CoverGlyph({ category }: { category: CompetitionCategory }): JSX.Element {
   if (category === 'cup') {
@@ -120,11 +120,11 @@ function standingCrest(teamId: string, name: string, crests: readonly EntryDoc[]
   return { teamId: found.teamId || teamId, name: name || found.name, teamLogo: found.teamLogo };
 }
 
-function markBadge(ct: CompetitionsT, mark: PublicMark): { label: string; tone: BadgeTone } {
-  if (mark === 'pending') return { label: ct('matchPending'), tone: 'warning' };
-  if (mark === 'forfeit') return { label: ct('matchForfeit'), tone: 'danger' };
-  if (mark === 'cancelled') return { label: ct('matchCancelled'), tone: 'danger' };
-  return { label: ct('matchMoved'), tone: 'info' };
+function markBadge(ct: CompetitionsT, mark: PublicMark): { label: string; kind: StatusKind } {
+  if (mark === 'pending') return { label: ct('matchPending'), kind: 'neutral' };
+  if (mark === 'forfeit') return { label: ct('matchForfeit'), kind: 'neutral' };
+  if (mark === 'cancelled') return { label: ct('matchCancelled'), kind: 'cancelled' };
+  return { label: ct('matchMoved'), kind: 'neutral' };
 }
 
 function headingText(ct: CompetitionsT, heading: GroupHeading | null): string | null {
@@ -210,7 +210,7 @@ export function MatchSchedule({
                                 {match.venue ? `　${match.venue}` : ''}
                               </span>
                             )}
-                            {badge ? <Badge tone={badge.tone} label={badge.label} size="sm" /> : null}
+                            {badge ? <StatusTag kind={badge.kind} label={badge.label} /> : null}
                             {clock === 'keep' && match.live ? <LiveScoreBadge kind="live" /> : null}
                             {clock === 'keep' && match.corrected ? <LiveScoreBadge kind="corrected" /> : null}
                           </div>
@@ -362,7 +362,7 @@ function PhaseStrip({
   phase: 'warm' | 'live';
   summary: readonly SummaryEntry[];
   now: number;
-  badge: { label: string; tone: BadgeTone };
+  badge: { label: string; kind: StatusKind };
   firstMatchAt: number;
 }): JSX.Element {
   const strip = liveStrip(summary, now);
@@ -376,7 +376,7 @@ function PhaseStrip({
     <CpCard>
       <div class="cp3-strip">
         <span class="cp3-strip__txt">{text}</span>
-        <Badge tone={badge.tone} label={badge.label} size="sm" />
+        <StatusTag kind={badge.kind} label={badge.label} />
       </div>
     </CpCard>
   );
@@ -454,7 +454,7 @@ export function DetailPhaseBody({
   summary: readonly SummaryEntry[];
   standings: readonly StandingDoc[];
   now: number;
-  badge: { label: string; tone: BadgeTone };
+  badge: { label: string; kind: StatusKind };
   /** 頁面上方已經有狀態卡（整場取消／延期附原因）時為 true；沒有冠軍就不再畫只剩狀態標籤的卡。 */
   statusShownAbove?: boolean;
   /** null＝還沒按「全部賽程」或已結束展開。有值才是全集，而且同一頁只讀一次。 */
@@ -529,7 +529,7 @@ export function DetailPhaseBody({
                   ))}
                 </div>
               </div>
-              <Badge tone={badge.tone} label={badge.label} size="sm" />
+              <StatusTag kind={badge.kind} label={badge.label} />
             </div>
           </CpCard>
         ) : statusShownAbove ? null : (
@@ -538,7 +538,7 @@ export function DetailPhaseBody({
           <CpCard>
             <div class="cp3-row">
               <span />
-              <Badge tone={badge.tone} label={badge.label} size="sm" />
+              <StatusTag kind={badge.kind} label={badge.label} />
             </div>
           </CpCard>
         )}
