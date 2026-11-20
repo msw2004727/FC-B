@@ -279,9 +279,11 @@ export class Sender {
     let working = (await this.options.log.get(entry.op)) ?? entry;
     if (working.state === 'discarded') return 'continue';
     if (this.needsTakeover) {
-      await this.rejectStaleTakenOver();
+      await this.rejectStaleTakenOver(server);
       return 'stop';
     }
+    // 場次有本機未確認的寫入（重整後的持久化佇列、別分頁）：rev 是疊加過的，不能拿來取號；等結果出來再送（Opus 審 P3-1）。
+    if (server.pending === true) return 'wait';
 
     if (working.seq != null) {
       let view: DecideServer;
@@ -395,7 +397,7 @@ export class Sender {
         console.error('[live-scoring] 規則拒絕', { op: saved.op, seq, rev: server.match.rev });
       }
       await this.patchOpen(saved.op, { state: 'rejected', rejectReason: reason, seq });
-      if (reason === 'takenOver') await this.rejectStaleTakenOver();
+      if (reason === 'takenOver') await this.rejectStaleTakenOver(server);
       return 'stop';
     } finally {
       this.inflight.delete(saved.op);
@@ -508,7 +510,11 @@ export class Sender {
     return next;
   }
 
-  private async rejectStaleTakenOver(): Promise<void> {
+  /**
+   * 被接手：接手前記的待送標被拒。已取號的項目先以已確認資料對帳（Opus 審 P2-1，取代只看 control 就標被拒）：
+   * 伺服器已有自己的 op → applied；還有本機未確認的寫入（重整後持久化佇列）→ 維持原狀，等快照 pending 轉 false 後再分類。
+   */
+  private async rejectStaleTakenOver(server?: ServerRead): Promise<void> {
     this.needsTakeover = true;
     if (this.blockedAt == null) this.blockedAt = this.options.now();
     const blockedAt = this.blockedAt;
@@ -521,6 +527,24 @@ export class Sender {
         continue;
       }
       if (entry.createdAt >= blockedAt) continue;
+      if (entry.seq != null && server) {
+        let view: DecideServer;
+        try {
+          view = await this.look(entry, server);
+        } catch {
+          continue;
+        }
+        const decision = decideRetry(entry, view, false);
+        if (decision.kind === 'applied') {
+          await this.markApplied(entry.op, decision.seq);
+          continue;
+        }
+        if (decision.kind === 'discard') {
+          await this.markDiscarded(entry.op);
+          continue;
+        }
+        if (decision.kind === 'inflight') continue;
+      }
       await this.patchOpen(entry.op, { state: 'rejected', rejectReason: 'takenOver' });
     }
   }

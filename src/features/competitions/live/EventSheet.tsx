@@ -91,7 +91,7 @@ export function EventSheet({
         )}
       </div>
       {showPick && kind === 'card' ? (
-        <Button variant="secondary" aria-label={withEvent(LIVE_COPY.showCard, label)} onClick={onShowCard}>
+        <Button variant="secondary" data-show-card="true" aria-label={withEvent(LIVE_COPY.showCard, label)} onClick={onShowCard}>
           {LIVE_COPY.showCard}
         </Button>
       ) : null}

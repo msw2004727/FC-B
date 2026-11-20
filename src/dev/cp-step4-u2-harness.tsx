@@ -52,6 +52,8 @@ export const U2_SCREENS = [
   'a1-takeover-confirm',
   'a1-showcard',
   'a1-undo-confirm',
+  'a1-blocked-ht-before',
+  'a1-pk-blocked',
 ] as const;
 
 const ANCHORS: Record<string, string> = {
@@ -77,6 +79,8 @@ const ANCHORS: Record<string, string> = {
   'a1-takeover-confirm': '接手後，另一支裝置記的動作會送不出去',
   'a1-showcard': '點一下關閉',
   'a1-undo-confirm': '會一併復原第二張黃牌',
+  'a1-blocked-ht-before': '前一筆沒送出，請點「未套用的動作」處理',
+  'a1-pk-blocked': '先處理沒送出的紀錄，才能開始 PK',
 };
 
 const HOME: RosterPublicDoc[] = [
@@ -371,7 +375,15 @@ function seedOf(name: string): Seed {
       ],
     };
   }
-  if (name === 'a1-blocked-ht' || name === 'a1-resumed') {
+  if (name === 'a1-pk-blocked') {
+    return {
+      ...seedOf('u2-pk-confirm'),
+      pending: [
+        rejectedEntry('rej-goal-home-00009', { kind: 'goal', side: 'home', plId: 'pl_th9', goalKind: 'normal', matchSecond: 5300 }, 3, 'conflict', NOW - 30_000),
+      ],
+    };
+  }
+  if (name === 'a1-blocked-ht' || name === 'a1-resumed' || name === 'a1-blocked-ht-before') {
     return {
       match: match({ status: 'halftime', rev: 1, score: { home: 1, away: 0 }, clockBase: clock(45 * 60, 'ht', false, NOW - 120_000) }),
       events: [goalAt(1, 'home', 12)],
@@ -531,6 +543,13 @@ const OPEN: Record<string, () => Promise<void>> = {
   'a1-held-sheet': async () => {
     await until('未套用的動作', () => buttonsNamed('未套用的動作').length > 0);
     clickButton('未套用的動作');
+  },
+  'a1-blocked-ht-before': async () => {
+    await until('下半場開始', () => buttonsNamed('下半場開始').length > 0);
+  },
+  'a1-pk-blocked': async () => {
+    await until('PK 大戰', () => buttonsNamed('PK 大戰').length > 0);
+    clickButton('PK 大戰');
   },
   'a1-blocked-ht': async () => {
     await until('下半場開始', () => buttonsNamed('下半場開始').length > 0);

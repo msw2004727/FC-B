@@ -11,6 +11,9 @@ import { chromium } from '@playwright/test';
 import { createServer } from 'vite';
 
 const OUT = resolve(process.argv[2] || 'cp-step4-a1-persist');
+// takeover（預設）：離線記一球 → 重整 → 另一台接手 → 恢復連線，要出現被拒。
+// ok：離線連記兩球 → 重整 → 恢復連線、沒有人接手，兩球都要送到（顧問 11-20 門檻 6）。
+const SCENARIO = process.argv[3] === 'ok' ? 'ok' : 'takeover';
 const HOST = '127.0.0.1';
 // 預設 8402；與其他工作階段並行時用 FCB_EMU_PORT 換埠（顧問 11-20）。頁面用 ?port= 帶過去。
 const PORT = Number(process.env.FCB_EMU_PORT ?? 8402);
@@ -143,55 +146,106 @@ try {
   step('離線記一球', { row: await goalRow(), waitedMs: waited });
   await page.screenshot({ path: join(OUT, 'p1-offline-pending.png') });
 
-  await page.reload();
-  await page.waitForFunction(() => window.__A1_READY === true || window.__A1_ERROR, null, { timeout: 30000 });
-  // recover 讀取在離線時要等 SDK 判定連不上（約 10 秒）才回快取；多等一些，確認沒有被誤標 applied。
-  await pause(20000);
-  const afterReload = await goalRow();
-  step('重新整理後（仍離線）', { row: afterReload });
-  await page.screenshot({ path: join(OUT, 'p2-reloaded-offline.png') });
-  if (afterReload?.state === 'applied') throw new Error('重新整理後被誤標 applied');
+  if (SCENARIO === 'ok') {
+    const goals = async () => (await rows()).filter((r) => r.kind === 'goal')
+      .map((r) => ({ state: r.state, seq: r.seq ?? null, rejectReason: r.rejectReason ?? null }));
+    await goalBtn.click();
+    if (await skip.isVisible().catch(() => false)) await skip.click();
+    await until('日誌兩筆進球', async () => (await goals()).length === 2, 20000);
+    await pause(500);
+    step('離線連記兩球', { goals: await goals() });
+    await page.screenshot({ path: join(OUT, 'p1b-offline-two.png') });
+    await page.reload();
+    await page.waitForFunction(() => window.__A1_READY === true || window.__A1_ERROR, null, { timeout: 30000 });
+    await pause(20000);
+    step('重新整理後（仍離線）', { goals: await goals() });
+    await page.screenshot({ path: join(OUT, 'p2-reloaded-offline.png') });
+    if ((await goals()).some((g) => g.state === 'applied')) throw new Error('重新整理後被誤標 applied');
+    firestoreDown = false;
+    step('恢復連線（沒有人接手）');
+    const t0 = Date.now();
+    await until('兩筆都有結果', async () => {
+      const list = await goals();
+      return list.every((g) => g.state === 'applied') || list.some((g) => g.state === 'rejected' || g.state === 'discarded');
+    }, 120000);
+    step('日誌結果', { goals: await goals(), tookMs: Date.now() - t0 });
+    const uiScores = [];
+    for (let i = 0; i < 60; i += 1) {
+      const shown = await page.evaluate(() => document.querySelector('.s4-score')?.textContent ?? null);
+      uiScores.push(shown);
+      if (shown === '2:0') break;
+      await pause(1000);
+    }
+    await pause(1500);
+    const match = await read(`competitions/${CID}/matches/${MT}`);
+    const timeline = await list(`competitions/${CID}/matches/${MT}/timeline`);
+    const ui = await page.evaluate(() => ({
+      banners: [...document.querySelectorAll('.s4-banner')].map((el) => el.textContent.trim()),
+      score: document.querySelector('.s4-score')?.textContent ?? null,
+      pendingTags: document.querySelectorAll('.s4-pending').length,
+      unappliedButton: [...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('未套用的動作')),
+      takeoverEntry: [...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('其他裝置記分中')),
+    }));
+    const finalGoals = await goals();
+    step('伺服器與畫面', {
+      score: match?.score, rev: match?.rev, timeline: timeline.map((e) => `${e.seq}:${e.type}:${e.side}`), ui, uiScores: uiScores.join(' '), goals: finalGoals,
+    });
+    await page.screenshot({ path: join(OUT, 'p3-ok.png') });
+    report.ok = finalGoals.length === 2 && finalGoals.every((g) => g.state === 'applied')
+      && match?.score?.home === 2 && match?.score?.away === 0 && timeline.length === 2
+      && ui.score === '2:0' && ui.pendingTags === 0 && !ui.unappliedButton
+      && !ui.banners.some((text) => text.includes('沒送出'));
+  } else {
+    await page.reload();
+    await page.waitForFunction(() => window.__A1_READY === true || window.__A1_ERROR, null, { timeout: 30000 });
+    // recover 讀取在離線時要等 SDK 判定連不上（約 10 秒）才回快取；多等一些，確認沒有被誤標 applied。
+    await pause(20000);
+    const afterReload = await goalRow();
+    step('重新整理後（仍離線）', { row: afterReload });
+    await page.screenshot({ path: join(OUT, 'p2-reloaded-offline.png') });
+    if (afterReload?.state === 'applied') throw new Error('重新整理後被誤標 applied');
 
-  await patch(`competitions/${CID}/matches/${MT}/control/scorer`, { uid: UID, sid: 'other-device-sid-000009' });
-  step('另一台接手（control.sid 換掉）');
+    await patch(`competitions/${CID}/matches/${MT}/control/scorer`, { uid: UID, sid: 'other-device-sid-000009' });
+    step('另一台接手（control.sid 換掉）');
 
-  firestoreDown = false;
-  step('恢復連線');
-  const took = await until('原頁面出現被拒或被標已送出', async () => ['rejected', 'applied'].includes((await goalRow())?.state ?? ''), 90000);
-  const finalRow = await goalRow();
-  step('結果', { row: finalRow, tookMs: took });
-  // 被拒後畫面比分要回到伺服器的 0:0（SDK 送出持久化寫入、被拒、快照回滾）。每秒記一次，最多 120 秒。
-  // 日誌可能先因接手被標被拒（control 快照），SDK 的寫入串流在斷線後有退避，實際送出可能晚數十秒。
-  const uiScores = [];
-  const rollStart = Date.now();
-  for (let i = 0; i < 120; i += 1) {
-    const shown = await page.evaluate(() => document.querySelector('.s4-score')?.textContent ?? null);
-    uiScores.push(shown);
-    if (shown === '0:0') break;
-    await pause(1000);
+    firestoreDown = false;
+    step('恢復連線');
+    const took = await until('原頁面出現被拒或被標已送出', async () => ['rejected', 'applied'].includes((await goalRow())?.state ?? ''), 90000);
+    const finalRow = await goalRow();
+    step('結果', { row: finalRow, tookMs: took });
+    // 被拒後畫面比分要回到伺服器的 0:0（SDK 送出持久化寫入、被拒、快照回滾）。每秒記一次，最多 120 秒。
+    // 日誌可能先因接手被標被拒（control 快照），SDK 的寫入串流在斷線後有退避，實際送出可能晚數十秒。
+    const uiScores = [];
+    const rollStart = Date.now();
+    for (let i = 0; i < 120; i += 1) {
+      const shown = await page.evaluate(() => document.querySelector('.s4-score')?.textContent ?? null);
+      uiScores.push(shown);
+      if (shown === '0:0') break;
+      await pause(1000);
+    }
+    step('被拒後畫面比分（每秒）', { uiScores: uiScores.join(' '), rollbackMs: Date.now() - rollStart });
+    await page.screenshot({ path: join(OUT, 'p3b-after-rollback.png') });
+    const match = await read(`competitions/${CID}/matches/${MT}`);
+    const timeline = await list(`competitions/${CID}/matches/${MT}/timeline`);
+    const ui = await page.evaluate(() => ({
+      banners: [...document.querySelectorAll('.s4-banner')].map((el) => el.textContent.trim()),
+      score: document.querySelector('.s4-score')?.textContent ?? null,
+      takeoverEntry: [...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('其他裝置記分中')),
+    }));
+    step('伺服器與畫面', { score: match?.score, rev: match?.rev, timeline: timeline.length, ui });
+    await page.screenshot({ path: join(OUT, 'p3-rejected.png') });
+    const sheetBtn = page.getByRole('button', { name: '未套用的動作' });
+    // 被接手時記分區整個停用（含這顆），所以只在可按時打開。
+    if (await sheetBtn.isVisible().catch(() => false) && await sheetBtn.isEnabled().catch(() => false)) {
+      await sheetBtn.click();
+      await pause(600);
+      await page.screenshot({ path: join(OUT, 'p4-rejected-sheet.png') });
+    }
+    // 要的是「出現被拒、不默默當成已送出」。原因多半是 takenOver；恢復連線瞬間讀到的 control 還是舊快取時會重送一次、分類成 rules，一樣是被拒紅列。
+    report.ok = finalRow?.state === 'rejected' && uiScores.at(-1) === '0:0'
+      && match?.score?.home === 0 && match?.score?.away === 0 && timeline.length === 0;
+    report.rejectReason = finalRow?.rejectReason ?? null;
   }
-  step('被拒後畫面比分（每秒）', { uiScores: uiScores.join(' '), rollbackMs: Date.now() - rollStart });
-  await page.screenshot({ path: join(OUT, 'p3b-after-rollback.png') });
-  const match = await read(`competitions/${CID}/matches/${MT}`);
-  const timeline = await list(`competitions/${CID}/matches/${MT}/timeline`);
-  const ui = await page.evaluate(() => ({
-    banners: [...document.querySelectorAll('.s4-banner')].map((el) => el.textContent.trim()),
-    score: document.querySelector('.s4-score')?.textContent ?? null,
-    takeoverEntry: [...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('其他裝置記分中')),
-  }));
-  step('伺服器與畫面', { score: match?.score, rev: match?.rev, timeline: timeline.length, ui });
-  await page.screenshot({ path: join(OUT, 'p3-rejected.png') });
-  const sheetBtn = page.getByRole('button', { name: '未套用的動作' });
-  // 被接手時記分區整個停用（含這顆），所以只在可按時打開。
-  if (await sheetBtn.isVisible().catch(() => false) && await sheetBtn.isEnabled().catch(() => false)) {
-    await sheetBtn.click();
-    await pause(600);
-    await page.screenshot({ path: join(OUT, 'p4-rejected-sheet.png') });
-  }
-  // 要的是「出現被拒、不默默當成已送出」。原因多半是 takenOver；恢復連線瞬間讀到的 control 還是舊快取時會重送一次、分類成 rules，一樣是被拒紅列。
-  report.ok = finalRow?.state === 'rejected' && uiScores.at(-1) === '0:0'
-    && match?.score?.home === 0 && match?.score?.away === 0 && timeline.length === 0;
-  report.rejectReason = finalRow?.rejectReason ?? null;
   report.blockedHosts = [...new Set(blocked)];
   report.consoleErrors = consoleErrors;
 } catch (e) {

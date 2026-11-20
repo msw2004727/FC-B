@@ -760,4 +760,45 @@ describe.skipIf(!EMU)('記分模擬器：本機未送寫入', { timeout: 60000 }
     console.log('[R1] 讀取', JSON.stringify(sdkReads));
     expect({ ...sdkReads }).toEqual(READS_ONLINE_GOAL);
   });
+
+  // §3.436 P2-2 出口：半場被拒、後面排了兩球 → 捨棄那筆半場 → 兩球送出 → 再按半場成功。只驗證現行行為，不改產品程式。
+  it('P2-2. 半場被拒後排了兩球：捨棄半場後兩球送出，再按半場成功', async () => {
+    let armed = true;
+    const live = await startLive('p22', {
+      beforeCommit: async (plan) => {
+        if (!armed || plan.event.type !== 'halftime') return;
+        const match = await readDoc(`competitions/${CID}/matches/${MT}`);
+        await patchDoc(`competitions/${CID}/matches/${MT}`, { rev: Number(match?.rev ?? 0) + 1 });
+      },
+    });
+    const half = await live.session.getState().actions.halftime();
+    console.log('[P2-2] 第一次半場', JSON.stringify(half), JSON.stringify(brief(live)));
+    expect(half).toEqual({ status: 'rejected', reason: 'conflict' });
+    armed = false;
+    const afterReject = await readDoc(`competitions/${CID}/matches/${MT}`);
+    expect(afterReject?.status).toBe('live');
+    const g1 = await live.session.getState().actions.goal({ side: 'home', plId: 'pl_h1' });
+    const g2 = await live.session.getState().actions.goal({ side: 'away', plId: 'pl_a1' });
+    console.log('[P2-2] 排了兩球', JSON.stringify([g1, g2]), JSON.stringify(brief(live)), JSON.stringify(live.session.getState().held));
+    expect(g1.status).toBe('queued');
+    expect(g2.status).toBe('queued');
+    expect(live.session.getState().held).toMatchObject({ rejected: 1, queued: 2 });
+    const failed = (await rows(live.log)).find((row) => row.state === 'rejected');
+    expect(failed?.kind).toBe('halftime');
+    await live.session.getState().actions.discard(failed?.op ?? '');
+    await live.session.whenIdle();
+    await waitUntil('兩球送出', async () => (await rows(live.log)).filter((row) => row.kind === 'goal').every((row) => row.state === 'applied'), 120);
+    const ops = await goalOps(live.log);
+    await expectBoard({ home: 1, away: 1 }, { ops, contiguous: false });
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    console.log('[P2-2] 兩球送出後', JSON.stringify(events.map((event) => `${event.seq}:${event.type}:${event.side ?? ''}`)), JSON.stringify(brief(live)));
+    expect(events.map((event) => String(event.type))).toEqual(['goal', 'goal']);
+    expect(live.session.getState().held.rejected).toBe(0);
+    const again = await live.session.getState().actions.halftime();
+    const server = await readDoc(`competitions/${CID}/matches/${MT}`);
+    console.log('[P2-2] 再按半場', JSON.stringify(again), 'server', server?.status, JSON.stringify(brief(live)));
+    expect(again.status).toBe('applied');
+    expect(server?.status).toBe('halftime');
+    await waitUntil('畫面進中場', () => live.session.getState().phase === 'ht');
+  });
 });

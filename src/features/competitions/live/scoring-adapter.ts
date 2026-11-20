@@ -261,16 +261,20 @@ function rejectedLog(view: ScoringView): ActionLogEntry[] {
 
 /**
  * 終場還在待送時伺服器沒有 finishedAt；記分板會把「finished＋沒有 finishedAt」當成鎖定。
- * 用這筆終場的建立時間當撤回倒數起點（伺服器寫入後改用伺服器時間）。
+ * 用這筆終場的建立時間當撤回倒數起點（伺服器寫入後改用伺服器時間）。已套用未追上的終場用事件列的時間。
+ * 都沒有就是 null，不用現在時間（Opus 審 P3-3：用現在時間會讓撤回倒數永遠從頭算）。
  */
-function finishedAtOf(view: ScoringView, nowMs: number): number | null {
+function finishedAtOf(view: ScoringView): number | null {
   const server = view.match?.finishedAt ?? null;
   if (view.liveStatus !== 'finished') return server;
   if (server != null && view.match?.status === 'finished') return server;
-  const local = view.unapplied
-    .filter((row) => row.intent.kind === 'fulltime' && (row.state === 'pending' || row.state === 'sending'))
-    .reduce<number | null>((latest, row) => (latest == null || row.createdAt > latest ? row.createdAt : latest), null);
-  return local ?? nowMs;
+  const times = [
+    ...view.unapplied
+      .filter((row) => row.intent.kind === 'fulltime' && (row.state === 'pending' || row.state === 'sending'))
+      .map((row) => row.createdAt),
+    ...view.events.filter((event) => event.type === 'fulltime').map((event) => event.createdAt),
+  ];
+  return times.length > 0 ? Math.max(...times) : server;
 }
 
 /** 被拒項目擋住送出時的常駐提示。被接手時記分區整個停用，改由接手入口處理，不另外提示。 */
@@ -319,7 +323,7 @@ function matchDoc(view: ScoringView, nowMs: number): MatchDoc {
       running: clock.running,
       period: clock.period,
     },
-    finishedAt: finishedAtOf(view, nowMs),
+    finishedAt: finishedAtOf(view),
     confirmedAt: null,
     walkoverSide: null,
     result: null,
@@ -455,6 +459,8 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     timeoutUses: timeoutUsesFrom(view),
     pkCanStart: view.pk.canStart,
     confirmPk: true,
+    // 被拒項目擋住時先不開確認框：按下去直接得到「先處理沒送出的紀錄，才能開始 PK」，不用按完確認再等。
+    pkStartBlocked: view.held.rejected > 0,
     confirmKickoff: true,
     lockRegularGoals: view.pk.started,
     halftimeGoalUndoOnly: view.liveStatus === 'halftime',

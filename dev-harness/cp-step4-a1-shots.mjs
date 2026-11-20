@@ -23,6 +23,8 @@ const ANCHORS = {
   'a1-takeover-confirm': '接手後，另一支裝置記的動作會送不出去',
   'a1-showcard': '點一下關閉',
   'a1-undo-confirm': '會一併復原第二張黃牌',
+  'a1-blocked-ht-before': '前一筆沒送出，請點「未套用的動作」處理',
+  'a1-pk-blocked': '先處理沒送出的紀錄，才能開始 PK',
 };
 const SCREENS = [
   ['u2-pending', ALL, THEMES, true],
@@ -36,7 +38,11 @@ const SCREENS = [
   ['a1-takeover-confirm', ALL, THEMES, false],
   ['a1-showcard', ALL, THEMES, false],
   ['a1-undo-confirm', ALL, THEMES, false],
+  ['a1-blocked-ht-before', ALL, THEMES, true],
+  ['a1-pk-blocked', ALL, THEMES, true],
 ];
+// 第 4 個參數：只拍這些畫面（逗號分隔），例如 a1-pk-blocked,a1-blocked-ht。沒給就全拍。
+const ONLY = (process.argv[4] || '').split(',').filter(Boolean);
 // 確認框畫面：就緒後約 300ms（面板滑入完、仍在 600ms 內）先拍一張確認鈕停用中的樣子。
 const EARLY = new Set(['a1-pk-confirm-wait', 'a1-kickoff-confirm', 'a1-takeover-confirm', 'a1-undo-confirm']);
 
@@ -46,7 +52,7 @@ const browser = await chromium.launch({ args: ['--noerrdialogs'] });
 await mkdir(OUT, { recursive: true });
 const report = { shots: [], consoleErrors: [], overflows: [], wraps: [], firstScreen: [], rects: [] };
 const copyMap = new Map();
-for (const [name, sizes, themes, scrollMore] of SCREENS) {
+for (const [name, sizes, themes, scrollMore] of SCREENS.filter(([n]) => ONLY.length === 0 || ONLY.includes(n))) {
   for (const [w, h] of sizes) {
     for (const theme of themes) {
       const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 }); await ctx.route(/googleapis\.com|firebaseio\.com|firebaseapp\.com/, (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });
@@ -223,7 +229,7 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
 }
 // 第一屏：控制列或開賽鈕的底邊要在視窗內。u2-crowded 是暫停列加兩條提示，360×640 也要過。
 const FIRST = ['a1-held', 'a1-blocked-ht', 'a1-resumed'];
-for (const name of FIRST) {
+for (const name of FIRST.filter((n) => ONLY.length === 0 || ONLY.includes(n))) {
   for (const [w, h] of [...ALL, [375, 812]]) {
     for (const theme of THEMES) {
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 }); await ctx.route(/googleapis\.com|firebaseio\.com|firebaseapp\.com/, (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });

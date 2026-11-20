@@ -142,6 +142,8 @@ export interface ScorePadProps {
   pkCanStart?: boolean;
   /** 正式頁先開確認框。預設按了就送。 */
   confirmPk?: boolean;
+  /** 正式頁：有被拒項目擋住送出時，按「PK 大戰」不開確認框，直接送出讓工作階段回被擋提示。 */
+  pkStartBlocked?: boolean;
   /** 正式頁：開賽不能由記分端撤回，先開確認框。預設按了就送。 */
   confirmKickoff?: boolean;
   /** 正式頁：被拒項目擋住送出時的常駐提示（第 4 步 A F5-3）。沒傳不顯示。 */
@@ -432,7 +434,11 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     restoreFocus.current = null;
     const reopen = flashReturnSeq.current;
     flashReturnSeq.current = null;
-    if (reopen != null) {
+    // 亮牌期間這筆被作廢或不見了（例如他機復原）就不開回去，焦點回原處。
+    const stillThere = reopen != null
+      && events.some((item) => item.seq === reopen)
+      && !voids.some((mark) => mark.targetSeq === reopen);
+    if (reopen != null && stillThere) {
       refocusShowCard.current = true;
       setEventSeq(reopen);
       return;
@@ -445,11 +451,10 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   useEffect(() => {
     if (!refocusShowCard.current || eventSeq == null) return undefined;
     refocusShowCard.current = false;
-    // 面板開回來後焦點回到「看這張牌」。面板由 Modal 掛到 top layer，等它掛好再找。
+    // 面板開回來後焦點回到「看這張牌」（data-show-card 指定，不靠文字）。Modal 在掛上時（layout effect）會先把焦點給第一顆，
+    // 這裡排在它之後執行，才不會被蓋掉。
     const id = window.setTimeout(() => {
-      const target = [...document.querySelectorAll<HTMLButtonElement>('.s4-dialog button, .s4-sheet button')]
-        .find((button) => button.textContent?.trim() === LIVE_COPY.showCard);
-      target?.focus();
+      document.querySelector<HTMLButtonElement>('.s4-sheet [data-show-card]')?.focus();
     }, 0);
     return () => window.clearTimeout(id);
   }, [eventSeq]);
@@ -979,7 +984,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
             <Button
               disabled={flowOff}
               onClick={() => {
-                if (props.confirmPk) {
+                if (props.confirmPk && !props.pkStartBlocked) {
                   setPkConfirm(true);
                   return;
                 }

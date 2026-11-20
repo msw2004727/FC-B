@@ -70,6 +70,15 @@ describe('不能復原的確認框：取消在左、確認在右，打開後 600
     expect(screen.getByText(LIVE_COPY.pkConfirmTitle)).toBeTruthy();
   });
 
+  it('PK 大戰：有被拒項目擋住時不開確認框，直接送出（由工作階段回被擋提示）', () => {
+    const start = vi.fn();
+    render(<ScorePad {...S4_SCENE_PK_START} confirmPk pkStartBlocked onStartPk={start} heldLines={[{ key: 'held', text: blockedStep('pkStart'), alert: true }]} />);
+    fireEvent.click(button(LIVE_COPY.pkStart));
+    expect(screen.queryByText(LIVE_COPY.pkConfirmTitle)).toBeNull();
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('先處理沒送出的紀錄，才能開始 PK').getAttribute('role')).toBe('alert');
+  });
+
   it('開賽：正式頁先確認（標題、說明、取消在左）', () => {
     const kickoff = vi.fn();
     render(<ScorePad {...S4_SCENE_PRE} confirmKickoff onKickoff={kickoff} />);
@@ -160,6 +169,18 @@ describe('被拒擋住送出的提示', () => {
 });
 
 describe('看這張牌：先收起事件面板再亮牌，關掉亮牌後面板開回來', () => {
+  it('亮牌期間這筆被作廢（他機復原）：關掉亮牌後不開回不存在的面板', () => {
+    const { rerender } = render(<ScorePad {...S4_SCENE_LIVE} />);
+    fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${LIVE_COPY.showCard}`) }));
+    const target = S4_SCENE_LIVE.events.find((event) => event.type === 'card' && event.cardType === 'yellow' && Math.floor(event.matchSecond / 60) === 12);
+    expect(target).toBeTruthy();
+    rerender(<ScorePad {...S4_SCENE_LIVE} voids={[...S4_SCENE_LIVE.voids, { targetSeq: target?.seq ?? -1, seq: 99, createdAt: 1 }]} />);
+    fireEvent.click(document.querySelector('.s4-flash') as HTMLElement);
+    expect(document.querySelector('.s4-flash')).toBeNull();
+    expect(document.querySelector('.s4-sheet')).toBeNull();
+  });
+
   it('亮牌出現時事件面板已關閉、亮牌可互動；關閉後面板回來、焦點回到「看這張牌」', () => {
     render(<ScorePad {...S4_SCENE_LIVE} />);
     fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));

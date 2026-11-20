@@ -113,8 +113,9 @@ export function heldQueued(queued: number): string {
   return `之後記的 ${queued} 筆先存在這支手機，處理後一起送出`;
 }
 
-const BLOCKED_STEP: Record<'kickoff' | 'halftime' | 'resume' | 'fulltime' | 'undoFinish', string> = {
+const BLOCKED_STEP: Record<'kickoff' | 'halftime' | 'resume' | 'fulltime' | 'undoFinish' | 'pkStart', string> = {
   kickoff: '開賽',
+  pkStart: '開始 PK',
   halftime: '進入半場',
   resume: '開始下半場',
   fulltime: '記終場',

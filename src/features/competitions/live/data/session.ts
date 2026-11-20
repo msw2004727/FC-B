@@ -106,7 +106,7 @@ export interface ScoringView {
    * 有被拒項目擋住送出（pickNext 停住）時的筆數：rejected 被拒、queued 排在後面的待送／送出中。
    * blockedAction：最近一次被擋下的階段動作，被拒項目都處理完就清掉。
    */
-  held: { rejected: number; queued: number; blockedAction: PhaseIntent['kind'] | null };
+  held: { rejected: number; queued: number; blockedAction: BlockedKind | null };
   /** 伺服器狀態疊加待送的開賽／半場／續賽／終場／撤回終場。沒有場次時是 null。 */
   liveStatus: string | null;
   clock: ClockReading;
@@ -222,7 +222,9 @@ function overlayPhase(match: ServerMatch, entries: readonly LogEntry[], nowMs: n
   return phaseOf({ ...match, status }, nowMs);
 }
 
-const PHASE_KINDS: ReadonlySet<ActionKind> = new Set<ActionKind>(['kickoff', 'halftime', 'resume', 'fulltime', 'undoFinish']);
+/** 有被拒項目時要擋的動作：階段動作，加上完全不能撤回的開始 PK（顧問 11-20 門檻 6）。 */
+export type BlockedKind = PhaseIntent['kind'] | 'pkStart';
+const PHASE_KINDS: ReadonlySet<ActionKind> = new Set<ActionKind>(['kickoff', 'halftime', 'resume', 'fulltime', 'undoFinish', 'pkStart']);
 
 function phaseClock(
   kind: PhaseIntent['kind'],
@@ -277,7 +279,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
   let unwatchVisible = () => {};
   let stopped = false;
   let sender: Sender | null = null;
-  let blockedAction: PhaseIntent['kind'] | null = null;
+  let blockedAction: BlockedKind | null = null;
   const listeners = new Set<(view: ScoringView) => void>();
 
   const isOnline = () => (options.online ? options.online() : online);
@@ -641,7 +643,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
     // 有被拒項目時送出會停住。階段動作不再建新項目：疊加後狀態會先跳（例如已是下半場），之後重送又會被規則拒（C1）。
     // 進球、牌、換人、暫停照常排在後面（顧問 11-20 裁定），畫面另有常駐提示。
     if (PHASE_KINDS.has(intent.kind) && hasRejected()) {
-      blockedAction = intent.kind as PhaseIntent['kind'];
+      blockedAction = intent.kind as BlockedKind;
       emit();
       return rejected('blocked');
     }
@@ -1015,6 +1017,8 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
           }).then(() => {
             emit();
             if (sender && localSid && !sender.needsTakeover && tab !== 'blocked') void sender.flush();
+            // 被接手時平常不 flush（省讀取）。但還有送出中的項目時要 flush：它們等 SDK 結果（快照 pending 轉 false）才分類成被拒或已套用。
+            else if (sender && sender.needsTakeover && tab !== 'blocked' && entries.some((entry) => entry.state === 'sending')) void sender.flush();
           });
         },
         onControl: (next) => {
