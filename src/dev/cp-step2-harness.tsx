@@ -20,6 +20,8 @@ import CompetitionManagePage from '@/features/competitions/pages/CompetitionMana
 import JoinRosterPage from '@/features/competitions/pages/JoinRosterPage';
 import NewCompetitionPage from '@/features/competitions/pages/NewCompetitionPage';
 import RosterPage from '@/features/competitions/pages/RosterPage';
+// 報隊管理空狀態沿用 .s4b-mempty（step4b.css）；正式打包同在 entry CSS、排在 competitions.css 之後，示範頁照這個順序補載。
+import '@/features/competitions/step4b/step4b.css';
 
 const params = new URLSearchParams(location.search);
 const screenName = params.get('screen') || 'wizard-1';

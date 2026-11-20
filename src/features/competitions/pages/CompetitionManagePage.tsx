@@ -417,7 +417,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </CpCard>
         );
       })}
-      {pending.length === 0 ? <p class="cps-note cps-nowrap">{ct('pendingEmpty')}</p> : null}
+      {pending.length === 0 ? <CpCard><p class="s4b-mempty">{ct('pendingEmpty')}</p></CpCard> : null}
     </div>
   );
 
@@ -463,7 +463,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </CpCard>
         );
       })}
-      {approved.length === 0 ? <p class="cps-note cps-nowrap">{ct('approvedEmpty')}</p> : null}
+      {approved.length === 0 ? <CpCard><p class="s4b-mempty">{ct('approvedEmpty')}</p></CpCard> : null}
       {manage && !locked ? (
         <div class="cph-end">
           <Button variant="danger" onClick={() => { void lock(); }}>{ct('lockAll')}</Button>
@@ -495,7 +495,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </CpCard>
         );
       })}
-      {rejected.length === 0 ? <p class="cps-note cps-nowrap">{ct('rejectedEmpty')}</p> : null}
+      {rejected.length === 0 ? <CpCard><p class="s4b-mempty">{ct('rejectedEmpty')}</p></CpCard> : null}
     </div>
   );
 
