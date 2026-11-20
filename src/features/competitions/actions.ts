@@ -14,6 +14,7 @@ import {
   cpHostConfirmMatchResult,
   cpHostCreate,
   cpHostGenerateSchedule,
+  cpHostDelete,
   cpHostDeleteNotice,
   cpHostPostNotice,
   cpHostPublish,
@@ -40,6 +41,7 @@ import {
   cpHostReviewReport,
   type CpAcceptInviteResult,
   type CpCreateInviteResult,
+  type CpDeleteResult,
   type CpModerateInput,
   type CpReviewStatus,
   type CpAddRosterByRepInput,
@@ -158,6 +160,8 @@ export interface CpActions {
   acceptInvite(input: { cid: string; ivId: string; code: string }): Promise<CpAcceptInviteResult>;
   moderate(input: CpModerateInput): Promise<unknown>;
   reviewReport(input: { cid: string; reportId: string; status: CpReviewStatus }): Promise<unknown>;
+  /** 刪除整場賽事（cpHost delete）。刪到一半失敗時再呼叫一次即續刪。 */
+  deleteCompetition(input: { cid: string }): Promise<CpDeleteResult>;
 }
 
 export const liveCpActions: CpActions = {
@@ -198,4 +202,5 @@ export const liveCpActions: CpActions = {
   acceptInvite: cpParticipantAcceptInvite,
   moderate: cpHostModerate,
   reviewReport: cpHostReviewReport,
+  deleteCompetition: cpHostDelete,
 };

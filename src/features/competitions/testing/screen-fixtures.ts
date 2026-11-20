@@ -102,6 +102,7 @@ export function idleActions(): CpActions {
     acceptInvite: async ({ cid }) => ({ cid, roles: ['scorer'], matchCount: 1 }),
     moderate: async () => ({}),
     reviewReport: async () => ({}),
+    deleteCompetition: async ({ cid }) => ({ cid, deleted: true }),
   };
 }
 
