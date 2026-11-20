@@ -58,6 +58,11 @@ export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
  */
 export const COMPETITIONS_GATE_TIMEOUT_MS = 2_000;
 
+/**
+ * 有「上次有過」線索時，從進頁到站內清單畫出的上限；到了還沒好就這一次改看外部（顧問 11-20：與外部清單的 8 秒同值、合併成一個）。
+ */
+export const COMPETITIONS_PREFER_IN_CAP_MS = TOURNAMENTS_LOAD_TIMEOUT_MS;
+
 const EXTERNAL_CHIP = {
   league: 'cpl-chip--league',
   cup: 'cpl-chip--cup',
@@ -164,14 +169,16 @@ export default function TournamentsPage(): JSX.Element {
   // 此時啟動閘門又會搶資源；取代「有快取就在下一個 idle 開始」）。
   // 在那之前開關開或關走同一條路徑。（11-20 staging 冷開實測：閘門同時載入 chunk＋第二條連線，
   // 把外部清單既有的 8 秒逾時推過界；取代「進頁立刻開始」。）
-  // 有線索（preferIn）時一進頁就開始，2 秒逾時也從進頁起算；逾時就這一次退回外部。
+  // 有線索（preferIn）時一進頁就開始。
   const [gateArmed, setGateArmed] = useState(preferIn);
   useEffect(() => {
     if (!COMPETITIONS_ENABLED || gateArmed) return;
     if (state !== 'loading') setGateArmed(true);
   }, [gateArmed, state]);
+  // 2 秒逾時只給沒有線索的路徑。有線索時改用下面從進頁起算的單一上限（顧問 11-20 staging 冷開實測：
+  // 內部期閘門要等登入還原＋角色讀到，冷開約 7～8 秒，2 秒必定逾時，變成骨架→外部→切換列晚到三段跳動）。
   useEffect(() => {
-    if (!COMPETITIONS_ENABLED || !gateArmed) return undefined;
+    if (!COMPETITIONS_ENABLED || !gateArmed || preferIn) return undefined;
     const timer = setTimeout(() => {
       if (gateRef.current !== 'pending') return;
       gateRef.current = 'closed';
@@ -186,15 +193,20 @@ export default function TournamentsPage(): JSX.Element {
   const [inAppReady, setInAppReady] = useState(false);
   const onInAppReady = useCallback(() => setInAppReady(true), []);
   const pendingIn = preferIn && source === 'in' && (gate === 'pending' || (gate === 'open' && !inAppReady));
-  // 閘門通過後站內清單 8 秒還沒好：骨架不無限留，這一次改看外部（切換列還在，可再點站內）；網址有 ?src（自己選過）時以網址為準，不受影響
-  // （11-20 Opus 審 P2-2）。線索不清。
+  // 有線索時的單一上限：從進頁起算，涵蓋「閘門定案＋站內清單讀好」。到上限還沒好，這一次改看外部，線索不清；
+  // 閘門還在判定時切換列留著，晚到的通過不會把人搶回站內。網址有 ?src（自己選過）時以網址為準，不受影響。
+  // （顧問 11-20 退修：取代「閘門 2 秒逾時＋通過後另計 8 秒」兩段計時；Opus 審 P2-2 的骨架上限併在這裡。）
+  const inAppReadyRef = useRef(false);
+  inAppReadyRef.current = inAppReady;
   useEffect(() => {
-    if (!preferIn || gate !== 'open' || inAppReady) return undefined;
+    if (!preferIn) return undefined;
     const timer = setTimeout(() => {
-      setFallbackSource('ext');
-    }, TOURNAMENTS_LOAD_TIMEOUT_MS);
+      if (!inAppReadyRef.current) setFallbackSource('ext');
+    }, COMPETITIONS_PREFER_IN_CAP_MS);
     return () => clearTimeout(timer);
-  }, [preferIn, gate, inAppReady]);
+  }, [preferIn]);
+  // 有線索、閘門還在判定：不論選哪一側都留著切換列，點「外部」立刻看外部清單、再點「站內」回到骨架。
+  const showSourceTabs = inAppOpen || (preferIn && gate === 'pending');
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -387,7 +399,7 @@ export default function TournamentsPage(): JSX.Element {
           <h2 class="page-header-title">{t('tournaments.heading')}</h2>
         </div>
 
-        {inAppOpen || pendingIn ? (
+        {showSourceTabs ? (
           <div class="cpl-src" role="tablist" aria-label={t('tournaments.sourceLabel')}>
             <button
               id="tournaments-source-in"
@@ -430,7 +442,7 @@ export default function TournamentsPage(): JSX.Element {
             </button>
           ))}
         </div>
-        <div class="tc-panel" role="tabpanel" id={inAppOpen || pendingIn ? 'tournaments-source-panel' : undefined}>
+        <div class="tc-panel" role="tabpanel" id={showSourceTabs ? 'tournaments-source-panel' : undefined}>
           {gateArmed ? <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} onReady={onInAppReady} /> : null}
           {pendingIn ? (
             <div aria-busy="true" data-cp-pending-in="1">
