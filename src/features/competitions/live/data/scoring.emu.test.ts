@@ -12,10 +12,11 @@ import {
   memoryLocalCache,
   type Firestore,
 } from 'firebase/firestore';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LIVE_COPY } from '../copy';
 import { MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
 import { createFirestoreBackend } from './live-repo';
+import { Sender } from './sender';
 import { createScoringSession, type ScoringSession } from './session';
 import { memorySidStore, type SidStore } from './sid';
 import type { BatchPlan, LogEntry } from './types';
@@ -337,7 +338,9 @@ async function startLive(name: string, options?: {
     tick: false,
   });
   const live: Live = {
-    app, db, session, log, sids, online, notify, visible,
+    app, db, session, log, sids, online, visible,
+    // 延遲取值：直接放 notify 拿到的是 start() 前的空函式，watchOnline 回呼從沒被叫到（第 4 步 A：原本 test 9 沒測到 reconcileInflight）。
+    notify: (next: boolean) => notify(next),
     notifyVisible: () => notifyVisible(),
     commits,
     release: async () => {
@@ -613,16 +616,30 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
   });
 
   it('9. 恢復連線不重整，原寫入與對帳只留下一筆', async () => {
-    const live = await startLive('s9');
-    await goOffline(live);
-    const queued = await live.session.getState().actions.goal({ side: 'home', plId: 'pl_h1' });
-    expect(queued.status).toBe('queued');
-    await waitUntil('寫入進 SDK 佇列', async () => (await rows(live.log)).some((row) => row.state === 'sending'));
-    const ops = await goalOps(live.log);
-    await goOnline(live);
-    await live.session.whenIdle();
-    await expectBoard({ home: 1, away: 0 }, { ops, contiguous: true });
-    expect(live.commits).toHaveLength(1);
+    // 證明真的走到 reconcileInflight，而且當下有進行中的寫入（第 4 步 A：原本 notify 是空函式，這條從沒被叫到）。
+    const original = Sender.prototype.reconcileInflight;
+    const inflightAtReconcile: number[] = [];
+    const spy = vi.spyOn(Sender.prototype, 'reconcileInflight').mockImplementation(async function reconcile(this: Sender) {
+      inflightAtReconcile.push((this as unknown as { inflight: Set<string> }).inflight.size);
+      return original.call(this);
+    });
+    try {
+      const live = await startLive('s9');
+      await goOffline(live);
+      const queued = await live.session.getState().actions.goal({ side: 'home', plId: 'pl_h1' });
+      expect(queued.status).toBe('queued');
+      await waitUntil('寫入進 SDK 佇列', async () => (await rows(live.log)).some((row) => row.state === 'sending'));
+      const ops = await goalOps(live.log);
+      await goOnline(live);
+      await live.session.whenIdle();
+      await expectBoard({ home: 1, away: 0 }, { ops, contiguous: true });
+      expect(live.commits).toHaveLength(1);
+      expect(spy).toHaveBeenCalled();
+      expect(inflightAtReconcile.some((size) => size >= 1)).toBe(true);
+      await waitUntil('日誌標 applied', async () => (await rows(live.log)).every((row) => row.state === 'applied'));
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('10. 對帳之後原寫入才落地，同一個 seq 只成功一次', async () => {

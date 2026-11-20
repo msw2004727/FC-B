@@ -2,9 +2,9 @@
 
 import type { MatchDoc, MatchStatus, RosterPublicDoc } from '../data/types';
 import type { LiveClock, LiveLink } from './clock';
-import { LIVE_COPY, minuteMark, pkKickLine } from './copy';
+import { blockedStep, heldQueued, heldRejected, LIVE_COPY, minuteMark, pkKickLine } from './copy';
 import { eventLines, findPlayer, nextPkRound, type EventLine } from './present';
-import type { ScoreFeedRow, ScorePadProps, ScorePick, TimeoutView } from './ScorePad';
+import type { ScoreFeedRow, ScoreHeldLine, ScorePadProps, ScorePick, TimeoutView } from './ScorePad';
 import type { ScoringView } from './data/session';
 import type { ServerEvent, UnappliedView } from './data/types';
 import type { ActionLogEntry, CardType, GoalKind, TimelineEvent, VoidMark } from './types';
@@ -259,7 +259,34 @@ function rejectedLog(view: ScoringView): ActionLogEntry[] {
     }));
 }
 
-function matchDoc(view: ScoringView): MatchDoc {
+/**
+ * 終場還在待送時伺服器沒有 finishedAt；記分板會把「finished＋沒有 finishedAt」當成鎖定。
+ * 用這筆終場的建立時間當撤回倒數起點（伺服器寫入後改用伺服器時間）。
+ */
+function finishedAtOf(view: ScoringView, nowMs: number): number | null {
+  const server = view.match?.finishedAt ?? null;
+  if (view.liveStatus !== 'finished') return server;
+  if (server != null && view.match?.status === 'finished') return server;
+  const local = view.unapplied
+    .filter((row) => row.intent.kind === 'fulltime' && (row.state === 'pending' || row.state === 'sending'))
+    .reduce<number | null>((latest, row) => (latest == null || row.createdAt > latest ? row.createdAt : latest), null);
+  return local ?? nowMs;
+}
+
+/** 被拒項目擋住送出時的常駐提示。被接手時記分區整個停用，改由接手入口處理，不另外提示。 */
+export function heldLinesFrom(view: ScoringView): ScoreHeldLine[] {
+  const held = view.held;
+  if (held.rejected === 0 || view.control.needsTakeover) return [];
+  const lines: ScoreHeldLine[] = [{
+    key: 'held',
+    text: held.blockedAction ? blockedStep(held.blockedAction) : heldRejected(held.rejected),
+    alert: held.blockedAction != null,
+  }];
+  if (held.queued > 0) lines.push({ key: 'queued', text: heldQueued(held.queued), alert: false });
+  return lines;
+}
+
+function matchDoc(view: ScoringView, nowMs: number): MatchDoc {
   const match = view.match;
   const clock = match?.clockBase ?? { startedAt: null, pausedSec: 0, running: false, period: 'pre' };
   const homeId = match?.home.teamId ?? '';
@@ -281,7 +308,8 @@ function matchDoc(view: ScoringView): MatchDoc {
     teamIds: [homeId, awayId],
     score: { home: view.score.home, away: view.score.away },
     penaltyScore: null,
-    status: asStatus(match?.status),
+    // 階段跟節次一樣看疊加狀態（第 4 步 A F5-2，取代只看伺服器 status：待送「下半場開始」時節次已是 h2、按鈕卻停在中場）。
+    status: asStatus(view.liveStatus ?? match?.status),
     rev: match?.rev ?? 0,
     resetRev: match?.resetRev ?? 0,
     lock: { locked: match?.lock.locked === true },
@@ -291,7 +319,7 @@ function matchDoc(view: ScoringView): MatchDoc {
       running: clock.running,
       period: clock.period,
     },
-    finishedAt: match?.finishedAt ?? null,
+    finishedAt: finishedAtOf(view, nowMs),
     confirmedAt: null,
     walkoverSide: null,
     result: null,
@@ -380,7 +408,7 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
   const homeRoster: readonly RosterPublicDoc[] = view.roster.home;
   const awayRoster: readonly RosterPublicDoc[] = view.roster.away;
   return {
-    match: matchDoc(view),
+    match: matchDoc(view, nowMs),
     homeRoster,
     awayRoster,
     events: timeline,
@@ -418,6 +446,7 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     onTakeover: () => { void view.actions.takeover(); },
     scoringDisabled: reader,
     topBanner: reader ? view.tabHint : null,
+    heldLines: reader ? [] : heldLinesFrom(view),
     storageBanner: view.storage === 'unavailable',
     clockControlled: true,
     timeoutControlled: true,
@@ -426,6 +455,7 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     timeoutUses: timeoutUsesFrom(view),
     pkCanStart: view.pk.canStart,
     confirmPk: true,
+    confirmKickoff: true,
     lockRegularGoals: view.pk.started,
     halftimeGoalUndoOnly: view.liveStatus === 'halftime',
     feed: feedOf(view, timeline, view.voids),

@@ -100,7 +100,13 @@ export interface ScoringView {
     /** 沒有本機 sid，而且控制權不是別人。按鈕用「接手記分」。 */
     takeoverSelf: boolean;
   };
+  /** 依疊加狀態（liveStatus）算出，和節次一致（第 4 步 A F5-1，取代只看伺服器 status）。 */
   phase: ScoringPhase;
+  /**
+   * 有被拒項目擋住送出（pickNext 停住）時的筆數：rejected 被拒、queued 排在後面的待送／送出中。
+   * blockedAction：最近一次被擋下的階段動作，被拒項目都處理完就清掉。
+   */
+  held: { rejected: number; queued: number; blockedAction: PhaseIntent['kind'] | null };
   /** 伺服器狀態疊加待送的開賽／半場／續賽／終場／撤回終場。沒有場次時是 null。 */
   liveStatus: string | null;
   clock: ClockReading;
@@ -173,6 +179,7 @@ export function loadingView(): ScoringView {
     voids: [],
     control: { uid: null, sid: null, localSid: null, needsTakeover: false, takeoverSelf: false },
     phase: 'pre',
+    held: { rejected: 0, queued: 0, blockedAction: null },
     liveStatus: null,
     clock: EMPTY_CLOCK,
     budget: {
@@ -204,6 +211,18 @@ function phaseOf(match: ServerMatch, nowMs: number): ScoringPhase {
   if (match.status === 'confirmed' || match.status === 'walkover' || match.status === 'cancelled') return 'locked';
   return 'play';
 }
+
+/**
+ * 畫面階段看疊加狀態，和節次、liveStatus 一致（C1：疊加已是 live／h2，按鈕卻停在「下半場開始」）。
+ * 終場還在待送（伺服器尚未 finished、沒有 finishedAt）時是 undo：剛按的終場可以撤回，不落到 locked。
+ */
+function overlayPhase(match: ServerMatch, entries: readonly LogEntry[], nowMs: number): ScoringPhase {
+  const status = overlayStatus(match, entries);
+  if (status === 'finished' && match.status !== 'finished') return 'undo';
+  return phaseOf({ ...match, status }, nowMs);
+}
+
+const PHASE_KINDS: ReadonlySet<ActionKind> = new Set<ActionKind>(['kickoff', 'halftime', 'resume', 'fulltime', 'undoFinish']);
 
 function phaseClock(
   kind: PhaseIntent['kind'],
@@ -258,6 +277,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
   let unwatchVisible = () => {};
   let stopped = false;
   let sender: Sender | null = null;
+  let blockedAction: PhaseIntent['kind'] | null = null;
   const listeners = new Set<(view: ScoringView) => void>();
 
   const isOnline = () => (options.online ? options.online() : online);
@@ -270,6 +290,43 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
 
   async function reloadEntries(): Promise<void> {
     entries = await log.list(cid, mtId);
+    if (!hasRejected()) blockedAction = null;
+  }
+
+  /** 和 pickNext 同一個條件：有被拒的項目，送出就停在它前面。 */
+  function hasRejected(): boolean {
+    return entries.some((entry) => entry.state === 'rejected');
+  }
+
+  function heldView(): ScoringView['held'] {
+    const rejectedCount = entries.filter((entry) => entry.state === 'rejected').length;
+    if (rejectedCount === 0) return { rejected: 0, queued: 0, blockedAction: null };
+    const queued = entries.filter((entry) => entry.state === 'pending' || entry.state === 'sending').length;
+    return { rejected: rejectedCount, queued, blockedAction };
+  }
+
+  /** sender 改了日誌：同一輪只重讀一次再更新畫面（第 4 步 A F4：被拒後畫面要自己更新，不必等下一個動作）。 */
+  let changeQueued = false;
+  function senderChanged(): void {
+    if (changeQueued || stopped) return;
+    changeQueued = true;
+    queueMicrotask(() => {
+      changeQueued = false;
+      if (stopped) return;
+      void reloadEntries().then(() => {
+        if (!stopped) emit();
+      }, () => {});
+    });
+  }
+
+  /**
+   * 伺服器事件加上已套用、監聽還沒讀到的日誌項目（commit 已成功＝伺服器已確認）。
+   * 監聽改成只在已確認快照後讀事件（第 4 步 A F3），commit 回來到事件讀進來之間有空檔；
+   * 判斷第二黃、作廢目標、額度時要算進去，不然剛記的第一黃會被漏看（模擬器 e2e 8 抓到）。
+   */
+  function knownEvents(): ServerEvent[] {
+    const floor = match?.resetRev ?? 0;
+    return mergedEvents(events, entries.filter((entry) => entryInEpoch(entry, floor) && (entry.seq == null || entry.seq > floor)));
   }
 
   function elapsedSec(): number {
@@ -291,7 +348,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       events,
       entries.filter((entry) => entryInEpoch(entry, floor) && (entry.seq == null || entry.seq > floor)),
     );
-    const budget = budgetView(base?.rev ?? 0, base?.resetRev ?? 0, entries, events, timeoutRule.stopsClock);
+    const budget = budgetView(base?.rev ?? 0, base?.resetRev ?? 0, entries, shownEvents, timeoutRule.stopsClock);
     const score = base ? scoreView(base, events, entries) : loadingView().score;
     const needsTakeover = current?.needsTakeover ?? !localSid;
     const takeoverSelf = needsTakeover && !localSid && !(control != null && control.uid !== uid);
@@ -307,7 +364,8 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
         needsTakeover,
         takeoverSelf,
       },
-      phase: base ? phaseOf(base, now()) : 'pre',
+      phase: base ? overlayPhase(base, entries, now()) : 'pre',
+      held: heldView(),
       liveStatus: base ? overlayStatus(base, entries) : null,
       clock: over ? clockFromBase(over.clockBase, now()) : EMPTY_CLOCK,
       budget,
@@ -419,13 +477,13 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
 
   function allow(kind: ActionKind, clockAction?: ClockActionName): boolean {
     if (tab === 'blocked') return false;
-    const budget = budgetView(match?.rev ?? 0, match?.resetRev ?? 0, entries, events, timeoutRule.stopsClock);
+    const budget = budgetView(match?.rev ?? 0, match?.resetRev ?? 0, entries, knownEvents(), timeoutRule.stopsClock);
     return actionAllowed(kind, budget, clockAction);
   }
 
   function allowGroup(intents: readonly Intent[]): boolean {
     if (tab === 'blocked') return false;
-    const budget = budgetView(match?.rev ?? 0, match?.resetRev ?? 0, entries, events, timeoutRule.stopsClock);
+    const budget = budgetView(match?.rev ?? 0, match?.resetRev ?? 0, entries, knownEvents(), timeoutRule.stopsClock);
     return groupWithinBudget(intents, budget);
   }
 
@@ -455,7 +513,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
 
   function describedTarget(target: { seq?: number; op?: string }): { type: string } | null {
     if (target.seq != null) {
-      const found = events.find((event) => event.seq === target.seq);
+      const found = knownEvents().find((event) => event.seq === target.seq);
       if (found) return { type: found.type };
       const logged = entries.find((entry) => entry.seq === target.seq);
       if (logged) return { type: logged.kind };
@@ -580,6 +638,13 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       return rejected(tab === 'blocked' ? 'rules' : 'limit');
     }
     if (intent.kind === 'fulltime' && fulltimeBlocked(entries)) return rejected('rules');
+    // 有被拒項目時送出會停住。階段動作不再建新項目：疊加後狀態會先跳（例如已是下半場），之後重送又會被規則拒（C1）。
+    // 進球、牌、換人、暫停照常排在後面（顧問 11-20 裁定），畫面另有常駐提示。
+    if (PHASE_KINDS.has(intent.kind) && hasRejected()) {
+      blockedAction = intent.kind as PhaseIntent['kind'];
+      emit();
+      return rejected('blocked');
+    }
     const row = make(intent, group);
     await putAll([row]);
     return finish([row.op], [intent.kind]);
@@ -590,7 +655,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
   }
 
   function linkedSecond(target: { seq?: number; op?: string }): { seq?: number; op?: string } | null {
-    return liveSecondYellow(target, events, entries, match?.resetRev ?? 0);
+    return liveSecondYellow(target, knownEvents(), entries, match?.resetRev ?? 0);
   }
 
   function groupRows(label: GroupLabel, intents: Intent[]): LogEntry[] {
@@ -624,7 +689,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
         matchSecond: input.matchSecond ?? second(),
       };
       if (input.cardType === 'yellow') {
-        const open = findOpenYellow(input.plId, input.side, events, entries, match?.resetRev ?? 0);
+        const open = findOpenYellow(input.plId, input.side, knownEvents(), entries, match?.resetRev ?? 0);
         if (open?.seq != null) {
           intent.cardType = 'second_yellow';
           intent.refSeq = open.seq;
@@ -935,6 +1000,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
         mtId,
         localSid: () => localSid ?? '',
         now,
+        onChange: senderChanged,
       });
       const opened = await options.backend.open({
         onMatch: (next) => {

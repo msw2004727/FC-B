@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installUi4TestLocale } from '@/ui/ui4-test-helpers';
 import { s4Match, S4_SCENE_FT, S4_SCENE_HT, S4_SCENE_LIVE, S4_SCENE_PK, S4_SCENE_PK_START, S4_SCENE_PRE, S4_SCENE_TAKEOVER } from '../testing/step4-fixtures';
@@ -6,10 +6,14 @@ import { LIVE_COPY, teamAction } from './copy';
 import { EventSheet } from './EventSheet';
 import { PlayerSheet } from './PlayerSheet';
 import { ScorePad, type ScoreFeedRow } from './ScorePad';
+import { CONFIRM_ARM_MS } from './score-states';
 
 installUi4TestLocale();
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const row: ScoreFeedRow = {
   key: 'op-pend-1',
@@ -47,6 +51,7 @@ describe('記分板新狀態', () => {
   });
 
   it('PK 確認框取消不送，確認才呼叫', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const start = vi.fn();
     render(<ScorePad {...S4_SCENE_PK_START} confirmPk onStartPk={start} />);
     fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.pkStart }));
@@ -57,6 +62,7 @@ describe('記分板新狀態', () => {
     expect(start).not.toHaveBeenCalled();
     expect(screen.queryByText(LIVE_COPY.pkConfirmTitle)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.pkStart }));
+    act(() => { vi.advanceTimersByTime(CONFIRM_ARM_MS); });
     fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.pkConfirmGo }));
     expect(start).toHaveBeenCalledTimes(1);
   });

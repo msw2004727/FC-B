@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
-import { Button } from '@/ui/Button';
 import { Modal } from '@/ui/Modal';
 import { LIVE_COPY } from './copy';
+import { ConfirmFooter, useConfirmArmed } from './score-states';
 
 export function TakeoverDialog({
   open,
@@ -12,6 +12,7 @@ export function TakeoverDialog({
   onTakeover: () => void;
   onClose: () => void;
 }): JSX.Element {
+  const armed = useConfirmArmed(open);
   return (
     <Modal
       open={open}
@@ -19,10 +20,13 @@ export function TakeoverDialog({
       title={LIVE_COPY.takeoverTitle}
       onClose={onClose}
       footer={(
-        <>
-          <Button onClick={onTakeover}>{LIVE_COPY.takeoverAction}</Button>
-          <Button variant="secondary" onClick={onClose}>{LIVE_COPY.takeoverLater}</Button>
-        </>
+        <ConfirmFooter
+          armed={armed}
+          confirmLabel={LIVE_COPY.takeoverAction}
+          cancelLabel={LIVE_COPY.takeoverLater}
+          onConfirm={onTakeover}
+          onCancel={onClose}
+        />
       )}
     >
       <p class="s4-note">{LIVE_COPY.takeoverNote}</p>

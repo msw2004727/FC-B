@@ -252,6 +252,11 @@
   background: #ff2d2d;
   color: #141414;
 }
+/* 被拒擋住送出：跟被拒紅列同一組語意色，跟主題走（不用儲存不可用那條固定亮紅）。 */
+.s4-banner--held {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
+}
 .s4-wake {
   background: var(--color-bg-elevated);
   color: var(--color-text-primary);

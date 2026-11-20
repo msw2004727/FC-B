@@ -85,6 +85,8 @@ export const LIVE_COPY = {
   pkConfirmLine2: 'PK 開始後不能取消，要取消須由主辦重置整場。',
   pkConfirmGo: '開始 PK',
   pkConfirmCancel: '取消',
+  kickoffConfirmTitle: '開始比賽？',
+  kickoffConfirmLine: '時鐘會立刻開始計時',
   pkGoalLocked: 'PK 期間不能復原或改判一般進球',
   halftimeGoalUndoOnly: '中場休息只能復原，下半場再記',
   cardNoRoster: '這隊名單沒有球員，無法記牌',
@@ -100,6 +102,28 @@ export function offlineChip(pending: number): string {
 
 export function offlineSaved(pending: number): string {
   return `離線中，已存 ${pending} 筆，恢復網路會自動送出`;
+}
+
+/** 有被拒項目擋住送出時的常駐提示（第 4 步 A F5-3，顧問 11-20）。12px 一行，360 寬不斷行。 */
+export function heldRejected(rejected: number): string {
+  return `${rejected > 1 ? `有 ${rejected} 筆` : '前一筆'}沒送出，請點「未套用的動作」處理`;
+}
+
+export function heldQueued(queued: number): string {
+  return `之後記的 ${queued} 筆先存在這支手機，處理後一起送出`;
+}
+
+const BLOCKED_STEP: Record<'kickoff' | 'halftime' | 'resume' | 'fulltime' | 'undoFinish', string> = {
+  kickoff: '開賽',
+  halftime: '進入半場',
+  resume: '開始下半場',
+  fulltime: '記終場',
+  undoFinish: '撤回終場',
+};
+
+/** 階段動作被擋：說清楚要先做什麼、擋住的是哪一步。 */
+export function blockedStep(kind: keyof typeof BLOCKED_STEP): string {
+  return `先處理沒送出的紀錄，才能${BLOCKED_STEP[kind]}`;
 }
 
 export function undoWithin(clock: string): string {

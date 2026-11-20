@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installUi4TestLocale } from '@/ui/ui4-test-helpers';
+import { CONFIRM_ARM_MS } from './score-states';
 import {
   S4_ACTION_LOG,
   S4_CONFIRMED,
@@ -56,6 +57,11 @@ function expectOff(name: string | RegExp, off: boolean): void {
 function pad(scene: S4ScoreScene, extra: Partial<ScorePadProps> = {}) {
   // 預覽元件測試照舊驗「修正時鐘」選項：給一個 onCorrectClock（正式頁未接上時選項不顯示，另有測試）。
   return render(<ScorePad onCorrectClock={() => undefined} {...scene} {...extra} />);
+}
+
+
+function armConfirm(): void {
+  act(() => { vi.advanceTimersByTime(CONFIRM_ARM_MS); });
 }
 
 describe('第 4 步預覽元件', () => {
@@ -361,6 +367,8 @@ describe('第 4 步預覽元件', () => {
   });
 
   it('改判被引用的第一張黃牌先確認，再依序復原第二黃、第一黃、記新的', () => {
+    // 不能復原的確認框打開後 CONFIRM_ARM_MS 內確認鈕停用（防連點），這裡用假時鐘走過去。
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const onUndo = vi.fn(() => true);
     const onRecord = vi.fn(() => true);
     pad(S4_SCENE_LIVE, { onUndo, onRecord });
@@ -370,6 +378,7 @@ describe('第 4 步預覽元件', () => {
     expect(screen.getByText('會一併復原第二張黃牌')).toBeTruthy();
     expect(onUndo).not.toHaveBeenCalled();
     expect(onRecord).not.toHaveBeenCalled();
+    armConfirm();
     fireEvent.click(button('確定改判'));
     expect(onUndo.mock.calls).toEqual([[7], [3]]);
     expect(onRecord).toHaveBeenCalledWith({
@@ -388,6 +397,7 @@ describe('第 4 步預覽元件', () => {
     pad(S4_SCENE_LIVE, { onUndo: failSecond, onRecord: noRecord });
     fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
     fireEvent.click(button(/^改判/));
+    armConfirm();
     fireEvent.click(button('確定改判'));
     expect(failSecond.mock.calls).toEqual([[7]]);
     expect(noRecord).not.toHaveBeenCalled();
@@ -398,6 +408,7 @@ describe('第 4 步預覽元件', () => {
     pad(S4_SCENE_LIVE, { onUndo: failFirst, onRecord: noRecord });
     fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
     fireEvent.click(button(/^改判/));
+    armConfirm();
     fireEvent.click(button('確定改判'));
     expect(failFirst.mock.calls).toEqual([[7], [3]]);
     expect(noRecord).not.toHaveBeenCalled();
@@ -439,12 +450,15 @@ describe('第 4 步預覽元件', () => {
   });
 
   it('復原被引用的第一張黃牌先確認，依序復原第二黃再第一黃', () => {
+    // 不能復原的確認框打開後 CONFIRM_ARM_MS 內確認鈕停用（防連點），這裡用假時鐘走過去。
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const onUndo = vi.fn();
     pad(S4_SCENE_LIVE, { onUndo });
     fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
     fireEvent.click(button(/^復原/));
     expect(screen.getByText('會一併復原第二張黃牌')).toBeTruthy();
     expect(onUndo).not.toHaveBeenCalled();
+    armConfirm();
     fireEvent.click(button('確定復原'));
     expect(onUndo.mock.calls).toEqual([[7], [3]]);
     cleanup();
@@ -453,6 +467,7 @@ describe('第 4 步預覽元件', () => {
     pad(S4_SCENE_LIVE, { onUndo: onUndoHalf });
     fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
     fireEvent.click(button(/^復原/));
+    armConfirm();
     fireEvent.click(button('確定復原'));
     expect(onUndoHalf.mock.calls).toEqual([[7], [3]]);
     expect(screen.getByRole('alert').textContent).toContain('第二張黃牌已復原，第一張黃牌仍在');
@@ -462,6 +477,7 @@ describe('第 4 步預覽元件', () => {
     pad(S4_SCENE_LIVE, { onUndo: failFirstStep });
     fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
     fireEvent.click(button(/^復原/));
+    armConfirm();
     fireEvent.click(button('確定復原'));
     expect(failFirstStep.mock.calls).toEqual([[7]]);
     expect(screen.getByRole('alert').textContent).toContain('第二張黃牌沒有復原');

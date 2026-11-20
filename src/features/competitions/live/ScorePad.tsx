@@ -32,7 +32,7 @@ import {
   undoWithin,
 } from './copy';
 import { EventSheet } from './EventSheet';
-import { PendingTag, PkConfirmDialog } from './score-states';
+import { ConfirmFooter, KickoffConfirmDialog, PendingTag, PkConfirmDialog, useConfirmArmed } from './score-states';
 import { PlayerSheet } from './PlayerSheet';
 import {
   EVENT_MAX,
@@ -142,6 +142,10 @@ export interface ScorePadProps {
   pkCanStart?: boolean;
   /** 正式頁先開確認框。預設按了就送。 */
   confirmPk?: boolean;
+  /** 正式頁：開賽不能由記分端撤回，先開確認框。預設按了就送。 */
+  confirmKickoff?: boolean;
+  /** 正式頁：被拒項目擋住送出時的常駐提示（第 4 步 A F5-3）。沒傳不顯示。 */
+  heldLines?: readonly ScoreHeldLine[];
   /** PK 開始後，一般進球的復原與改判停用。 */
   lockRegularGoals?: boolean;
   /** 疊加狀態是中場：點開進球只能復原，不能改判。沒傳不鎖。 */
@@ -150,6 +154,13 @@ export interface ScorePadProps {
   feed?: readonly ScoreFeedRow[];
   /** 正式頁的 PK 比分（含還沒落地的腳）。沒傳就從 events 算。 */
   pkDigits?: { home: number; away: number } | null;
+}
+
+export interface ScoreHeldLine {
+  key: string;
+  text: string;
+  /** 剛被擋下的階段動作：用 alert 讓報讀立刻念。 */
+  alert: boolean;
 }
 
 export interface ScoreFeedRow {
@@ -380,7 +391,12 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const [amendPl, setAmendPl] = useState<string | null>(null);
   const [confirmPair, setConfirmPair] = useState<ConfirmPair | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [kickoffConfirm, setKickoffConfirm] = useState(false);
+  const confirmArmed = useConfirmArmed(confirmPair != null);
   const restoreFocus = useRef<HTMLElement | null>(null);
+  /** 「看這張牌」時暫時收起的事件面板。亮牌關掉後開回來（面板是 top layer，亮牌會被蓋住又點不到）。 */
+  const flashReturnSeq = useRef<number | null>(null);
+  const refocusShowCard = useRef(false);
   useEffect(() => {
     if (props.timeoutControlled !== true) return;
     const view = props.timeoutView;
@@ -414,10 +430,29 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     setFlash(null);
     const back = restoreFocus.current;
     restoreFocus.current = null;
+    const reopen = flashReturnSeq.current;
+    flashReturnSeq.current = null;
+    if (reopen != null) {
+      refocusShowCard.current = true;
+      setEventSeq(reopen);
+      return;
+    }
     queueMicrotask(() => {
       if (back?.isConnected) back.focus();
     });
   }
+
+  useEffect(() => {
+    if (!refocusShowCard.current || eventSeq == null) return undefined;
+    refocusShowCard.current = false;
+    // 面板開回來後焦點回到「看這張牌」。面板由 Modal 掛到 top layer，等它掛好再找。
+    const id = window.setTimeout(() => {
+      const target = [...document.querySelectorAll<HTMLButtonElement>('.s4-dialog button, .s4-sheet button')]
+        .find((button) => button.textContent?.trim() === LIVE_COPY.showCard);
+      target?.focus();
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [eventSeq]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -667,6 +702,9 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   function showOpenCard(): void {
     if (!openEventDoc || openEventDoc.type !== 'card') return;
     rememberFocus();
+    // 先收起事件面板再亮牌：面板是 showModal 的 top layer，背景 inert，亮牌會被蓋住也點不到（顧問 11-20）。
+    flashReturnSeq.current = openEventDoc.seq;
+    setEventSeq(null);
     setFlash(flashFromCard(openEventDoc.cardType, findPlayer(homeRoster, awayRoster, openEventDoc.plId)));
   }
 
@@ -684,6 +722,17 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const alerts: JSX.Element[] = [];
   if (props.topBanner) {
     alerts.push(<p key="tab" class="s4-banner" role="status">{props.topBanner}</p>);
+  }
+  for (const line of props.heldLines ?? []) {
+    alerts.push(
+      <p
+        key={`held-${line.key}`}
+        class={line.key === 'queued' ? 's4-banner s4-banner--saved' : 's4-banner s4-banner--held'}
+        role={line.alert ? 'alert' : 'status'}
+      >
+        {line.text}
+      </p>,
+    );
   }
   if (pauseBlocked) {
     alerts.push(<p key="pause" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.pauseReserved}</p>);
@@ -907,6 +956,10 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           aria-disabled={flowOff ? 'true' : undefined}
           onClick={() => {
             if (flowOff) return;
+            if (props.confirmKickoff) {
+              setKickoffConfirm(true);
+              return;
+            }
             props.onKickoff?.();
           }}
         >
@@ -1061,6 +1114,16 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           }}
         />
       ) : null}
+      {kickoffConfirm ? (
+        <KickoffConfirmDialog
+          onCancel={() => setKickoffConfirm(false)}
+          onConfirm={() => {
+            setKickoffConfirm(false);
+            if (flowOff) return;
+            props.onKickoff?.();
+          }}
+        />
+      ) : null}
       {confirmPair ? (
         <Modal
           open
@@ -1068,12 +1131,13 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           title={confirmPair.mode === 'amend' ? LIVE_COPY.amend : LIVE_COPY.undo}
           onClose={() => setConfirmPair(null)}
           footer={(
-            <>
-              <Button onClick={runConfirm}>
-                {confirmPair.mode === 'amend' ? LIVE_COPY.amendConfirm : LIVE_COPY.undoBothConfirm}
-              </Button>
-              <Button variant="secondary" onClick={() => setConfirmPair(null)}>{LIVE_COPY.takeoverLater}</Button>
-            </>
+            <ConfirmFooter
+              armed={confirmArmed}
+              confirmLabel={confirmPair.mode === 'amend' ? LIVE_COPY.amendConfirm : LIVE_COPY.undoBothConfirm}
+              cancelLabel={LIVE_COPY.takeoverLater}
+              onConfirm={runConfirm}
+              onCancel={() => setConfirmPair(null)}
+            />
           )}
         >
           <p class="s4-note">{LIVE_COPY.undoBoth}</p>

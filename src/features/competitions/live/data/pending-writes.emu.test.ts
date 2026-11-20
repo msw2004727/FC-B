@@ -1,5 +1,5 @@
 // 第 4 步 A（資料正確性，顧問 11-20）重現：讀到 SDK 本機未送寫入（hasPendingWrites）造成的誤判。
-// 共用設定照抄 scoring.emu.test.ts（未匯出），只改 describe 名稱與情境。目前會紅的用 it.fails 鎖住，修好後改回 it。
+// 共用設定照抄 scoring.emu.test.ts（未匯出），只改 describe 名稱與情境。A1～C2 原本用 it.fails 鎖住，第 4 步 A 修正後改回 it。
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
@@ -14,13 +14,31 @@ import {
   memoryLocalCache,
   type Firestore,
 } from 'firebase/firestore';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { LIVE_COPY } from '../copy';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { blockedStep, LIVE_COPY } from '../copy';
+import { scorePadPropsFrom } from '../scoring-adapter';
 import { MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
 import { createFirestoreBackend } from './live-repo';
 import { createScoringSession, type ScoringSession } from './session';
 import { memorySidStore, type SidStore } from './sid';
-import type { BatchPlan, LogEntry } from './types';
+import type { BatchPlan, LogEntry, ServerEvent } from './types';
+
+// 讀取次數：數 SDK 的 getDoc／getDocs 呼叫（每次 getDoc＝1 讀；getDocs 至少 1 讀）。只包一層計數，行為不變。
+const sdkReads = vi.hoisted(() => ({ getDoc: 0, getDocs: 0 }));
+vi.mock('firebase/firestore', async (importOriginal) => {
+  const real = await importOriginal<typeof import('firebase/firestore')>();
+  return {
+    ...real,
+    getDoc: ((...args: Parameters<typeof real.getDoc>) => {
+      sdkReads.getDoc += 1;
+      return real.getDoc(...args);
+    }) as typeof real.getDoc,
+    getDocs: ((...args: Parameters<typeof real.getDocs>) => {
+      sdkReads.getDocs += 1;
+      return real.getDocs(...args);
+    }) as typeof real.getDocs,
+  };
+});
 
 // 模擬器啟動時認定的示範專案。規則只對這個專案生效；其他 demo 專案會變成「沒有任何 allow」。
 const PROJECT = 'demo-cp-u1';
@@ -279,10 +297,15 @@ interface Live {
   visible: { value: boolean };
   notifyVisible: () => void;
   commits: BatchPlan[];
+  /** 監聽送給工作階段的事件。用來確認未確認的寫入不會被當成伺服器事件。 */
+  delivered: ServerEvent[];
   release: () => Promise<void>;
 }
 
 const opened: Live[] = [];
+
+/** 修正前（d9ca3e69 的 live-repo／sender／session）同一情境實測 getDoc 8、getDocs 1；修正後必須相同（一般記分 +0）。 */
+const READS_ONLINE_GOAL = { getDoc: 8, getDocs: 1 };
 
 async function startLive(name: string, options?: {
   log?: ActionLog;
@@ -305,6 +328,15 @@ async function startLive(name: string, options?: {
   if (!options?.sids) await sids.set(CID, MT, UID, SID);
   const backend = createFirestoreBackend(db, CID, MT, UID);
   const commits: BatchPlan[] = [];
+  const delivered: ServerEvent[] = [];
+  const rawOpen = backend.open.bind(backend);
+  backend.open = (listener, isVisible) => rawOpen({
+    ...listener,
+    onEvents: (events, mode) => {
+      delivered.push(...events);
+      listener.onEvents(events, mode);
+    },
+  }, isVisible);
   const raw = backend.port.commit.bind(backend.port);
   backend.port.commit = async (plan) => {
     commits.push(plan);
@@ -344,6 +376,7 @@ async function startLive(name: string, options?: {
     notify: (next: boolean) => notify(next),
     notifyVisible: () => notifyVisible(),
     commits,
+    delivered,
     release: async () => {
       session.stop();
       await deleteApp(app);
@@ -480,7 +513,7 @@ describe.skipIf(!EMU)('記分模擬器：本機未送寫入', { timeout: 60000 }
   }
 
   // P2-1（接手版）：對帳讀到自己還沒送達的寫入，誤標 applied；之後伺服器以 takenOver 退回，catch 看到 applied 直接吞掉。
-  it.fails('A1. 對帳在 SDK 未連線時讀到本機未送寫入，不得標 applied（之後被接手應為 rejected）', async () => {
+  it('A1. 對帳在 SDK 未連線時讀到本機未送寫入，不得標 applied（之後被接手應為 rejected）', async () => {
     const live = await startLive('a1');
     await goOffline(live);
     expect((await live.session.getState().actions.goal({ side: 'home', plId: 'pl_h1' })).status).toBe('queued');
@@ -501,7 +534,7 @@ describe.skipIf(!EMU)('記分模擬器：本機未送寫入', { timeout: 60000 }
   });
 
   // P2-1（衝突版，即「一球消失」）：離線期間主辦 Callable 只加 rev。原寫入衝突被拒，但日誌已被對帳標 applied，不會換號重送。
-  it.fails('A2. 對帳誤判 applied 後原寫入衝突被拒：伺服器應仍記到這一球', async () => {
+  it('A2. 對帳誤判 applied 後原寫入衝突被拒：伺服器應仍記到這一球', async () => {
     const live = await startLive('a2');
     await goOffline(live);
     await live.session.getState().actions.goal({ side: 'home', plId: 'pl_h1' });
@@ -522,7 +555,7 @@ describe.skipIf(!EMU)('記分模擬器：本機未送寫入', { timeout: 60000 }
 
   // P2-2：被拒後事件列仍留著本機未送那筆（監聽 readTimeline 讀到 hasPendingWrites 文件、maxSeq 已越過）。
   // 另一裝置之後在同一個 seq 記的事件也讀不到。
-  it.fails('B1. 離線一球被接手退回後，事件列不留假事件；他機同 seq 的真事件要讀得到', async () => {
+  it('B1. 離線一球被接手退回後，事件列不留假事件；他機同 seq 的真事件要讀得到', async () => {
     const live = await startLive('b1');
     await goOffline(live);
     await live.session.getState().actions.goal({ side: 'home', plId: 'pl_h1' });
@@ -551,7 +584,7 @@ describe.skipIf(!EMU)('記分模擬器：本機未送寫入', { timeout: 60000 }
   // 第 3 項：兩裝置互相接手後 A 卡在「下半場開始」。
   // A 離線按下半場開始 → B 接手 → A 恢復，被拒 → A 重新接手 → 再按下半場開始：
   // 被拒那筆擋住佇列（pickNext 'rejected'），新的待送疊加成 live／h2，但 phase 看伺服器仍是 ht，按鈕留在「下半場開始」，再按被 intentForbidden 擋。
-  it.fails('C1. 互相接手後再按下半場開始，phase 與疊加狀態一致（不卡在下半場開始）', async () => {
+  it('C1. 互相接手後再按下半場開始，phase 與疊加狀態一致（不卡在下半場開始）', async () => {
     await seedHalftime();
     const live = await startLive('c1');
     expect(live.session.getState().phase).toBe('ht');
@@ -575,10 +608,25 @@ describe.skipIf(!EMU)('記分模擬器：本機未送寫入', { timeout: 60000 }
     const list = (await rows(live.log)).map((row) => `${row.kind}:${row.state}:${row.rejectReason ?? ''}`);
     console.log('[C1] 日誌', JSON.stringify(list));
     expect(stuck.phase === 'ht' && stuck.liveStatus === 'live').toBe(false);
+    // F5-3：被拒那筆擋住送出時，階段動作回明確原因、不建新項目；畫面提示擋住的是哪一步。
+    expect(again).toEqual({ status: 'rejected', reason: 'blocked' });
+    expect(third).toEqual({ status: 'rejected', reason: 'blocked' });
+    expect(list.filter((row) => row.startsWith('resume:'))).toEqual(['resume:rejected:takenOver']);
+    expect(stuck.phase).toBe('ht');
+    expect(live.session.getState().held).toMatchObject({ rejected: 1, blockedAction: 'resume' });
+    const banner = scorePadPropsFrom(live.session.getState(), Date.now()).heldLines ?? [];
+    expect(banner.map((line) => line.text)).toEqual([blockedStep('resume')]);
+    // 重送被拒那筆後就能正常開始下半場（不會再多一條被規則拒的紅列）。
+    const failed = (await rows(live.log)).find((row) => row.state === 'rejected');
+    expect((await live.session.getState().actions.reapply(failed?.op ?? '')).status).toBe('applied');
+    const server = await readDoc(`competitions/${CID}/matches/${MT}`);
+    expect(server?.status).toBe('live');
+    expect(live.session.getState().held.rejected).toBe(0);
+    await waitUntil('畫面進下半場', () => live.session.getState().phase === 'play');
   });
 
   // 第 3 項另一條路：P2-1 誤判 applied 的「下半場開始」被接手退回，applied 項目 seq > 伺服器 rev，疊加一直算 live／h2。
-  it.fails('C2. 下半場開始被對帳誤判 applied 後退回：phase 與疊加狀態一致', async () => {
+  it('C2. 下半場開始被對帳誤判 applied 後退回：phase 與疊加狀態一致', async () => {
     await seedHalftime();
     const live = await startLive('c2');
     await goOffline(live);
@@ -635,5 +683,80 @@ describe.skipIf(!EMU)('記分模擬器：本機未送寫入', { timeout: 60000 }
     await expectBoard({ home: 2, away: 0 }, { contiguous: true });
     expect(brief(live).score.home).toBe(2);
     expect(brief(live).pending).toBe(0);
+  });
+
+  // F3：寫入被確認後（hasPendingWrites true→false）監聽要讀到這筆事件；未確認期間不得當成伺服器事件送給工作階段。
+  it('E1. 離線一球恢復後寫入成功：未確認時不當伺服器事件，確認後監聽讀到、待送清掉', async () => {
+    const live = await startLive('e1');
+    await goOffline(live);
+    await live.session.getState().actions.goal({ side: 'home', plId: 'pl_h1' });
+    await waitUntil('寫入進 SDK 佇列', async () => (await rows(live.log)).some((row) => row.state === 'sending'));
+    await pause(300);
+    const op = (await goalOps(live.log))[0] ?? '';
+    expect(live.delivered.some((event) => event.op === op)).toBe(false);
+    await goOnline(live);
+    await live.session.whenIdle();
+    await waitUntil('監聽讀到已確認事件', () => live.delivered.some((event) => event.op === op && event.seq === 1), 80);
+    await expectBoard({ home: 1, away: 0 }, { ops: [op], contiguous: true });
+    expect(brief(live).events).toEqual(['1:goal:home']);
+    expect(brief(live).pending).toBe(0);
+    const feed = scorePadPropsFrom(live.session.getState(), Date.now()).feed ?? [];
+    expect(feed.filter((row) => row.pending)).toHaveLength(0);
+    expect(feed.filter((row) => !row.pending && row.kind === 'goal')).toHaveLength(1);
+  });
+
+  // 契約 §15.2-1：離線待送在事件列標「待送」（原本被本機未送的假事件蓋掉）。恢復後變一般列。
+  it('E2. 離線待送時事件列是待送列，恢復後變一般列', async () => {
+    const live = await startLive('e2');
+    await goOffline(live);
+    await live.session.getState().actions.goal({ side: 'home', plId: 'pl_h1' });
+    await waitUntil('寫入進 SDK 佇列', async () => (await rows(live.log)).some((row) => row.state === 'sending'));
+    await pause(300);
+    const offlineFeed = scorePadPropsFrom(live.session.getState(), Date.now()).feed ?? [];
+    expect(offlineFeed).toHaveLength(1);
+    expect(offlineFeed[0]?.pending).toBe(true);
+    expect(brief(live).score).toEqual({ home: 1, away: 0 });
+    await goOnline(live);
+    await live.session.whenIdle();
+    await waitUntil('變一般列', () => {
+      const feed = scorePadPropsFrom(live.session.getState(), Date.now()).feed ?? [];
+      return feed.length === 1 && feed[0]?.pending === false;
+    }, 80);
+  });
+
+  // F4：被拒後不用任何動作，畫面自己在 1 秒內顯示被拒、待送 0。
+  it('E3. 被接手退回後畫面在 1 秒內自己更新（被拒列出現、待送 0、比分回 0）', async () => {
+    const live = await startLive('e3');
+    await goOffline(live);
+    await live.session.getState().actions.goal({ side: 'home', plId: 'pl_h1' });
+    await waitUntil('寫入進 SDK 佇列', async () => (await rows(live.log)).some((row) => row.state === 'sending'));
+    const other = await startLive('e3-other', { sids: memorySidStore() });
+    expect((await other.session.getState().actions.takeover()).status).toBe('applied');
+    live.online.value = true;
+    await enableNetwork(live.db);
+    await waitUntil('日誌被拒', async () => (await rows(live.log)).some((row) => row.state === 'rejected'), 200);
+    const at = Date.now();
+    await waitUntil('畫面自己更新', () => {
+      const view = live.session.getState();
+      return view.unapplied.some((row) => row.state === 'rejected') && view.score.pendingCount === 0;
+    }, 40);
+    expect(Date.now() - at).toBeLessThan(1000);
+    expect(brief(live).score).toEqual({ home: 0, away: 0 });
+    expect(brief(live).events).toEqual([]);
+  });
+
+  // 讀取次數（契約 §13）：一般線上記一球，getDoc／getDocs 次數與修正前相同。
+  it('R1. 讀取次數：線上記一球的 getDoc／getDocs 次數與修正前相同', async () => {
+    const live = await startLive('r1');
+    await live.session.whenIdle();
+    await pause(300);
+    sdkReads.getDoc = 0;
+    sdkReads.getDocs = 0;
+    expect((await live.session.getState().actions.goal({ side: 'home', plId: 'pl_h1' })).status).toBe('applied');
+    await live.session.whenIdle();
+    await pause(600);
+    await live.session.whenIdle();
+    console.log('[R1] 讀取', JSON.stringify(sdkReads));
+    expect({ ...sdkReads }).toEqual(READS_ONLINE_GOAL);
   });
 });
