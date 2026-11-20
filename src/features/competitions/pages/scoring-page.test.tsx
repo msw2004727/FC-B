@@ -336,6 +336,9 @@ describe('G-06 進場失敗不是沒有權限', () => {
     await settle();
     expect(screen.getByText(LIVE_COPY.loadFailedAuto)).toBeTruthy();
     expect(screen.getByRole('button', { name: LIVE_COPY.retry })).toBeTruthy();
+    // 鈕的順序：回賽程在左、重試在右（顧問 §3.467）。
+    const actions = [...document.querySelectorAll('.cps-actions button')].map((node) => node.textContent);
+    expect(actions).toEqual([LIVE_COPY.backToSchedule, LIVE_COPY.retry]);
     expect(screen.queryByText(LIVE_COPY.noScorePermission)).toBeNull();
     expect(open).toHaveBeenCalledTimes(1);
     expect(made.plans).toHaveLength(0);

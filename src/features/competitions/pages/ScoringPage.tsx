@@ -117,8 +117,8 @@ export function ScoringScreen({
             {view.loadError === 'network' ? LIVE_COPY.loadFailedAuto : LIVE_COPY.loadFailed}
           </p>
           <div class="cps-actions">
-            <Button onClick={() => view.retry?.()}>{LIVE_COPY.retry}</Button>
             <Button variant="secondary" onClick={back}>{LIVE_COPY.backToSchedule}</Button>
+            <Button onClick={() => view.retry?.()}>{LIVE_COPY.retry}</Button>
           </div>
         </CpCard>
       </CpFrame>
