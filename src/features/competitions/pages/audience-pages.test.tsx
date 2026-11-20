@@ -661,7 +661,8 @@ describe('單場頁', () => {
     await waitFor(() => expect(calls).toHaveLength(2));
     expect(calls[1]).toEqual({ afterEvents: 5, afterVoids: 6, alreadyEvents: 2, alreadyVoids: 1 });
     release.current?.({
-      events: [{
+      // §3.506：真實時間軸只有 side、plId（Rules 不准寫 n、no），觀眾頁拿不到球員
+      events: [goal(7, null, null), {
         event: {
           seq: 8, type: 'pk', op: 'pk', sid: '', side: 'home', scored: true, matchSecond: 500, createdAt: 8,
         },
@@ -678,6 +679,10 @@ describe('單場頁', () => {
       const pkRow = [...document.querySelectorAll('.cp-ev')].find((node) => node.querySelector('.cp-ev__pk'));
       expect([...(pkRow?.querySelectorAll('.cp-ev__min, .cp-ev__team, .cp-ev__who, .cp-ev__pk') ?? [])].map((node) => node.textContent))
         .toEqual(['第1輪', '雷霆隊', '不指定球員', '進']);
+      // 拿不到球員的一般事件：只有分鐘與隊名，不印「不指定球員」
+      const plainRow = [...document.querySelectorAll('.cp-ev')].find((node) => node.querySelector('.cp-ev__min')?.textContent === "7'");
+      expect([...(plainRow?.querySelectorAll('.cp-ev__min, .cp-ev__team, .cp-ev__who') ?? [])].map((node) => node.textContent))
+        .toEqual(["7'", '雷霆隊']);
     });
 
     fireEvent.click(screen.getByRole('button', { name: '比賽紀錄' }));

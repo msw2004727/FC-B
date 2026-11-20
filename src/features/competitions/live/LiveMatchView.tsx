@@ -39,13 +39,16 @@ function markTone(line: EventLine): string {
 
 /** 事件列：分鐘｜記號｜隊名｜球員｜（PK）進／沒進。只省略隊名；完整念法在 .s4-sr。 */
 function EventRow({ line }: { line: EventLine }): JSX.Element {
-  const who = line.number == null ? LIVE_COPY.unspecified : `${line.number} ${line.name}`;
+  // 拿不到球員：一般事件只放分鐘與隊名；PK 照 8bbf5cea 仍寫「不指定球員」（§3.506，真正讀名單留給方案 A）。
+  const who = line.number != null
+    ? `${line.number} ${line.name}`
+    : line.pkRound != null ? LIVE_COPY.unspecified : null;
   return (
     <li class={line.voided ? 'cp-ev cp-ev--void' : 'cp-ev'}>
       <span class="cp-ev__min">{line.minute}</span>
       <i class={`cp-ev__mk cp-ev__mk--${markTone(line)}`} aria-hidden="true" />
       <span class="cp-ev__team">{line.team}</span>
-      <span class="cp-ev__who">{who}</span>
+      {who != null ? <span class="cp-ev__who">{who}</span> : null}
       {line.pkRound != null ? <span class="cp-ev__pk">{line.pkScored ? LIVE_COPY.pkIn : LIVE_COPY.pkMiss}</span> : null}
       <span class="s4-sr">{line.label}</span>
       {line.voided ? <span class="cp-ev__tag">{LIVE_COPY.undone}</span> : null}

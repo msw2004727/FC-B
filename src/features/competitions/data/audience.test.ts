@@ -105,12 +105,13 @@ describe('場次文件', () => {
     expect(audienceMatchFromDoc('mt1', { ...base, cancelReason: 3 })?.cancelReason).toBeNull();
   });
 
-  it('時間軸有 n、no 就留下', () => {
+  // §3.506：Rules 的 hasOnly 白名單不准寫 n、no，真實時間軸只有 side、plId，所以背號與姓名一律是 null。
+  it('時間軸只有 side、plId（Rules 允許的形狀），背號與姓名是 null', () => {
     expect(parseTimelineDoc({
-      seq: 4, type: 'goal', side: 'home', plId: 'pl1', goalKind: 'normal', n: ' 劉冠廷 ', no: 9, matchSecond: 300,
-    })).toMatchObject({ number: 9, playerName: '劉冠廷', plId: 'pl1', side: 'home' });
+      seq: 4, type: 'goal', side: 'home', plId: 'pl1', goalKind: 'normal', matchSecond: 300,
+    })).toMatchObject({ number: null, playerName: null, plId: 'pl1', side: 'home' });
     expect(parseTimelineDoc({ seq: 1 })).toBeNull();
-    expect(parseTimelineDoc({ seq: 2, type: 'goal', no: 1.5, n: '  ' })?.number).toBeNull();
+    expect(parseTimelineDoc({ seq: 2, type: 'goal', side: 'away' })).toMatchObject({ number: null, playerName: null, plId: null, side: 'away' });
   });
 });
 

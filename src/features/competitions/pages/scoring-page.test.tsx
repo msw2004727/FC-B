@@ -13,7 +13,7 @@ import type { LockManager } from '../live/data/tab-lock';
 import { RELEASE_WAIT_MS, useScoring, type ScoringDeps } from '../live/useScoring';
 import { LIVE_COPY, pauseRemain, teamAction } from '../live/copy';
 import { loadCompetitionsDict } from '../i18n';
-import { SCORE_FULLSCREEN_CLASS, ScoringScreen } from './ScoringPage';
+import { SCORE_FULLSCREEN_CLASS, ScoringScreen, SignedOut, scoringExitPath } from './ScoringPage';
 
 const CID = 'comp-u2';
 const MT = 'mt-u2';
@@ -703,7 +703,7 @@ describe('正式記分頁走 useScoring', () => {
     for (const button of scoring) expect(button.disabled).toBe(true);
   });
 
-  it('全幅記分板的選單最後一項離開記分，回到賽程列表', async () => {
+  it('全幅記分板的選單最後一項離開記分；純記分員回自己的場次（§3.506，原本一律去主辦的賽程列表）', async () => {
     const previous = `${window.location.pathname}${window.location.search}`;
     const made = await deps({ staffRoles: ['scorer'], matchIds: [MT] });
     draw(made.deps);
@@ -713,7 +713,7 @@ describe('正式記分頁走 useScoring', () => {
     expect(labels.at(-1)).toBe(LIVE_COPY.leaveScore);
     expect(document.querySelector('.cps-top')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.leaveScore }));
-    await waitFor(() => expect(window.location.pathname).toBe(`/competitions/${CID}/matches`));
+    await waitFor(() => expect(window.location.pathname).toBe(`/competitions/${CID}/my-matches`));
     window.history.pushState(null, '', previous || '/');
   });
 
@@ -883,5 +883,129 @@ describe('scoreAccess', () => {
     // 俱樂部目前代表：沒有指派時看提示；代表指派自己記分後開記分板
     expect(scoreAccess({ ...base, roles: [], clubRep: true })).toEqual({ pad: false, hint: true });
     expect(scoreAccess({ ...base, roles: ['scorer'], matchIds: [MT], clubRep: true })).toEqual({ pad: true, hint: false });
+  });
+});
+
+describe('§3.506「回賽程」與「離開記分」依身分導頁', () => {
+  const HOST_PAGE = `/competitions/${CID}/matches`;
+  const MINE_PAGE = `/competitions/${CID}/my-matches`;
+  const PUBLIC_PAGE = `/competitions/${CID}`;
+  let previous = '/';
+
+  beforeAll(() => {
+    previous = `${window.location.pathname}${window.location.search}` || '/';
+  });
+
+  afterEach(() => {
+    window.history.pushState(null, '', previous);
+  });
+
+  function drawAs(screenDeps: ScoringDeps, options: { isAdmin?: boolean; clubRepCheck?: () => Promise<boolean> } = {}): void {
+    render(
+      <LocationProvider>
+        <ScoringScreen cid={CID} mtId={MT} deps={screenDeps} nowMs={NOW} clubRepCheck={options.clubRepCheck} isAdmin={options.isAdmin} />
+      </LocationProvider>,
+    );
+  }
+
+  async function backFromGate(expected: string): Promise<void> {
+    fireEvent.click(await screen.findByRole('button', { name: LIVE_COPY.backToSchedule }));
+    await waitFor(() => expect(window.location.pathname).toBe(expected));
+  }
+
+  async function leaveFromPad(expected: string): Promise<void> {
+    fireEvent.click(await screen.findByRole('button', { name: LIVE_COPY.matchMenu }));
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.leaveScore }));
+    await waitFor(() => expect(window.location.pathname).toBe(expected));
+  }
+
+  it('判斷函式：主辦、共同主辦、管理員、俱樂部目前代表去賽程管理；記分員、裁判去自己的場次；未登入回賽事頁', () => {
+    const who = (partial: Partial<Parameters<typeof scoringExitPath>[1]>) => scoringExitPath(CID, {
+      signedIn: true, isAdmin: false, roles: [], clubRep: false, ...partial,
+    });
+    expect(who({ roles: ['host'] })).toBe(HOST_PAGE);
+    expect(who({ roles: ['coHost'] })).toBe(HOST_PAGE);
+    expect(who({ roles: ['coHost', 'scorer'] })).toBe(HOST_PAGE);
+    expect(who({ isAdmin: true })).toBe(HOST_PAGE);
+    expect(who({ clubRep: true })).toBe(HOST_PAGE);
+    expect(who({ roles: ['scorer'] })).toBe(MINE_PAGE);
+    expect(who({ roles: ['referee'] })).toBe(MINE_PAGE);
+    expect(who({ roles: [] })).toBe(MINE_PAGE);
+    // 讀取失敗還不知道 staff：管理員照樣去賽程管理，其他人回公開賽事頁
+    expect(who({ roles: null })).toBe(PUBLIC_PAGE);
+    expect(who({ roles: null, isAdmin: true })).toBe(HOST_PAGE);
+    expect(scoringExitPath(CID, { signedIn: false, isAdmin: true, roles: ['host'], clubRep: true })).toBe(PUBLIC_PAGE);
+  });
+
+  it('主辦：沒有權限畫面的回賽程、記分板的離開記分都去賽程管理', async () => {
+    drawAs((await deps({ staffRoles: ['host'], matchIds: [] })).deps);
+    await backFromGate(HOST_PAGE);
+    cleanup();
+    window.history.pushState(null, '', previous);
+    drawAs((await deps({ staffRoles: ['host', 'scorer'], matchIds: [MT] })).deps);
+    await leaveFromPad(HOST_PAGE);
+  });
+
+  it('共同主辦：回賽程、離開記分都去賽程管理', async () => {
+    drawAs((await deps({ staffRoles: ['coHost'], matchIds: [] })).deps);
+    await backFromGate(HOST_PAGE);
+    cleanup();
+    window.history.pushState(null, '', previous);
+    drawAs((await deps({ staffRoles: ['coHost', 'referee'], matchIds: [MT] })).deps);
+    await leaveFromPad(HOST_PAGE);
+  });
+
+  it('俱樂部目前代表（沒有主辦 staff）、管理員：回賽程去賽程管理', async () => {
+    drawAs((await deps({ staffRoles: [], matchIds: [] })).deps, { clubRepCheck: async () => true });
+    expect(await screen.findByText(LIVE_COPY.assignScorerHint)).toBeTruthy();
+    await backFromGate(HOST_PAGE);
+    cleanup();
+    window.history.pushState(null, '', previous);
+    drawAs((await deps({ staffRoles: [], matchIds: [] })).deps, { isAdmin: true });
+    await backFromGate(HOST_PAGE);
+  });
+
+  it('純記分員：回賽程、離開記分都去自己的場次', async () => {
+    drawAs((await deps({ staffRoles: ['scorer'], matchIds: [MT], expiresAt: NOW })).deps);
+    await backFromGate(MINE_PAGE);
+    cleanup();
+    window.history.pushState(null, '', previous);
+    drawAs((await deps({ staffRoles: ['scorer'], matchIds: [MT] })).deps);
+    await leaveFromPad(MINE_PAGE);
+  });
+
+  it('裁判：回賽程、離開記分都去自己的場次', async () => {
+    drawAs((await deps({ staffRoles: ['referee'], matchIds: ['other'] })).deps);
+    await backFromGate(MINE_PAGE);
+    cleanup();
+    window.history.pushState(null, '', previous);
+    drawAs((await deps({ staffRoles: ['referee'], matchIds: [MT] })).deps);
+    await leaveFromPad(MINE_PAGE);
+  });
+
+  it('未登入：回賽程回公開賽事頁', async () => {
+    render(
+      <LocationProvider>
+        <SignedOut cid={CID} />
+      </LocationProvider>,
+    );
+    await backFromGate(PUBLIC_PAGE);
+  });
+
+  it('讀取失敗還不知道身分：一般人回公開賽事頁，管理員去賽程管理；按鈕順序仍是回賽程、重試', async () => {
+    for (const [isAdmin, expected] of [[false, PUBLIC_PAGE], [true, HOST_PAGE]] as const) {
+      const made = await deps({ staffRoles: ['host'], matchIds: [MT] });
+      // 進場一律丟非網路錯誤：讀取失敗、不自動重試，staff 還沒讀到
+      made.deps.backend!.open = async () => {
+        throw Object.assign(new Error('INTERNAL ASSERTION FAILED'), { code: 'internal', name: 'FirebaseError' });
+      };
+      drawAs(made.deps, { isAdmin });
+      expect(await screen.findByText(LIVE_COPY.loadFailed)).toBeTruthy();
+      const actions = [...document.querySelectorAll('.cps-gate__btns button')].map((node) => (node.textContent || '').trim());
+      expect(actions).toEqual([LIVE_COPY.backToSchedule, LIVE_COPY.retry]);
+      await backFromGate(expected);
+      cleanup();
+      window.history.pushState(null, '', previous);
+    }
   });
 });
