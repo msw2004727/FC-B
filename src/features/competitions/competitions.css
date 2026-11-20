@@ -8,6 +8,7 @@
  * 後面的批次要用新變數或新根節點，加進這兩條，不另開一份。 */
 .cps-root,
 .s4-page,
+.s4-root,
 .d2-panel,
 .cp-danger-confirm #app-confirm-modal {
   --d2-accent: #0d9488;
@@ -53,11 +54,31 @@
   --d2-sb-sh-lit: inset 0 0 0 1px rgba(255,255,255,.07), inset 0 2px 3px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.95);
   --d2-sb-bar: 0 0 0 0 transparent;
   --d2-num: 'CP Score', 'DIN Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
+  /* 記分頁（第 2 批卡 2-1）：隊色、當下該按的那一顆（go）、終場（ink）、矮板落影、提示列圖示（遮罩）；
+   * PK 沒進的底與框寬、控制列停用的底與字、板上離線紅點改成變數，深淺色只換值。 */
+  --d2-home: #0f766e;
+  --d2-away: #1d4ed8;
+  --d2-go-btn: #111a18;
+  --d2-go-btn-fg: #ffffff;
+  --d2-ink-btn: #111a18;
+  --d2-ink-btn-fg: #ffffff;
+  --d2-ink-btn-line: 0 0 0 0 transparent;
+  --d2-frame-drop: rgba(15, 23, 42, .4);
+  --d2-miss-bg: var(--d2-glass-gloss), var(--d2-glass-base);
+  --d2-miss-w: 2px;
+  --d2-ctrl-off-bg: var(--d2-off-bg);
+  --d2-ctrl-off-fg: #5e687c;
+  --d2-sb-alarm: #ff6b6b;
+  --d2-ico-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v6M12 7.4v.2'/%3E%3C/svg%3E");
+  --d2-ico-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4 2.8 20h18.4z'/%3E%3Cpath d='M12 10v4.6M12 17.3v.2'/%3E%3C/svg%3E");
+  --d2-ico-lock: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='2'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E");
+  --d2-ico-phone: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='7' y='3' width='10' height='18' rx='2'/%3E%3Cpath d='M11 17.5h2'/%3E%3C/svg%3E");
   /* 賽事範圍內最小字 12px（全站說明小字是 11px，不動全站） */
   --font-size-caption: 12px;
 }
 [data-theme="dark"] .cps-root,
 [data-theme="dark"] .s4-page,
+[data-theme="dark"] .s4-root,
 [data-theme="dark"] .d2-panel,
 [data-theme="dark"].cp-danger-confirm #app-confirm-modal {
   --d2-accent: #34d399;
@@ -99,10 +120,23 @@
   --d2-sb-sh: inset 0 0 0 1px rgba(255,255,255,.16), inset 0 2px 3px rgba(0,0,0,.6);
   --d2-sb-sh-lit: inset 0 0 0 1px rgba(52,211,153,.6);
   --d2-sb-bar: inset 3px 0 0 0 #34d399;
+  --d2-home: #047857;
+  --d2-away: #2563eb;
+  --d2-go-btn: #f2f6f4;
+  --d2-go-btn-fg: #111a18;
+  --d2-ink-btn: #2b3446;
+  --d2-ink-btn-fg: #f5f7fa;
+  --d2-ink-btn-line: inset 0 0 0 2px rgba(255,255,255,.5);
+  --d2-frame-drop: rgba(0, 0, 0, .8);
+  --d2-miss-bg: transparent;
+  --d2-miss-w: 3px;
+  --d2-ctrl-off-bg: transparent;
+  --d2-ctrl-off-fg: #8892a4;
 }
 
 
 .cps-root .ui-button,
+.s4-root .ui-button,
 .s4-page .ui-button,
 .d2-panel .ui-button {
   --comp-button-background-default: var(--d2-accent-ink);
@@ -118,12 +152,15 @@
   white-space: nowrap;
 }
 .cps-root .ui-button__label,
+.s4-root .ui-button__label,
 .s4-page .ui-button__label,
 .d2-panel .ui-button__label { white-space: nowrap; overflow-wrap: normal; word-break: keep-all; }
 .cps-root .ui-button--sm,
+.s4-root .ui-button--sm,
 .s4-page .ui-button--sm,
 .d2-panel .ui-button--sm { font-size: 13px; line-height: 20px; }
 .cps-root .ui-button--ghost,
+.s4-root .ui-button--ghost,
 .s4-page .ui-button--ghost,
 .d2-panel .ui-button--ghost {
   --comp-button-background-hover: transparent;
@@ -131,6 +168,7 @@
   --comp-button-foreground-default: var(--d2-accent-ink);
 }
 .cps-root .ui-button.ui-button--secondary,
+.s4-root .ui-button.ui-button--secondary,
 .s4-page .ui-button.ui-button--secondary,
 .d2-panel .ui-button.ui-button--secondary {
   --comp-button-background-hover: var(--d2-glass-gloss), var(--d2-glass-base);
@@ -138,9 +176,11 @@
   color: var(--d2-text);
 }
 .cps-root .ui-button.ui-button--secondary::before,
+.s4-root .ui-button.ui-button--secondary::before,
 .s4-page .ui-button.ui-button--secondary::before,
 .d2-panel .ui-button.ui-button--secondary::before { border-color: transparent; background: var(--d2-glass-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh); }
 .cps-root .ui-button.ui-button--danger,
+.s4-root .ui-button.ui-button--danger,
 .s4-page .ui-button.ui-button--danger,
 .d2-panel .ui-button.ui-button--danger {
   --comp-button-background-hover: var(--d2-field-bg);
@@ -148,12 +188,15 @@
   color: var(--d2-danger);
 }
 .cps-root .ui-button.ui-button--danger::before,
+.s4-root .ui-button.ui-button--danger::before,
 .s4-page .ui-button.ui-button--danger::before,
 .d2-panel .ui-button.ui-button--danger::before { border-color: transparent; background: var(--d2-field-bg); box-shadow: inset 0 0 0 1.5px var(--d2-danger); }
 .cps-root .ui-button.ui-button--danger.ui-button--sm,
+.s4-root .ui-button.ui-button--danger.ui-button--sm,
 .s4-page .ui-button.ui-button--danger.ui-button--sm,
 .d2-panel .ui-button.ui-button--danger.ui-button--sm { --comp-button-background-hover: transparent; --comp-button-background-active: transparent; }
 .cps-root .ui-button.ui-button--danger.ui-button--sm::before,
+.s4-root .ui-button.ui-button--danger.ui-button--sm::before,
 .s4-page .ui-button.ui-button--danger.ui-button--sm::before,
 .d2-panel .ui-button.ui-button--danger.ui-button--sm::before { background: none; box-shadow: none; }
 .cps-root .ui-button.ui-button--secondary[aria-expanded="true"],
@@ -161,17 +204,21 @@
 .cps-root .ui-button.ui-button--secondary[aria-expanded="true"]::before,
 .d2-panel .ui-button.ui-button--secondary[aria-expanded="true"]::before { background: var(--d2-seg-on), var(--d2-glass-base); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
 .cps-root .ui-button[aria-disabled="true"],
+.s4-root .ui-button[aria-disabled="true"],
 .s4-page .ui-button[aria-disabled="true"],
 .d2-panel .ui-button[aria-disabled="true"] { opacity: 1; color: var(--d2-text-3); }
 .cps-root .ui-button[aria-disabled="true"]::before,
+.s4-root .ui-button[aria-disabled="true"]::before,
 .s4-page .ui-button[aria-disabled="true"]::before,
 .d2-panel .ui-button[aria-disabled="true"]::before { border-color: transparent; background: var(--d2-off-bg); box-shadow: inset 0 0 0 1px var(--d2-off-line); }
 .cps-root .ui-button.ui-button--danger[aria-disabled="true"]::before,
+.s4-root .ui-button.ui-button--danger[aria-disabled="true"]::before,
 .d2-panel .ui-button.ui-button--danger[aria-disabled="true"]::before { background: none; box-shadow: inset 0 0 0 1.5px var(--d2-off-line); }
 /* 線上支付預留鈕：安靜的停用小鈕 */
 .cps-root .cps-fee .ui-button[aria-disabled="true"] { min-inline-size: 0; color: var(--d2-text-3); }
 .cps-root .cps-fee .ui-button[aria-disabled="true"]::before { background: none; box-shadow: inset 0 0 0 1px var(--d2-line); }
 .cps-root .ui-button:focus-visible,
+.s4-root .ui-button:focus-visible,
 .s4-page .ui-button:focus-visible,
 .cps-root .ui-tabs__tab:focus-visible,
 .s4-page .ui-tabs__tab:focus-visible,
@@ -1138,6 +1185,27 @@
   stroke-linejoin: round;
 }
 
+/* 提示列：一般級（中性底深字）與資料可能遺失級（深紅底白字）。同一個長相只寫一份，記分頁的提示列（.s4-root .s4-alerts，
+ * 第 2 批卡 2-1）把選擇器加進清單，尺寸另寫在 live.css。一般級原本在 step4b.css，記分頁不載那支檔，卡 2-1 整條搬來（內容不改）。 */
+.s4b-alert,
+.s4-alerts .s4-banner {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--d2-line);
+  color: var(--d2-text);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cpa-hidden,
+.s4-alerts .s4-banner--danger,
+.s4-alerts .s4-banner--held {
+  background: var(--d2-alert-bg);
+  color: var(--d2-alert-fg);
+}
+
 /* 第 4 步 K12：管理員區（後台一般風格，不用液態玻璃）與下架提示。 */
 .cpa-hidden {
   /* 卡 1b-7：前面一顆 16px 三角驚嘆號（.cps-ico），文字照原文換行 */
@@ -1147,8 +1215,6 @@
   margin: 0;
   padding: 10px 12px;
   border-radius: 12px;
-  background: var(--d2-alert-bg);
-  color: var(--d2-alert-fg);
   font-size: 13px;
   line-height: 20px;
   font-weight: 600;
