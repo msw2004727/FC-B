@@ -22,7 +22,9 @@ import CompetitionDetailPage from '@/features/competitions/pages/CompetitionDeta
 import HostMatchesPage from '@/features/competitions/pages/HostMatchesPage';
 import HostSchedulePage from '@/features/competitions/pages/HostSchedulePage';
 import NewCompetitionPage from '@/features/competitions/pages/NewCompetitionPage';
-import { CpCard, CpFrame, MoreIcon } from '@/features/competitions/ui/shell';
+import { CpCard, CpFrame, InfoIcon, MoreIcon } from '@/features/competitions/ui/shell';
+import { CpGate } from '@/features/competitions/ui/feedback';
+import { Button } from '@/ui/Button';
 
 const params = new URLSearchParams(location.search);
 const screenName = params.get('screen') || 'real-recruit';
@@ -64,6 +66,8 @@ const PAGES: Record<string, ComponentType> = {
   'real-tie-ranked': CompetitionDetailPage,
   'real-tie-four': CompetitionDetailPage,
   'real-tie-three': CompetitionDetailPage,
+  // 設計總監 04:20：主辦公告展開輸入框（底下「取消／發布公告」按鈕列）。
+  'real-notice-compose': CompetitionDetailPage,
   // 新外觀第 1b 批第 7 節「要補示範狀態」（截圖拍正式版現況；面板類由下方 OPEN 點正式按鈕打開）。
   'real-live-twin-next': CompetitionDetailPage,
   'real-live-no-today': CompetitionDetailPage,
@@ -151,7 +155,29 @@ function ContextHeader({ name }: { name: string }): ComponentChildren {
   );
 }
 
+/**
+ * 「一句話＋按鈕列」版面兩顆鈕（CpGate，卡 1b-7）：正式頁目前都只放一顆，這裡直接用正式元件放兩顆，
+ * 看「兩顆時等寬並排、取消性質在左」。文字是示範用。
+ */
+function GateTwo(): ComponentChildren {
+  return (
+    <CpFrame title="記分">
+      <CpGate icon={<InfoIcon />} text="登入後才能記分">
+        <Button variant="secondary">回賽程</Button>
+        <Button variant="primary">登入</Button>
+      </CpGate>
+    </CpFrame>
+  );
+}
+
 function Screen(): ComponentChildren {
+  if (screenName === 'real-gate-two') {
+    return (
+      <CpEnvProvider value={screenEnv('real-host-matches')}>
+        <GateTwo />
+      </CpEnvProvider>
+    );
+  }
   const ctxName = CTX_NAMES[screenName];
   if (ctxName) {
     return (
@@ -311,6 +337,14 @@ const OPEN: Record<string, () => Promise<void>> = {
   'real-tie-ranked': () => openTie('銀河隊', () => !!document.querySelector('.cpm-cmp__r--hit') && hasText('對戰積分')),
   'real-tie-four': () => openTie('銀河隊', () => document.querySelectorAll('.cpm-cmp__r--h > span').length === 5 && !!document.querySelector('.cpm-cmp__r--hit')),
   'real-tie-three': () => openTie('銀河隊', () => document.querySelectorAll('.cpm-cmp__r--h > span').length === 4 && !!document.querySelector('.cpm-cmp__r--hit')),
+  'real-notice-compose': async () => {
+    await until('發布公告鈕', () => buttonsNamed('發布公告').length > 0);
+    clickButton('發布公告');
+    await until('公告輸入框', () => !!document.querySelector('.cpm-ann__btns'));
+    setField('textarea', '下午場改到二號場，請各隊提前十分鐘報到');
+    await until('發布鈕可按', () => buttonsNamed('發布公告').some((el) => !el.disabled));
+  },
+  'real-gate-two': () => until('兩顆鈕', () => document.querySelectorAll('.cps-gate__btns button').length === 2),
   'real-ctx-short': () => until('頁首賽事名', () => !!document.querySelector('.cps-top__ctx')),
   'real-ctx-long': () => until('頁首賽事名', () => !!document.querySelector('.cps-top__ctx')),
   // ── 新外觀第 1b 批 ──

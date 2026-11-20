@@ -1508,6 +1508,8 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return detailEnv(clubRep(2), NOW, {}, { summary: [], standings: [] });
     case 'real-notice-delete':
     case 'real-notice-delete-sys':
+    // 設計總監 04:20：主辦點「發布公告」展開輸入框（底下取消／發布公告按鈕列）。
+    case 'real-notice-compose':
       return screenEnv('real-notices-host', actions);
     case 'real-load-failed':
       return repoDetailEnv(memberActor, NOW, failingDetailRepo(), actions);
