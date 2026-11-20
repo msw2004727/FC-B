@@ -68,6 +68,25 @@ export function DownIcon(): JSX.Element {
   );
 }
 
+/** 加號（「新增比賽日」「新增場地」「新增組別」小鈕的前置圖示）。 */
+export function PlusIcon(): JSX.Element {
+  return (
+    <svg class="cps-ico" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+/** 地圖點（「在地圖上選點」小鈕的前置圖示）。 */
+export function PinIcon(): JSX.Element {
+  return (
+    <svg class="cps-ico" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11z" />
+      <circle cx="12" cy="10" r="2.2" />
+    </svg>
+  );
+}
+
 /** 「一句話＋回去的鈕」的圖示：鎖頭（不公開）。 */
 export function LockIcon(): JSX.Element {
   return (

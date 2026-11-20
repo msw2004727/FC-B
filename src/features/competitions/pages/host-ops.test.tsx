@@ -300,7 +300,7 @@ describe('排賽程', () => {
       venueIdx: [0],
       dryRun: true,
     }));
-    fireEvent.click(buttonOf('移除', 1));
+    fireEvent.click(screen.getByRole('button', { name: '移除 第 3 天' }));
     expect(screen.getAllByLabelText('日期')).toHaveLength(2);
     fireEvent.click(buttonOf('預覽'));
     await waitFor(() => expect(generate).toHaveBeenLastCalledWith({
