@@ -947,6 +947,9 @@ describe('聯絡主辦', () => {
   it('個人主辦沒有聯絡文字就不顯示整區，有文字只顯示那一行', () => {
     const personal = screenEnv('detail-personal');
     const bare = draw(personal, CompetitionDetailPage);
+    // 新外觀卡 1b-3：聯絡改成頂部下半的主辦列，小字「主辦」不是標題；沒有任何聯絡時頂部只剩板（d2-hero--bare）
+    expect(bare.container.querySelector('.d2-hero--bare')).toBeTruthy();
+    expect(bare.container.querySelector('.d2-foot')).toBeNull();
     expect(screen.queryByRole('heading', { name: '聯絡主辦' })).toBeNull();
     expect(screen.queryByRole('link', { name: '聯絡主辦' })).toBeNull();
     expect(screen.queryByRole('button', { name: '私訊主辦' })).toBeNull();
@@ -960,9 +963,11 @@ describe('聯絡主辦', () => {
         competition: { ...personal.bundle.competition, contactNote: '賽前到集合點找王示範' },
       };
     }
-    draw(personal, CompetitionDetailPage);
-    expect(screen.getByRole('heading', { name: '聯絡主辦' })).toBeTruthy();
-    expect(screen.getByText('賽前到集合點找王示範')).toBeTruthy();
+    const noted = draw(personal, CompetitionDetailPage);
+    const foot = noted.container.querySelector('.d2-foot');
+    expect(foot?.querySelector('.cpm-h')?.textContent).toBe('主辦');
+    expect(screen.queryByRole('heading', { name: '聯絡主辦' })).toBeNull();
+    expect(foot?.querySelector('.cpm-public')?.textContent).toBe('賽前到集合點找王示範');
     expect(screen.queryByRole('link', { name: '聯絡主辦' })).toBeNull();
     expect(screen.queryByRole('button', { name: '私訊主辦' })).toBeNull();
   });
