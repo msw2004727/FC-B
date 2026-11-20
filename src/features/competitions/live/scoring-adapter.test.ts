@@ -325,3 +325,11 @@ describe('pkCanStart 與 shootoutOffered', () => {
     expect(pkCanStart({ ...base, penalty: null, pendingPkStart: true })).toBe(false);
   });
 });
+
+describe('P1-A 中場改判鎖', () => {
+  it('疊加狀態是中場才把進球鎖成只能復原', () => {
+    expect(scorePadPropsFrom(view({ liveStatus: 'halftime' }), NOW).halftimeGoalUndoOnly).toBe(true);
+    expect(scorePadPropsFrom(view({ liveStatus: 'live' }), NOW).halftimeGoalUndoOnly).toBe(false);
+    expect(scorePadPropsFrom(view({ liveStatus: null }), NOW).halftimeGoalUndoOnly).toBe(false);
+  });
+});

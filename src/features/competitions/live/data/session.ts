@@ -4,7 +4,7 @@ import { LIVE_COPY } from '../copy';
 import { clockFromBase, type ClockReading } from '../clock';
 import { pkCanStart } from '../present';
 import type { RosterPublicDoc } from '../../data/types';
-import { ACTION_LOG_MAX_AGE_MS, MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
+import { ACTION_LOG_MAX_AGE_MS, compareEntries, MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
 import { actionAllowed, budgetView, groupWithinBudget } from './budget';
 import {
   entryInEpoch,
@@ -14,6 +14,7 @@ import {
   liveSecondYellow,
   mergedEvents,
   overlayScore,
+  overlayStatus,
   scoreView,
   unappliedSummary,
   voidsAsMarks,
@@ -100,6 +101,8 @@ export interface ScoringView {
     takeoverSelf: boolean;
   };
   phase: ScoringPhase;
+  /** 伺服器狀態疊加待送的開賽／半場／續賽／終場／撤回終場。沒有場次時是 null。 */
+  liveStatus: string | null;
   clock: ClockReading;
   budget: BudgetView;
   storage: StorageMode;
@@ -170,6 +173,7 @@ export function loadingView(): ScoringView {
     voids: [],
     control: { uid: null, sid: null, localSid: null, needsTakeover: false, takeoverSelf: false },
     phase: 'pre',
+    liveStatus: null,
     clock: EMPTY_CLOCK,
     budget: {
       used: 0, pauseUses: 0, pauseLeft: 20, pauseEnabled: true,
@@ -304,6 +308,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
         takeoverSelf,
       },
       phase: base ? phaseOf(base, now()) : 'pre',
+      liveStatus: base ? overlayStatus(base, entries) : null,
       clock: over ? clockFromBase(over.clockBase, now()) : EMPTY_CLOCK,
       budget,
       storage,
@@ -349,7 +354,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
     const penalty = over?.penalty ?? null;
     const period = over?.clockBase.period;
     const canStart = !!(base && over && pkCanStart({
-      status: base.status,
+      status: overlayStatus(base, entries),
       running: over.clockBase.running,
       period: over.clockBase.period,
       home: over.score.home,
@@ -429,6 +434,19 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
     return overlayScore(match, events, entries);
   }
 
+  /** 現在的疊加狀態：伺服器 status 加上已套用未追上與待送的階段動作。被拒、捨棄不算。 */
+  /**
+   * 疊加狀態。傳 before 時只疊加「送出順序排在它前面」的項目（已套用未追上＋建立較早的待送），
+   * 用於重新套用：被拒那筆 createdAt 不變、會比之後才排入的待送先送出（Opus 終審 P2-1，取代一律用全部待送）。
+   */
+  function statusNow(before?: LogEntry): string | null {
+    if (!match) return null;
+    if (!before) return overlayStatus(match, entries);
+    const earlier = entries.filter((entry) => entry.op !== before.op
+      && (entry.state === 'applied' || compareEntries(entry, before) < 0));
+    return overlayStatus(match, earlier);
+  }
+
   function pkActive(): boolean {
     const over = overNow();
     if (!over) return false;
@@ -453,7 +471,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
     if (!match) return false;
     const over = overlayScore(match, events, entries);
     return pkCanStart({
-      status: match.status,
+      status: overlayStatus(match, entries),
       running: over.clockBase.running,
       period: over.clockBase.period,
       home: over.score.home,
@@ -464,13 +482,27 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
   }
 
   function pkKickOk(): boolean {
-    if (!match || match.status !== 'live') return false;
+    if (!match || statusNow() !== 'live') return false;
     const over = overlayScore(match, events, entries);
     return over.penalty != null && over.clockBase.period === 'pk';
   }
 
-  /** 規則不允許的意圖。回 true 時呼叫端不得寫日誌。 */
-  function intentForbidden(intent: Intent): boolean {
+  /**
+   * 規則不允許的意圖。回 true 時呼叫端不得寫日誌。
+   * 狀態一律看 statusNow()（現在的疊加狀態），對齊 Rules 的 a.status 條件。
+   */
+  function intentForbidden(intent: Intent, before?: LogEntry): boolean {
+    const status = statusNow(before);
+    if (status != null) {
+      const playing = status === 'live' || status === 'halftime';
+      if (intent.kind === 'goal' && status !== 'live') return true;
+      if ((intent.kind === 'void' || intent.kind === 'card' || intent.kind === 'sub'
+        || intent.kind === 'timeout' || intent.kind === 'clock' || intent.kind === 'fulltime') && !playing) return true;
+      if (intent.kind === 'kickoff' && status !== 'scheduled') return true;
+      if (intent.kind === 'halftime' && status !== 'live') return true;
+      if (intent.kind === 'resume' && status !== 'halftime') return true;
+      if (intent.kind === 'undoFinish' && status !== 'finished') return true;
+    }
     if (intent.kind === 'goal') return pkActive();
     if (intent.kind === 'pkStart') return !pkStartOk();
     if (intent.kind === 'pk') return !pkKickOk();
@@ -671,6 +703,8 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       const secondYellow = linkedSecond(target);
       if (!secondYellow) return actions.voidEvent(target);
       const intents: Intent[] = [voidOf(secondYellow), voidOf(target)];
+      // 與 amend 一致：整組任一不允許就整組不寫（Opus 終審 P2-2：待送終場後復原第一黃會卡佇列）。
+      if (intents.some((intent) => intentForbidden(intent))) return rejected('rules');
       if (!allowGroup(intents)) return rejected('limit');
       const rows = groupRows('undoFirstYellow', intents);
       await putAll(rows);
@@ -697,7 +731,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
         : entry.intent.kind === 'timeout' && entry.intent.stopClock
           ? 'pause'
           : undefined;
-      if (intentForbidden(entry.intent)) return rejected('rules');
+      if (intentForbidden(entry.intent, entry)) return rejected('rules');
       if (!allow(entry.kind, clockAction)) return rejected('limit');
       await log.patch(op, { state: 'pending', rejectReason: null, autoRetried: false });
       return finish([op], [entry.kind]);

@@ -102,6 +102,7 @@ export function PlayerSheet({
           ))}
         </div>
       ) : null}
+      {!allowSkip && roster.length === 0 ? <p class="s4-note">{LIVE_COPY.cardNoRoster}</p> : null}
       <div class="s4-pick">
         <RosterGrid roster={roster} onPick={onPick} />
         {allowSkip ? (

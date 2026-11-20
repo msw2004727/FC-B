@@ -144,6 +144,8 @@ export interface ScorePadProps {
   confirmPk?: boolean;
   /** PK 開始後，一般進球的復原與改判停用。 */
   lockRegularGoals?: boolean;
+  /** 疊加狀態是中場：點開進球只能復原，不能改判。沒傳不鎖。 */
+  halftimeGoalUndoOnly?: boolean;
   /** 正式頁的事件列（含待送）。沒傳就用 events 畫預覽列。 */
   feed?: readonly ScoreFeedRow[];
   /** 正式頁的 PK 比分（含還沒落地的腳）。沒傳就從 events 算。 */
@@ -709,6 +711,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       <div class="s4-clockrow">
         <span class="s4-clock">{formatMatchClock(reading.elapsedSec)}</span>
         {showStage ? <span class="s4-stage">{stageLabel(stageClock)}</span> : null}
+        {phase === 'undo' || phase === 'locked' ? <span class="s4-stage">{LIVE_COPY.fulltime}</span> : null}
         <Badge
           size="sm"
           tone={link.online ? 'success' : 'warning'}
@@ -872,6 +875,12 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           <Button variant="danger" disabled={flowOff} onClick={() => props.onUndoFulltime?.()}>{LIVE_COPY.undoFulltime}</Button>
         </div>
       ) : null}
+      {/* 終場後（撤回期與之後）沒有選單；全幅藏了頂欄與導覽，這裡固定給一個出口（顧問 staging 實測 P1-B）。 */}
+      {!showCtrl && props.onLeave ? (
+        <div class="s4-leave">
+          <Button variant="secondary" onClick={() => props.onLeave?.()}>{LIVE_COPY.leaveScore}</Button>
+        </div>
+      ) : null}
       {phase === 'pre' ? (
         <button
           type="button"
@@ -888,7 +897,8 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       ) : null}
       {showCtrl ? (
         <div class="s4-ctrl">
-          {phase === 'play' && !pk && !pkReady ? (
+          {/* 半場只在上半場。節次取 match.clockBase：正式頁由 adapter 傳入疊加後（快照＋未追上已套用＋待送）的時鐘。 */}
+          {phase === 'play' && rawPeriod === 'h1' && !pk && !pkReady ? (
             <Button variant="secondary" disabled={flowOff} onClick={() => props.onHalftime?.()}>{LIVE_COPY.halftime}</Button>
           ) : null}
           {phase === 'ht' ? (
@@ -1015,6 +1025,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           onPlayer={setAmendPl}
           onUnspecified={() => setAmendPl(null)}
           goalLocked={props.lockRegularGoals === true && openEventDoc.type === 'goal'}
+          halftimeGoal={props.halftimeGoalUndoOnly === true && openEventDoc.type === 'goal'}
           onUndo={() => undoSeq(openLine.seq)}
           onAmend={submitAmend}
           onShowCard={showOpenCard}

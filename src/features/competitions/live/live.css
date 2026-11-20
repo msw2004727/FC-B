@@ -684,6 +684,9 @@ button.s4-ev__main:active { opacity: 0.7; }
 .s4-sent__st { font-size: var(--font-size-body); line-height: var(--line-height-body); }
 .s4-sent__cd { font-size: var(--font-size-title); line-height: 1.2; font-variant-numeric: tabular-nums; }
 .s4-sent .ui-button { width: 100%; min-height: 56px; }
+/* 終場後的離開鈕：次要樣式，不比「撤回終場」醒目（P1-B）。 */
+.s4-leave { display: flex; margin-top: 8px; }
+.s4-leave .ui-button { width: 100%; min-height: 48px; white-space: nowrap; }
 
 /* 亮牌：整屏固定亮黃／亮紅，字用近黑，淺色與深色對比都過 4.5。 */
 .s4-flash {

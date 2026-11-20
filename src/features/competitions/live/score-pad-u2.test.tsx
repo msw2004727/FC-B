@@ -1,9 +1,10 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installUi4TestLocale } from '@/ui/ui4-test-helpers';
-import { S4_SCENE_LIVE, S4_SCENE_PK, S4_SCENE_PK_START, S4_SCENE_TAKEOVER } from '../testing/step4-fixtures';
+import { s4Match, S4_SCENE_FT, S4_SCENE_HT, S4_SCENE_LIVE, S4_SCENE_PK, S4_SCENE_PK_START, S4_SCENE_PRE, S4_SCENE_TAKEOVER } from '../testing/step4-fixtures';
 import { LIVE_COPY, teamAction } from './copy';
 import { EventSheet } from './EventSheet';
+import { PlayerSheet } from './PlayerSheet';
 import { ScorePad, type ScoreFeedRow } from './ScorePad';
 
 installUi4TestLocale();
@@ -186,5 +187,129 @@ describe('記分板新狀態', () => {
       expect(button.disabled).toBe(true);
       expect(button.getAttribute('aria-disabled')).toBe('true');
     }
+  });
+});
+
+describe('P1-A 中場改判與 P2-B 空名單牌', () => {
+  it('中場點開進球：改判停用、只留復原，出現說明；live 時照常', () => {
+    const view = render(<ScorePad {...S4_SCENE_LIVE} halftimeGoalUndoOnly />);
+    fireEvent.click(screen.getByRole('button', { name: /5' 進球/ }));
+    expect((screen.getByRole('button', { name: /復原/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: /改判/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(LIVE_COPY.halftimeGoalUndoOnly)).toBeTruthy();
+    expect(screen.queryByText(LIVE_COPY.amendNote)).toBeNull();
+    expect(document.querySelector('.s4-pick')).toBeNull();
+    view.unmount();
+    cleanup();
+    render(<ScorePad {...S4_SCENE_LIVE} />);
+    fireEvent.click(screen.getByRole('button', { name: /5' 進球/ }));
+    expect((screen.getByRole('button', { name: /改判/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText(LIVE_COPY.halftimeGoalUndoOnly)).toBeNull();
+    expect(screen.getByText(LIVE_COPY.amendNote)).toBeTruthy();
+  });
+
+  it('中場鎖只對進球：牌照常可改判', () => {
+    render(
+      <EventSheet
+        summary="一張牌"
+        label="一張牌"
+        kind="card"
+        roster={[]}
+        goalKind="normal"
+        cardChoice="yellow"
+        playerId="pl_a"
+        blocked={false}
+        halftimeGoal
+        onGoalKind={() => {}}
+        onCardChoice={() => {}}
+        onPlayer={() => {}}
+        onUnspecified={() => {}}
+        onUndo={() => {}}
+        onAmend={() => {}}
+        onShowCard={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect((screen.getByRole('button', { name: /改判/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText(LIVE_COPY.halftimeGoalUndoOnly)).toBeNull();
+  });
+
+  it('牌面板該隊名單 0 人時顯示提示；進球與有名單時不顯示', () => {
+    const base = {
+      open: true,
+      teamName: '雷霆隊',
+      minute: 5,
+      goalKind: 'normal' as const,
+      onGoalKind: () => {},
+      onPick: () => {},
+      onClose: () => {},
+    };
+    const view = render(<PlayerSheet {...base} action="yellow" roster={[]} />);
+    expect(screen.getByText(LIVE_COPY.cardNoRoster)).toBeTruthy();
+    view.rerender(<PlayerSheet {...base} action="red" roster={[]} />);
+    expect(screen.getByText(LIVE_COPY.cardNoRoster)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: LIVE_COPY.unspecified })).toBeNull();
+    view.rerender(<PlayerSheet {...base} action="goal" roster={[]} />);
+    expect(screen.queryByText(LIVE_COPY.cardNoRoster)).toBeNull();
+    view.rerender(
+      <PlayerSheet
+        {...base}
+        action="yellow"
+        roster={[{ id: 'pl_a', enId: 'en_h', displayName: '劉冠廷', number: 9, position: 'FW', positionText: null, isMinor: false }]}
+      />,
+    );
+    expect(screen.queryByText(LIVE_COPY.cardNoRoster)).toBeNull();
+  });
+});
+
+describe('半場鈕只在上半場', () => {
+  const halftimeBtn = () => screen.queryByRole('button', { name: LIVE_COPY.halftime });
+
+  it('h1 顯示、h2 不顯示、PK 不顯示', () => {
+    const view = render(<ScorePad {...S4_SCENE_LIVE} />);
+    expect(S4_SCENE_LIVE.match.clockBase.period).toBe('h1');
+    expect(halftimeBtn()).toBeTruthy();
+    view.unmount();
+    cleanup();
+    const h2 = s4Match({
+      status: 'live',
+      clockBase: { ...S4_SCENE_LIVE.match.clockBase, period: 'h2' },
+    });
+    render(<ScorePad {...S4_SCENE_LIVE} match={h2} clock={{ ...S4_SCENE_LIVE.clock, period: 'h2' }} pkCanStart={false} />);
+    expect(halftimeBtn()).toBeNull();
+    cleanup();
+    render(<ScorePad {...S4_SCENE_PK} />);
+    expect(halftimeBtn()).toBeNull();
+  });
+});
+
+describe('終場後的出口（顧問 staging 實測 P1-B：全幅藏了頂欄與導覽）', () => {
+  const finishedAt = S4_SCENE_FT.match.finishedAt as number;
+
+  it('撤回期：「撤回終場」旁有「離開記分」，按下呼叫 onLeave', () => {
+    const leave = vi.fn();
+    render(<ScorePad {...S4_SCENE_FT} nowMs={finishedAt + 10_000} onLeave={leave} />);
+    expect(screen.getByRole('button', { name: LIVE_COPY.undoFulltime })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.leaveScore }));
+    expect(leave).toHaveBeenCalledTimes(1);
+  });
+
+  it('撤回期過後：仍有「離開記分」，按下呼叫 onLeave', () => {
+    const leave = vi.fn();
+    render(<ScorePad {...S4_SCENE_FT} nowMs={finishedAt + 10 * 60_000} onLeave={leave} />);
+    expect(screen.queryByRole('button', { name: LIVE_COPY.undoFulltime })).toBeNull();
+    expect(document.querySelector('.s4-clockrow .s4-stage')?.textContent).toBe(LIVE_COPY.fulltime);
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.leaveScore }));
+    expect(leave).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['開賽前', S4_SCENE_PRE],
+    ['比賽中', S4_SCENE_LIVE],
+    ['中場', S4_SCENE_HT],
+  ] as const)('%s：「離開記分」只在選單裡，不在底部常駐', (_label, scene) => {
+    render(<ScorePad {...scene} onLeave={() => undefined} />);
+    expect(document.querySelector('.s4-leave')).toBeNull();
+    expect(screen.queryByRole('button', { name: LIVE_COPY.leaveScore })).toBeNull();
   });
 });

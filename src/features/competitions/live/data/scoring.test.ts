@@ -4,7 +4,7 @@ import { LIVE_COPY } from '../copy';
 import { IndexedDbActionLog, MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
 import { applyPlanLocal, buildBatch } from './batch';
 import { budgetView, groupWithinBudget, pauseUseCount } from './budget';
-import { activeYellowRefs, findOpenYellow, groupMessage, liveSecondYellow, overlayScore, scoreView, voidsFromTimeline } from './derive';
+import { activeYellowRefs, findOpenYellow, groupMessage, liveSecondYellow, overlayScore, overlayStatus, scoreView, voidsFromTimeline } from './derive';
 import { memorySidStore } from './sid';
 import { classifyReject, decideRetry, Sender } from './sender';
 import type { LiveListener } from './live-repo';
@@ -20,6 +20,10 @@ import type {
   ServerMatch,
 } from './types';
 import { bindWakeLock } from './wake-lock';
+import { h as jsx } from 'preact';
+import { cleanup, render, screen } from '@testing-library/preact';
+import { ScorePad } from '../ScorePad';
+import { scorePadPropsFrom } from '../scoring-adapter';
 
 const CID = 'c1';
 const MT = 'm1';
@@ -1129,11 +1133,14 @@ describe('送出與工作階段', () => {
       removeMatch: (cid, mtId) => inner.removeMatch(cid, mtId),
       purgeOlderThan: (nowMs, maxAgeMs) => inner.purgeOlderThan(nowMs, maxAgeMs),
     };
-    const h = await openHarness({
-      log,
-      match: baseMatch({ status: 'confirmed', lock: { locked: true }, rev: 3 }),
-    });
+    // P1-A 後確認場本機就不收進球，改成送出當下場次才變成已確認，仍走「終局＋日誌被清」分支。
+    const h = await openHarness({ log, match: baseMatch({ rev: 3 }) });
+    h.failBefore = () => {
+      h.match.status = 'confirmed';
+      h.match.lock = { locked: true };
+    };
     const result = await h.session.getState().actions.goal({ side: 'home' });
+    expect(h.session.getState().match?.status).toBe('confirmed');
     expect(result).toEqual({ status: 'queued' });
     expect(h.commits).toHaveLength(1);
   });
@@ -1667,5 +1674,219 @@ describe('暫停與 PK 意圖層', () => {
     expect((await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' })).status).toBe('applied');
     const cardSeq = h.events.find((event) => event.type === 'card')?.seq;
     expect((await h.session.getState().actions.voidEvent({ seq: cardSeq })).status).toBe('applied');
+  });
+});
+
+describe('P1-A 疊加狀態擋規則不允許的動作', () => {
+  function serverStatus(h: Harness, status: string): void {
+    h.match.status = status;
+    h.listener.onMatch(snapshotOf(h.match));
+  }
+
+  async function goalAt(h: Harness): Promise<number> {
+    expect((await h.session.getState().actions.goal({ side: 'home' })).status).toBe('applied');
+    const seq = h.events.filter((event) => event.type === 'goal').at(-1)?.seq;
+    expect(seq).toBeTypeOf('number');
+    return seq as number;
+  }
+
+  it('overlayStatus：已套用未追上與待送的階段動作才疊加，被拒與捨棄的不算', () => {
+    const match = baseMatch({ rev: 2 });
+    const phase = (op: string, kind: 'halftime' | 'resume' | 'fulltime', patch: Partial<LogEntry> = {}) => entry({
+      op,
+      intent: { kind, matchSecond: 1, clock: { running: false, period: 'ht', pausedSec: 1, startedAt: 1 } },
+      ...patch,
+    });
+    expect(overlayStatus(match, [phase('a', 'halftime', { state: 'rejected' })])).toBe('live');
+    expect(overlayStatus(match, [phase('a', 'halftime', { state: 'discarded' })])).toBe('live');
+    expect(overlayStatus(match, [phase('a', 'halftime', { state: 'applied', seq: 2 })])).toBe('live');
+    expect(overlayStatus(match, [phase('a', 'halftime', { state: 'applied', seq: 3 })])).toBe('halftime');
+    expect(overlayStatus(match, [phase('a', 'halftime', { state: 'sending' })])).toBe('halftime');
+    expect(overlayStatus(match, [
+      phase('b', 'resume', { createdAt: 2 }),
+      phase('a', 'halftime', { createdAt: 1 }),
+    ])).toBe('live');
+    expect(overlayStatus(match, [phase('a', 'fulltime')])).toBe('finished');
+  });
+
+  it('中場改判進球：不產生作廢、不寫日誌與佇列，回 rules；復原照常', async () => {
+    const h = await openHarness();
+    const seq = await goalAt(h);
+    expect((await h.session.getState().actions.halftime()).status).toBe('applied');
+    expect(h.match.status).toBe('halftime');
+    expect(h.session.getState().liveStatus).toBe('halftime');
+    const commits = h.commits.length;
+    const logged = (await h.log.list(CID, MT)).length;
+    expect(await h.session.getState().actions.amend(
+      { seq },
+      { kind: 'goal', side: 'home', goalKind: 'penalty', matchSecond: 12 },
+    )).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(h.commits).toHaveLength(commits);
+    expect(await h.log.list(CID, MT)).toHaveLength(logged);
+    expect(h.events.some((event) => event.type === 'void')).toBe(false);
+    expect(h.match.score).toEqual({ home: 1, away: 0 });
+    expect(await h.session.getState().actions.goal({ side: 'away' })).toEqual({ status: 'rejected', reason: 'rules' });
+    expect((await h.session.getState().actions.voidEvent({ seq })).status).toBe('applied');
+    expect(h.match.score).toEqual({ home: 0, away: 0 });
+    expect((await h.session.getState().actions.resume()).status).toBe('applied');
+  });
+
+  it('live 時改判進球照舊：先作廢再記新進球', async () => {
+    const h = await openHarness();
+    const seq = await goalAt(h);
+    expect((await h.session.getState().actions.amend(
+      { seq },
+      { kind: 'goal', side: 'home', goalKind: 'penalty', matchSecond: 12 },
+    )).status).toBe('applied');
+    expect(h.events.map((event) => event.type)).toEqual(['goal', 'void', 'goal']);
+    expect(h.match.score).toEqual({ home: 1, away: 0 });
+  });
+
+  it('伺服器仍 live、本機已按半場（待送）：改判進球也被擋', async () => {
+    const h = await openHarness();
+    const seq = await goalAt(h);
+    h.online = false;
+    expect((await h.session.getState().actions.halftime()).status).toBe('queued');
+    expect(h.match.status).toBe('live');
+    expect(h.session.getState().liveStatus).toBe('halftime');
+    const logged = (await h.log.list(CID, MT)).length;
+    expect(await h.session.getState().actions.amend(
+      { seq },
+      { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 12 },
+    )).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(await h.log.list(CID, MT)).toHaveLength(logged);
+  });
+
+  it('被拒的半場不算中場：之後 live 記進球照樣放行', async () => {
+    const h = await openHarness();
+    h.failBefore = (plan) => {
+      if (plan.event.type === 'halftime') throw { code: 'permission-denied' };
+    };
+    expect(await h.session.getState().actions.halftime()).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(h.session.getState().liveStatus).toBe('live');
+    h.failBefore = null;
+    const result = await h.session.getState().actions.goal({ side: 'home' });
+    expect(result).not.toEqual({ status: 'rejected', reason: 'rules' });
+    const rows = await h.log.list(CID, MT);
+    expect(rows.some((row) => row.kind === 'goal' && row.state !== 'rejected')).toBe(true);
+  });
+
+  it('被拒的進球：live 時重新套用放行，中場時重新套用被擋且不改日誌', async () => {
+    for (const status of ['live', 'halftime'] as const) {
+      const h = await openHarness();
+      h.failBefore = (plan) => {
+        if (plan.event.type === 'goal') throw { code: 'permission-denied' };
+      };
+      expect(await h.session.getState().actions.goal({ side: 'home' })).toEqual({ status: 'rejected', reason: 'rules' });
+      h.failBefore = null;
+      const failed = (await h.log.list(CID, MT)).find((row) => row.state === 'rejected');
+      expect(failed?.kind).toBe('goal');
+      if (status === 'halftime') serverStatus(h, 'halftime');
+      const commits = h.commits.length;
+      const result = await h.session.getState().actions.reapply(failed?.op ?? '');
+      if (status === 'live') {
+        expect(result.status).toBe('applied');
+        expect(h.match.score.home).toBe(1);
+      } else {
+        expect(result).toEqual({ status: 'rejected', reason: 'rules' });
+        expect(h.commits).toHaveLength(commits);
+        expect((await h.log.get(failed?.op ?? ''))?.state).toBe('rejected');
+      }
+      h.stop();
+    }
+  });
+
+  it('Opus 終審 P2-1 A：被拒進球之後才排入待送半場，重新套用仍放行（送出順序在半場之前）', async () => {
+    const h = await openHarness();
+    h.failBefore = (plan) => {
+      if (plan.event.type === 'goal') throw { code: 'permission-denied' };
+    };
+    expect(await h.session.getState().actions.goal({ side: 'home' })).toEqual({ status: 'rejected', reason: 'rules' });
+    h.failBefore = null;
+    const failed = (await h.log.list(CID, MT)).find((row) => row.state === 'rejected');
+    h.online = false;
+    expect((await h.session.getState().actions.halftime()).status).toBe('queued');
+    expect(h.session.getState().liveStatus).toBe('halftime');
+    const result = await h.session.getState().actions.reapply(failed?.op ?? '');
+    expect(result).not.toEqual({ status: 'rejected', reason: 'rules' });
+    expect((await h.log.get(failed?.op ?? ''))?.state).toBe('pending');
+  });
+
+  it('Opus 終審 P2-1 B：中場被拒進球之後排入待送續賽，重新套用要擋（送出時伺服器仍在中場）', async () => {
+    const h = await openHarness();
+    h.failBefore = (plan) => {
+      if (plan.event.type === 'goal') throw { code: 'permission-denied' };
+    };
+    expect(await h.session.getState().actions.goal({ side: 'home' })).toEqual({ status: 'rejected', reason: 'rules' });
+    h.failBefore = null;
+    const failed = (await h.log.list(CID, MT)).find((row) => row.state === 'rejected');
+    // 被拒那筆會暫停佇列，所以直接讓伺服器進中場（等同另一路徑已送出半場）。
+    serverStatus(h, 'halftime');
+    h.online = false;
+    expect((await h.session.getState().actions.resume()).status).toBe('queued');
+    expect(h.session.getState().liveStatus).toBe('live');
+    const logged = (await h.log.list(CID, MT)).length;
+    expect(await h.session.getState().actions.reapply(failed?.op ?? '')).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(await h.log.list(CID, MT)).toHaveLength(logged);
+    expect((await h.log.get(failed?.op ?? ''))?.state).toBe('rejected');
+  });
+
+  it('Opus 終審 P2-2：待送終場後復原第一黃（連帶第二黃）回 rules，日誌不變', async () => {
+    const h = await openHarness();
+    await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' });
+    await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' });
+    h.online = false;
+    expect((await h.session.getState().actions.fulltime()).status).toBe('queued');
+    expect(h.session.getState().liveStatus).toBe('finished');
+    const logged = (await h.log.list(CID, MT)).length;
+    expect(await h.session.getState().actions.undoFirstYellow({ seq: 1 })).toEqual({ status: 'rejected', reason: 'rules' });
+    expect(await h.log.list(CID, MT)).toHaveLength(logged);
+  });
+
+  it('階段動作依疊加狀態擋：開賽、半場、續賽、終場、撤回終場各一正一反', async () => {
+    const h = await openHarness({
+      match: baseMatch({ status: 'scheduled', clockBase: { startedAt: null, pausedSec: 0, running: false, period: 'pre' } }),
+    });
+    const act = h.session.getState().actions;
+    const rules = { status: 'rejected', reason: 'rules' };
+    expect(await act.halftime()).toEqual(rules);
+    expect(await act.resume()).toEqual(rules);
+    expect(await act.fulltime()).toEqual(rules);
+    expect(await act.undoFinish()).toEqual(rules);
+    expect(await act.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' })).toEqual(rules);
+    expect(await act.goal({ side: 'home' })).toEqual(rules);
+    expect(h.commits).toHaveLength(0);
+    expect((await act.kickoff()).status).toBe('applied');
+    expect(await act.kickoff()).toEqual(rules);
+    expect(await act.resume()).toEqual(rules);
+    expect((await act.halftime()).status).toBe('applied');
+    expect(await act.halftime()).toEqual(rules);
+    expect((await act.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' })).status).toBe('applied');
+    expect((await act.resume()).status).toBe('applied');
+    expect(await act.undoFinish()).toEqual(rules);
+    expect((await act.fulltime()).status).toBe('applied');
+    expect(h.match.status).toBe('finished');
+    expect(await act.fulltime()).toEqual(rules);
+    expect((await act.undoFinish()).status).toBe('applied');
+    expect(h.match.status).toBe('live');
+  });
+});
+
+describe('半場鈕看疊加後的節次', () => {
+  afterEach(() => cleanup());
+
+  it('本機已按下半場開始（待送）、伺服器還在中場：疊加節次是 h2，半場鈕不顯示', async () => {
+    const h = await openHarness();
+    expect((await h.session.getState().actions.halftime()).status).toBe('applied');
+    expect(h.match.status).toBe('halftime');
+    h.online = false;
+    expect((await h.session.getState().actions.resume()).status).toBe('queued');
+    const state = h.session.getState();
+    expect(state.match?.status).toBe('halftime');
+    expect(state.liveStatus).toBe('live');
+    const props = scorePadPropsFrom(state, 1_700_000_000_000);
+    expect(props.match.clockBase.period).toBe('h2');
+    render(jsx(ScorePad, props));
+    expect(screen.queryByRole('button', { name: LIVE_COPY.halftime })).toBeNull();
   });
 });
