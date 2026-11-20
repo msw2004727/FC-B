@@ -146,9 +146,12 @@ export function timeoutUsesFrom(view: ScoringView): { home: number; away: number
     if (event.type !== 'timeout' || event.seq <= floor) continue;
     if (event.side === 'home' || event.side === 'away') uses[event.side] += 1;
   }
+  // 本機快照（離線延遲補償）已讀進 events 的待送暫停不重算（依 op 去重）。
+  const serverOps = new Set(view.events.map((event) => event.op));
   for (const row of view.unapplied) {
     if (row.state !== 'pending' && row.state !== 'sending') continue;
     if (row.intent.kind !== 'timeout') continue;
+    if (serverOps.has(row.op)) continue;
     if (row.intent.side === 'home' || row.intent.side === 'away') uses[row.intent.side] += 1;
   }
   return uses;

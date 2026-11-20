@@ -41,9 +41,12 @@ export function pauseUseCount(
     if (stopsClock && event.type === 'timeout') serverTimeouts += 1;
   }
   let pendingPauses = 0;
+  // 本機快照（離線延遲補償）已讀進 events 的待送項目不重算（依 op 去重；預演離線疊加修正同一批）。
+  const serverOps = new Set(events.map((event) => event.op));
   for (const entry of entries) {
     if (!entryInEpoch(entry, resetRev)) continue;
     if (entry.state !== 'pending' && entry.state !== 'sending') continue;
+    if (serverOps.has(entry.op)) continue;
     if (entry.kind === 'clock' && entry.intent.kind === 'clock' && entry.intent.clockAction === 'pause') {
       pendingPauses += 1;
     }
@@ -54,11 +57,14 @@ export function pauseUseCount(
   return Math.floor(clocks / 2) + pendingPauses + serverTimeouts;
 }
 
-export function localInflightCount(entries: readonly LogEntry[], resetRev = 0): number {
+/** 待送筆數。傳 rev 時，已排定 seq 且被快照 rev 涵蓋的不算（rev 已含它，避免事件額度多算一筆）。 */
+export function localInflightCount(entries: readonly LogEntry[], resetRev = 0, rev?: number): number {
   let n = 0;
   for (const entry of entries) {
     if (!entryInEpoch(entry, resetRev)) continue;
-    if (entry.state === 'pending' || entry.state === 'sending') n += 1;
+    if (entry.state !== 'pending' && entry.state !== 'sending') continue;
+    if (rev != null && entry.seq != null && entry.seq <= rev) continue;
+    n += 1;
   }
   return n;
 }
@@ -70,7 +76,7 @@ export function budgetView(
   events: readonly ServerEvent[],
   stopsClock = false,
 ): BudgetView {
-  const used = eventUsed(rev, resetRev, localInflightCount(entries, resetRev));
+  const used = eventUsed(rev, resetRev, localInflightCount(entries, resetRev, rev));
   const pauseUses = pauseUseCount(events, entries, resetRev, stopsClock);
   const pauseEnabled = used <= EVENT_MAX - SCORING_RESERVE && pauseUses < PAUSE_MAX;
   return {

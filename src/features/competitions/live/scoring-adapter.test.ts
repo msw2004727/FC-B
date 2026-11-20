@@ -214,6 +214,26 @@ describe('scorePadPropsFrom', () => {
     expect(whole).toEqual({ home: 2, away: 0 });
   });
 
+  it('球隊暫停次數：本機快照已讀進事件的待送暫停不重算（依 op 去重）', () => {
+    const events: ServerEvent[] = [
+      { seq: 1, type: 'kickoff', op: 'kick', sid: 's', matchSecond: 0, createdAt: 1 },
+      { seq: 2, type: 'timeout', op: 'to-echo', sid: 's', side: 'home', matchSecond: 10, createdAt: 2 },
+    ];
+    const uses = timeoutUsesFrom(view({
+      events,
+      timeoutRule: { enabled: true, per: 'half', count: 2, seconds: 60, stopsClock: true },
+      unapplied: [{
+        op: 'to-echo',
+        kind: 'timeout',
+        state: 'sending',
+        createdAt: 3,
+        intent: { kind: 'timeout', side: 'home', matchSecond: 10 },
+        summary: '主隊 暫停',
+      }],
+    }));
+    expect(uses).toEqual({ home: 1, away: 0 });
+  });
+
   it('暫停倒數由最新事件與規則秒數推出', () => {
     const rule60 = { enabled: true, per: 'half' as const, count: 1, seconds: 60, stopsClock: true };
     const running = timeoutEvent({ createdAt: NOW - 13_000 });
