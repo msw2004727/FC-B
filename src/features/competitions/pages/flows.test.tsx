@@ -2,7 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/pr
 import type { ComponentChildren, ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import { AppConfirmHost, _resetAppConfirmForTest } from '@/ui/AppConfirm';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { toast } from '@/ui/Toast';
+import { _resetOverlayBackForTest } from '@/core/overlay-back';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { COMPETITIONS_ENABLED, FEATURE_OVERRIDES } from '@/feature-overrides';
 import { ALL_FEATURES } from '@/features.config';
 import { _resetForTest, getActiveRoutes, registerFeatures } from '@/core/feature-registry';
@@ -125,6 +127,11 @@ function spyActions() {
     deleteCompetition: vi.fn(actions.deleteCompetition),
   };
 }
+
+const TWO_CLUBS = [
+  { id: 'club_a', name: '示範隊A' },
+  { id: 'club_b', name: '示範隊B' },
+];
 
 function draw(node: ComponentChildren) {
   return render(<LocationProvider>{node}</LocationProvider>);
@@ -545,31 +552,157 @@ describe('賽事第 2 步畫面', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('詳情頁 repClubs 晚到仍能以第一個俱樂部報隊', async () => {
+  it('詳情頁 repClubs 晚到：只有一個俱樂部自動帶入，兩個以上不預選', async () => {
     const actions = spyActions();
-    const view = mount(CompetitionDetailPage, {
+    const envWith = (clubs: { id: string; name: string }[]) => ({
       ...screenEnv('detail-rep', actions),
-      actor: { ...repActor, repClubs: [] },
+      actor: { ...repActor, repClubs: clubs },
     });
-    expect(screen.queryByRole('button', { name: '以俱樂部報隊' })).toBeNull();
-    const clubs = [
-      { id: 'club_a', name: '示範隊A' },
-      { id: 'club_b', name: '示範隊B' },
-    ];
-    view.rerender(
+    const redraw = (view: ReturnType<typeof mount>, clubs: { id: string; name: string }[]) => view.rerender(
       <LocationProvider>
-        <CpEnvProvider value={{ ...screenEnv('detail-rep', actions), actor: { ...repActor, repClubs: clubs } }}>
+        <CpEnvProvider value={envWith(clubs)}>
           <CompetitionDetailPage />
           <AppConfirmHost />
         </CpEnvProvider>
       </LocationProvider>,
     );
+    const view = mount(CompetitionDetailPage, envWith([]));
+    expect(screen.queryByRole('button', { name: '以俱樂部報隊' })).toBeNull();
+    redraw(view, [{ id: 'club_b', name: '示範隊B' }]);
     fireEvent.click(await screen.findByRole('button', { name: '以俱樂部報隊' }));
-    await waitFor(() => expect((screen.getByLabelText('俱樂部') as HTMLSelectElement).value).toBe('club_a'));
+    expect(screen.queryByLabelText('俱樂部')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '送出報名' }));
     await waitFor(() => expect(actions.registerEntry).toHaveBeenCalledWith({
-      cid: 'cup', dvId: 'dv_adult', teamId: 'club_a',
+      cid: 'cup', dvId: 'dv_adult', teamId: 'club_b',
     }));
+
+    cleanup();
+    const late = mount(CompetitionDetailPage, envWith([]));
+    redraw(late, TWO_CLUBS);
+    fireEvent.click(await screen.findByRole('button', { name: '以俱樂部報隊' }));
+    expect((screen.getByLabelText('俱樂部') as HTMLSelectElement).value).toBe('');
+  });
+
+  describe('報隊面板選俱樂部（開放前）', () => {
+    let toastShow: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      // 前面測試留下的彈窗返回紀錄會在這裡退掉面板；先清乾淨。
+      _resetOverlayBackForTest();
+      toastShow = vi.spyOn(toast, 'show').mockImplementation(() => 1);
+    });
+    afterEach(() => {
+      toastShow.mockRestore();
+    });
+
+    const twoClubEnv = (actions: ReturnType<typeof spyActions>) => ({
+      ...screenEnv('detail-rep', actions),
+      actor: { ...repActor, repClubs: TWO_CLUBS },
+    });
+    const clubSelect = () => screen.getByLabelText('俱樂部') as HTMLSelectElement;
+    const fieldError = () => document.querySelector('[data-field-error]');
+    // BottomSheet 在 portal 裡，fireEvent.change 會被改送成 input；照 host-ops 的做法直接發原生 change。
+    const pickClub = async (value: string) => {
+      const select = clubSelect();
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      // 受控元件會先退回舊值，等父層重繪後才是新值。
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await waitFor(() => expect(clubSelect().value).toBe(value));
+    };
+
+    it('只代表一個俱樂部：不顯示下拉、自動帶入並送出，成功跳提示', async () => {
+      const actions = spyActions();
+      mount(CompetitionDetailPage, screenEnv('detail-rep', actions));
+      fireEvent.click(screen.getByRole('button', { name: '以俱樂部報隊' }));
+      expect(screen.queryByLabelText('俱樂部')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: '送出報名' }));
+      await waitFor(() => expect(actions.registerEntry).toHaveBeenCalledWith({
+        cid: 'cup', dvId: 'dv_adult', teamId: 'club_a',
+      }));
+      await waitFor(() => expect(toastShow).toHaveBeenCalledWith({ message: '已送出報隊，等主辦審核', tone: 'success' }));
+    });
+
+    it('兩個俱樂部：預設空白、第一項是停用的請選擇；沒選送出不呼叫後端並在欄位顯示必選', async () => {
+      const actions = spyActions();
+      mount(CompetitionDetailPage, twoClubEnv(actions));
+      fireEvent.click(screen.getByRole('button', { name: '以俱樂部報隊' }));
+      const select = clubSelect();
+      expect(select.value).toBe('');
+      expect(select.options[0]?.label).toBe('請選擇俱樂部');
+      expect(select.options[0]?.disabled).toBe(true);
+      expect(Array.from(select.options).map((option) => option.value)).toEqual(['', 'club_a', 'club_b']);
+      fireEvent.click(screen.getByRole('button', { name: '送出報名' }));
+      await waitFor(() => expect(clubSelect().getAttribute('aria-invalid')).toBe('true'));
+      expect(fieldError()?.textContent).toBe('還有必填項目沒填');
+      expect(actions.registerEntry).not.toHaveBeenCalled();
+      expect(toastShow).not.toHaveBeenCalled();
+    });
+
+    it('兩個俱樂部：選第二個就送第二個的 teamId，選了之後錯誤消失', async () => {
+      const actions = spyActions();
+      mount(CompetitionDetailPage, twoClubEnv(actions));
+      fireEvent.click(screen.getByRole('button', { name: '以俱樂部報隊' }));
+      fireEvent.click(screen.getByRole('button', { name: '送出報名' }));
+      await waitFor(() => expect(fieldError()).toBeTruthy());
+      await pickClub('club_b');
+      await waitFor(() => expect(fieldError()).toBeNull());
+      fireEvent.click(screen.getByRole('button', { name: '送出報名' }));
+      await waitFor(() => expect(actions.registerEntry).toHaveBeenCalledWith({
+        cid: 'cup', dvId: 'dv_adult', teamId: 'club_b',
+      }));
+      expect(actions.registerEntry).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(toastShow).toHaveBeenCalledWith({ message: '已送出報隊，等主辦審核', tone: 'success' }));
+    });
+
+    it('兩個俱樂部：關掉再打開面板，選擇與錯誤都重設', async () => {
+      const actions = spyActions();
+      mount(CompetitionDetailPage, twoClubEnv(actions));
+      fireEvent.click(screen.getByRole('button', { name: '以俱樂部報隊' }));
+      fireEvent.click(screen.getByRole('button', { name: '送出報名' }));
+      await waitFor(() => expect(fieldError()).toBeTruthy());
+      await pickClub('club_b');
+      fireEvent.click(screen.getByRole('button', { name: '取消' }));
+      await waitFor(() => expect(screen.queryByLabelText('俱樂部')).toBeNull());
+      fireEvent.click(screen.getByRole('button', { name: '以俱樂部報隊' }));
+      expect(clubSelect().value).toBe('');
+      expect(fieldError()).toBeNull();
+      expect(actions.registerEntry).not.toHaveBeenCalled();
+    });
+
+    it('報隊失敗不跳成功提示，面板留著', async () => {
+      const actions = spyActions();
+      actions.registerEntry.mockRejectedValue(new CpCallError('NOT_A_REAL_CODE', {}));
+      mount(CompetitionDetailPage, twoClubEnv(actions));
+      fireEvent.click(screen.getByRole('button', { name: '以俱樂部報隊' }));
+      await pickClub('club_a');
+      fireEvent.click(screen.getByRole('button', { name: '送出報名' }));
+      await waitFor(() => expect(actions.registerEntry).toHaveBeenCalledWith({
+        cid: 'cup', dvId: 'dv_adult', teamId: 'club_a',
+      }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '送出報名' }).hasAttribute('disabled')).toBe(false));
+      expect(clubSelect()).toBeTruthy();
+      expect(toastShow).not.toHaveBeenCalled();
+    });
+  });
+
+  it('名單已鎖定：報隊管理頁沒按確認的隊也顯示名單已確認，未確認計數不算它（顧問 §3.450）', async () => {
+    const lockedBundle = manageBundle({ uid: 'uid_host', roles: ['host'] }, true);
+    const locked = mount(CompetitionManagePage, { ...screenEnv('host-approved'), bundle: lockedBundle });
+    expect(locked.container.textContent ?? '').toContain('示範隊E');
+    expect(locked.container.textContent ?? '').toContain('名單已確認');
+    expect(locked.container.textContent ?? '').not.toContain('名單未確認');
+    locked.unmount();
+
+    const open = mount(CompetitionManagePage, screenEnv('host-approved'));
+    expect(open.container.textContent ?? '').toContain('名單未確認');
+    open.unmount();
+
+    mount(CompetitionManagePage, { ...screenEnv('host-lock'), bundle: lockedBundle });
+    expect((await screen.findByRole('alertdialog')).textContent ?? '').toContain('還有 0 隊尚未確認名單');
+    cleanup();
+    _resetAppConfirmForTest();
+    mount(CompetitionManagePage, screenEnv('host-lock'));
+    expect((await screen.findByRole('alertdialog')).textContent ?? '').toContain('還有 1 隊尚未確認名單');
   });
 
   it('我的賽事併入俱樂部主辦的草稿；有名稱不再讀文件；單筆失敗不藏整區', async () => {

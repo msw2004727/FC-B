@@ -178,6 +178,8 @@
   "registerClub": "以俱樂部報隊",
   "pickDivision": "選擇組別",
   "submitRegister": "送出報名",
+  "pickClub": "請選擇俱樂部",
+  "registerDone": "已送出報隊，等主辦審核",
   "reportTitle": "檢舉賽事",
   "reportReason": "原因",
   "reportImpersonation": "冒用單位或個人名義",

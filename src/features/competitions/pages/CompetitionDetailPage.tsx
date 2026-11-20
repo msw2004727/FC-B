@@ -108,6 +108,11 @@ interface MineReadCache {
   token: number;
 }
 
+/** 只代表一個俱樂部才自動帶入；兩個以上要自己選。 */
+function soleClubId(clubs: readonly { id: string }[]): string {
+  return clubs.length === 1 ? clubs[0]?.id ?? '' : '';
+}
+
 function mineKey(cid: string, uid: string): string {
   return `${cid}\0${uid}`;
 }
@@ -202,7 +207,9 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [reportReason, setReportReason] = useState<ReportReason>('fake');
   const [reportDetail, setReportDetail] = useState('');
   const [registerOpen, setRegisterOpen] = useState(false);
-  const [teamId, setTeamId] = useState(representativeClubs(env.actor)[0]?.id ?? '');
+  // 代表兩個以上俱樂部時不預選，避免手快報錯隊；只有一個才自動帶入。
+  const [teamId, setTeamId] = useState(soleClubId(representativeClubs(env.actor)));
+  const [clubMissing, setClubMissing] = useState(false);
   const [dvId, setDvId] = useState('');
   const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [registerError, setRegisterError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
@@ -231,8 +238,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   useEffect(() => {
     if (teamId) return;
-    const first = clubs[0]?.id ?? '';
-    if (first) setTeamId(first);
+    const sole = soleClubId(clubs);
+    if (sole) setTeamId(sole);
   }, [clubs, teamId]);
 
   useEffect(() => () => {
@@ -671,8 +678,24 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     route(`/teams/${encodeURIComponent(teamId)}`);
   }
 
+  function openRegister(): void {
+    setDvId(divisions[0]?.dvId ?? '');
+    // 每次打開都重設，不沿用上次的選擇。
+    setTeamId(soleClubId(clubs));
+    setClubMissing(false);
+    setRegisterError(null);
+    setRegisterOpen(true);
+  }
+
   async function sendRegister(): Promise<void> {
-    const chosenTeam = teamId || clubs[0]?.id || '';
+    const multi = clubs.length > 1;
+    const chosenTeam = multi
+      ? (clubs.some((club) => club.id === teamId) ? teamId : '')
+      : soleClubId(clubs);
+    if (multi && !chosenTeam) {
+      setClubMissing(true);
+      return;
+    }
     if (!chosenTeam || !dvId) {
       setRegisterError({ reason: 'FIELD_REQUIRED' });
       return;
@@ -683,6 +706,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       await env.actions.registerEntry(buildRegisterInput({ cid, dvId, teamId: chosenTeam }));
       setRegisterOpen(false);
       setRegisterError(null);
+      toast.show({ message: ct('registerDone'), tone: 'success' });
       const next = await loadDetail(env, cid, mineCache.current);
       applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
     } catch (err) {
@@ -708,7 +732,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {error ? <CpError reason={error.reason} params={error.params} /> : null}
       {showRegister ? (
         <div class="cps-actions">
-          <Button variant="primary" onClick={() => { setDvId(divisions[0]?.dvId ?? ''); setRegisterError(null); setRegisterOpen(true); }}>
+          <Button variant="primary" onClick={openRegister}>
             {ct('registerClub')}
           </Button>
         </div>
@@ -999,8 +1023,12 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               <Select
                 label={ct('club')}
                 value={teamId}
-                onValueChange={setTeamId}
-                options={clubs.map((club) => ({ value: club.id, label: club.name }))}
+                onValueChange={(next) => { setTeamId(next); setClubMissing(false); }}
+                error={clubMissing ? reasonText(ct, 'FIELD_REQUIRED') : undefined}
+                options={[
+                  { value: '', label: ct('pickClub'), disabled: true },
+                  ...clubs.map((club) => ({ value: club.id, label: club.name })),
+                ]}
               />
             ) : null}
             <RadioGroup
