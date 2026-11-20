@@ -808,7 +808,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                 {ct('report')}
               </button>
               {isAdmin && !competition.hidden ? (
-                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setHideOpen(true); }}>
+                <button type="button" role="menuitem" class="cps-menu__danger" onClick={() => { setMenuOpen(false); setHideOpen(true); }}>
                   {ct('moderateHide')}
                 </button>
               ) : null}
