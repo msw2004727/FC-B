@@ -874,6 +874,12 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           <Button variant="danger" disabled={flowOff} onClick={() => props.onUndoFulltime?.()}>{LIVE_COPY.undoFulltime}</Button>
         </div>
       ) : null}
+      {/* 終場後（撤回期與之後）沒有選單；全幅藏了頂欄與導覽，這裡固定給一個出口（顧問 staging 實測 P1-B）。 */}
+      {!showCtrl && props.onLeave ? (
+        <div class="s4-leave">
+          <Button variant="secondary" onClick={() => props.onLeave?.()}>{LIVE_COPY.leaveScore}</Button>
+        </div>
+      ) : null}
       {phase === 'pre' ? (
         <button
           type="button"

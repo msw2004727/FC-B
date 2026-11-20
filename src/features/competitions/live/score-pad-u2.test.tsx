@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installUi4TestLocale } from '@/ui/ui4-test-helpers';
-import { s4Match, S4_SCENE_LIVE, S4_SCENE_PK, S4_SCENE_PK_START, S4_SCENE_TAKEOVER } from '../testing/step4-fixtures';
+import { s4Match, S4_SCENE_FT, S4_SCENE_HT, S4_SCENE_LIVE, S4_SCENE_PK, S4_SCENE_PK_START, S4_SCENE_PRE, S4_SCENE_TAKEOVER } from '../testing/step4-fixtures';
 import { LIVE_COPY, teamAction } from './copy';
 import { EventSheet } from './EventSheet';
 import { PlayerSheet } from './PlayerSheet';
@@ -280,5 +280,35 @@ describe('半場鈕只在上半場', () => {
     cleanup();
     render(<ScorePad {...S4_SCENE_PK} />);
     expect(halftimeBtn()).toBeNull();
+  });
+});
+
+describe('終場後的出口（顧問 staging 實測 P1-B：全幅藏了頂欄與導覽）', () => {
+  const finishedAt = S4_SCENE_FT.match.finishedAt as number;
+
+  it('撤回期：「撤回終場」旁有「離開記分」，按下呼叫 onLeave', () => {
+    const leave = vi.fn();
+    render(<ScorePad {...S4_SCENE_FT} nowMs={finishedAt + 10_000} onLeave={leave} />);
+    expect(screen.getByRole('button', { name: LIVE_COPY.undoFulltime })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.leaveScore }));
+    expect(leave).toHaveBeenCalledTimes(1);
+  });
+
+  it('撤回期過後：仍有「離開記分」，按下呼叫 onLeave', () => {
+    const leave = vi.fn();
+    render(<ScorePad {...S4_SCENE_FT} nowMs={finishedAt + 10 * 60_000} onLeave={leave} />);
+    expect(screen.queryByRole('button', { name: LIVE_COPY.undoFulltime })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.leaveScore }));
+    expect(leave).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['開賽前', S4_SCENE_PRE],
+    ['比賽中', S4_SCENE_LIVE],
+    ['中場', S4_SCENE_HT],
+  ] as const)('%s：「離開記分」只在選單裡，不在底部常駐', (_label, scene) => {
+    render(<ScorePad {...scene} onLeave={() => undefined} />);
+    expect(document.querySelector('.s4-leave')).toBeNull();
+    expect(screen.queryByRole('button', { name: LIVE_COPY.leaveScore })).toBeNull();
   });
 });
