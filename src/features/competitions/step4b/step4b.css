@@ -302,3 +302,35 @@ h2.s4b-accept__name { margin: 0 0 -10px; font-size: 19px; line-height: 28px; fon
 .s4b-staff--exp > .s4b-mini { grid-row: 1 / 3; }
 /* 顯示名可能很長：名字欄先吃剩餘空間（到原長為止）再省略，不讓空白留在中間欄。 */
 .s4b-staff { grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr) 4.5em 64px; }
+/* 我的場次（新外觀卡 3-3）：離現在最近的一場升成記分板卡（全頁唯一的實心青綠鈕），其餘一天一張玻璃卡。
+ * 日期分組與列用這一頁自己的 class；.s4b-m 只當「一場」的標記保留（共用的 .s4b-m／.s4b-day 規則給指派表單與預覽畫面，不動）。 */
+.s4b-mgroup + .s4b-mgroup { margin-top: 4px; }
+.s4b-mday { margin: 0 0 8px; padding: 0 4px; font-size: 13px; line-height: 20px; font-weight: 700; color: var(--d2-text-2); white-space: nowrap; }
+.s4b-m.s4b-mb { display: block; margin: 0 0 10px; padding: 6px 6px 0; border: 0; border-radius: 16px; overflow: hidden; background: var(--d2-glass-base); box-shadow: var(--d2-glass-sh); }
+.s4b-mb__sb { --sb-pad: 12px 14px 14px; --sb-radius: 11px; }
+.s4b-mb__sb:last-child { margin-bottom: 6px; }
+.s4b-mb__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; height: 16px; }
+.s4b-mb__venue { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 16px; color: var(--d2-sb-fg2); }
+.s4b-mb__main { display: flex; align-items: baseline; gap: 0 10px; min-width: 0; height: 28px; margin-top: 10px; }
+/* 跨日：對戰換到下一行（板高多 28） */
+.s4b-mb__main--2 { flex-wrap: wrap; height: auto; }
+.s4b-mb__main--2 .s4b-mb__vs { flex-basis: 100%; }
+.s4b-mb__time { flex: 0 0 auto; font-size: 28px; line-height: 28px; color: var(--d2-sb-fg); }
+.s4b-mb__tbd { flex: 0 0 auto; font-size: 15px; line-height: 28px; font-weight: 600; }
+.s4b-mb__next { flex: 0 0 auto; font-size: 12px; line-height: 28px; color: var(--d2-sb-fg2); }
+.s4b-mb__vs { display: flex; flex: 1 1 auto; min-width: 0; font-size: 17px; line-height: 28px; font-weight: 700; color: var(--d2-sb-fg); }
+.s4b-mb__team { flex: 0 1 auto; max-width: 50%; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.s4b-mb__x { flex: 0 0 auto; padding: 0 4px; font-weight: 400; color: var(--d2-sb-fg2); }
+.s4b-mb__act { margin: 0 -6px; padding: 8px 12px; background: var(--d2-glass-gloss); }
+.s4b-mb__act .ui-button { width: 100%; min-inline-size: 0; }
+.s4b-mlist { padding: 2px 16px; }
+.s4b-mlist > .s4b-m { gap: 0; padding: 10px 0 4px; border-top: 1px solid var(--d2-line); }
+.s4b-mlist > .s4b-m:first-child { border-top: 0; }
+.s4b-mr__top { display: flex; align-items: baseline; gap: 8px; min-width: 0; min-height: 24px; }
+.s4b-mr__time { flex: 0 0 auto; font-size: 19px; line-height: 24px; color: var(--d2-text); }
+.s4b-mr__tbd { flex: 0 0 auto; font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); white-space: nowrap; }
+.s4b-mr__venue { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 24px; color: var(--d2-text-2); }
+.s4b-mr__top .ui-badge { flex: 0 0 auto; align-self: center; }
+.s4b-mr__top .s4b-mr__st { margin-left: auto; }
+.s4b-mr__vs { font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
+.s4b-mempty { margin: 0; padding: 12px 0; text-align: center; font-size: 13px; line-height: 20px; color: var(--d2-text-2); }
