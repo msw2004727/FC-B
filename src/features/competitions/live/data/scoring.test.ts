@@ -1955,4 +1955,15 @@ describe('預演離線疊加：額度與連記兩球（Opus 終審 c、e）', ()
     expect(pauseUseCount([echoed], [pending], 0, true)).toBe(1);
     expect(pauseUseCount([], [pending], 0, true)).toBe(1);
   });
+
+  it('停錶（時鐘 pause）：本機快照已讀進的單筆 pause 仍算 1 次（floor 吸收、待送補回）', () => {
+    const pending = entry({
+      op: 'clock-pause-000000001',
+      intent: { kind: 'clock', matchSecond: 1, clockAction: 'pause', clock: { running: false, period: 'h1', pausedSec: 1, startedAt: 1 } },
+      state: 'sending',
+      seq: 3,
+    });
+    const echoed = { seq: 3, type: 'clock', op: 'clock-pause-000000001', sid: SID, matchSecond: 1, createdAt: 1 };
+    expect(pauseUseCount([echoed], [pending], 0)).toBe(1);
+  });
 });

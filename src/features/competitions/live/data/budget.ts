@@ -41,16 +41,16 @@ export function pauseUseCount(
     if (stopsClock && event.type === 'timeout') serverTimeouts += 1;
   }
   let pendingPauses = 0;
-  // 本機快照（離線延遲補償）已讀進 events 的待送項目不重算（依 op 去重；預演離線疊加修正同一批）。
+  // 停錶的 timeout 在 events 逐筆計（serverTimeouts），本機快照已讀進的待送 timeout 依 op 去重，避免一次少 2。
+  // clock pause 不去重：events 以 floor(clocks/2) 計，單獨一筆 pause 會被吸收成 0，仍要靠待送那筆算 1。
   const serverOps = new Set(events.map((event) => event.op));
   for (const entry of entries) {
     if (!entryInEpoch(entry, resetRev)) continue;
     if (entry.state !== 'pending' && entry.state !== 'sending') continue;
-    if (serverOps.has(entry.op)) continue;
     if (entry.kind === 'clock' && entry.intent.kind === 'clock' && entry.intent.clockAction === 'pause') {
       pendingPauses += 1;
     }
-    if (entry.kind === 'timeout' && entry.intent.kind === 'timeout' && entry.intent.stopClock) {
+    if (entry.kind === 'timeout' && entry.intent.kind === 'timeout' && entry.intent.stopClock && !serverOps.has(entry.op)) {
       pendingPauses += 1;
     }
   }
