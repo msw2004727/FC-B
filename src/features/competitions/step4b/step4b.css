@@ -151,6 +151,8 @@ h3.s4b-h {
 }
 .s4b-staff__gap { flex: 1 1 auto; min-width: 0; }
 .s4b-staff > .s4b-staff__gap { grid-column: 3; }
+/* PM 收件修正：gap（第 3 欄）在 DOM 裡排在 meta（第 4 欄）之後，自動排位會把它和移除鈕推到第二列；全部固定在第一列。 */
+.s4b-staff > * { grid-row: 1; }
 .s4b-staff > .s4b-mini { grid-column: 5; justify-self: end; min-width: 0; max-width: 100%; }
 .s4b-staff .ui-badge { justify-self: start; }
 
