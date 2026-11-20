@@ -443,6 +443,9 @@ describe('賽程管理按鈕', () => {
     const keys = [...view.container.querySelectorAll('.cph-sb .d2-cell__k')].map((el) => el.textContent);
     expect(keys[0]).toBe('進行中');
     expect(keys).toContain('待確認');
+    // 今天那一格用字典鍵 lineTodayOnly；鍵名寫錯時 ct() 會回傳鍵名本身，整格變成英文（設計 07:26）
+    expect(keys).toContain('今天');
+    expect(view.container.querySelector('.cph-sb')?.textContent ?? '').not.toMatch(/[A-Za-z]{4,}/);
     expect(view.container.querySelector('.cph-sb .d2-cells')?.getAttribute('aria-hidden')).toBe('true');
     expect(view.container.querySelector('.cph-sb .cps-vh')?.textContent ?? '').toContain('待確認 1 場');
     view.unmount();
