@@ -795,6 +795,10 @@
 .cph-kv { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
 .cph-kv > :first-child { flex: 0 0 auto; font-size: 13px; line-height: 20px; color: var(--d2-text-2); white-space: nowrap; }
 .cph-kv > :last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; line-height: 24px; color: var(--d2-text); font-variant-numeric: tabular-nums; }
+/* 使用者打的長字（已拒絕卡的拒絕原因，2～200 字）：左標籤靠上，內容可換行、最多三行、超過才省略 */
+.cph-kv.cph-kv--wrap { align-items: flex-start; padding: 10px 0; }
+.cph-kv--wrap > :first-child { line-height: 24px; }
+.cph-kv--wrap > :last-child { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; }
 /* 開關一列：標籤靠左、開關靠右，不顯示開關旁的「開啟／關閉」（那段字本來就不給報讀） */
 .cph-switch .ui-switch__button { display: flex; flex-wrap: nowrap; justify-content: space-between; width: 100%; }
 .cph-switch .ui-switch__label { font-size: 13px; line-height: 20px; color: var(--d2-text-2); white-space: nowrap; }

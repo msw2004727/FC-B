@@ -485,7 +485,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             <p class="cps-sub">{divisionName(entry.dvId)}</p>
             {priv?.reviewNote ? (
               <div class="d2-lines">
-                <div class="cph-kv"><span>{ct('rejectReason')}</span><span>{priv.reviewNote}</span></div>
+                <div class="cph-kv cph-kv--wrap"><span>{ct('rejectReason')}</span><span>{priv.reviewNote}</span></div>
               </div>
             ) : null}
           </CpCard>
