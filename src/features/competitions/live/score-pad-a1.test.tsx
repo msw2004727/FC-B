@@ -196,7 +196,7 @@ describe('顧問 §3.459 (a)：紅色提示整行可點', () => {
     const css = readFileSync(join(process.cwd(), 'src/features/competitions/live/live.css'), 'utf8');
     expect(css).not.toMatch(/s4-banner__tap::after/);
     expect(css).not.toMatch(/s4-banner--tapq/);
-    expect(css).toMatch(/\.s4-root \.s4-alerts \.s4-banner--tap\s*\{[^}]*min-height:\s*44px/);
+    expect(css).toMatch(/\.s4-root \.s4-alerts \.s4-banner\.s4-banner--tap\s*\{[^}]*min-height:\s*44px/);
     expect(css).toMatch(/@media \(max-height: 700px\)\s*\{[^@]*\.s4-alerts \.s4-banner--queued[^{]*\{[^}]*display:\s*none/);
   });
   it('被接手（記分區停用）時紅色那行的按鈕停用，點了不開面板', () => {
@@ -242,6 +242,9 @@ describe('被拒擋住送出的提示', () => {
       blockedStep('kickoff'), blockedStep('halftime'), blockedStep('resume'), blockedStep('fulltime'), blockedStep('undoFinish')];
     for (const text of texts) expect(text).not.toMatch(/佇列|同步|queue|sync|rejected|blocked|[A-Za-z]{3,}/);
     expect(blockedStep('resume')).toBe('先處理沒送出的紀錄，才能開始下半場');
+    // 顧問 §3.504：紅色列整列可點，字改成「點這裡處理」；「先處理沒送出的紀錄…」那一句不動。
+    expect(heldRejected(1)).toBe('前一筆沒送出，點這裡處理');
+    expect(heldRejected(12)).toBe('有 12 筆沒送出，點這裡處理');
   });
 });
 

@@ -103,6 +103,10 @@ describe('記分頁面板（施工-第2批 卡 2-4）', () => {
       expect(li.className.split(' ')[0]).toBe('s4-log');
       const discard = [...li.querySelectorAll('button')].find((node) => (node.textContent ?? '').trim() === LIVE_COPY.discard);
       expect(discard?.classList.contains('ui-button--secondary')).toBe(true);
+      // 卡 2-7：捨棄在左、重新套用在右（DOM 順序）；場次已鎖時只有捨棄。
+      const order = [...li.querySelectorAll('.s4-log__act button')].map((node) => (node.textContent ?? '').trim());
+      expect(order[0]).toBe(LIVE_COPY.discard);
+      if (order.length > 1) expect(order).toEqual([LIVE_COPY.discard, LIVE_COPY.reapply]);
     }
   });
 
@@ -154,5 +158,11 @@ describe('記分頁面板樣式（字面）', () => {
     expect(live).not.toMatch(/\.s4-amend-act/);
     expect(live).not.toMatch(/\.s4-sheet \.ui-button\[aria-disabled="true"\]/);
     expect(live).toMatch(/\.s4-sheet\.d2-panel \.ui-modal__body\s*\{[^}]*gap:\s*16px/);
+
+    // 卡 2-7：暫停選隊停用鈕字色、面板停用與剛跳出字色、寬螢幕面板限寬 480、紅色列列尾箭頭只在 360 寬以上
+    expect(live).toMatch(/\.s4-timeout-picks \.ui-button\.ui-button--primary\[aria-disabled="true"\]\s*\{[^}]*color:\s*var\(--d2-text-3\)/);
+    expect(live).toMatch(/\.s4-dialog\.d2-panel \.ui-button\[data-confirm-armed="false"\]\s*\{[^}]*color:\s*var\(--d2-ctrl-off-fg\)/);
+    expect(live).toMatch(/@media \(min-width: 600px\)\s*\{[^@]*\.s4-dialog\.d2-panel \.ui-modal__panel\s*\{[^}]*max-width:\s*480px/);
+    expect(live).toMatch(/@media \(min-width: 360px\)\s*\{[^@]*\.s4-alerts \.s4-banner--tap::after/);
   });
 });

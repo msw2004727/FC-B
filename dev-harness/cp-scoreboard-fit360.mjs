@@ -40,7 +40,7 @@ export const U2_ALL = [
   'u2-no-permission', 'u2-no-permission-host', 'u2-load-failed-network', 'u2-load-failed-error',
   'u2-storage-unavailable', 'u2-long-name', 'u2-long-6', 'u2-long-7', 'u2-long-10', 'u2-long-11', 'u2-long-13', 'u2-long-similar',
   'u2-fulltime-undo', 'u2-fulltime-undo-blocked', 'u2-menu', 'u2-timeout-sheet', 'u2-amend-card',
-  'a1-held', 'a1-held-many', 'a1-held-sheet', 'a1-held-offline', 'a1-held-pause-reserved', 'a1-held-timeout', 'a1-held-timeout-collapsed',
+  'a1-held', 'a1-held-many', 'a1-held-12', 'a1-held-sheet', 'a1-held-offline', 'a1-held-pause-reserved', 'a1-held-timeout', 'a1-held-timeout-collapsed',
   'a1-blocked-ht', 'a1-blocked-ht-before', 'a1-resumed', 'a1-pk-blocked', 'a1-pk-confirm-wait', 'a1-pk-confirm-armed',
   'a1-kickoff-confirm', 'a1-takeover-confirm', 'a1-showcard', 'a1-undo-confirm', 'a1-amend-confirm',
 ];
