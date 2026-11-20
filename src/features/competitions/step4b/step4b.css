@@ -155,6 +155,8 @@ h3.s4b-h {
 .s4b-staff > * { grid-row: 1; }
 .s4b-staff > .s4b-mini { grid-column: 5; justify-self: end; min-width: 0; max-width: 100%; }
 .s4b-staff .ui-badge { justify-self: start; }
+/* 主辦兼記分：兩個標籤並排放第 2 欄（顧問 11-20）。 */
+.s4b-staff > .s4b-staff__roles { grid-column: 2; justify-self: start; display: inline-flex; gap: 4px; white-space: nowrap; min-width: 0; }
 
 .s4b-day {
   margin: var(--space-3) 0 var(--space-2);

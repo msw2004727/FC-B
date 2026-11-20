@@ -8,7 +8,7 @@ import { openExternal } from '@/core/open-external';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { toast } from '@/ui/Toast';
 import { canHostOrCo, isCpAdmin } from '../access';
-import { liveCpActions, missingAction } from '../actions';
+import { liveCpActions } from '../actions';
 import { buildInviteUrl } from '../data/invite-link';
 import type { ScoreRole } from '../data/staff-assign';
 import type { CompetitionDoc, MatchDoc } from '../data/types';
@@ -119,7 +119,7 @@ function StaffInviteView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
     const order = assignDays(ct, matches, venues).flatMap((group) => group.matches.map((match) => match.id));
     const matchIds = order.filter((id) => picked.has(id));
     try {
-      const create = env.actions.createInvite ?? missingAction;
+      const create = env.actions.createInvite;
       const result = await create({ cid, roles: [role], matchIds });
       const origin = typeof window === 'undefined' ? '' : window.location.origin;
       setCreated({ url: buildInviteUrl(origin, cid, result.ivId, result.code), role, expiresAt: result.expiresAt });

@@ -6,7 +6,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { canHostOrCo, isCpAdmin } from '../access';
-import { liveCpActions, missingAction } from '../actions';
+import { liveCpActions } from '../actions';
 import {
   canRemoveStaffRow,
   compareStaffOrder,
@@ -55,6 +55,15 @@ function toRows(
       name: names.get(item.uid) ?? ct('staffMember'),
       role,
       roleLabel: roleText(ct, role),
+      // 主辦／共同主辦本人也有記分角色：多顯示記分角色標籤，到期跟著它（顧問 11-20 測試賽 D）。
+      ...(role === 'host' || role === 'coHost'
+        ? (() => {
+          const extra = (['scorer', 'referee'] as const)
+            .filter((r) => item.roles.includes(r))
+            .map((r) => ({ role: r, label: roleText(ct, r) }));
+          return extra.length ? { extraRoles: extra } : {};
+        })()
+        : {}),
       countLabel: ct('assignedCount', { n: item.matchIds.length }),
       removable: canRemoveStaffRow(viewer, item.roles, item.uid === selfUid),
       // 只有記分角色才有到期；null＝不過期，不顯示。
@@ -149,7 +158,7 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
     setRemoveError(null);
     try {
       if (confirmTarget.kind === 'invite') {
-        const revoke = env.actions.revokeInvite ?? missingAction;
+        const revoke = env.actions.revokeInvite;
         await revoke({ cid, ivId: confirmTarget.id });
         // 撤銷成功只從畫面拿掉，不重讀（+0 讀）。
         const gone = confirmTarget.id;

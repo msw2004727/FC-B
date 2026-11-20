@@ -135,6 +135,29 @@ describe('工作人員頁（K11）', () => {
     expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites']);
   });
 
+  it('顧問 11-20：主辦兼記分顯示「主辦」「記分員」兩個標籤，到期跟著記分角色；只有主辦一個標籤', async () => {
+    const repo = createFakeCpRepo({
+      competitions: [competition({ id: 'cup' })],
+      staff: { cup: [{ uid: 'uid_host', roles: hostRole }] },
+      assignments: { cup: [
+        { uid: 'uid_host', roles: ['host', 'scorer'], matchIds: ['mt_9', 'mt_10'], expiresAt: EXP, memberNo: 1 },
+        { uid: 'uid_co', roles: ['coHost', 'referee'], matchIds: ['mt_9'], expiresAt: EXP, memberNo: 2 },
+        { uid: 'uid_c', roles: ['coHost'], matchIds: [], expiresAt: null, memberNo: 3 },
+      ] },
+      invites: { cup: [] },
+      matches: { cup: [match('mt_10', 10), match('mt_9', 9)] },
+    });
+    const view = draw({ actor: hostActor, repo, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
+    expect(await screen.findByText('我自己')).toBeTruthy();
+    const rows = [...view.container.querySelectorAll('.s4b-staff-list > .s4b-li')];
+    const badgesOf = (row: Element) => [...row.querySelectorAll('.ui-badge')].map((el) => el.textContent?.trim());
+    expect(badgesOf(rows[0] as Element)).toEqual(['主辦', '記分員']);
+    expect(rows[0]?.querySelector('.s4b-staff__exp')?.textContent).toBe('01/16 18:00 到期');
+    expect(badgesOf(rows[1] as Element)).toEqual(['共同主辦', '裁判']);
+    expect(badgesOf(rows[2] as Element)).toEqual(['共同主辦']);
+    expect(rows[2]?.querySelector('.s4b-staff__exp')).toBeNull();
+  });
+
   it('列出尚未使用的邀請，撤銷走確認框並送 {cid, ivId}', async () => {
     const revokeInvite = vi.fn(async () => ({ ivId: 'iv_open1', status: 'revoked' }));
     const actions: CpActions = { ...idleActions(), revokeInvite };
@@ -334,22 +357,72 @@ describe('接受邀請（K11，代碼放 #）', () => {
     expect(location.hash).toBe('');
   });
 
-  it('動作替身缺 acceptInvite：顯示通用失敗，不送任何 Callable', async () => {
+  // PM 11-20：CpActions 改回必填，「缺動作」不再可能（型別擋）；改測注入的動作失敗時顯示通用失敗、不退回正式 Functions。
+  it('注入的 acceptInvite 失敗（UNKNOWN）：顯示通用失敗，不送任何 Callable', async () => {
     openWithHash();
     fn.httpsCallable.mockClear();
-    draw(acceptEnv({ actions: idleActions() }), <InviteAcceptPage />);
+    const acceptInvite = vi.fn(() => Promise.reject(new CpCallError('UNKNOWN', {})));
+    draw(acceptEnv({ actions: { ...idleActions(), acceptInvite } }), <InviteAcceptPage />);
     fireEvent.click(await screen.findByText('接受邀請', { selector: 'button *, button' }));
     expect(await screen.findByText('操作失敗，請稍後再試')).toBeTruthy();
+    expect(acceptInvite).toHaveBeenCalledTimes(1);
     expect(fn.httpsCallable).not.toHaveBeenCalled();
     noCodeLeak();
   });
 
-  it('別的賽事的暫存不接續；沒有代碼顯示連結無效', async () => {
+  it('顧問 11-20：連線或不明錯誤保留邀請可直接再按（暫存照清）；伺服器明確判定無效、已用、撤銷、過期才整個清掉', async () => {
+    for (const reason of ['UNAVAILABLE', 'UNKNOWN', 'DEADLINE_EXCEEDED']) {
+      openWithHash();
+      sessionStorage.setItem(INVITE_STORE_KEY, JSON.stringify({ cid: 'cup', ivId: IV, code: CODE }));
+      const acceptInvite = vi.fn()
+        .mockImplementationOnce(() => Promise.reject(new CpCallError(reason, {})))
+        .mockImplementationOnce(async () => ({ cid: 'cup', roles: ['scorer'], matchCount: 1 }));
+      draw(acceptEnv({ actions: { ...idleActions(), acceptInvite } }), <InviteAcceptPage />);
+      fireEvent.click(await screen.findByText('接受邀請', { selector: 'button *, button' }));
+      await waitFor(() => expect(acceptInvite).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(button('接受邀請')).toBeTruthy());
+      expect(sessionStorage.getItem(INVITE_STORE_KEY)).toBeNull();
+      fireEvent.click(button('接受邀請'));
+      await waitFor(() => expect(acceptInvite).toHaveBeenCalledTimes(2));
+      expect(acceptInvite.mock.calls[1]).toEqual([{ cid: 'cup', ivId: IV, code: CODE }]);
+      await waitFor(() => expect(location.pathname).toBe('/competitions/cup/my-matches'));
+      noCodeLeak();
+      cleanup();
+    }
+    for (const reason of ['INVITE_INVALID', 'INVITE_USED', 'INVITE_REVOKED', 'INVITE_EXPIRED']) {
+      openWithHash();
+      const acceptInvite = vi.fn(async () => { throw new CpCallError(reason, {}); });
+      draw(acceptEnv({ actions: { ...idleActions(), acceptInvite } }), <InviteAcceptPage />);
+      fireEvent.click(await screen.findByText('接受邀請', { selector: 'button *, button' }));
+      await waitFor(() => expect(acceptInvite).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.queryByText('接受邀請', { selector: 'button *, button' })).toBeNull());
+      cleanup();
+    }
+  });
+
+  it('顧問 11-20：已登入看到告知句（接受後成為記分人員、主辦會看到顯示名稱）', async () => {
+    openWithHash();
+    draw(acceptEnv(), <InviteAcceptPage />);
+    expect(await screen.findByText('接受後你會成為這場賽事的記分人員，主辦會看到你的顯示名稱。')).toBeTruthy();
+  });
+
+  it('顧問 11-20：沒有 # 也沒有暫存（換瀏覽器、LINE 登入回來暫存不見）顯示找不到邀請資料', async () => {
+    history.replaceState(null, '', '/competitions/cup/invite');
+    sessionStorage.removeItem(INVITE_STORE_KEY);
+    draw(acceptEnv(), <InviteAcceptPage />);
+    expect(await screen.findByText('找不到邀請資料，請重新點開邀請連結。')).toBeTruthy();
+    cleanup();
+    history.replaceState(null, '', '/competitions/cup/invite?from=line');
+    draw(acceptEnv({ actor: { ...memberActor, uid: null } }), <InviteAcceptPage />);
+    expect(await screen.findByText('找不到邀請資料，請重新點開邀請連結。')).toBeTruthy();
+  });
+
+  it('別的賽事的暫存不接續；沒有代碼顯示找不到邀請資料', async () => {
     history.replaceState(null, '', '/competitions/cup/invite');
     sessionStorage.setItem(INVITE_STORE_KEY, JSON.stringify({ cid: 'other', ivId: IV, code: CODE }));
     const acceptInvite = vi.fn();
     draw(acceptEnv({ actions: { ...idleActions(), acceptInvite } }), <InviteAcceptPage />);
-    expect(await screen.findByText('邀請連結無效')).toBeTruthy();
+    expect(await screen.findByText('找不到邀請資料，請重新點開邀請連結。')).toBeTruthy();
     expect(acceptInvite).not.toHaveBeenCalled();
   });
 });
@@ -465,16 +538,25 @@ describe('詳情頁管理員區（K12）', () => {
     expect(await screen.findByText('狀態沒有變更')).toBeTruthy();
   });
 
-  it('動作替身缺 moderate：對話框顯示通用失敗，不送任何 Callable', async () => {
+  it('注入的 moderate 失敗（UNKNOWN）：對話框顯示通用失敗，不送任何 Callable', async () => {
     fn.httpsCallable.mockClear();
-    const { env } = detailEnv(adminActor, idleActions());
+    const moderate = vi.fn(() => Promise.reject(new CpCallError('UNKNOWN', {})));
+    const { env } = detailEnv(adminActor, { ...idleActions(), moderate });
     draw(env, <CompetitionDetailPage />);
     fireEvent.click(button('下架', (await screen.findByText('管理員')).closest('[data-admin-panel]') as HTMLElement));
     const dialog = (await screen.findByRole('dialog')) as HTMLElement;
     fireEvent.input(dialog.querySelector('textarea') as HTMLTextAreaElement, { target: { value: '測試原因' } });
     fireEvent.click(button('下架', dialog));
     expect(await screen.findByText('操作失敗，請稍後再試')).toBeTruthy();
+    expect(moderate).toHaveBeenCalledTimes(1);
     expect(fn.httpsCallable).not.toHaveBeenCalled();
+  });
+
+  it('screen-fixtures 的 idleActions 五支 K11／K12 動作都有（CpActions 必填）', () => {
+    const a = idleActions();
+    for (const k of ['createInvite', 'revokeInvite', 'acceptInvite', 'moderate', 'reviewReport'] as const) {
+      expect(typeof a[k]).toBe('function');
+    }
   });
 
   it('主辦打開已下架的賽事看到原因', async () => {

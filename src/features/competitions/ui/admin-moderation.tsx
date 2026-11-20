@@ -10,7 +10,7 @@ import { Button } from '@/ui/Button';
 import { Modal } from '@/ui/Modal';
 import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
-import { missingAction, type CpActions } from '../actions';
+import type { CpActions } from '../actions';
 import type { CompetitionsRepo } from '../data/cp-repo';
 import { boundedReason } from '../data/host-write';
 import type { ReportDoc, ReportReason, ReportReviewStatus } from '../data/types';
@@ -150,7 +150,7 @@ export function AdminPanel(props: AdminPanelProps): JSX.Element {
     setBusy(true);
     setHideError(null);
     try {
-      const run = props.actions.moderate ?? missingAction;
+      const run = props.actions.moderate;
       const trimmed = reason.trim();
       await run({ cid, hidden: true, reason: trimmed });
       props.onHiddenChange(true, trimmed);
@@ -172,7 +172,7 @@ export function AdminPanel(props: AdminPanelProps): JSX.Element {
     try {
       const ok = await appConfirm(ct('moderateRestoreConfirm'), { okText: ct('moderateRestore') });
       if (!ok) return;
-      const run = props.actions.moderate ?? missingAction;
+      const run = props.actions.moderate;
       await run({ cid, hidden: false });
       props.onHiddenChange(false, null);
       toast.show({ message: ct('moderateRestored'), tone: 'success' });
@@ -189,7 +189,7 @@ export function AdminPanel(props: AdminPanelProps): JSX.Element {
     if (rowBusy) return;
     setRowBusy(reportId);
     try {
-      const run = props.actions.reviewReport ?? missingAction;
+      const run = props.actions.reviewReport;
       await run({ cid, reportId, status });
       // 成功只改畫面那一列（+0 讀）。伺服器同時清掉 reopened。
       setReports((prev) => prev?.map((row) => (row.id === reportId ? { ...row, status, reopened: false } : row)) ?? prev);

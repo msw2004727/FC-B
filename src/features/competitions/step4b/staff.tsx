@@ -66,6 +66,8 @@ export interface StaffListRow {
   removable: boolean;
   /** 記分指派到期（有記分角色且有到期才給）。顯示在名字下一行。 */
   expiresLabel?: string;
+  /** 主辦／共同主辦本人也被指派記分時，在主要角色旁多顯示的記分角色（顧問 11-20：到期跟著記分角色，不讓主辦身分看起來會到期）。 */
+  extraRoles?: readonly { role: S4bStaff['role']; label: string }[];
 }
 
 export interface StaffConfirm {
@@ -115,7 +117,16 @@ export function StaffListScreen(props: {
             <li key={staff.id} class={staff.expiresLabel ? 's4b-li s4b-li--exp' : 's4b-li'}>
               <div class={staff.expiresLabel ? 's4b-staff s4b-staff--exp' : 's4b-staff'}>
                 <span class="s4b-staff__name">{staff.name}</span>
-                <Badge tone={roleTone(staff.role)} size="sm" label={staff.roleLabel} />
+                {staff.extraRoles?.length ? (
+                  <span class="s4b-staff__roles">
+                    <Badge tone={roleTone(staff.role)} size="sm" label={staff.roleLabel} />
+                    {staff.extraRoles.map((extra) => (
+                      <Badge key={extra.role} tone={roleTone(extra.role)} size="sm" label={extra.label} />
+                    ))}
+                  </span>
+                ) : (
+                  <Badge tone={roleTone(staff.role)} size="sm" label={staff.roleLabel} />
+                )}
                 <span class="s4b-staff__meta">{staff.countLabel}</span>
                 <span class="s4b-staff__gap" />
                 {staff.expiresLabel ? <span class="s4b-staff__exp">{staff.expiresLabel}</span> : null}
