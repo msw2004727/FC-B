@@ -58,7 +58,7 @@ import { DateField } from '../ui/fields';
 import { scheduleLabels } from '../ui/schedule-board';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 import { StatusTag, type StatusKind } from '../ui/status-tag';
-import { crestFromEntry, TeamCrest } from '../ui/TeamCrest';
+import { MatchVs, MatchWhen } from '../ui/match-row';
 import { HostFlexCards, type FlexWriteResult, type ShiftRequest, type SwapRequest } from './host-flex';
 
 type Panel =
@@ -132,23 +132,6 @@ function statusText(ct: CompetitionsT, status: MatchStatus): string {
   if (key === 'cancelled') return ct('matchCancelled');
   if (key === 'live') return ct('phaseLive');
   return '';
-}
-
-function SideName({
-  entryId,
-  name,
-  crests,
-  align,
-}: {
-  entryId: string;
-  name: string;
-  crests: readonly EntryDoc[];
-  align: 'home' | 'away';
-}): JSX.Element {
-  const crest = crestFromEntry(entryId, name, crests);
-  const mark = <TeamCrest teamId={crest.teamId} name={crest.name} teamLogo={crest.teamLogo} size={22} />;
-  if (align === 'home') return <span class="cp3-tn cp3-tn--h"><em>{name}</em>{mark}</span>;
-  return <span class="cp3-tn">{mark}<em>{name}</em></span>;
 }
 
 function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Element {
@@ -726,15 +709,12 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                     const rowActions = actions.filter((action) => action !== 'reset');
                     const scoreEntry = showScoreEntry(match, now);
                     return (
-                      <li class="cp3-m" key={match.id}>
+                      <li class={`cp3-m${badge === 'live' ? ' cp3-m--live' : badge === 'cancelled' ? ' cp3-m--off' : ''}`} key={match.id}>
                         <div class="cp3-m__top">
                           {match.kickoffAt == null ? (
-                            <span class="cp3-m__when"><b>{ct('timeTbd')}</b></span>
+                            <MatchWhen time={ct('timeTbd')} />
                           ) : (
-                            <span class="cp3-m__when">
-                              <b>{formatKickoffClock(match.kickoffAt)}</b>
-                              {match.venueName ? `　${match.venueName}` : ''}
-                            </span>
+                            <MatchWhen time={formatKickoffClock(match.kickoffAt)} venue={match.venueName} />
                           )}
                           {badge && reset ? (
                             <span class="cp3-tags">
@@ -744,17 +724,14 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                           ) : null}
                           {badge && !reset ? <StatusTag kind={badgeKind(badge)} label={statusText(ct, match.status)} /> : null}
                         </div>
-                        <div class="cp3-m__vs">
-                          <span class="h"><SideName entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" /></span>
-                          {(match.status === 'cancelled'
+                        <MatchVs
+                          home={{ id: match.home.teamId, name: match.home.name }}
+                          away={{ id: match.away.teamId, name: match.away.name }}
+                          crests={crests}
+                          score={(match.status === 'cancelled'
                             ? match.score.home !== 0 || match.score.away !== 0
-                            : hostShowsScore(match.status)) ? (
-                            <span class="s">{match.score.home}：{match.score.away}</span>
-                          ) : (
-                            <span class="s vs">vs</span>
-                          )}
-                          <span class="a"><SideName entryId={match.away.teamId} name={match.away.name} crests={crests} align="away" /></span>
-                        </div>
+                            : hostShowsScore(match.status)) ? [match.score.home, match.score.away] : null}
+                        />
                         {match.status === 'cancelled' && match.cancelReason ? (
                           <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{match.cancelReason}</p>
                         ) : null}

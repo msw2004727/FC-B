@@ -434,7 +434,8 @@ describe('賽程管理按鈕', () => {
     expect(within(rowOf('綠洲隊')).getByText('進行中')).toBeTruthy();
     expect(within(rowOf('北風隊')).getAllByText('改期').length).toBeGreaterThan(0);
     expect(within(rowOf('銀河隊')).queryByRole('button', { name: '記分' })).toBeNull();
-    expect(view.container.querySelector('.cp3-crest')?.getAttribute('style')?.replace(/\s/g, '')).toContain('width:22px');
+    // 新外觀卡 1b-4：主辦版比賽列改用 ui/match-row.tsx 共用兩小塊，比賽列隊徽 22→24
+    expect(view.container.querySelector('.cp3-crest')?.getAttribute('style')?.replace(/\s/g, '')).toContain('width:24px');
   });
 
   it('結束 180 秒內可以記分，超過就不能', () => {
