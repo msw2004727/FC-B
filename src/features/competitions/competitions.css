@@ -872,6 +872,9 @@
   color: var(--d2-text);
 }
 .cpm-hint + .cpm-hint { margin-top: -6px; }
+/* 同分「已有裁定」卡、裁定小卡：提示句與原因列後面接表單時，留與卡內表單相同的 16px（設計審查 03:52） */
+.cpm-hint + .cps-sheet-body,
+.cpm-reason + .cps-sheet-body { margin-top: var(--space-4); }
 .cpm-hint::before,
 .cpm-warn::before {
   content: '';
