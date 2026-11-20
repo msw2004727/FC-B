@@ -24,7 +24,7 @@ import { useInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { buildPaymentInput, buildReviewInput } from '../payload';
 import type { CompetitionCategory, DivisionDoc, EntryDoc, EntryPrivateDoc, PaymentStatus } from '../data/types';
-import { CpError, errorOf } from '../ui/feedback';
+import { CpError, CpLoadFailed, errorOf, loadFailOf } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 
@@ -46,8 +46,21 @@ async function loadManage(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
     repClubIds: representativeClubs(env.actor).map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
   }) : false;
-  const privates = manage ? await env.repo.listEntryPrivate(cid, null) : [];
+  const privates = manage ? await readPrivates(env, cid) : [];
   return { competition, divisions, entries, roster: [], privates, staff };
+}
+
+/**
+ * 私有報名資料。前端的可管理判定與 Rules（俱樂部代表鏡像、token 角色）可能暫時不一致，
+ * 這時被拒只當成沒有私有資料，不把讀得到的公開賽事當成不公開；不公開只看根文件那批讀取。
+ */
+async function readPrivates(env: CpInjectedEnv, cid: string): Promise<EntryPrivateDoc[]> {
+  try {
+    return await env.repo.listEntryPrivate(cid, null);
+  } catch (err) {
+    if (loadFailOf(err) === 'hidden') return [];
+    throw err;
+  }
 }
 
 function payLabel(ct: CompetitionsT, status: PaymentStatus): { label: string; tone: 'success' | 'neutral' } {
@@ -106,8 +119,8 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       if (!alive) return;
       setBundle(next);
       setPhase(next.competition ? 'ready' : 'error');
-    }).catch(() => {
-      if (alive) setPhase('error');
+    }).catch((err: unknown) => {
+      if (alive) setPhase(loadFailOf(err));
     });
     return () => {
       alive = false;
@@ -164,11 +177,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   if (phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
   if (!competition) {
-    return (
-      <CpFrame title={ct('manageTitle')}>
-        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
-      </CpFrame>
-    );
+    return <CpLoadFailed title={ct('manageTitle')} fail={phase === 'hidden' ? 'hidden' : 'error'} />;
   }
 
   const rejectEntry = entries.find((entry) => entry.id === rejectId) ?? null;

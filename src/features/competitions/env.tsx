@@ -114,7 +114,7 @@ export interface CpInjectedEnv {
   matches?: readonly MatchDoc[];
   preview?: CpPreview;
   wizardSeed?: WizardSeed;
-  /** 接受邀請頁的登入。省略時用站內既有的 signIn（LINE 登入，回跳到目前網址）。 */
+  /** 接受邀請頁與檢舉的登入。省略時用站內既有的 signIn（LINE 登入，回跳到目前網址）。 */
   signIn?: () => Promise<void>;
 }
 

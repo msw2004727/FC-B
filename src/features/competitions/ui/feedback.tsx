@@ -1,5 +1,6 @@
 import type { JSX } from 'preact';
 import { useLocation } from 'preact-iso';
+import { Button } from '@/ui/Button';
 import { ctOrKey, useCompetitionsT } from '../i18n';
 import { CP_REASON_FALLBACK_KEY, cpReasonKey } from '../data/reasons';
 import { toCpCallError } from '../data/cp-callables';
@@ -34,6 +35,45 @@ export function reasonText(
 export function errorOf(err: unknown): { reason: string; params: Record<string, unknown> } {
   const cp = toCpCallError(err);
   return { reason: cp.reason, params: cp.params };
+}
+
+/** 讀賽事失敗的兩種畫面：hidden＝Rules 拒絕（下架、草稿、內部期都一樣，不分辨）；error＝網路或其他錯誤。 */
+export type CpLoadFail = 'hidden' | 'error';
+
+/** 讀取錯誤碼只在這裡判斷。Firestore 讀取被 Rules 拒絕時 code 是 permission-denied。 */
+export function loadFailOf(err: unknown): CpLoadFail {
+  const code = err && typeof err === 'object' ? (err as { code?: unknown }).code : undefined;
+  return code === 'permission-denied' ? 'hidden' : 'error';
+}
+
+/** 讀不到賽事。hidden 只說不公開並給返回賽事列表，不放重試；error 顯示讀取失敗，有 onRetry 才放重試。 */
+export function CpLoadFailed({
+  title,
+  fail,
+  onRetry,
+}: {
+  title: string;
+  fail: CpLoadFail;
+  onRetry?: () => void;
+}): JSX.Element {
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
+  const { route } = useLocation();
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
+  if (fail === 'hidden') {
+    return (
+      <CpFrame title={title}>
+        <p class="cps-note" role="alert" data-cp-load="private">{ct('reason.COMPETITION_HIDDEN')}</p>
+        <Button variant="secondary" onClick={() => route('/tournaments', true)}>{ct('backToTournaments')}</Button>
+      </CpFrame>
+    );
+  }
+  return (
+    <CpFrame title={title}>
+      <p class="cps-note" role="alert">{ct('loadFailed')}</p>
+      {onRetry ? <Button variant="secondary" onClick={onRetry}>{ct('retry')}</Button> : null}
+    </CpFrame>
+  );
 }
 
 /** 只顯示文案，不顯示 reason 代碼。缺生日時附上個人資料連結。 */
