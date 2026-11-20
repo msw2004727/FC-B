@@ -217,7 +217,7 @@
 .tournaments-root[data-d2] .ui-button.ui-button--secondary[aria-expanded="true"] { color: var(--d2-seg-fg); }
 .cps-root .ui-button.ui-button--secondary[aria-expanded="true"]::before,
 .d2-panel .ui-button.ui-button--secondary[aria-expanded="true"]::before,
-.tournaments-root[data-d2] .ui-button.ui-button--secondary[aria-expanded="true"]::before { background: var(--d2-seg-on), var(--d2-glass-base); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
+.tournaments-root[data-d2] .ui-button.ui-button--secondary[aria-expanded="true"]::before { background: var(--d2-seg-on); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
 .cps-root .ui-button[aria-disabled="true"],
 .s4-root .ui-button[aria-disabled="true"],
 .s4-page .ui-button[aria-disabled="true"],
