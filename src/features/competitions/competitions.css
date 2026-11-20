@@ -42,7 +42,7 @@
   --d2-panel-sh: 0 -1px 0 rgba(255,255,255,.9), 0 -16px 36px -18px rgba(15,23,42,.5);
   --d2-alert-bg: #b91c1c;
   --d2-alert-fg: #ffffff;
-  --d2-menu-bg: #ffffff;
+  --d2-menu-bg: #ffffff; /* 選單底；管理員區也用 */
   --d2-menu-sh: 0 12px 32px rgba(15,23,42,.18), inset 0 0 0 1px #dfe3ea;
   --d2-page-bg: linear-gradient(180deg, #eef1f6 0%, #e5eaf2 100%);
   --d2-sb-bg: #0d1816;
@@ -1327,6 +1327,8 @@
 .cpa-btns { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
 .cpa-btns .ui-button { width: auto; min-inline-size: 0; }
 .cpa-btns .ui-button--ghost { --comp-button-foreground-default: var(--d2-text-2); }
+/* 中性文字鈕排在列首：字對齊內容左緣，點擊區不變 */
+.cpa-btns > .ui-button--ghost:first-child { margin-inline-start: -16px; }
 .cpa-retry { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
 .cpa-li { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: var(--space-3) 0; }
 .cpa-li + .cpa-li { border-top: 1px solid var(--d2-line); }
