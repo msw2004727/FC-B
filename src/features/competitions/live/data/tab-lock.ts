@@ -17,7 +17,11 @@ export interface TabChannel {
 
 export interface HeldTab {
   role: 'owner' | 'blocked';
-  release(): void;
+  /**
+   * 放掉分頁鎖。Web Locks 的 owner 回傳「鎖真的放掉」才完成的 promise（瀏覽器在 callback 結束後才非同步放鎖）；
+   * 其他情況同步放掉、回傳 undefined。呼叫端不 await 也照舊（G-06 P2-1，取代原本一律 void）。
+   */
+  release(): Promise<void> | void;
 }
 
 const TAB_HINT = '這場已在另一個分頁記分';
@@ -58,7 +62,14 @@ function holdWebLock(locks: LockManager, name: string): Promise<HeldTab> {
       const untilRelease = new Promise<void>((done) => {
         releaseLock = done;
       });
-      finish({ role: 'owner', release: releaseLock });
+      finish({
+        role: 'owner',
+        release: () => {
+          releaseLock();
+          // locks.request 的 promise 在鎖真的放掉後才完成；放鎖失敗也當作已放（只用來等，不改流程）。
+          return pending.then(() => undefined, () => undefined);
+        },
+      });
       await untilRelease;
     });
     pending.catch((err) => {

@@ -149,7 +149,8 @@ export interface SessionOptions {
 
 export interface ScoringSession {
   start(): Promise<void>;
-  stop(): void;
+  /** 回傳分頁鎖真的放掉後才完成的 promise；不 await 的呼叫點行為照舊（G-06 P2-1）。 */
+  stop(): Promise<void>;
   getState(): ScoringView;
   subscribe(listener: (view: ScoringView) => void): () => void;
   whenIdle(): Promise<void>;
@@ -270,7 +271,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
   let visible = options.visible ? options.visible() : true;
   let wake: WakeState = 'off';
   let tab: TabRole = 'unknown';
-  let tabRelease = () => {};
+  let tabRelease: () => Promise<void> | void = () => {};
   let openedStop = () => {};
   let openedVisible: ((v: boolean) => void) | null = null;
   let wakeStop = () => {};
@@ -929,10 +930,11 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       sender?.stop();
       openedStop();
       wakeStop();
-      tabRelease();
+      const released = tabRelease();
       unwatchOnline();
       unwatchVisible();
       if (tickTimer != null) clearInterval(tickTimer);
+      return Promise.resolve(released).then(() => undefined, () => undefined);
     },
     async start() {
       log = new ResilientActionLog(log, () => {
@@ -1045,6 +1047,8 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       }, isVisible);
       if (stopped) {
         opened.stop();
+        // 等分頁鎖時就被 stop：當時 tabRelease 還是空函式，鎖是之後才拿到的，這裡要放掉（P3-1）。
+        void tabRelease();
         return;
       }
       match = opened.match;

@@ -168,10 +168,11 @@ describe('顧問 §3.459 (a)：紅色提示整行可點', () => {
     render(<ScorePad {...S4_SCENE_TAKEOVER} heldLines={lines} />);
     const tap = screen.getByText(heldRejected(1)).closest('button') as HTMLButtonElement;
     expect(tap.disabled).toBe(true);
+    const before = screen.queryAllByRole('dialog').length;
     fireEvent.click(tap);
-    // 被接手時可能開著接手對話框；點紅色那行不會開「未套用的動作」面板。
-    const titles = screen.queryAllByRole('dialog', { hidden: true }).filter((d) => d.hasAttribute('open')).map((d) => d.querySelector('h2, .ui-modal__title')?.textContent ?? '');
-    expect(titles).not.toContain(LIVE_COPY.unappliedTitle);
+    // 被接手時可能開著接手對話框；點紅色那行不會多開「未套用的動作」面板（P3-3：直接數對話框、查面板文字）。
+    expect(screen.queryAllByRole('dialog')).toHaveLength(before);
+    expect(screen.queryAllByRole('dialog').some((d) => (d.textContent ?? '').includes(LIVE_COPY.unappliedTitle))).toBe(false);
   });
 });
 

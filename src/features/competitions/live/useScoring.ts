@@ -124,6 +124,20 @@ export type ScoringScreenView = ScoringView & {
 /** 網路類失敗的自動重試間隔：5、10、20 秒，之後每 30 秒。 */
 export const BOOT_RETRY_MS: readonly number[] = [5_000, 10_000, 20_000, 30_000];
 
+/** 進場失敗後等分頁鎖真的放掉的上限。逾時照樣打開進場門，避免放鎖訊號不回來時重試全失效（顧問 §3.467）。 */
+export const RELEASE_WAIT_MS = 1_000;
+
+/** 等 released 完成，最多 ms 毫秒。 */
+function waitAtMost(released: Promise<void>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const limit = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  return Promise.race([released, limit]).finally(() => {
+    if (timer != null) clearTimeout(timer);
+  });
+}
+
 /** Rules 拒讀（例如沒有指派的人讀 control/scorer）：伺服器已回答「沒有權限」，照原本顯示沒有記分權限、不重試。 */
 export function isDeniedBootError(err: unknown): boolean {
   const code = err && typeof err === 'object' && 'code' in err ? String((err as { code?: unknown }).code) : '';
@@ -149,6 +163,8 @@ export function useScoring(cid: string, mtId: string, deps?: ScoringDeps): Scori
     let stopped = false;
     let session: ScoringSession | null = null;
     let booting = false;
+    /** 進場中（含等放鎖）按了重試：記一次，這次結束後若還沒成功就馬上再進場。自動來源不排隊。 */
+    let retryQueued = false;
     let uid: string | null = snap?.uid ?? null;
     let lastError: ScoringLoadError | 'denied' | null = null;
     let attempt = 0;
@@ -173,7 +189,13 @@ export function useScoring(cid: string, mtId: string, deps?: ScoringDeps): Scori
       unwatchOnline = () => {};
       unwatchVisible = () => {};
     };
-    const retry = () => { void tryBoot(); };
+    const retry = () => {
+      if (booting) {
+        retryQueued = true;
+        return;
+      }
+      void tryBoot();
+    };
     const showError = (kind: ScoringLoadError) => {
       setView({ ...loadingView(), loading: false, loadError: kind, retry });
     };
@@ -240,22 +262,28 @@ export function useScoring(cid: string, mtId: string, deps?: ScoringDeps): Scori
         setView(current.getState());
       } catch (err) {
         // 失敗的工作階段整個收掉（放掉分頁鎖、取消訂閱），下次重新開。open 失敗時佇列還沒開始送。
+        let released: Promise<void> = Promise.resolve();
         if (created) {
           unsub();
           unsub = () => {};
-          created.stop();
+          released = created.stop();
           if (session === created) session = null;
         }
         if (stopped) return;
-        if (isDeniedBootError(err)) {
+        const denied = isDeniedBootError(err);
+        if (denied) {
           // 與修正前相同：空的 staff，記分頁算出沒有指派而顯示「沒有記分權限」，沒有重試。
           lastError = 'denied';
           clearTimer();
           setView({ ...loadingView(), loading: false });
-          return;
+        } else {
+          lastError = isNetworkBootError(err) ? 'network' : 'error';
+          showError(lastError);
         }
-        lastError = isNetworkBootError(err) ? 'network' : 'error';
-        showError(lastError);
+        // 瀏覽器在 callback 結束後才非同步放掉 Web Locks：等鎖真的放掉（最多 RELEASE_WAIT_MS）才結束這次進場，
+        // 期間 booting 仍為 true，重試、online、前景、計時器都被擋，下一次進場不會因 ifAvailable 拿不到鎖而變 blocked（P2-1）。
+        await waitAtMost(released, RELEASE_WAIT_MS);
+        if (stopped || denied) return;
         schedule();
       }
     };
@@ -268,11 +296,16 @@ export function useScoring(cid: string, mtId: string, deps?: ScoringDeps): Scori
         return;
       }
       booting = true;
+      retryQueued = false;
       clearTimer();
       try {
         await boot(uid);
       } finally {
         booting = false;
+      }
+      if (retryQueued && !session && !stopped) {
+        retryQueued = false;
+        void tryBoot();
       }
     }
 
