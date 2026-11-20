@@ -499,7 +499,7 @@ export default function TournamentsPage(): JSX.Element {
               const ended = isTournamentCardEnded(card, todayKey);
               // 分類只放文字；card.type 不進任何 class（外部資料，不認得的字串也不會變成 class）。
               return (
-                <div key={card.id} class={`cpl-xrow${ended ? ' ended' : ''}`} data-card-id={card.id}>
+                <div key={card.id} class={`cpl-xrow${ended ? ' ended' : ''}${canManage ? ' cpl-xrow--edit' : ''}`} data-card-id={card.id}>
                   <a
                     class="cpl-xrow__link"
                     href={card.url}

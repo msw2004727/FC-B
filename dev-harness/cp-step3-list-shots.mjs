@@ -60,7 +60,7 @@ const SCREENS = [
 ];
 
 // 介面文字不該被動斷行的元素（外部賽事名稱是設計接受的換行，不在這裡）
-const NOWRAP = '.cpl-src button, .cpl-head h2:not(.cpl-vh), .cpl-seg__tab, .cpl-sw > span:first-child, .ui-button__label, .d2-menu__opt, .cpl-st, .cpl-line, .cpl-card__name, .cpl-meta, .d2-sb__st, .cpl-sb__cat, .d2-cell, .cpl-xrow__cat, .cpl-xrow__date, .cpl-xmsg p';
+const NOWRAP = '.cpl-src button, .cpl-head h2:not(.cpl-vh), .cpl-seg__tab, .cpl-sw > span:first-child, .ui-button__label, .d2-menu__opt, .cpl-st, .cpl-line, .cpl-card__name, .cpl-meta, .d2-sb__st, .cpl-sb__cat, .d2-cell, .cpl-xrow__cat, .cpl-xrow__date, .cpl-xmsg p, .cpl-xrow--edit .cpl-xrow__name, .cpl-xrow--edit .cpl-xrow__meta';
 
 function measure(nowrap) {
   const r = (el) => (el ? el.getBoundingClientRect() : null);
@@ -77,7 +77,12 @@ function measure(nowrap) {
     const firstBottom = Math.min(...rects.map((x) => x.bottom));
     if (rects.some((x) => x.top >= firstBottom - 1)) wraps.push({ cls: String(el.className), text: (el.textContent || '').trim().slice(0, 30) });
   }
-  const truncated = [...document.querySelectorAll('.cpl-card__name, .cpl-meta__venue, .cpl-line')]
+  // 管理者列的 ↗ 必須和名稱同一行（顧問 §3.494）
+  for (const name of document.querySelectorAll('.cpl-xrow--edit .cpl-xrow__name')) {
+    const go = name.querySelector('.cpl-xrow__go');
+    if (go && go.getBoundingClientRect().top >= name.getBoundingClientRect().top + 22) wraps.push({ cls: 'arrow-dropped', text: (name.textContent || '').trim().slice(0, 30) });
+  }
+  const truncated = [...document.querySelectorAll('.cpl-card__name, .cpl-meta__venue, .cpl-line, .cpl-xrow--edit .cpl-xrow__name, .cpl-xrow--edit .cpl-xrow__date')]
     .filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => (el.textContent || '').trim().slice(0, 30));
   const menu = document.querySelector('.d2-menu:not([hidden])');
   const inapp = document.querySelector('[data-inapp]');
