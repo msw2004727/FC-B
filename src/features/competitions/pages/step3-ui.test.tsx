@@ -134,9 +134,11 @@ describe('詳情四狀態', () => {
     expect(screen.getByRole('tab', { name: '賽程' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '積分' })).toBeTruthy();
     expect(view.container.textContent ?? '').toContain('1月9日　週六');
-    expect(view.container.textContent ?? '').toContain('08:00　1號場');
+    // 新外觀卡 1b-4：時間與場地分成兩個節點；比賽列隊徽 22→24
+    expect(view.container.querySelector('.cp3-m .cp3-m__when')?.textContent).toBe('08:001號場');
+    expect(view.container.querySelector('.cp3-m .cp3-m__court')?.textContent).toBe('1號場');
     expect(view.container.textContent ?? '').toContain('vs');
-    expect(view.container.querySelector('.cp3-m .cp3-crest')?.getAttribute('style')?.replace(/\s/g, '')).toContain('width:22px');
+    expect(view.container.querySelector('.cp3-m .cp3-crest')?.getAttribute('style')?.replace(/\s/g, '')).toContain('width:24px');
   });
 
   it('盃賽封面與進行中徽章、待確認場次在同一畫面', () => {
@@ -218,7 +220,8 @@ describe('詳情四狀態', () => {
     fireEvent.click(fold);
     expect(fold.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByRole('button', { name: '賽程（1 場）' })).toBeTruthy();
-    expect(view.container.textContent ?? '').toContain('18:00　1號場');
+    // 新外觀卡 1b-4：時間與場地分成兩個節點；完整比分在視覺隱藏那一段
+    expect(view.container.querySelector('.cp3-m .cp3-m__when')?.textContent).toBe('18:001號場');
     expect(view.container.textContent ?? '').toContain('1：0');
   });
 
@@ -263,6 +266,20 @@ describe('詳情四狀態', () => {
     ]);
     const headings = [...view.container.querySelectorAll('h3.cp3-day')].map((node) => node.textContent);
     expect(headings).toEqual(['公開組', '組別 2']);
+  });
+
+  it('同一時間兩場：板上只寫時間，兩列都掛「下一場」；進行中列比分青綠（新外觀卡 1b-4）', () => {
+    const view = draw(screenEnv('real-live-twin-next'), CompetitionDetailPage);
+    const first = view.container.querySelector('.d2-board .d2-cell');
+    expect(first?.querySelector('.d2-cell__k')?.textContent).toBe('下一場');
+    expect(first?.querySelector('.d2-cell__t')).toBeNull();
+    const nextRows = [...view.container.querySelectorAll('.cp3-m.cp3-m--next')];
+    expect(nextRows).toHaveLength(2);
+    for (const row of nextRows) {
+      expect(row.querySelector('.d2-tag--next')?.textContent).toBe('下一場');
+      expect(row.querySelector('.cp3-m__when b')?.textContent).toBe('14:30');
+    }
+    expect(view.container.querySelectorAll('.d2-tag--next')).toHaveLength(2);
   });
 
   it('五個組別的冠軍最多列三行，超過寫「等 5 組」（新外觀卡 1b-3）', () => {

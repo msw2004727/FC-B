@@ -794,37 +794,36 @@
 .cps-root .ui-radio-group__label,
 .cps-root .ui-tabs__label { white-space: nowrap; }
 
-.cp3-day { margin: 0 0 var(--space-2); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-weight: 700; color: var(--color-text-secondary); white-space: nowrap; }
-.cp3-ml { list-style: none; margin: 0 0 var(--space-4); padding: 0; }
-.cp3-ml:last-child { margin-bottom: 0; }
-.cp3-m { padding: 10px 0; border-top: 1px solid var(--color-border); min-width: 0; }
+/* 賽程（卡 1b-4）：日期小標＋一張玻璃卡，卡內細線分列；觀眾版與主辦版共用 ui/match-row.tsx 的兩小塊。
+ * 小標（含組名，使用者內容）單行省略，30 字組名在 360 寬不撐出橫向捲動。 */
+.cp3-day { min-width: 0; margin: 4px 4px 8px; font-size: 13px; line-height: 20px; font-weight: 700; color: var(--d2-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp3-ml { list-style: none; margin: 0; padding: 0; }
+.cp3-m { min-width: 0; padding: 12px 0; border-top: 1px solid var(--d2-line); }
 .cp3-m:first-child { border-top: 0; padding-top: 0; }
 .cp3-m:last-child { padding-bottom: 0; }
-.cp3-m__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 22px; }
-.cp3-m__when { font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.cp3-m__when b { color: var(--color-text-primary); font-weight: 700; }
-.cp3-m__top .ui-badge { flex: 0 0 auto; white-space: nowrap; }
-.cp3-m__vs { display: grid; grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr); align-items: center; margin-top: 2px; }
-/* 有 PK 時中欄跟內容走，比分與 PK 用既有間距，避免 56px 把「2：1 PK 4:3」裁掉。 */
-.cp3-m__vs--pk { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
-.cp3-m__vs span { min-width: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp3-m__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+/* 時間：純時間是窄體 19px，「隔日 01:30」「時間待定」這類是一般字 15px；場地 12px 接在後面 8px、太長省略 */
+.cp3-m__when { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.cp3-m__when b { flex: 0 0 auto; font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
+.cp3-m__when b.d2-num { font-size: 19px; line-height: 24px; font-weight: 700; }
+.cp3-m__court { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 24px; color: var(--d2-text-2); }
+.cp3-m__vs { display: grid; grid-template-columns: minmax(0, 1fr) 80px minmax(0, 1fr); align-items: center; min-height: 28px; margin-top: 6px; }
+.cp3-m__vs span { min-width: 0; font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cp3-m__vs .h { text-align: right; }
-.cp3-m__vs .s { text-align: center; font-size: var(--font-size-body-lg); font-weight: 700; font-variant-numeric: tabular-nums; overflow: visible; }
-.cp3-m__vs .s--pk { display: inline-flex; align-items: baseline; justify-content: center; gap: var(--space-1); width: max-content; max-width: none; }
-.cp3-m__vs--pk .s4-pk { flex: 0 0 auto; overflow: visible; }
-.cp3-m__vs .s.vs { font-size: var(--font-size-body-sm); font-weight: 400; color: var(--color-text-muted); }
-/* PK 在比分欄下一行、置中。沒有 PK 不渲染，不佔高度。比分欄仍走上面的 56px。 */
-.cp3-m__vs .cp3-m__pk {
-  grid-column: 2;
-  margin-top: 2px;
-  overflow: visible;
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
-  font-weight: var(--font-weight-regular);
-  color: var(--color-text-secondary);
-  text-align: center;
-  white-space: nowrap;
-}
+/* 比分：兩個窄體 28px 數字中間一個 22px 冒號（往上 2px），間距 8px；完整比分另有一段視覺隱藏給報讀 */
+.cp3-m__vs .s { display: flex; align-items: center; justify-content: center; gap: 8px; height: 28px; overflow: visible; }
+.cp3-m__vs .s b { font-size: 28px; line-height: 28px; color: var(--d2-text); }
+.cp3-m__vs .s i { position: relative; top: -2px; font-family: var(--d2-num); font-style: normal; font-size: 22px; font-weight: 700; line-height: 28px; color: var(--d2-text-3); }
+.cp3-m__vs .s.vs { display: block; font-size: 12px; font-weight: 400; color: var(--d2-text-3); letter-spacing: .06em; text-align: center; }
+/* PK 在比分正下方一行、置中。沒有 PK 不渲染，不佔高度 */
+.cp3-m__vs .cp3-m__pk { grid-column: 2; margin-top: 2px; overflow: visible; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--d2-text-2); font-variant-numeric: tabular-nums; text-align: center; }
+.cp3-m .cpm-reason { margin: 6px 0 0; font-size: 13px; line-height: 20px; color: var(--d2-text-2); text-align: center; }
+.cp3-m .cpm-reason b { font-weight: 400; color: var(--d2-text-3); }
+/* 下一場：時間青綠；進行中：比分青綠；已取消：隊名與時間降一階 */
+.cp3-m--next .cp3-m__when b,
+.cp3-m--live .cp3-m__vs .s b { color: var(--d2-accent-ink); }
+.cp3-m--off .cp3-m__when b,
+.cp3-m--off .cp3-m__vs span { color: var(--d2-text-2); font-weight: 400; }
 
 .cp3-st { padding: var(--space-3) 10px; }
 .cp3-st__r { display: grid; grid-template-columns: 24px minmax(0, 1fr) 18px 18px 18px 18px 36px 28px 28px; column-gap: 0; align-items: center; padding: 8px 0; border-top: 1px solid var(--color-border-subtle); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-variant-numeric: tabular-nums; }
@@ -861,7 +860,7 @@
 .cp3-tn { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; vertical-align: middle; }
 .cp3-tn em { font-style: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp3-tn--h { justify-content: flex-end; width: 100%; }
-.cp3-m__vs .cp3-tn { overflow: hidden; }
+.cp3-m__vs .cp3-tn { gap: 8px; overflow: hidden; }
 
 /* 本隊名單（新外觀卡 3-2）：隊伍卡 隊徽 48＋隊名 → 兩顆標籤 → 人數 → 進度條 → 說明句；球員卡標題列右邊接小顆「代為新增球員」 */
 .cp3-roster-head { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
