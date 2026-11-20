@@ -518,11 +518,12 @@
   gap: var(--space-2);
   margin-top: var(--space-3);
 }
-.cpm-ann__foot .ui-button { flex: 0 0 auto; }
+.cpm-ann__foot .ui-button { flex: 0 0 auto; white-space: nowrap; }
+.cpm-ann__btns { display: flex; gap: var(--space-2); flex: 0 0 auto; }
 /* 顧問 §3.294 P3：深色停用的「發布公告」幾乎看不見；只在公告列提高對比，不動全站按鈕 token */
 [data-theme="dark"] .cpm-ann__foot .ui-button[aria-disabled="true"] { opacity: 1; color: var(--color-text-muted); }
 [data-theme="dark"] .cpm-ann__foot .ui-button[aria-disabled="true"]::before { background: var(--color-bg-hover); border-color: var(--color-border); }
-.cpm-ann__foot .cpm-meta { margin: 0; }
+.cpm-ann__foot .cpm-meta { margin: 0; white-space: nowrap; }
 .cpm-contact {
   display: flex;
   align-items: center;

@@ -889,6 +889,19 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
           notice('nt_sys2', '賽程摘要已更新', 'system', taipeiMs(2026, 12, 8, 12, 0)),
         ],
       }, { summary: [], standings: [] });
+    case 'real-notices-host':
+      // 主辦視角的詳情頁（公告輸入框在最上方）。比照 real-notices 的公告，換成主辦身分。
+      return detailEnv(hostActor, NOW, {
+        hostType: 'personal',
+        hostTeamId: null,
+        hostDisplay: '王示範',
+        feeNote: null,
+        contactNote: null,
+        notices: [
+          notice('nt_sys', '因雨延後一小時，請各隊留意集合時間', 'system', taipeiMs(2026, 12, 10, 9, 0)),
+          notice('nt_host', '領隊會議改在示範球場門口', 'host', taipeiMs(2026, 12, 9, 18, 0)),
+        ],
+      }, { summary: [], standings: [] }, HOST_STAFF);
     case 'real-contact-club':
       return detailEnv(memberActor, NOW, { contactNote: '賽前群組' }, { summary: [], standings: [] });
     case 'real-contact-personal':

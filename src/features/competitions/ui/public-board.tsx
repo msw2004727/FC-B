@@ -2,7 +2,7 @@
 // 俱樂部主辦連到既有俱樂部頁。個人主辦只顯示公開聯絡文字，不開站內私訊。
 
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Textarea } from '@/ui/Textarea';
@@ -17,6 +17,9 @@ import {
 import type { CompetitionNotice } from '../data/types';
 import type { CompetitionsT } from '../i18n';
 import { CpCard } from './shell';
+
+const NOTICE_TOGGLE_ID = 'cp-notice-toggle';
+const NOTICE_COMPOSE_ID = 'cp-notice-compose';
 
 /** 俱樂部頁既有路由。id 照路徑編碼，避免斜線被當成下一層。 */
 export function clubPagePath(teamId: string): string {
@@ -48,6 +51,9 @@ export function PublicBoard({
   onDelete: (noticeId: string) => Promise<void>;
 }): JSX.Element {
   const [draft, setDraft] = useState('');
+  // 站長「畫面要簡潔」：主辦的公告輸入框預設收成一顆按鈕，點了才展開；發布成功或取消後收回。
+  const [composing, setComposing] = useState(false);
+  const focusAfter = useRef<'field' | 'toggle' | null>(null);
   const [showAll, setShowAll] = useState(false);
   const ordered = noticesNewestFirst(notices);
   const visible = showAll ? ordered : ordered.slice(0, NOTICE_PREVIEW_COUNT);
@@ -58,9 +64,24 @@ export function PublicBoard({
   // 個人主辦沒有公開文字時，整區不顯示。俱樂部主辦一定留連結（聯絡方式在俱樂部頁）。
   const showContact = clubPath != null || contactNote != null;
 
+  useEffect(() => {
+    const target = focusAfter.current;
+    focusAfter.current = null;
+    if (target === 'field') document.querySelector<HTMLElement>(`#${NOTICE_COMPOSE_ID} textarea`)?.focus();
+    if (target === 'toggle') document.getElementById(NOTICE_TOGGLE_ID)?.focus();
+  }, [composing]);
+
+  function setCompose(open: boolean): void {
+    focusAfter.current = open ? 'field' : 'toggle';
+    setComposing(open);
+  }
+
   async function publish(): Promise<void> {
     const ok = await onPost(draft);
-    if (ok) setDraft('');
+    if (ok) {
+      setDraft('');
+      setCompose(false);
+    }
   }
 
   return (
@@ -89,8 +110,21 @@ export function PublicBoard({
           {more ? (
             <button type="button" class="cp3-textlink" onClick={() => setShowAll(true)}>{ct('more')}</button>
           ) : null}
-          {hostOps ? (
-            <>
+          {hostOps && !composing ? (
+            <div class="cps-actions">
+              <Button
+                id={NOTICE_TOGGLE_ID}
+                variant="secondary"
+                aria-expanded={false}
+                aria-controls={NOTICE_COMPOSE_ID}
+                onClick={() => setCompose(true)}
+              >
+                {ct('publishNotice')}
+              </Button>
+            </div>
+          ) : null}
+          {hostOps && composing ? (
+            <div id={NOTICE_COMPOSE_ID}>
               <Textarea
                 label={ct('annLabel')}
                 hint={ct('annLimit')}
@@ -102,15 +136,20 @@ export function PublicBoard({
               />
               <div class="cpm-ann__foot">
                 <span class="cpm-meta">{ct('posted', { n: posted, max: HOST_NOTICE_MAX })}</span>
-                <Button
-                  variant="primary"
-                  disabled={busy || posted >= HOST_NOTICE_MAX || draft.trim() === ''}
-                  onClick={() => { void publish(); }}
-                >
-                  {ct('publishNotice')}
-                </Button>
+                <span class="cpm-ann__btns">
+                  <Button variant="ghost" disabled={busy} onClick={() => setCompose(false)}>
+                    {ct('cancel')}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    disabled={busy || posted >= HOST_NOTICE_MAX || draft.trim() === ''}
+                    onClick={() => { void publish(); }}
+                  >
+                    {ct('publishNotice')}
+                  </Button>
+                </span>
               </div>
-            </>
+            </div>
           ) : null}
         </CpCard>
       ) : null}

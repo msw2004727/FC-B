@@ -28,6 +28,9 @@ import { CpError, errorOf } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 
+const INFO_TOGGLE_ID = 'cp-comp-info-toggle';
+const INFO_PANEL_ID = 'cp-comp-info';
+
 async function loadManage(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
   const uid = env.actor.uid;
   const [competition, divisions, entries, staff] = await Promise.all([
@@ -79,8 +82,22 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const contactLock = useRef(false);
   const [category, setCategory] = useState<CompetitionCategory>(env.bundle?.competition?.category ?? 'league');
   const [contactDraft, setContactDraft] = useState(env.bundle?.competition?.contactNote ?? '');
+  // 站長「畫面要簡潔」：賽事分類與聯絡文字預設收成一顆按鈕，點了才展開；聯絡文字儲存成功後收回。
+  const [infoOpen, setInfoOpen] = useState(false);
+  const infoFocus = useRef<string | null>(null);
   const now = env.now ?? Date.now();
   const repKey = representativeClubs(env.actor).map((club) => club.id).join('\n');
+
+  useEffect(() => {
+    const target = infoFocus.current;
+    infoFocus.current = null;
+    if (target) document.querySelector<HTMLElement>(target)?.focus();
+  }, [infoOpen]);
+
+  function toggleInfo(next: boolean): void {
+    infoFocus.current = next ? `#${INFO_PANEL_ID} input` : `#${INFO_TOGGLE_ID}`;
+    setInfoOpen(next);
+  }
 
   useEffect(() => {
     if (env.bundle) return;
@@ -316,6 +333,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         ...current,
         competition: { ...current.competition, contactNote: text || null },
       } : current));
+      toggleInfo(false);
     } catch (err) {
       setError(errorOf(err));
     } finally {
@@ -458,6 +476,21 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           <Button variant="secondary" onClick={() => route(`/competitions/${cid}/staff`)}>{ct('assignScorer')}</Button>
         </div>
       ) : null}
+      {manage || hostOps ? (
+        <div class="cps-actions" style="margin-top:0">
+          <Button
+            id={INFO_TOGGLE_ID}
+            variant="secondary"
+            aria-expanded={infoOpen}
+            aria-controls={INFO_PANEL_ID}
+            onClick={() => toggleInfo(!infoOpen)}
+          >
+            {ct('editCompInfo')}
+          </Button>
+        </div>
+      ) : null}
+      {(manage || hostOps) && infoOpen ? (
+      <div id={INFO_PANEL_ID} class="cps-stack">
       {manage ? (
         <CpCard>
           {/* ASSUMPTION: 沒有獨立的編輯賽事路由。分類改在報隊管理；建立仍走精靈步驟 1。 */}
@@ -493,6 +526,8 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             </div>
           </div>
         </CpCard>
+      ) : null}
+      </div>
       ) : null}
       <div>
         <p class="cps-sub" style="margin-bottom:8px">{competition.name}</p>
