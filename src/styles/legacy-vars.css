@@ -69,3 +69,10 @@
   --skeleton-base: var(--bg-elevated);
   --skeleton-glow: var(--bg-card);
 }
+
+/* 原生下拉展開清單跟著 App 主題（站長 11-20：深色模式下拉看不到字）。
+   根因：全站 color-scheme 為 normal，選項底色透明、字色繼承頁面主題；展開清單的底色卻由瀏覽器／系統決定，
+   兩邊不同步就變成深底深字或淺底淺字。只宣告下拉本身的 color-scheme 並給選項明確底色與字色，不改其他控制項。 */
+[data-theme="dark"] select { color-scheme: dark; }
+[data-theme="light"] select { color-scheme: light; }
+select option { background-color: var(--bg-card); color: var(--text-primary); }
