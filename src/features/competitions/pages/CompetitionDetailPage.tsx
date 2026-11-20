@@ -51,7 +51,7 @@ import { AdminPanel, HiddenNotice } from '../ui/admin-moderation';
 import { DeleteCompetition, teamCountOf } from '../ui/delete-competition';
 import { HostLine, hostLineShown, PublicBoard } from '../ui/public-board';
 import { StatusTag, type StatusKind } from '../ui/status-tag';
-import { CpCard, CpFrame, CpI18nPending, CpRow, AlertIcon, MoreIcon } from '../ui/shell';
+import { CpCard, CpFrame, CpI18nPending, CpRow, AlertIcon, MoreIcon, NextIcon } from '../ui/shell';
 import { TeamCrest } from '../ui/TeamCrest';
 
 const REPORTS: ReportReason[] = ['impersonation', 'fake', 'inappropriate', 'privacy', 'other'];
@@ -744,41 +744,34 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     other: ct('reportOther'),
   };
 
-  const hostButtons = (
+  // 頂部正下方的入口卡（新外觀卡 1b-5）：「我的場次」自成一張；主辦專用卡第一行小字「主辦專用」、
+  // 草稿時右邊是「發布」，下面一列一個入口。刪到一半（frozen）時整組不畫（現況行為）。「以俱樂部報隊」留在招募資訊卡。
+  const entryRow = (label: string, path: string): JSX.Element => (
+    <Button variant="ghost" trailing={<NextIcon />} onClick={() => route(`/competitions/${cid}/${path}`)}>{label}</Button>
+  );
+  const hostCards = frozen ? null : (
     <>
-      {error ? <CpError reason={error.reason} params={error.params} /> : null}
-      {showRegister ? (
-        <div class="cps-actions">
-          <Button variant="primary" onClick={openRegister}>
-            {ct('registerClub')}
-          </Button>
-        </div>
-      ) : null}
-      {manage ? (
-        <div class="cps-actions">
-          {competition.status === 'draft' ? (
-            <Button variant="primary" loading={busy} onClick={() => { void publish(); }}>
-              {ct('publish')}
-            </Button>
-          ) : null}
-          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/manage`)}>{ct('manageLink')}</Button>
-        </div>
-      ) : null}
-      {hostOps ? (
-        <div class="cps-actions">
-          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
-          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/matches`)}>{ct('hostListTitle')}</Button>
-        </div>
-      ) : null}
       {showMyMatches ? (
-        <div class="cps-actions">
-          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/my-matches`)}>{ct('myMatches')}</Button>
-        </div>
+        <nav class="cps-card d2-rows d2-lines d2-lines--48">{entryRow(ct('myMatches'), 'my-matches')}</nav>
       ) : null}
+      {manage || hostOps ? (
+        <nav class="cps-card d2-rows d2-manage d2-lines d2-lines--48" aria-label={ct('hostOnly')}>
+          <div class="d2-manage__k">
+            <span>{ct('hostOnly')}</span>
+            {manage && competition.status === 'draft' ? (
+              <Button variant="primary" size="sm" loading={busy} onClick={() => { void publish(); }}>
+                {ct('publish')}
+              </Button>
+            ) : null}
+          </div>
+          {manage ? entryRow(ct('manageLink'), 'manage') : null}
+          {hostOps ? entryRow(ct('hostSchedTitle'), 'schedule') : null}
+          {hostOps ? entryRow(ct('hostListTitle'), 'matches') : null}
+        </nav>
+      ) : null}
+      {error ? <CpError reason={error.reason} params={error.params} /> : null}
     </>
   );
-
-  const manageActions = frozen ? null : hostButtons;
   // 刪除賽事（新外觀卡 1b-7）：從主辦按鈕拆出來，固定畫在頁面內容最後、管理員區之前（各階段同一個位置）。
   // 卡住前後是同一個位置，確認框不會被重掛關掉。
   const deleteBlock = showDelete ? (
@@ -861,14 +854,16 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           />
         ) : undefined}
       />
+      {hostCards}
       {showHostEnd ? (
-        <CpCard>
+        // 主辦結束賽事的說明卡（新外觀卡 1b-5）：第一行結論跨兩欄，第二行左原因、右「恢復賽事」小鈕
+        <CpCard class="d2-note">
           <p class="cpm-ended">{ct(competition.endedBy === 'auto' ? 'endedAutoLine' : 'endedLine', { date: formatTaipeiDate(competition.endedAt ?? now) })}</p>
           {competition.endReason ? <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{competition.endReason}</p> : null}
           {hasPendingTie(standings) ? <p class="cpm-hint">{ct('endTieHint')}</p> : null}
           {allowRestore && !frozen ? (
             <div class="cpm-endact">
-              <Button variant="secondary" disabled={busy} onClick={() => { setRestoreReason(''); setRestoreMessage(null); setRestoreOpen(true); }}>
+              <Button variant="secondary" size="sm" disabled={busy} onClick={() => { setRestoreReason(''); setRestoreMessage(null); setRestoreOpen(true); }}>
                 {ct('restore')}
               </Button>
             </div>
@@ -908,7 +903,13 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       <>
       <CpCard>
         <dl class="cps-rows">
-          <CpRow k={ct('host')}>{hostName(competition, env)}</CpRow>
+          {/* 主辦列已經在頂部時不重複；頂部沒有主辦列（個人主辦沒留聯絡）才留這一列，主辦類型標籤接在名稱後面 */}
+          {hostLineShown(clubTeamId, competition.contactNote) ? null : (
+            <CpRow k={ct('host')}>
+              {hostName(competition, env)}
+              <StatusTag kind="neutral" label={competition.hostType === 'club' ? ct('hostClub') : ct('hostPersonal')} />
+            </CpRow>
+          )}
           <CpRow k={ct('regPeriod')}>
             <span class="cps-line">
               {sameYear ? formatTaipeiShort(competition.regOpenAt) : formatTaipeiDate(competition.regOpenAt)}
@@ -940,14 +941,20 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           {competition.hostType === 'club' && competition.feeNote ? (
             <CpRow k={ct('feeNote')}>
               <span class="cps-pre">{competition.feeNote}</span>
-              <span class="cps-cap" style="display:block;margin-top:4px">
+              <span class="cps-cap">
                 <span class="cps-line">{ct('feeHandledByHost')}</span>
                 <span class="cps-line">{ct('feeSiteDoesNotHandle')}</span>
               </span>
             </CpRow>
           ) : null}
         </dl>
-        {manageActions}
+        {showRegister && !frozen ? (
+          <div class="cps-actions">
+            <Button variant="primary" onClick={openRegister}>
+              {ct('registerClub')}
+            </Button>
+          </div>
+        ) : null}
       </CpCard>
 
       {divisions.map((division) => (
@@ -992,7 +999,6 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               />
             )}
           />
-          {manageActions}
         </>
       )}
 
@@ -1071,7 +1077,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         >
           {reportGuest ? (
             <div class="cps-sheet-body">
-              <p class="cps-note cps-nowrap" data-cp-report="login">{ct('reportLoginHint')}</p>
+              <p class="cps-lead" data-cp-report="login">{ct('reportLoginHint')}</p>
             </div>
           ) : (
           <div class="cps-sheet-body">
@@ -1128,29 +1134,31 @@ function DivisionBlock({
   ].filter(Boolean).join('　');
   const width = division.maxTeams > 0 ? Math.min(100, (division.approvedCount / division.maxTeams) * 100) : 0;
   return (
-    <CpCard>
+    // 組別卡（新外觀卡 1b-5）：隊伍列整列是連結（最小高 48），不靠外擴點擊區（原本只有名字那一條 232×26 可點）
+    <CpCard class="d2-div">
       <div class="cps-head-row">
         <h3 class="cps-h">{division.name}</h3>
         <StatusTag kind={statusBadge(ct, competition, now).kind} label={statusBadge(ct, competition, now).label} />
       </div>
-      <p class="cps-sub cps-nowrap" style="margin-top:4px">{meta}</p>
+      <p class="cps-sub cps-nowrap">{meta}</p>
       {/* 報名費與停用的線上支付鈕只限俱樂部主辦（顧問 §3.257） */}
       {competition.hostType === 'club' ? <FeeLine amount={division.feePerTeam} /> : null}
       <div class="cps-bar" aria-hidden="true"><i style={`width:${width}%`} /></div>
-      <p class="cps-cap" style="margin-bottom:8px">{ct('approvedTeams', { teams: division.approvedCount, max: division.maxTeams })}</p>
+      <p class="cps-cap">{ct('approvedTeams', { teams: division.approvedCount, max: division.maxTeams })}</p>
       <ul class="cps-list">
         {approved.map((entry) => (
           <li class="cps-li" key={entry.id}>
-            <div class="cps-li__main">
-              <a class="cps-li__name cps-link" href={`/competitions/${cid}/entries/${entry.id}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); route(`/competitions/${cid}/entries/${entry.id}`); }}>
+            <a class="d2-div__team" href={`/competitions/${cid}/entries/${entry.id}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); route(`/competitions/${cid}/entries/${entry.id}`); }}>
+              <span class="cps-li__main">
                 <span class="cp3-tn">
-                  <TeamCrest teamId={entry.teamId} name={entry.name} teamLogo={entry.teamLogo} size={48} />
+                  <TeamCrest teamId={entry.teamId} name={entry.name} teamLogo={entry.teamLogo} size={28} />
                   <em>{entry.name}</em>
                 </span>
-              </a>
-            </div>
-            {/* 顧問 §3.463：長隊名時「已核准」被擠成兩行。只在這一列讓標籤不縮、不換行，隊名讓位省略；不動共用 Badge。 */}
-            <StatusTag kind="neutral" label={ct('approved')} class="cps-li__tag" />
+              </span>
+              {/* 顧問 §3.463：長隊名時「已核准」被擠成兩行。只在這一列讓標籤不縮、不換行，隊名讓位省略；不動共用 Badge。 */}
+              <StatusTag kind="neutral" label={ct('approved')} class="cps-li__tag" />
+              <NextIcon />
+            </a>
           </li>
         ))}
       </ul>

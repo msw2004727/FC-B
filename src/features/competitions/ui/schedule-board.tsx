@@ -24,7 +24,7 @@ import { pkScoreLabel } from '../live/copy';
 import { LiveScoreBadge } from '../live/LiveScoreBadge';
 import { TeamCrest } from './TeamCrest';
 import { MatchVs, MatchWhen } from './match-row';
-import { CpCard } from './shell';
+import { CpCard, NextIcon } from './shell';
 import { StatusTag, type StatusKind } from './status-tag';
 
 function ChevronIcon(): JSX.Element {
@@ -406,18 +406,18 @@ export function DetailPhaseBody({
     return (
       <>
         {standingsNode}
-        <CpCard>
-          <div class="cps-actions">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                const id = scorerState?.dvId || divisionChoices[0]?.id || '';
-                if (!id) return;
-                setDoneScorers(true);
-                onOpenScorers?.(id);
-              }}
-            >{ct('tabScorers')}</Button>
-          </div>
+        {/* 已結束的「射手榜」：入口列卡（一列、右邊箭頭），按了在卡內原地展開 */}
+        <CpCard class="d2-rows d2-lines d2-lines--48">
+          <Button
+            variant="ghost"
+            trailing={<NextIcon />}
+            onClick={() => {
+              const id = scorerState?.dvId || divisionChoices[0]?.id || '';
+              if (!id) return;
+              setDoneScorers(true);
+              onOpenScorers?.(id);
+            }}
+          >{ct('tabScorers')}</Button>
           {doneScorers ? (
             <ScorerBlock ct={ct} choices={divisionChoices} state={scorerState} onPick={(id) => onOpenScorers?.(id)} />
           ) : null}
@@ -444,7 +444,7 @@ export function DetailPhaseBody({
             </div>
           ) : null}
           {foldError && !open ? (
-            <div role="alert" style="margin-top:12px">
+            <div role="alert" class="cp3-panel">
               <p class="cps-note">{ct('loadFailed')}</p>
               <div class="cps-actions">
                 <Button variant="secondary" onClick={openFold}>{ct('retry')}</Button>
@@ -476,10 +476,10 @@ export function DetailPhaseBody({
             id: 'sched',
             label: ct('tabSchedule'),
             panel: (
-              <div style="margin-top:12px">
+              <div class="cp3-panel">
                 <MatchSchedule ct={ct} groups={shown} standings={standings} crests={crests} clock={clock} nextIds={nextIds} onOpenMatch={onOpenMatch} />
                 <div class="cps-actions">
-                  <Button variant="secondary" onClick={onRequestFull}>{ct('fullSchedule')}</Button>
+                  <Button variant="secondary" trailing={<NextIcon />} onClick={onRequestFull}>{ct('fullSchedule')}</Button>
                 </div>
               </div>
             ),
@@ -488,7 +488,7 @@ export function DetailPhaseBody({
             id: 'stand',
             label: ct('tabStandings'),
             panel: (
-              <div style="margin-top:12px">
+              <div class="cp3-panel">
                 {standingsNode}
               </div>
             ),
