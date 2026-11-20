@@ -656,7 +656,7 @@
 .cps-row dd .ui-badge { margin-left: 8px; vertical-align: 2px; }
 .cps-row dd .cps-cap { display: block; margin-top: 4px; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
 /* 資訊列裡的場地連結：字只有一行高，用看不見的擴張區把可點高度補到 44 */
-.cps-row dd .cps-link { position: relative; text-decoration: underline; text-decoration-color: var(--d2-line-strong); text-underline-offset: 3px; }
+.cps-row dd .cps-link { position: relative; white-space: normal; overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--d2-line-strong); text-underline-offset: 3px; } /* 場地名稱是使用者內容：太長就換行，不出卡（卡 1b-8）；底線只留給資訊卡資料列（設計 05:16） */
 .cps-row dd .cps-link::after { content: ''; position: absolute; top: -10px; right: 0; bottom: -10px; left: 0; }
 /* 招募中「以俱樂部報隊」：資訊卡最下面、整列寬、高 48、與資料列距離 16 */
 .cps-rows + .cps-actions .ui-button { min-height: 48px; }
@@ -729,6 +729,7 @@
 /* 組別卡（卡 1b-5）：組別名單行省略；隊伍列整列是連結、最小高 48、隊徽 28，右邊「已核准」與小箭頭 */
 .cps-card.d2-div { padding: 14px 16px 4px; }
 .d2-div .cps-head-row .cps-h { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 28px; }
+.d2-div .cps-head-row > .d2-tag { flex: 0 0 auto; white-space: nowrap; } /* 長組別名只省略名稱，狀態標籤不被擠成兩行（卡 1b-8） */
 .d2-div > .cps-sub { margin-top: 4px; }
 .d2-div .cps-bar { margin: 6px 0 4px; }
 .d2-div > .cps-cap { display: block; font-size: 12px; line-height: 16px; color: var(--d2-text-2); font-variant-numeric: tabular-nums; }
@@ -799,9 +800,9 @@
 .d2-board .d2-cell__k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .d2-board .d2-cell__v { min-width: 0; gap: 8px; }
 .d2-board .d2-cell__v .d2-num { flex: 0 0 auto; }
-.d2-cell__t { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; font-size: 13px; line-height: 28px; font-weight: 600; color: var(--d2-sb-fg); }
+.d2-cell__t { display: inline-grid; grid-template-columns: minmax(0, max-content) auto minmax(0, max-content); column-gap: 6px; align-items: baseline; min-width: 0; overflow: hidden; font-size: 13px; line-height: 28px; font-weight: 600; color: var(--d2-sb-fg); }
 .d2-cell__t span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.d2-cell__t i { flex: 0 0 auto; font-style: normal; font-size: 12px; font-weight: 400; color: var(--d2-sb-fg2); }
+.d2-cell__t i { font-style: normal; font-size: 12px; font-weight: 400; color: var(--d2-sb-fg2); }
 .d2-plain { padding: 8px 8px 12px; white-space: nowrap; }
 .d2-plain .d2-sb__st,
 .d2-plain .d2-board__cat,
@@ -839,19 +840,20 @@
 /* 入口列卡（共用，第 3、4 批引用）：<nav class="cps-card d2-rows d2-lines d2-lines--48">，一列一個入口（文字鈕＋右邊箭頭），
  * 整列寬、靠左；分線與列高來自 .d2-lines。展開在卡內的內容（已結束的射手榜）下緣留 16 */
 .cps-card.d2-rows { padding: 0 10px 0 16px; }
-.d2-rows > .ui-button { --comp-button-foreground-default: var(--d2-text); justify-content: space-between; width: 100%; max-width: none; min-inline-size: 0; padding: 0 4px 0 0; }
+.d2-rows > .ui-button { --comp-button-foreground-default: var(--d2-text); justify-content: space-between; width: 100%; max-width: none; min-inline-size: 0; padding: 0 4px 0 0; border-radius: 0; }
 .d2-rows .cps-ico--next { color: var(--d2-text-3); }
 .cps-card.d2-rows > div:last-child { padding-bottom: 16px; }
-/* 主辦專用卡第一行：小字「主辦專用」，草稿時右邊一顆「發布」小鈕（負外距不撐高） */
-.d2-manage__k { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 0; padding: 10px 0 2px; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .04em; color: var(--d2-text-2); }
+/* 主辦專用卡第一行：小字「主辦專用」，草稿時右邊一顆「發布」小鈕；最小高 44、上留 4，鈕外觀上緣離卡頂 10（卡 1b-8 取代原本的負外距：鈕頂到卡角） */
+.d2-manage__k { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 4px 0 0; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .04em; color: var(--d2-text-2); }
 .d2-manage__k + * { border-top: 0; }
-.d2-manage__k .ui-button { min-inline-size: 0; margin: -12px 0 -10px; padding: 0 12px; }
+.d2-manage__k .ui-button { min-inline-size: 0; margin: 0; padding: 0 12px; }
 /* 卡片標題列（共用）：左標題、右邊這張卡自己的小鈕（外觀 32、點擊區 44，負外距不撐高標題列） */
 .d2-cardhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
 .d2-cardhead > .ui-button { flex: 0 0 auto; min-inline-size: 0; margin: -6px 0; padding: 0 12px; }
 .cps-ico--next { width: 18px; height: 18px; }
 /* 分頁面板、收合卡裡的提示：與上面距離 12 */
 .cp3-panel { margin-top: 12px; }
+.cp3-panel > div + .cps-actions { margin-top: 0; } /* 賽程分頁「全部賽程」：上面只留每天那張卡下的 12（鈕外觀再內縮 2，共 14，跟卡與卡之間一樣） */
 .d2-foldcard > .cp3-panel { padding-bottom: 16px; }
 
 /* 矮板（第 4 批；記分板共用元件的一個尺寸）：一列數字格、板高 44（內距 10＋列高 24＋10）；外框交給 .d2-hero、不亮燈 */
@@ -976,6 +978,7 @@
  * 小標（含組名，使用者內容）單行省略，30 字組名在 360 寬不撐出橫向捲動。 */
 .cp3-day { min-width: 0; margin: 4px 4px 8px; font-size: 13px; line-height: 20px; font-weight: 700; color: var(--d2-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cp3-ml { list-style: none; margin: 0; padding: 0; }
+.cp3-daygap { height: 12px; } /* 每天那張卡下面的間隔（MatchSchedule；卡 1b-8 取代行內 height:12px） */
 .cp3-m { min-width: 0; padding: 12px 0; border-top: 1px solid var(--d2-line); }
 .cp3-m:first-child { border-top: 0; padding-top: 0; }
 .cp3-m:last-child { padding-bottom: 0; }

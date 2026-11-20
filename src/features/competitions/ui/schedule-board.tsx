@@ -169,7 +169,7 @@ export function MatchSchedule({
                     })}
                   </ul>
                 </CpCard>
-                <div style="height:12px" />
+                <div class="cp3-daygap" />
               </div>
             ))}
           </div>
