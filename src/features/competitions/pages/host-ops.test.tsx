@@ -1087,6 +1087,7 @@ describe('公告時間與連點', () => {
     draw(hostDetail([
       { id: 'nt_old', text: '舊公告', kind: 'host', at: taipeiMs(2027, 1, 9, 10, 0), by: null },
     ], { ...idleActions(), postNotice }, { omitNow: true }), CompetitionDetailPage);
+    fireEvent.click(buttonOf('發布公告'));
     fireEvent.input(areaOf(/公告內容/), { target: { value: '新公告' } });
     fireEvent.click(buttonOf('發布公告'));
     await waitFor(() => {
@@ -1107,6 +1108,7 @@ describe('公告時間與連點', () => {
       return { noticeId: 'nt_new' };
     });
     draw(hostDetail([], { ...idleActions(), postNotice }), CompetitionDetailPage);
+    fireEvent.click(buttonOf('發布公告'));
     fireEvent.input(areaOf(/公告內容/), { target: { value: '連點公告' } });
     const publish = buttonOf('發布公告');
     publish.click();
@@ -1187,6 +1189,7 @@ describe('撞期警示與仍要送出', () => {
     draw(matchesEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, [first, second], {
       ...idleActions(), shiftMatchDay,
     }), HostMatchesPage);
+    fireEvent.click(buttonOf('整天順延'));
     fireEvent.input(inputOf('新日期'), { target: { value: '2027-01-12' } });
     fireEvent.input(areaOf(/順延原因/), { target: { value: '雨天' } });
     fireEvent.click(buttonOf('確認順延'));
@@ -1209,6 +1212,7 @@ describe('撞期警示與仍要送出', () => {
     draw(matchesEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, [first, second], {
       ...idleActions(), swapMatches,
     }), HostMatchesPage);
+    fireEvent.click(buttonOf('兩場對調'));
     fireEvent.input(areaOf(/對調原因/), { target: { value: '場地對調' } });
     fireEvent.click(buttonOf('確認對調'));
     await expectClash(teamClash);
@@ -1232,10 +1236,14 @@ describe('撞期警示與仍要送出', () => {
     draw(matchesEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, [first, second], {
       ...idleActions(), shiftMatchDay,
     }), HostMatchesPage);
+    fireEvent.click(buttonOf('整天順延'));
     fireEvent.input(inputOf('新日期'), { target: { value: '2027-01-12' } });
     fireEvent.input(areaOf(/順延原因/), { target: { value: '雨天' } });
     fireEvent.click(buttonOf('確認順延'));
     await waitFor(() => expect(shiftMatchDay).toHaveBeenCalledTimes(1));
+    // 成功後表單收回；再展開時欄位已清空。
+    await waitFor(() => expect(screen.queryByLabelText('新日期')).toBeNull());
+    fireEvent.click(buttonOf('整天順延'));
     await waitFor(() => {
       expect(inputOf('新日期').value).toBe('');
       expect(areaOf(/順延原因/).value).toBe('');
@@ -1262,6 +1270,7 @@ describe('撞期警示與仍要送出', () => {
     draw(matchesEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, [first, second, third], {
       ...idleActions(), swapMatches,
     }), HostMatchesPage);
+    fireEvent.click(buttonOf('兩場對調'));
     const secondPick = selectOf('第二場');
     secondPick.value = 'mt_3';
     secondPick.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1277,6 +1286,9 @@ describe('撞期警示與仍要送出', () => {
       expectedRevB: 5,
       reason: '場地對調',
     });
+    // 成功後表單收回；再展開時理由與選取已清空。
+    await waitFor(() => expect(screen.queryByLabelText(/對調原因/)).toBeNull());
+    fireEvent.click(buttonOf('兩場對調'));
     await waitFor(() => {
       expect(areaOf(/對調原因/).value).toBe('');
       // 選取回到排序後的前兩場，不再停在剛對調的那一場。
@@ -1319,6 +1331,7 @@ describe('撞期警示與仍要送出', () => {
       }),
       repo,
     }, HostMatchesPage);
+    fireEvent.click(buttonOf('兩場對調'));
     fireEvent.input(areaOf(/對調原因/), { target: { value: '場地對調' } });
     fireEvent.click(buttonOf('確認對調'));
     await screen.findByText('更新隊');
@@ -1349,29 +1362,29 @@ describe('順延與對調卡片', () => {
 
   it('已發布且未結束才顯示；已結束只留管理員；草稿延期取消與沒場次都不顯示', () => {
     drawStatus('published', null);
-    expect(screen.getByRole('heading', { name: '整天順延' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '兩場對調' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '整天順延' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '兩場對調' })).toBeTruthy();
     cleanup();
 
     drawStatus('published', 1);
-    expect(screen.queryByRole('heading', { name: '整天順延' })).toBeNull();
-    expect(screen.queryByRole('heading', { name: '兩場對調' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '整天順延' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '兩場對調' })).toBeNull();
     cleanup();
 
     drawStatus('published', 1, adminActor, null);
-    expect(screen.getByRole('heading', { name: '整天順延' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '兩場對調' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '整天順延' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '兩場對調' })).toBeTruthy();
     cleanup();
 
     for (const status of ['draft', 'postponed', 'cancelled'] as const) {
       drawStatus(status, null);
-      expect(screen.queryByRole('heading', { name: '整天順延' }), status).toBeNull();
+      expect(screen.queryByRole('button', { name: '整天順延' }), status).toBeNull();
       cleanup();
     }
 
     draw(matchesEnv(hostActor, hostStaff, [], idleActions()), HostMatchesPage);
-    expect(screen.queryByRole('heading', { name: '整天順延' })).toBeNull();
-    expect(screen.queryByRole('heading', { name: '兩場對調' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '整天順延' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '兩場對調' })).toBeNull();
   });
 });
 
@@ -1392,17 +1405,19 @@ describe('已自動發布公告', () => {
     expect(screen.queryByText('已自動發布公告')).toBeNull();
     fireEvent.click(buttonOf('取消'));
 
+    fireEvent.click(buttonOf('整天順延'));
     fireEvent.input(inputOf('新日期'), { target: { value: '2027-01-12' } });
     fireEvent.input(areaOf(/順延原因/), { target: { value: '雨天' } });
     fireEvent.click(buttonOf('確認順延'));
     expect(await screen.findByText('已自動發布公告')).toBeTruthy();
-    fireEvent.click(screen.getByRole('heading', { name: '整天順延' }));
+    fireEvent.click(buttonOf('整天順延'));
     expect(screen.queryByText('已自動發布公告')).toBeNull();
 
+    fireEvent.click(buttonOf('兩場對調'));
     fireEvent.input(areaOf(/對調原因/), { target: { value: '場地對調' } });
     fireEvent.click(buttonOf('確認對調'));
     expect(await screen.findByText('已自動發布公告')).toBeTruthy();
-    fireEvent.click(screen.getByRole('heading', { name: '兩場對調' }));
+    fireEvent.click(buttonOf('兩場對調'));
     expect(screen.queryByText('已自動發布公告')).toBeNull();
   });
 });
@@ -1446,6 +1461,7 @@ describe('聯絡文字', () => {
       return { cid: 'cup' };
     });
     draw({ ...screenEnv('host-pending'), actions: { ...idleActions(), update } }, CompetitionManagePage);
+    fireEvent.click(buttonOf('編輯賽事資訊'));
     fireEvent.input(inputOf('聯絡文字'), { target: { value: '賽前群組' } });
     const save = buttonOf('儲存');
     save.click();
@@ -1453,7 +1469,10 @@ describe('聯絡文字', () => {
     expect(update).toHaveBeenCalledTimes(1);
     expect(update).toHaveBeenCalledWith({ cid: 'cup', contactNote: '賽前群組' });
     door.release();
-    await waitFor(() => expect(buttonOf('儲存').disabled).toBe(false));
+    // 儲存成功後收回；再展開時儲存鈕已解鎖。
+    await waitFor(() => expect(screen.queryByRole('button', { name: '儲存' })).toBeNull());
+    fireEvent.click(buttonOf('編輯賽事資訊'));
+    expect(buttonOf('儲存').disabled).toBe(false);
     expect(update).toHaveBeenCalledTimes(1);
   });
 
@@ -1514,5 +1533,156 @@ describe('聯絡文字', () => {
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByText('步驟 3／3')).toBeTruthy();
     expect(screen.getByRole('alert').textContent ?? '').toContain('名稱包含不允許的字詞');
+  });
+});
+
+describe('主辦表單預設收合', () => {
+  it('詳情頁公告輸入框預設收成按鈕，點了展開，取消或發布成功後收回', async () => {
+    const postNotice = vi.fn(async () => ({ noticeId: 'nt_new' }));
+    draw(hostDetail([], { ...idleActions(), postNotice }), CompetitionDetailPage);
+    expect(screen.queryByLabelText(/公告內容/)).toBeNull();
+    const toggle = buttonOf('發布公告');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-controls')).toBe('cp-notice-compose');
+
+    fireEvent.click(toggle);
+    expect(document.getElementById('cp-notice-compose')).not.toBeNull();
+    expect(areaOf(/公告內容/)).toBeTruthy();
+    fireEvent.click(buttonOf('取消'));
+    expect(screen.queryByLabelText(/公告內容/)).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(buttonOf('發布公告')));
+
+    fireEvent.click(buttonOf('發布公告'));
+    fireEvent.input(areaOf(/公告內容/), { target: { value: '收合公告' } });
+    fireEvent.click(buttonOf('發布公告'));
+    expect(await screen.findByText('收合公告')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByLabelText(/公告內容/)).toBeNull());
+    expect(buttonOf('發布公告').getAttribute('aria-expanded')).toBe('false');
+    expect(postNotice).toHaveBeenCalledTimes(1);
+  });
+
+  it('賽程管理的順延與對調預設收合，一次只開一張，取消會清空並收回', () => {
+    const [first, second] = flexMatches();
+    draw(matchesEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, [first, second], idleActions()), HostMatchesPage);
+    expect(screen.queryByLabelText('新日期')).toBeNull();
+    expect(screen.queryByLabelText(/對調原因/)).toBeNull();
+    const shift = buttonOf('整天順延');
+    const swap = buttonOf('兩場對調');
+    expect(shift.getAttribute('aria-expanded')).toBe('false');
+    expect(swap.getAttribute('aria-expanded')).toBe('false');
+    expect(shift.getAttribute('aria-controls')).toBe('cp-flex-shift');
+    expect(swap.getAttribute('aria-controls')).toBe('cp-flex-swap');
+
+    fireEvent.click(shift);
+    expect(buttonOf('整天順延').getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById('cp-flex-shift')).not.toBeNull();
+    expect(screen.getByRole('heading', { name: '整天順延' })).toBeTruthy();
+    expect(inputOf('新日期')).toBeTruthy();
+    expect(areaOf(/順延原因/)).toBeTruthy();
+
+    fireEvent.click(buttonOf('兩場對調'));
+    expect(screen.queryByLabelText('新日期')).toBeNull();
+    expect(buttonOf('兩場對調').getAttribute('aria-expanded')).toBe('true');
+    expect(selectOf('第一場')).toBeTruthy();
+    fireEvent.input(areaOf(/對調原因/), { target: { value: '場地對調' } });
+    fireEvent.click(buttonOf('取消'));
+    expect(screen.queryByLabelText(/對調原因/)).toBeNull();
+    expect(buttonOf('兩場對調').getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(buttonOf('兩場對調'));
+    expect(areaOf(/對調原因/).value).toBe('');
+    fireEvent.click(buttonOf('兩場對調'));
+    expect(screen.queryByLabelText(/對調原因/)).toBeNull();
+  });
+
+  it('報隊管理的分類與聯絡文字預設收成按鈕，點了展開，儲存成功後收回', async () => {
+    const update = vi.fn(async () => ({ cid: 'cup' }));
+    draw({ ...screenEnv('host-pending'), actions: { ...idleActions(), update } }, CompetitionManagePage);
+    expect(screen.queryByRole('radio', { name: '聯賽' })).toBeNull();
+    expect(screen.queryByLabelText('聯絡文字')).toBeNull();
+    const toggle = buttonOf('編輯賽事資訊');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-controls')).toBe('cp-comp-info');
+
+    fireEvent.click(toggle);
+    expect(buttonOf('編輯賽事資訊').getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById('cp-comp-info')).not.toBeNull();
+    expect(screen.getByRole('radio', { name: '聯賽' })).toBeTruthy();
+    fireEvent.input(inputOf('聯絡文字'), { target: { value: '賽前群組' } });
+    fireEvent.click(buttonOf('儲存'));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ cid: 'cup', contactNote: '賽前群組' }));
+    await waitFor(() => expect(screen.queryByLabelText('聯絡文字')).toBeNull());
+    expect(buttonOf('編輯賽事資訊').getAttribute('aria-expanded')).toBe('false');
+  });
+});
+
+describe('顧問 R2 版面', () => {
+  it('結束賽事在場次清單之後，第一屏只有順延與對調兩顆', () => {
+    const [first, second] = flexMatches();
+    draw(matchesEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, [first, second], idleActions()), HostMatchesPage);
+    const end = buttonOf('結束賽事');
+    const lists = [...document.querySelectorAll('.cp3-ml')];
+    expect(lists.length).toBeGreaterThan(0);
+    const firstList = lists[0];
+    const lastList = lists[lists.length - 1];
+    if (!firstList || !lastList) throw new Error('找不到場次清單');
+    // 結束賽事排在最後一張場次清單之後；順延、對調在清單之前。
+    expect(lastList.compareDocumentPosition(end) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(firstList.compareDocumentPosition(buttonOf('整天順延')) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    expect(firstList.compareDocumentPosition(buttonOf('兩場對調')) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    expect(end.className).toContain('danger');
+    fireEvent.click(end);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('報隊管理展開後按「完成」收回，再點「編輯賽事資訊」也能收回', async () => {
+    draw({ ...screenEnv('host-pending'), actions: idleActions() }, CompetitionManagePage);
+    fireEvent.click(buttonOf('編輯賽事資訊'));
+    const done = buttonOf('完成');
+    expect(document.getElementById('cp-comp-info')?.contains(done)).toBe(true);
+    expect(screen.queryByRole('button', { name: '取消' })).toBeNull();
+    fireEvent.click(done);
+    expect(screen.queryByLabelText('聯絡文字')).toBeNull();
+    expect(buttonOf('編輯賽事資訊').getAttribute('aria-expanded')).toBe('false');
+    await waitFor(() => expect(document.activeElement).toBe(buttonOf('編輯賽事資訊')));
+
+    fireEvent.click(buttonOf('編輯賽事資訊'));
+    expect(screen.getByRole('radio', { name: '聯賽' })).toBeTruthy();
+    fireEvent.click(buttonOf('編輯賽事資訊'));
+    expect(screen.queryByRole('radio', { name: '聯賽' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '完成' })).toBeNull();
+  });
+
+  it('主辦的公告文字佔滿整列，刪除在日期那一行；非主辦樣式不變', () => {
+    draw(hostDetail([
+      { id: 'nt_sys', text: '因雨延後一小時，請各隊留意集合時間', kind: 'system', at: 2, by: null },
+      { id: 'nt_host', text: '領隊會議改在示範球場門口', kind: 'host', at: 1, by: null },
+    ], idleActions()), CompetitionDetailPage);
+    const items = [...document.querySelectorAll('.cpm-ann li')];
+    expect(items).toHaveLength(2);
+    for (const item of items) {
+      const row = item.querySelector('.cpm-ann__row');
+      const meta = item.querySelector('.cpm-ann__meta');
+      expect(row?.querySelector('button')).toBeNull();
+      // 主辦視角的文字列只剩公告文字（系統標籤移到日期那一行）。
+      expect(row?.children).toHaveLength(1);
+      expect(meta?.querySelector('.cpm-ann__time')).not.toBeNull();
+      const del = meta?.querySelector('button');
+      expect(del?.textContent).toContain('刪除');
+      // 日期在前（靠左）、刪除在後（靠右）。
+      expect(meta?.lastElementChild?.contains(del ?? null)).toBe(true);
+    }
+    expect(items[0]?.querySelector('.cpm-ann__meta .ui-badge')?.textContent).toContain('系統');
+    cleanup();
+
+    draw(screenEnv('real-notices'), CompetitionDetailPage);
+    const memberItems = [...document.querySelectorAll('.cpm-ann li')];
+    expect(memberItems.length).toBeGreaterThan(0);
+    for (const item of memberItems) {
+      expect(item.querySelector('.cpm-ann__meta')).toBeNull();
+      expect(item.querySelector('button')).toBeNull();
+      expect(item.querySelector(':scope > .cpm-ann__time')).not.toBeNull();
+    }
+    // 非主辦的系統標籤仍在文字前面。
+    expect(memberItems[0]?.querySelector('.cpm-ann__row > .ui-badge')?.textContent).toContain('系統');
   });
 });

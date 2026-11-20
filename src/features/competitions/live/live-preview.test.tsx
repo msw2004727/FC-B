@@ -248,12 +248,16 @@ describe('第 4 步預覽元件', () => {
 
   it('比分列與兩隊欄位：有網址的隊顯示圖，沒有的顯示首字', () => {
     const view = pad(S4_SCENE_LIVE);
-    const imgs = [...view.container.querySelectorAll('img.cp3-crest')];
-    expect(imgs).toHaveLength(1);
-    expect(imgs.every((img) => img.getAttribute('src') === S4_CREST_URL)).toBe(true);
-    const initials = [...view.container.querySelectorAll('.cp3-crest--txt')].map((node) => node.textContent);
-    expect(initials.filter((text) => text === '海')).toHaveLength(1);
-    expect(initials.includes('雷')).toBe(false);
+    // 比分列與進球上方隊名標籤各一組隊徽，規則相同。
+    for (const zone of ['.s4-top', '.s4-tags']) {
+      const box = view.container.querySelector(zone)!;
+      const imgs = [...box.querySelectorAll('img.cp3-crest')];
+      expect(imgs).toHaveLength(1);
+      expect(imgs.every((img) => img.getAttribute('src') === S4_CREST_URL)).toBe(true);
+      const initials = [...box.querySelectorAll('.cp3-crest--txt')].map((node) => node.textContent);
+      expect(initials.filter((text) => text === '海')).toHaveLength(1);
+      expect(initials.includes('雷')).toBe(false);
+    }
     cleanup();
 
     const { match, clock, events, voids, homeRoster, awayRoster, crests } = S4_SCENE_LIVE;
@@ -597,7 +601,9 @@ describe('第 4 步預覽元件', () => {
   it('由上到下是頂列、紀錄、進球、牌、底欄', () => {
     const view = pad(S4_SCENE_LIVE);
     const order = [...view.container.querySelector('.s4-root')!.children].map((node) => node.className.split(' ')[0]);
-    expect(order).toEqual(['s4-top', 's4-feed', 's4-goals', 's4-cards', 's4-dock']);
+    expect(order).toEqual(['s4-top', 's4-feed', 's4-pad', 's4-dock']);
+    const padOrder = [...view.container.querySelector('.s4-pad')!.children].map((node) => node.className.split(' ')[0]);
+    expect(padOrder).toEqual(['s4-tags', 's4-goals', 's4-cards', 's4-pad__rule']);
     expect(view.container.querySelector('.s4-root')?.className).toBe('s4-root');
     expect(view.container.querySelectorAll('.s4-feed .s4-ev')).toHaveLength(5);
     expect(view.container.querySelector('.s4-ev .ui-button')).toBeNull();
@@ -613,7 +619,7 @@ describe('第 4 步預覽元件', () => {
 
     const off = pad(S4_SCENE_OFFLINE);
     const offOrder = [...off.container.querySelector('.s4-root')!.children].map((node) => node.className.split(' ')[0]);
-    expect(offOrder).toEqual(['s4-top', 's4-alerts', 's4-feed', 's4-goals', 's4-cards', 's4-dock']);
+    expect(offOrder).toEqual(['s4-top', 's4-alerts', 's4-feed', 's4-pad', 's4-dock']);
     cleanup();
 
     const pre = pad(S4_SCENE_PRE);
@@ -891,7 +897,7 @@ describe('第 4 步預覽元件', () => {
     const root = document.querySelector('.s4-root');
     const order = [...(root?.children ?? [])].map((node) => node.className.split(' ')[0]);
     expect(order.indexOf('s4-timeout')).toBeLessThan(order.indexOf('s4-feed'));
-    expect(order.indexOf('s4-feed')).toBeLessThan(order.indexOf('s4-goals'));
+    expect(order.indexOf('s4-feed')).toBeLessThan(order.indexOf('s4-pad'));
     cleanup();
 
     pad(S4_SCENE_TIMEOUT_COLLAPSED);

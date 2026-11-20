@@ -293,6 +293,56 @@
 }
 .s4-cardpair { height: 56px; }
 .s4-pkpair { height: 104px; }
+/* 進球上方隊名標籤＋兩欄分隔線（站長：一眼看出按的是哪一隊）。多出的 32px 由 .s4-feed 吸收，進球、牌、底欄不變。
+   標籤字級 body＋粗體、列高 24px（顧問：裁判站著看，body-sm 太小；取代 20px／body-sm）。 */
+.s4-pad {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.s4-tags {
+  height: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+.s4-tag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  --s4-tag-fg: #0b6b4e;
+}
+.s4-tag--away { --s4-tag-fg: #1d4ed8; }
+[data-theme="dark"] .s4-tag { --s4-tag-fg: #34d399; }
+[data-theme="dark"] .s4-tag--away { --s4-tag-fg: #93c5fd; }
+.s4-tag .s4-side { flex-direction: row; }
+.s4-tag .s4-col__name {
+  color: var(--s4-tag-fg);
+  font-size: var(--font-size-body);
+  font-weight: 700;
+  line-height: 24px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.s4-pad__rule {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--color-text-muted);
+  opacity: 0.45;
+  pointer-events: none;
+}
 .s4-feed {
   flex: 1 1 auto;
   min-height: 0;

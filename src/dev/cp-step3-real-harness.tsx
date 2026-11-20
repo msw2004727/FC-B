@@ -38,9 +38,11 @@ const PAGES: Record<string, ComponentType> = {
   'real-postponed': CompetitionDetailPage,
   'real-cancelled-comp': CompetitionDetailPage,
   'real-notices': CompetitionDetailPage,
+  'real-notices-host': CompetitionDetailPage,
   'real-contact-club': CompetitionDetailPage,
   'real-contact-personal-empty': CompetitionDetailPage,
   'real-host-matches': HostMatchesPage,
+  'real-host-matches-many': HostMatchesPage,
   'real-host-schedule': HostSchedulePage,
   'real-score-sheet': HostMatchesPage,
   'real-reschedule-clash': HostMatchesPage,
@@ -178,6 +180,11 @@ const OPEN: Record<string, () => Promise<void>> = {
     await new Promise((resolve) => setTimeout(resolve, 50));
     clickButton('確認改期');
     await until('仍要改期', () => hasText('仍要改期') && !!document.querySelector('.cpm-warn')?.textContent?.includes('藍鯨隊'));
+  },
+  'real-shift-day': async () => {
+    // 順延表單預設收合，截圖要先點開。
+    clickButton('整天順延');
+    await until('整天順延表單', () => buttonsNamed('確認順延').length > 0);
   },
   'real-tie-panel': async () => {
     clickButton('同分');

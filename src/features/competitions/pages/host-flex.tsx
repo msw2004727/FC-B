@@ -1,7 +1,7 @@
 // 賽程管理上的整天順延與兩場對調。改期仍留在場次列的底頁。
 
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { Button } from '@/ui/Button';
 import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
@@ -46,6 +46,12 @@ export type FlexWriteResult =
   | { ok: true }
   | { ok: false; clash: ScheduleClash | null };
 
+type FlexPanel = 'shift' | 'swap';
+const FLEX_IDS: Record<FlexPanel, { toggle: string; card: string }> = {
+  shift: { toggle: 'cp-flex-shift-toggle', card: 'cp-flex-shift' },
+  swap: { toggle: 'cp-flex-swap-toggle', card: 'cp-flex-swap' },
+};
+
 function reject(ct: CompetitionsT, reason: string, params?: Record<string, number>): void {
   toast.show({ message: reasonText(ct, reason, params), tone: 'error' });
 }
@@ -65,7 +71,7 @@ export function HostFlexCards({
   busy: boolean;
   onShift: (input: ShiftRequest) => Promise<FlexWriteResult>;
   onSwap: (input: SwapRequest) => Promise<FlexWriteResult>;
-  /** 點進順延或對調卡片。這兩張卡一直開著，父層用來清掉上一則成功公告。 */
+  /** 展開或點進順延、對調卡片時呼叫，父層用來清掉上一則成功公告。 */
   onOpen?: () => void;
 }): JSX.Element {
   const choices = shiftDayChoices(matches);
@@ -78,6 +84,44 @@ export function HostFlexCards({
   const [pickB, setPickB] = useState('');
   const [swapReason, setSwapReason] = useState('');
   const [swapClash, setSwapClash] = useState<ScheduleClash | null>(null);
+  // 站長「畫面要簡潔」：兩張表單預設收合成按鈕，一次只開一張；送出成功或取消後收回。
+  const [open, setOpen] = useState<FlexPanel | null>(null);
+  const focusAfter = useRef<string | null>(null);
+
+  useEffect(() => {
+    const target = focusAfter.current;
+    focusAfter.current = null;
+    if (target) document.querySelector<HTMLElement>(target)?.focus();
+  }, [open]);
+
+  function openPanel(next: FlexPanel): void {
+    if (open === next) {
+      closePanel(next);
+      return;
+    }
+    focusAfter.current = `#${FLEX_IDS[next].card} select`;
+    setOpen(next);
+    onOpen?.();
+  }
+
+  function closePanel(from: FlexPanel): void {
+    focusAfter.current = `#${FLEX_IDS[from].toggle}`;
+    setOpen(null);
+  }
+
+  function resetShift(): void {
+    setFromPick('');
+    setToDate('');
+    setShiftReason('');
+    setShiftClash(null);
+  }
+
+  function resetSwap(): void {
+    setPickA('');
+    setPickB('');
+    setSwapReason('');
+    setSwapClash(null);
+  }
 
   const fromDate = choices.some((choice) => choice.date === fromPick) ? fromPick : (choices[0]?.date ?? '');
   const idA = rows.some((match) => match.id === pickA) ? pickA : (rows[0]?.id ?? '');
@@ -118,10 +162,8 @@ export function HostFlexCards({
     });
     // 成功後清掉來源、目標日與理由。否則再按一次會把下一天搬到同一個目標日，並再發一則公告。
     if (result.ok) {
-      setFromPick('');
-      setToDate('');
-      setShiftReason('');
-      setShiftClash(null);
+      resetShift();
+      closePanel('shift');
       return;
     }
     setShiftClash(result.clash);
@@ -148,19 +190,48 @@ export function HostFlexCards({
     });
     // 對調成功後清掉理由與選取，避免同一對再送一次。
     if (result.ok) {
-      setPickA('');
-      setPickB('');
-      setSwapReason('');
-      setSwapClash(null);
+      resetSwap();
+      closePanel('swap');
       return;
     }
     setSwapClash(result.clash);
   }
 
+  const showShift = choices.length > 0;
+  const showSwap = rows.length >= 2;
+
   return (
     <>
-      {choices.length > 0 ? (
-        <div onClick={opened} onFocusCapture={opened}>
+      {showShift || showSwap ? (
+        <div class="cps-actions" style="margin-top:0">
+          {showShift ? (
+            <Button
+              id={FLEX_IDS.shift.toggle}
+              variant="secondary"
+              disabled={busy}
+              aria-expanded={open === 'shift'}
+              aria-controls={FLEX_IDS.shift.card}
+              onClick={() => openPanel('shift')}
+            >
+              {ct('shiftDay')}
+            </Button>
+          ) : null}
+          {showSwap ? (
+            <Button
+              id={FLEX_IDS.swap.toggle}
+              variant="secondary"
+              disabled={busy}
+              aria-expanded={open === 'swap'}
+              aria-controls={FLEX_IDS.swap.card}
+              onClick={() => openPanel('swap')}
+            >
+              {ct('swapTwo')}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {showShift && open === 'shift' ? (
+        <div id={FLEX_IDS.shift.card} onClick={opened} onFocusCapture={opened}>
         <CpCard>
           <h3 class="cpm-h">{ct('shiftDay')}</h3>
           <div class="cps-fields">
@@ -209,6 +280,7 @@ export function HostFlexCards({
               </p>
             ) : null}
             <div class="cps-actions">
+              <Button variant="secondary" disabled={busy} onClick={() => { resetShift(); closePanel('shift'); }}>{ct('cancel')}</Button>
               <Button variant="primary" disabled={busy} onClick={() => { void sendShift(false); }}>{ct('shiftOk')}</Button>
               {shiftClash ? (
                 <Button variant="secondary" disabled={busy} onClick={() => { void sendShift(true); }}>{ct('forceShift')}</Button>
@@ -218,8 +290,8 @@ export function HostFlexCards({
         </CpCard>
         </div>
       ) : null}
-      {rows.length >= 2 ? (
-        <div onClick={opened} onFocusCapture={opened}>
+      {showSwap && open === 'swap' ? (
+        <div id={FLEX_IDS.swap.card} onClick={opened} onFocusCapture={opened}>
         <CpCard>
           <h3 class="cpm-h">{ct('swapTwo')}</h3>
           <div class="cps-fields">
@@ -268,6 +340,7 @@ export function HostFlexCards({
               </p>
             ) : null}
             <div class="cps-actions">
+              <Button variant="secondary" disabled={busy} onClick={() => { resetSwap(); closePanel('swap'); }}>{ct('cancel')}</Button>
               <Button variant="primary" disabled={busy} onClick={() => { void sendSwap(false); }}>{ct('swapOk')}</Button>
               {swapClash ? (
                 <Button variant="secondary" disabled={busy} onClick={() => { void sendSwap(true); }}>{ct('forceSwap')}</Button>
