@@ -70,6 +70,10 @@
   --d2-ctrl-off-bg: var(--d2-off-bg);
   --d2-ctrl-off-fg: #5e687c;
   --d2-sb-alarm: #ff6b6b;
+  --d2-band: rgba(15, 23, 42, .04); /* 3-4 合併時刪 */
+  --d2-card-y: #ffe14a; /* 3-4 合併時刪 */
+  --d2-card-y-edge: rgba(0, 0, 0, .4); /* 3-4 合併時刪 */
+  --d2-card-r: #ff2d2d; /* 3-4 合併時刪 */
   --d2-ico-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v6M12 7.4v.2'/%3E%3C/svg%3E");
   --d2-ico-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4 2.8 20h18.4z'/%3E%3Cpath d='M12 10v4.6M12 17.3v.2'/%3E%3C/svg%3E");
   --d2-ico-lock: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='2'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E");
@@ -134,6 +138,7 @@
   --d2-miss-w: 3px;
   --d2-ctrl-off-bg: transparent;
   --d2-ctrl-off-fg: #8892a4;
+  --d2-band: rgba(255, 255, 255, .045); /* 3-4 合併時刪 */
 }
 
 
