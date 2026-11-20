@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // 第 4 步 A（顧問 11-20 第 2 點）真瀏覽器實測：正式站同款持久化快取＋IndexedDB 日誌，對 Firestore 模擬器（預設 8402，FCB_EMU_PORT 可換；demo-cp-u1）。
-// 離線記一球 → 重新整理（仍離線）→ 另一台接手 → 恢復連線，確認原頁面出現被拒（takenOver）、伺服器 0:0、不會默默當成已送出。
+// 離線記一球 → 重新整理（仍離線）→ 主辦改延期（預設 rejected）或另一台接手（takeover）→ 恢復連線，確認原頁面出現被拒、伺服器 0:0、不會默默當成已送出。
+// 情境用第 2 個參數切換：省略＝rejected、takeover、ok。
 // 「離線」用 Playwright 擋掉往 127.0.0.1:8402 的請求（頁面資源仍可從 vite 載入，才能重新整理）。
 // 必須在 firebase emulators:exec 底下跑（見 C:/t/fc-cp4/bin 的腳本）：
 //   ... emulators:exec ... "node dev-harness/cp-step4-a1-persist.mjs <輸出資料夾>"
@@ -12,9 +13,14 @@ import { chromium } from '@playwright/test';
 import { createServer } from 'vite';
 
 const OUT = resolve(process.argv[2] || 'cp-step4-a1-persist');
-// takeover（預設）：離線記一球 → 重整 → 另一台接手 → 恢復連線，要出現被拒。
+// rejected（預設）：離線記一球 → 重整 → 主辦把賽事改成延期（status=postponed）→ 恢復連線，Rules 拒絕（rejectReason=rules）
+//   → 紅色列出現 → 從紅色列打開「未套用的動作」面板 → p4 截圖。每輪都要開到面板。
+//   （取代原本預設的 takeover：被拒與被接手誰先到有競態，10 輪只有 1 輪走到紅色列；接手時記分區停用、開不了面板。）
+//   為什麼固定：control.sid 不動，classifyReject 不會判 takenOver、記分區不會停用；場次沒鎖、rev 不變（0 == seq−1），
+//   不會判 locked／limit／conflict，只剩 rules 一條路。延期的賽事 isPubLike 仍可讀，match／control／timeline 監聽都不會因權限出錯。
+// takeover：離線記一球 → 重整 → 另一台接手 → 恢復連線，要出現被拒（原情境保留；被拒原因可能是 takenOver 或 rules）。
 // ok：離線連記兩球 → 重整 → 恢復連線、沒有人接手，兩球都要送到（顧問 11-20 門檻 6）。
-const SCENARIO = process.argv[3] === 'ok' ? 'ok' : 'takeover';
+const SCENARIO = ['ok', 'takeover'].includes(process.argv[3]) ? process.argv[3] : 'rejected';
 const HOST = '127.0.0.1';
 // 預設 8402；與其他工作階段並行時用 FCB_EMU_PORT 換埠（顧問 11-20）。頁面用 ?port= 帶過去。
 const PORT = Number(process.env.FCB_EMU_PORT ?? 8402);
@@ -197,6 +203,66 @@ try {
       && match?.score?.home === 2 && match?.score?.away === 0 && timeline.length === 2
       && ui.score === '2:0' && ui.pendingTags === 0 && !ui.unappliedButton
       && !ui.banners.some((text) => text.includes('沒送出'));
+  } else if (SCENARIO === 'rejected') {
+    await page.reload();
+    await page.waitForFunction(() => window.__A1_READY === true || window.__A1_ERROR, null, { timeout: 30000 });
+    await pause(20000);
+    const afterReload = await goalRow();
+    step('重新整理後（仍離線）', { row: afterReload });
+    await page.screenshot({ path: join(OUT, 'p2-reloaded-offline.png') });
+    if (afterReload?.state === 'applied') throw new Error('重新整理後被誤標 applied');
+
+    // 產品真的會遇到的情況：記分員離線時，主辦把賽事改成延期。Rules 的 compScorableData 只收 published，這一筆送出會被拒。
+    await patch(`competitions/${CID}`, { status: 'postponed' });
+    step('主辦把賽事改成延期（status=postponed，control 不動）');
+
+    firestoreDown = false;
+    step('恢復連線');
+    const took = await until('原頁面出現被拒或被標已送出', async () => ['rejected', 'applied'].includes((await goalRow())?.state ?? ''), 90000);
+    const finalRow = await goalRow();
+    step('結果', { row: finalRow, tookMs: took });
+    if (finalRow?.state !== 'rejected') throw new Error(`預期被拒，實際 ${finalRow?.state}`);
+    const uiScores = [];
+    const rollStart = Date.now();
+    for (let i = 0; i < 120; i += 1) {
+      const shown = await page.evaluate(() => document.querySelector('.s4-score')?.textContent ?? null);
+      uiScores.push(shown);
+      if (shown === '0:0') break;
+      await pause(1000);
+    }
+    step('被拒後畫面比分（每秒）', { uiScores: uiScores.join(' '), rollbackMs: Date.now() - rollStart });
+    // 被拒確定之後才找紅色列：等它出現且可按（最多 30 秒），不再「看一眼沒有就改走別的入口」。
+    const heldTap = page.locator('.s4-banner--held .s4-banner__tap').first();
+    const heldMs = await until('紅色列出現且可按', async () => (await heldTap.isVisible().catch(() => false))
+      && (await heldTap.isEnabled().catch(() => false)), 30000);
+    const heldText = (await heldTap.textContent())?.trim() ?? null;
+    step('紅色列', { text: heldText, waitedMs: heldMs });
+    await page.screenshot({ path: join(OUT, 'p3-rejected.png') });
+    const match = await read(`competitions/${CID}/matches/${MT}`);
+    const timeline = await list(`competitions/${CID}/matches/${MT}/timeline`);
+    const ui = await page.evaluate(() => ({
+      banners: [...document.querySelectorAll('.s4-banner')].map((el) => el.textContent.trim()),
+      heldRows: document.querySelectorAll('.s4-banner--held').length,
+      score: document.querySelector('.s4-score')?.textContent ?? null,
+      takeoverEntry: [...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('其他裝置記分中')),
+    }));
+    step('伺服器與畫面', { score: match?.score, rev: match?.rev, timeline: timeline.length, ui });
+    report.sheetOpenedVia = 'held-row';
+    await heldTap.click();
+    const sheetRow = page.locator('.s4-sheet .s4-log--rejected').first();
+    await sheetRow.waitFor({ state: 'visible', timeout: 10000 });
+    await pause(600);
+    const sheet = await page.evaluate(() => ({
+      rejectedRows: document.querySelectorAll('.s4-sheet .s4-log--rejected').length,
+      status: [...document.querySelectorAll('.s4-sheet .s4-log__st')].map((el) => el.textContent.trim()),
+    }));
+    step('從紅色列開「未套用的動作」面板', sheet);
+    await page.screenshot({ path: join(OUT, 'p4-rejected-sheet.png') });
+    report.sheetShot = 'p4-rejected-sheet.png';
+    report.rejectReason = finalRow?.rejectReason ?? null;
+    report.ok = finalRow?.state === 'rejected' && finalRow?.rejectReason === 'rules' && uiScores.at(-1) === '0:0'
+      && match?.score?.home === 0 && match?.score?.away === 0 && timeline.length === 0
+      && ui.heldRows > 0 && !ui.takeoverEntry && sheet.rejectedRows === 1;
   } else {
     await page.reload();
     await page.waitForFunction(() => window.__A1_READY === true || window.__A1_ERROR, null, { timeout: 30000 });
