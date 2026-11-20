@@ -1890,3 +1890,80 @@ describe('半場鈕看疊加後的節次', () => {
     expect(screen.queryByRole('button', { name: LIVE_COPY.halftime })).toBeNull();
   });
 });
+
+describe('預演：離線記一球比分多加（延遲補償的本機快照已含這一筆）', () => {
+  const goal = (patch: Partial<LogEntry>) => entry({
+    op: 'g1',
+    intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 30 },
+    ...patch,
+  });
+
+  it('送出中且 seq 已被快照涵蓋：比分不重複加，但仍算待送筆數', () => {
+    const match = baseMatch({ rev: 5, score: { home: 1, away: 2 } });
+    const over = overlayScore(match, [], [goal({ state: 'sending', seq: 5 })]);
+    expect(over.score).toEqual({ home: 1, away: 2 });
+    expect(over.pendingCount).toBe(1);
+  });
+
+  it('送出中但快照還沒涵蓋（seq > rev）：照常疊加', () => {
+    const match = baseMatch({ rev: 4, score: { home: 1, away: 1 } });
+    expect(overlayScore(match, [], [goal({ state: 'sending', seq: 5 })]).score).toEqual({ home: 1, away: 2 });
+  });
+
+  it('還沒排定序號的待送：照常疊加', () => {
+    const match = baseMatch({ rev: 4, score: { home: 1, away: 1 } });
+    expect(overlayScore(match, [], [goal({ state: 'pending' })]).score).toEqual({ home: 1, away: 2 });
+  });
+
+  it('被涵蓋的待送半場也不重複算進狀態', () => {
+    const match = baseMatch({ rev: 6, status: 'halftime' });
+    const ht = entry({
+      op: 'h1',
+      intent: { kind: 'halftime', matchSecond: 1, clock: { running: false, period: 'ht', pausedSec: 1, startedAt: 1 } },
+      state: 'sending',
+      seq: 6,
+    });
+    expect(overlayStatus(match, [ht])).toBe('halftime');
+  });
+});
+
+describe('預演離線疊加：額度與連記兩球（Opus 終審 c、e）', () => {
+  it('離線連記兩球：第一球已被快照涵蓋、第二球未排序號 → 只多一球，待送 2 筆', () => {
+    const match = baseMatch({ rev: 6, score: { home: 1, away: 2 } });
+    const covered = entry({ op: 'g1', intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 30 }, state: 'sending', seq: 6 });
+    const next = entry({ op: 'g2', intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 40 }, state: 'pending', createdAt: 2 });
+    const over = overlayScore(match, [], [covered, next]);
+    expect(over.score).toEqual({ home: 1, away: 3 });
+    expect(over.pendingCount).toBe(2);
+  });
+
+  it('事件額度：被快照 rev 涵蓋的送出中項目不重算', () => {
+    const covered = entry({ op: 'g1', intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 30 }, state: 'sending', seq: 6 });
+    expect(budgetView(6, 0, [covered], []).used).toBe(6);
+    const fresh = entry({ op: 'g2', intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 30 }, state: 'sending', seq: 7 });
+    expect(budgetView(6, 0, [fresh], []).used).toBe(7);
+  });
+
+  it('停錶次數：本機快照已讀進事件的待送停錶不重算（依 op 去重）', () => {
+    const pending = entry({
+      op: 'pause-op-0000000001',
+      intent: { kind: 'timeout', side: 'home', matchSecond: 1, stopClock: true, clock: { running: false, period: 'h1', pausedSec: 1, startedAt: 1 } },
+      state: 'sending',
+      seq: 3,
+    });
+    const echoed = { seq: 3, type: 'timeout', op: 'pause-op-0000000001', sid: SID, side: 'home' as const, matchSecond: 1, createdAt: 1 };
+    expect(pauseUseCount([echoed], [pending], 0, true)).toBe(1);
+    expect(pauseUseCount([], [pending], 0, true)).toBe(1);
+  });
+
+  it('停錶（時鐘 pause）：本機快照已讀進的單筆 pause 仍算 1 次（floor 吸收、待送補回）', () => {
+    const pending = entry({
+      op: 'clock-pause-000000001',
+      intent: { kind: 'clock', matchSecond: 1, clockAction: 'pause', clock: { running: false, period: 'h1', pausedSec: 1, startedAt: 1 } },
+      state: 'sending',
+      seq: 3,
+    });
+    const echoed = { seq: 3, type: 'clock', op: 'clock-pause-000000001', sid: SID, matchSecond: 1, createdAt: 1 };
+    expect(pauseUseCount([echoed], [pending], 0)).toBe(1);
+  });
+});
