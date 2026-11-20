@@ -703,19 +703,24 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       : teamTimeoutText(sideName(teamTimeout.side), timeoutClock(teamTimeout.leftSec)))
     : '';
 
+  // 提示區由上到下的固定順序（施工-第2批 3.9）：離線紀錄無法保存 → 沒送出／被擋 → 之後記的 N 筆 → 停錶已停用 → 接近上限
+  // → notice → 離線已存 N 筆 → 鎖定提醒。只搬順序，條件不變。
   const alerts: JSX.Element[] = [];
-  const hasQueuedLine = (props.heldLines ?? []).some((line) => line.key === 'queued');
+  const storageDanger = props.storageBanner === true || (!link.online && link.storageUnavailable);
+  if (storageDanger) {
+    alerts.push(<p key="off" class="s4-banner s4-banner--danger" role="alert">{LIVE_COPY.offlineUnstored}</p>);
+  }
   for (const line of props.heldLines ?? []) {
-    // 顧問 §3.459 (a)：紅色那行整行可點，點了開同一個「未套用的動作」面板（360×640 紀錄多時原本那顆鈕會被擠出畫面）。
-    // 外層 <p role> 保留讓讀屏照舊念；文字包進原生按鈕。不改行高與排版；可點範圍用 ::after 往上下延伸，
-    // 上方不超過與記分板之間的 8px 空隙；下方有黃色那行時可蓋到它（s4-banner--tapq），沒有時也只到 8px 空隙。
+    // 顧問 §3.459 (a)＋方案 B（3.11）：紅色那一行是 44px 的可點列，點了開同一個「未套用的動作」面板。
+    // 外層 <p role> 保留讓讀屏照舊念；文字包在撐滿整列的原生按鈕裡，可點範圍就是那一列，不再往外延伸。
+    // 第二行「之後記的 N 筆」帶 s4-banner--queued（s4-banner--saved 留著），高度 700 以下用樣式藏。
     const tap = line.key === 'held';
     alerts.push(
       <p
         key={`held-${line.key}`}
         class={line.key === 'queued'
-          ? 's4-banner s4-banner--saved'
-          : `s4-banner s4-banner--held${tap ? ` s4-banner--tap${hasQueuedLine ? ' s4-banner--tapq' : ''}` : ''}`}
+          ? 's4-banner s4-banner--saved s4-banner--queued'
+          : `s4-banner s4-banner--held${tap ? ' s4-banner--tap' : ''}`}
         role={line.alert ? 'alert' : 'status'}
       >
         {tap ? (
@@ -739,13 +744,12 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   }
   if (nearCap) alerts.push(<p key="near" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.nearCap}</p>);
   if (notice) alerts.push(<p key="notice" class="s4-banner s4-banner--saved" role="alert">{notice}</p>);
-  const storageDanger = props.storageBanner === true || (!link.online && link.storageUnavailable);
-  if (storageDanger) {
-    alerts.push(<p key="off" class="s4-banner s4-banner--danger" role="alert">{LIVE_COPY.offlineUnstored}</p>);
-  } else if (!link.online) {
+  // 3.12：沒有待送紀錄時不顯示「離線中，已存 N 筆」（離線本身仍看得到：板上的連線指示）；無法保存那一句不受影響。
+  if (!storageDanger && !link.online && link.pendingCount > 0) {
     alerts.push(<p key="saved" class="s4-banner s4-banner--saved" role="status">{offlineSaved(link.pendingCount)}</p>);
   }
-  if (!link.wakeLock) alerts.push(<p key="wake" class="s4-wake">{LIVE_COPY.wakeLock}</p>);
+  // 3.13（記分線問答第 3 點）：鎖定提醒不常駐——畫面上還沒有任何一列紀錄時才顯示（正式頁看含待送的 feed，預覽看 lines）。
+  if (!link.wakeLock && (props.feed ?? lines).length === 0) alerts.push(<p key="wake" class="s4-wake">{LIVE_COPY.wakeLock}</p>);
 
   // PK 期間板上不放時鐘，右邊是「第 N 輪」：N＝兩隊都踢完的輪數＋1，用畫面上那一份事件列算（正式頁含待送），與 PK 比分同步。
   const pkRound = !pk
@@ -903,7 +907,8 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           ))}
         </ul>
       ) : null}
-      {pending.length > 0 ? (
+      {/* 紅色可點列畫出來的時候，紀錄區最後那顆「未套用的動作」不重複顯示（3.11） */}
+      {pending.length > 0 && !(props.heldLines ?? []).some((line) => line.key === 'held') ? (
         <div class="s4-extra">
           <Button variant="secondary" disabled={padOff} onClick={() => setUnappliedOpen(true)}>{LIVE_COPY.unappliedTitle}</Button>
         </div>

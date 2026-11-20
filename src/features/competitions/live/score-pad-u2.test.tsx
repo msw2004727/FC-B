@@ -41,6 +41,33 @@ describe('記分板新狀態', () => {
     expect(screen.getByText('離線・2 筆待送')).toBeTruthy();
   });
 
+  it('施工-第2批 3.13：鎖定提醒只在不支援常亮、而且畫面上還沒有任何一列紀錄時顯示（第一筆是待送也算）', () => {
+    const off = { online: true, pendingCount: 0, storageUnavailable: false, wakeLock: false };
+    // 支援的手機不顯示。
+    const { rerender } = render(<ScorePad {...S4_SCENE_LIVE} events={[]} />);
+    expect(screen.queryByText(LIVE_COPY.wakeLock)).toBeNull();
+    // 不支援而且紀錄 0 列：顯示（預覽元件看 lines、正式頁看 feed）。
+    rerender(<ScorePad {...S4_SCENE_LIVE} events={[]} link={off} />);
+    expect(screen.getByText(LIVE_COPY.wakeLock)).toBeTruthy();
+    rerender(<ScorePad {...S4_SCENE_LIVE} feed={[]} link={off} />);
+    expect(screen.getByText(LIVE_COPY.wakeLock)).toBeTruthy();
+    // 有一列之後不顯示；第一筆還在待送也一樣。
+    rerender(<ScorePad {...S4_SCENE_LIVE} link={off} />);
+    expect(screen.queryByText(LIVE_COPY.wakeLock)).toBeNull();
+    rerender(<ScorePad {...S4_SCENE_LIVE} events={[]} feed={[row]} link={off} />);
+    expect(screen.queryByText(LIVE_COPY.wakeLock)).toBeNull();
+  });
+
+  it('施工-第2批 3.12：離線但沒有待送時不顯示「已存 N 筆」提示，連線指示照樣是離線；無法保存照樣顯示', () => {
+    const { rerender } = render(<ScorePad {...S4_SCENE_LIVE} link={{ online: false, pendingCount: 0, storageUnavailable: false, wakeLock: true }} />);
+    expect(screen.queryByText(/離線中，已存/)).toBeNull();
+    expect(screen.getByText('離線・0 筆待送')).toBeTruthy();
+    rerender(<ScorePad {...S4_SCENE_LIVE} link={{ online: false, pendingCount: 1, storageUnavailable: false, wakeLock: true }} />);
+    expect(screen.getByText(/離線中，已存 1 筆/)).toBeTruthy();
+    rerender(<ScorePad {...S4_SCENE_LIVE} link={{ online: false, pendingCount: 0, storageUnavailable: true, wakeLock: true }} />);
+    expect(screen.getByText(LIVE_COPY.offlineUnstored)).toBeTruthy();
+  });
+
   it('儲存不可用時，有網路也顯示既有警告', () => {
     render(<ScorePad
       {...S4_SCENE_LIVE}

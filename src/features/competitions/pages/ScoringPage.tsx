@@ -15,7 +15,7 @@ import { useScoring, type ScoringDeps } from '../live/useScoring';
 import { LiveBoundary } from '../live';
 import { loadRepClubs } from '../rep-clubs';
 import { useCompetitionsT } from '../i18n';
-import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
+import { CpCard, CpFrame, CpI18nPending, InfoIcon, LockIcon } from '../ui/shell';
 import '../live/score-fullscreen.css';
 
 /** 記分頁全幅：掛載時 <html> 加 cp-score-full 隱藏 App 頂欄、底部導覽、角標（見 score-fullscreen.css），卸載時恢復。 */
@@ -112,11 +112,13 @@ export function ScoringScreen({
   if (view.loadError) {
     return (
       <CpFrame title={ct('scoreTitle')} onBack={back}>
-        <CpCard>
-          <p class="cps-note" data-score-load-error={view.loadError}>
+        {/* 卡 2-6（施工-第2批 3.26）：第 1b 批「一句話＋回去的鈕」版面（.cps-gate）；兩顆等寬，回賽程在左、重試在右（順序記分小批已定）。 */}
+        <CpCard class="cps-gate">
+          <InfoIcon />
+          <p class="cps-gate__text" data-score-load-error={view.loadError}>
             {view.loadError === 'network' ? LIVE_COPY.loadFailedAuto : LIVE_COPY.loadFailed}
           </p>
-          <div class="cps-actions">
+          <div class="cps-gate__btns">
             <Button variant="secondary" onClick={back}>{LIVE_COPY.backToSchedule}</Button>
             <Button onClick={() => view.retry?.()}>{LIVE_COPY.retry}</Button>
           </div>
@@ -135,11 +137,13 @@ export function ScoringScreen({
   if (!access.pad) {
     return (
       <CpFrame title={ct('scoreTitle')} onBack={back}>
-        <CpCard>
-          <p class="cps-note">{LIVE_COPY.noScorePermission}</p>
+        {/* 卡 2-6：鎖頭＋一句話；主辦等多第二句（13px 次要色）；「回賽程」一顆實心青綠、不佔整列。 */}
+        <CpCard class="cps-gate">
+          <LockIcon />
+          <p class="cps-gate__text">{LIVE_COPY.noScorePermission}</p>
           {access.hint ? <p class="cps-note">{LIVE_COPY.assignScorerHint}</p> : null}
-          <div class="cps-actions">
-            <Button variant="secondary" onClick={back}>{LIVE_COPY.backToSchedule}</Button>
+          <div class="cps-gate__btns">
+            <Button onClick={back}>{LIVE_COPY.backToSchedule}</Button>
           </div>
         </CpCard>
       </CpFrame>
@@ -173,10 +177,11 @@ function SignedOut({ cid }: { cid: string }): JSX.Element {
   const back = () => route(`/competitions/${cid}/schedule`);
   return (
     <CpFrame title={ct('scoreTitle')} onBack={back}>
-      <CpCard>
-        <p class="cps-note">{LIVE_COPY.noScorePermission}</p>
-        <div class="cps-actions">
-          <Button variant="secondary" onClick={back}>{LIVE_COPY.backToSchedule}</Button>
+      <CpCard class="cps-gate">
+        <LockIcon />
+        <p class="cps-gate__text">{LIVE_COPY.noScorePermission}</p>
+        <div class="cps-gate__btns">
+          <Button onClick={back}>{LIVE_COPY.backToSchedule}</Button>
         </div>
       </CpCard>
     </CpFrame>
