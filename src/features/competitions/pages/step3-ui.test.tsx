@@ -319,6 +319,7 @@ describe('建賽分類', () => {
     const actions = idleActions();
     const update = vi.fn(actions.update);
     const view = draw({ ...screenEnv('host-pending'), actions: { ...actions, update } }, CompetitionManagePage);
+    fireEvent.click(screen.getByRole('button', { name: '編輯賽事資訊' }));
     fireEvent.click(screen.getByRole('radio', { name: '友誼賽' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith({ cid: 'cup', category: 'friendly' }));
     expect((screen.getByRole('radio', { name: '友誼賽' }) as HTMLInputElement).checked).toBe(true);
@@ -328,6 +329,7 @@ describe('建賽分類', () => {
       throw new CpCallError('UNKNOWN', {});
     });
     draw({ ...screenEnv('host-pending'), actions: { ...actions, update: failing } }, CompetitionManagePage);
+    fireEvent.click(screen.getByRole('button', { name: '編輯賽事資訊' }));
     fireEvent.click(screen.getByRole('radio', { name: '盃賽' }));
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect((screen.getByRole('radio', { name: '聯賽' }) as HTMLInputElement).checked).toBe(true);

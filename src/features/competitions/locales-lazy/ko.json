@@ -323,6 +323,8 @@
   "publicHint": "會公開顯示",
   "contactEmptyHint": "沒填的話觀眾無法聯絡你",
   "contactSave": "儲存",
+  "editCompInfo": "編輯賽事資訊",
+  "editCompDone": "完成",
   "hostMissing": "暫時找不到主辦",
   "divisionPick": "組別",
   "cancelMatch": "取消這場",
