@@ -196,7 +196,7 @@ describe('賽事第 2 步畫面', () => {
   it('每個預覽畫面都畫得出標題，而且不出現英文 reason 代碼', () => {
     for (const name of HARNESS_SCREENS) {
       const view = mount(PAGES[name] ?? NewCompetitionPage, screenEnv(name));
-      expect(view.container.querySelector('.cps-root, .cps-inapp'), name).toBeTruthy();
+      expect(view.container.querySelector('.cps-root'), name).toBeTruthy();
       expect(view.container.textContent ?? '', name).not.toMatch(/BANNED_WORD|UNKNOWN_FIELD|NOT_HOST/);
       view.unmount();
     }
