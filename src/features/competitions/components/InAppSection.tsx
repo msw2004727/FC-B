@@ -79,6 +79,8 @@ export interface InAppSectionProps {
    * reason='denied'：伺服器明確判定看不到（不含讀取失敗）。賽事頁只在這時清「上次有過」的本機線索。
    */
   onGate?: (open: boolean, reason?: CpGateReason) => void;
+  /** 閘門通過後清單也讀好、即將畫卡時通知一次。賽事頁用來把站內骨架留到卡片出現，中間不空白。 */
+  onReady?: () => void;
 }
 
 export type CpGateReason = 'denied';
@@ -90,6 +92,7 @@ function SectionBody({
   tab,
   active,
   onGate,
+  onReady,
 }: {
   actor: CpActor;
   repo: CompetitionsRepo;
@@ -97,6 +100,7 @@ function SectionBody({
   tab: InAppTab;
   active: boolean;
   onGate?: (open: boolean, reason?: CpGateReason) => void;
+  onReady?: () => void;
 }): JSX.Element | null {
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
@@ -117,6 +121,8 @@ function SectionBody({
   const uidStale = appliedUid.current !== actor.uid;
   const onGateRef = useRef(onGate);
   onGateRef.current = onGate;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
   const repKey = representativeClubs(actor).map((club) => club.id).join('\n');
 
   useEffect(() => {
@@ -164,6 +170,7 @@ function SectionBody({
       setPublicDocs(listed.filter((doc) => doc.name));
       setHostQuery({ publicOnly: !isTester && !isAdmin });
       setPhase('ready');
+      onReadyRef.current?.();
     })().catch(() => {
       if (!alive) return;
       onGateRef.current?.(false);
@@ -306,6 +313,7 @@ function LiveInApp(props: InAppSectionProps): JSX.Element {
           tab={props.tab ?? 'all'}
           active={props.active !== false}
           onGate={report}
+          onReady={props.onReady}
         />
       )}
     </LiveBoundary>
@@ -324,6 +332,7 @@ export function InAppSection(props: InAppSectionProps): JSX.Element | null {
         tab={props.tab ?? 'all'}
         active={props.active !== false}
         onGate={props.onGate}
+        onReady={props.onReady}
       />
     );
   }

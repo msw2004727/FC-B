@@ -31,18 +31,22 @@ type Report = (open: boolean, reason?: 'denied') => void;
 const gateCtl = vi.hoisted(() => ({
   mounts: 0,
   report: null as null | ((open: boolean, reason?: 'denied') => void),
+  ready: null as null | (() => void),
 }));
 
 vi.mock('@/features/competitions/components/InAppSection', async () => {
   const { useEffect, useRef } = await import('preact/hooks');
   const { h } = await import('preact');
   return {
-    InAppSection: (props: { active: boolean; onGate?: Report }) => {
+    InAppSection: (props: { active: boolean; onGate?: Report; onReady?: () => void }) => {
       const onGate = useRef(props.onGate);
       onGate.current = props.onGate;
+      const onReady = useRef(props.onReady);
+      onReady.current = props.onReady;
       useEffect(() => {
         gateCtl.mounts += 1;
         gateCtl.report = (open, reason) => onGate.current?.(open, reason);
+        gateCtl.ready = () => onReady.current?.();
       }, []);
       return props.active ? h('div', { 'data-inapp': 'mock' }) : null;
     },
@@ -127,6 +131,15 @@ async function tick(ms = 0): Promise<void> {
 async function report(open: boolean, reason?: 'denied'): Promise<void> {
   await act(async () => {
     gateCtl.report?.(open, reason);
+    // 正式元件通過後還要讀清單才 onReady；這裡預設一起送，需要分開的案例用 reportOpenOnly。
+    if (open) gateCtl.ready?.();
+  });
+  await tick();
+}
+
+async function reportOpenOnly(): Promise<void> {
+  await act(async () => {
+    gateCtl.report?.(true);
   });
   await tick();
 }
@@ -152,6 +165,7 @@ beforeEach(async () => {
   localStorage.clear();
   gateCtl.mounts = 0;
   gateCtl.report = null;
+  gateCtl.ready = null;
   history.replaceState(null, '', '/tournaments');
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
   vi.setSystemTime(new Date('2026-11-02T04:00:00Z'));
@@ -251,7 +265,14 @@ describe('有線索：先畫站內', () => {
     await tick();
     expect(gateCtl.mounts).toBe(1);
     expect(extCard()).toBeNull();
-    await report(true);
+    // 閘門通過、站內清單還沒讀好：骨架留著，不空白、也不畫外部。
+    await reportOpenOnly();
+    expect(pendingSkeleton()).toBeTruthy();
+    expect(extCard()).toBeNull();
+    await act(async () => {
+      gateCtl.ready?.();
+    });
+    await tick();
     expect(pendingSkeleton()).toBeNull();
     expect(inApp()).toBeTruthy();
     expect(extCard()).toBeNull();

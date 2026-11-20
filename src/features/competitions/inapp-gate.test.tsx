@@ -117,3 +117,49 @@ describe('站內賽事閘門才查代表俱樂部', () => {
     repoBox.listMine.mockImplementation(async () => []);
   });
 });
+
+// 顧問 11-20 方案 2：賽事頁只在伺服器明確判定看不到時清「上次有過」線索（reason='denied'），
+// 讀取失敗不帶 reason；清單讀好才 onReady，賽事頁把站內骨架留到這時。
+describe('閘門結果帶原因、清單讀好才 onReady', () => {
+  function drawWith(onGate: (open: boolean, reason?: string) => void, onReady: () => void) {
+    return render(
+      <LocationProvider>
+        <InAppSection onGate={onGate} onReady={onReady} />
+      </LocationProvider>,
+    );
+  }
+
+  it('未公開又不是測試員：onGate(false, denied)，不 onReady', async () => {
+    const onGate = vi.fn();
+    const onReady = vi.fn();
+    drawWith(onGate, onReady);
+    await waitFor(() => expect(onGate).toHaveBeenCalledWith(false, 'denied'));
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
+  it('已公開：先 onGate(true)，清單讀好才 onReady 一次', async () => {
+    gateBox.isPublic = true;
+    let release!: () => void;
+    repoBox.listPublic.mockImplementationOnce(() => new Promise((resolve) => {
+      release = () => resolve([]);
+    }));
+    const onGate = vi.fn();
+    const onReady = vi.fn();
+    drawWith(onGate, onReady);
+    await waitFor(() => expect(onGate).toHaveBeenCalledWith(true, undefined));
+    expect(onReady).not.toHaveBeenCalled();
+    release();
+    await waitFor(() => expect(onReady).toHaveBeenCalledTimes(1));
+  });
+
+  it('讀 launch 失敗：onGate(false) 不帶 denied', async () => {
+    repoBox.getLaunch.mockImplementationOnce(async () => {
+      throw new Error('offline');
+    });
+    const onGate = vi.fn();
+    drawWith(onGate, vi.fn());
+    await waitFor(() => expect(onGate).toHaveBeenCalled());
+    expect(onGate).toHaveBeenCalledWith(false, undefined);
+    expect(onGate).not.toHaveBeenCalledWith(false, 'denied');
+  });
+});

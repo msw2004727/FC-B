@@ -79,6 +79,7 @@ interface InAppSlotProps {
   /** 閘門開著且目前選站內時才畫卡。外部來源時元件留著，避免重讀。 */
   active: boolean;
   onGate: (open: boolean, reason?: 'denied') => void;
+  onReady?: () => void;
 }
 
 /** 站內賽事整區。字面常數關閉時，打包器連 InAppSection 的 chunk 一起刪。 */
@@ -180,8 +181,11 @@ export default function TournamentsPage(): JSX.Element {
   }, [gateArmed]);
   const source: CompetitionSource = rawSrc === 'in' || rawSrc === 'ext' ? rawSrc : fallbackSource;
   const showInApp = inAppOpen && source === 'in';
-  // 有線索、閘門判定中、停在站內：先畫切換列與站內的載入骨架，不畫外部清單，避免先閃外部再切站內。
-  const pendingIn = preferIn && gate === 'pending' && source === 'in';
+  // 有線索、停在站內、閘門判定中或已通過但站內清單還沒讀好：先畫切換列與站內的載入骨架，不畫外部清單，
+  // 避免先閃外部再切站內；骨架留到站內卡出現，中間不空白（11-20 實測骨架消失到卡片出現之間有一段空白）。
+  const [inAppReady, setInAppReady] = useState(false);
+  const onInAppReady = useCallback(() => setInAppReady(true), []);
+  const pendingIn = preferIn && source === 'in' && (gate === 'pending' || (gate === 'open' && !inAppReady));
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -418,7 +422,7 @@ export default function TournamentsPage(): JSX.Element {
           ))}
         </div>
         <div class="tc-panel" role="tabpanel" id={inAppOpen || pendingIn ? 'tournaments-source-panel' : undefined}>
-          {gateArmed ? <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} /> : null}
+          {gateArmed ? <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} onReady={onInAppReady} /> : null}
           {pendingIn ? (
             <div aria-busy="true" data-cp-pending-in="1">
               <div class="reg-loading" role="status" style="white-space:nowrap">{t('tournaments.loading')}</div>
