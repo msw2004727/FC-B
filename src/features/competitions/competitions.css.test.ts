@@ -29,12 +29,13 @@ describe('公告輸入區底列與我的場次對戰列不擠壓（11-20 外框�
 });
 
 describe('使用者取的賽事名稱標題（顧問 §3.460）', () => {
-  it('名稱標題最多兩行、超過才省略；共用 .cps-title 與頂列 h1 仍不換行', () => {
+  // 新外觀卡 1b-3：詳情頁的賽事名稱改由頂部板內的 h1（.d2-board__name）擔任，頁首不再畫賽事名稱，
+  // 原本鎖 .cps-top h1 與 .cps-top h1.cps-top__user 的兩行拿掉（施工-第1b批 1.4），改鎖板內名稱最多兩行。
+  it('名稱標題最多兩行、超過才省略；共用 .cps-title 仍不換行', () => {
     const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');
     expect(css).toMatch(/\.cps-title \{[^}]*white-space: nowrap;/);
     expect(css).toMatch(/\.cps-title\.cps-title--user \{[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;[^}]*-webkit-line-clamp: 2;[^}]*overflow: hidden;/);
-    expect(css).toMatch(/\.cps-top h1 \{[^}]*white-space: nowrap;[^}]*text-overflow: ellipsis;/);
-    expect(css).toMatch(/\.cps-top h1\.cps-top__user \{[^}]*white-space: normal;[^}]*-webkit-line-clamp: 2;/);
+    expect(css).toMatch(/\.d2-board__name \{[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;[^}]*-webkit-line-clamp: 2;[^}]*overflow: hidden;/);
   });
 });
 
