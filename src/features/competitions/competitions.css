@@ -8,7 +8,8 @@
  * 後面的批次要用新變數或新根節點，加進這兩條，不另開一份。 */
 .cps-root,
 .s4-page,
-.d2-panel {
+.d2-panel,
+.cp-danger-confirm #app-confirm-modal {
   --d2-accent: #0d9488;
   --d2-accent-ink: #0f766e;
   --d2-accent-on: #ffffff;
@@ -56,7 +57,8 @@
 }
 [data-theme="dark"] .cps-root,
 [data-theme="dark"] .s4-page,
-[data-theme="dark"] .d2-panel {
+[data-theme="dark"] .d2-panel,
+[data-theme="dark"].cp-danger-confirm #app-confirm-modal {
   --d2-accent: #34d399;
   --d2-accent-ink: #34d399;
   --d2-accent-on: #06231c;
@@ -370,6 +372,10 @@
 .d2-panel .ui-modal__footer > * { flex: 1 1 0; }
 .d2-panel .ui-modal__footer .ui-button { min-height: 48px; }
 .d2-panel .ui-modal__footer .ui-button::before { top: 0; bottom: 0; }
+/* 危險確認框（第 1b 批卡 1b-6）：共用確認框在頁面掛 .cp-danger-confirm 時，確認鈕換成紅框紅字 */
+.cp-danger-confirm #app-confirm-modal .app-confirm-ok{background:var(--d2-field-bg);color:var(--d2-danger);box-shadow:inset 0 0 0 1.5px var(--d2-danger);font-weight:700}
+.cp-danger-confirm #app-confirm-modal .app-confirm-ok:focus-visible{outline:2px solid var(--d2-danger);outline-offset:2px}
+
 /* 確認鈕還不能按（刪除賽事：沒勾選或還沒滿 0.6 秒）：空心、框線粗細不變 */
 .d2-panel .ui-button[data-delete-armed="false"] { color: var(--d2-text-3); }
 .d2-panel .ui-button[data-delete-armed="false"]::before { background: none; box-shadow: inset 0 0 0 1.5px var(--d2-off-line); }
