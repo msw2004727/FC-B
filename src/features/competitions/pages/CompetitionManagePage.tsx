@@ -154,7 +154,8 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const pending = entries.filter((entry) => entry.status === 'pending');
   const approved = entries.filter((entry) => entry.status === 'approved');
   const rejected = entries.filter((entry) => entry.status === 'rejected');
-  const unconfirmed = approved.filter((entry) => !entry.rosterConfirmed).length;
+  // 與名單頁一致：主辦鎖定名單後一律算已確認（只是標示，不改資料）。
+  const unconfirmed = approved.filter((entry) => !entry.rosterConfirmed && !locked).length;
 
   useEffect(() => {
     if (!env.preview?.lockDialog || !cpDict.ct) return;
@@ -418,7 +419,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                   {entry.name}
                 </a>
               </h3>
-              {entry.rosterConfirmed
+              {entry.rosterConfirmed || locked
                 ? <Badge tone="success" label={ct('rosterConfirmed')} size="sm" />
                 : <Badge tone="warning" label={ct('rosterUnconfirmed')} size="sm" />}
             </div>
