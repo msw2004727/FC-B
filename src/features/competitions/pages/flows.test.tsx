@@ -712,7 +712,8 @@ describe('賽事第 2 步畫面', () => {
     const empty = { ...manageBundle(), entries: [], privates: [] };
     for (const [tab, text] of [['pending', '目前沒有待審的隊伍'], ['approved', '目前沒有已核准的隊伍'], ['rejected', '目前沒有已拒絕的隊伍']] as const) {
       const none = mount(CompetitionManagePage, { ...screenEnv(`host-${tab}`), bundle: empty });
-      expect(none.container.textContent ?? '').toContain(text);
+      // 設計審：包進玻璃卡、置中，與「目前沒有被指派的場次」同一種樣子（.cps-card > .s4b-mempty）。
+      expect([...none.container.querySelectorAll('.cps-card > .s4b-mempty')].map((node) => node.textContent)).toContain(text);
       none.unmount();
       const some = mount(CompetitionManagePage, screenEnv(`host-${tab}`));
       expect(some.container.textContent ?? '').not.toContain(text);
