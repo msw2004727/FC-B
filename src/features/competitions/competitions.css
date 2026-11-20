@@ -283,11 +283,13 @@
 .cps-root .ui-textarea label,
 .cps-root .ui-radio-group__label,
 .cps-root .cps-label,
+.cps-root .ui-stepper > div:not(.ui-stepper__controls),
 .d2-panel .ui-input label,
 .d2-panel .ui-select label,
 .d2-panel .ui-textarea label,
 .d2-panel .ui-radio-group__label,
-.d2-panel .cps-label { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-text-2); }
+.d2-panel .cps-label,
+.d2-panel .ui-stepper > div:not(.ui-stepper__controls) { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-text-2); }
 .cps-root .ui-input label > small,
 .cps-root .ui-select label > small,
 .cps-root .ui-textarea label > small,
