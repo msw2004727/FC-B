@@ -207,7 +207,8 @@ const LONG_TEAMS = [
 
 /**
  * 長隊名、兩位數名次、三位數積分（規格第 7 節要補）。
- * 一組 12 隊超過正式上限 8（CP_READ_LIMIT），只為了看兩位數名次的欄寬；示範用。
+ * 一組 12 隊：正式允許的情況（每組隊數 2～64，後端 validate.ts LIMITS.teamsMin／teamsMax、建賽頁 maxTeams Stepper），
+ * 10 隊以上的組就會有兩位數名次。（更正：原註解誤把 CP_READ_LIMIT.standings＝8 當成每組隊數上限，那是一次讀取的組別積分文件數。設計總監 11-21 第 3 批施工問答第 4 題。）
  */
 export const P3_STAND_LONG: StandingDoc[] = [standing({
   hasUnresolvedTie: true,
