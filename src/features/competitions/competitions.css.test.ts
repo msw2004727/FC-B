@@ -105,8 +105,8 @@ describe('積分榜欄寬（實量覆核 7.3：360 寬隊名只剩一個字）',
     const gap = Number(row.match(/column-gap: (\d+)(?:px)?;/)?.[1] ?? NaN);
     const fixed = cols.split(' ').filter((c) => c.endsWith('px')).reduce((sum, c) => sum + Number.parseFloat(c), 0);
     const pad = Number(css.match(/\.cp3-st__r \.t \{[^}]*padding-left: (\d+)px;/)?.[1] ?? NaN);
-    // 360 寬正式站：頁面內距 16×2、外框 .app-main 8×2、卡片內距 10×2、卡片邊框 1×2 → 列寬 290；隊徽 20、隊徽與字距 6
-    const text = 290 - fixed - gap * 8 - pad - 20 - 6;
+    // 360 寬正式站：頁面內距 8×2（新外觀卡 1b-2 由 16 改 8，外框另計）、外框 .app-main 8×2、卡片內距 10×2、卡片邊框 1×2 → 列寬 306；隊徽 20、隊徽與字距 6
+    const text = 306 - fixed - gap * 8 - pad - 20 - 6;
     // 正文小字 13px：4 個字 52 加省略號約 13
     expect(text).toBeGreaterThanOrEqual(13 * 4 + 13);
     expect(css).toMatch(/\.cp3-st__r > \* \{[^}]*min-width: 0;[^}]*white-space: nowrap;/);
