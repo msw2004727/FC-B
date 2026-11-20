@@ -21,6 +21,7 @@ html.cp-score-full .s4-root {
   height: calc(100vh - var(--qa-banner-h, 0px));
   height: calc(100dvh - var(--qa-banner-h, 0px));
   max-height: calc(100dvh - var(--qa-banner-h, 0px));
-  padding-top: calc(4px + env(safe-area-inset-top, 0px));
+  /* QA 橫幅已吃掉瀏海安全區時 --qa-topbar-safe 為 0（Opus 終審 P3-3）。 */
+  padding-top: calc(4px + var(--qa-topbar-safe, env(safe-area-inset-top, 0px)));
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }

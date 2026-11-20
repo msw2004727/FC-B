@@ -711,6 +711,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       <div class="s4-clockrow">
         <span class="s4-clock">{formatMatchClock(reading.elapsedSec)}</span>
         {showStage ? <span class="s4-stage">{stageLabel(stageClock)}</span> : null}
+        {phase === 'undo' || phase === 'locked' ? <span class="s4-stage">{LIVE_COPY.fulltime}</span> : null}
         <Badge
           size="sm"
           tone={link.online ? 'success' : 'warning'}

@@ -298,6 +298,7 @@ describe('終場後的出口（顧問 staging 實測 P1-B：全幅藏了頂欄�
     const leave = vi.fn();
     render(<ScorePad {...S4_SCENE_FT} nowMs={finishedAt + 10 * 60_000} onLeave={leave} />);
     expect(screen.queryByRole('button', { name: LIVE_COPY.undoFulltime })).toBeNull();
+    expect(document.querySelector('.s4-clockrow .s4-stage')?.textContent).toBe(LIVE_COPY.fulltime);
     fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.leaveScore }));
     expect(leave).toHaveBeenCalledTimes(1);
   });
