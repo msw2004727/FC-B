@@ -2442,20 +2442,19 @@ describe('第 4 步 A：本機未確認寫入（hasPendingWrites）不得當成�
     // 第一次用疊加讀到的 rev 取了 2，被拒；伺服器維持 rev 0、沒有任何事件。
     expect(fake.plans[0]?.seq).toBe(2);
     expect(fake.server.events.filter((event) => event.seq === 2)).toHaveLength(0);
-    // 再觸發幾次 flush（實際由快照與動作觸發），最後要送到、而且只有一筆。
+    expect(afterFirst?.seq).toBe(2);
+    // 再觸發幾次 flush（實際由快照與動作觸發）。這條鎖的是「沒有錯號、沒有重複」與目前的卡住現況，
+    // 不是期望行為；期望（最後換號送出）在下一條 it.fails。
     for (let i = 0; i < 3 && (await log.get(goal.op))?.state !== 'applied'; i += 1) await sender.flush();
     const final = await log.get(goal.op);
-    console.log('[§3.446 reject]', JSON.stringify({ afterFirst: { state: afterFirst?.state, seq: afterFirst?.seq, reason: afterFirst?.rejectReason }, final: { state: final?.state, seq: final?.seq, reason: final?.rejectReason }, plans: fake.plans.map((plan) => plan.seq), server: fake.server.events.map((event) => event.seq) }));
-    expect(fake.server.events.map((event) => event.op)).not.toContain('w-unlogged-op-00001');
-    expect(new Set(fake.server.events.map((event) => event.op)).size).toBe(fake.server.events.length);
-    for (const event of fake.server.events) expect(event.seq).toBeLessThanOrEqual(fake.server.match.rev);
+    // 伺服器完全沒有寫入：被拒的 W 沒進去、新項目也沒有用錯號寫進去（取代原本在空陣列上跑的迴圈斷言）。
     expect(fake.server.events).toHaveLength(0);
     expect(fake.server.match.rev).toBe(0);
-    // 現況（待顧問裁定）：日誌停在 pending、seq 2。S2 的 wait（rev < seq-1）等別人補上 seq 1，這裡沒有人會補，所以一直不送、也沒有紅列。
+    // 已知問題（顧問 §3.448 接受、排開放後第一批）：日誌停在 pending、seq 2。S2 的 wait（rev < seq-1）等別人補上 seq 1，這裡沒有人會補，所以一直不送、也沒有紅列。
     expect(final).toMatchObject({ state: 'pending', seq: 2 });
   });
 
-  // 期望行為（目前不成立，用 it.fails 標記）：上一條的情境最後要換號送出、只有一筆。
+  // 期望行為（目前不成立，用 it.fails 標記；顧問 §3.448 保留當作已知問題的紀錄，開放後第一批修好時改回 it）：上一條的情境最後要換號送出、只有一筆。
   it.fails('§3.446 期望：SDK 佇列裡日誌沒有的寫入被拒後，新項目最後換號送出（目前卡在 pending seq 2）', async () => {
     const log = new MemoryActionLog();
     const goal = entry({ op: 'after-unlogged-op03', intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 9 } });
