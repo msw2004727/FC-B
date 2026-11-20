@@ -7,7 +7,9 @@
 // ASSUMPTION: 距開賽是台北日曆日差，不是滿 24 小時才算一天。
 // ASSUMPTION: 沒有時間的「我的賽事」階段未知。預設「未結束」仍列出（未知不是已結束）。指定階段不含未知。
 // ASSUMPTION: 只看我的關閉時是公開、cpMine、代表俱樂部主辦的聯集，以 cid 去重。打開時只留後兩者。
-// ASSUMPTION: 排序用首場時間新到舊；沒有時間的排後面，再用 cid 固定順序。
+// ASSUMPTION: 排序先放「真的在進行中」（進行中且沒有整場延期或取消），其餘照首場時間新到舊；
+// 沒有時間的排後面，再用 cid 固定順序（站長 11-20 定案，取代原本只看首場新到舊）。
+// 卡板（pickInAppBoard）只從畫面上這一份清單挑一張移到第一張，不另讀資料。
 
 import type { CompetitionCategory, CompetitionDoc, SummaryEntry } from './types';
 import { categoryOf, competitionPhase, type CompetitionPhase } from './present';
@@ -33,7 +35,14 @@ export interface InAppListCard {
   name: string;
   category: CompetitionCategory;
   phase: CompetitionPhase | null;
+  /** 日期＋全形空白＋場地。卡片改用 date／venue 之前的過渡欄位（第 1a 批卡 1a-5 拿掉）。 */
   dates: string;
+  /** `2027/01/09 – 01/10`。只有名稱的舊「我的賽事」是空字串。 */
+  date: string;
+  /** 第一個有名稱的場地；沒有是空字串。 */
+  venue: string;
+  /** 首場時間，給排序與卡板判定。只有名稱的舊「我的賽事」是 null。 */
+  firstMatchAt: number | null;
   line: InAppStatusLine | null;
   /** cpMine 或代表俱樂部主辦。 */
   mine: boolean;
@@ -71,10 +80,8 @@ export function daysUntilFirstMatch(now: number, firstMatchAt: number): number {
   return Math.max(0, taipeiDayIndex(firstMatchAt) - taipeiDayIndex(now));
 }
 
-/** `2027/01/09 – 01/10　示範運動公園`。沒有場地就只有日期。 */
-export function formatInAppWhenWhere(
-  doc: Pick<CompetitionDoc, 'firstMatchAt' | 'lastMatchAt' | 'venues'>,
-): string {
+/** `2027/01/09 – 01/10`。同一年省略結束年；同一天只寫一次。 */
+export function formatInAppDates(doc: Pick<CompetitionDoc, 'firstMatchAt' | 'lastMatchAt'>): string {
   const start = taipeiParts(doc.firstMatchAt);
   const end = taipeiParts(doc.lastMatchAt);
   const startText = `${start.year}/${pad(start.month)}/${pad(start.day)}`;
@@ -86,7 +93,20 @@ export function formatInAppWhenWhere(
       : `${end.year}/${pad(end.month)}/${pad(end.day)}`;
     when = `${startText} – ${endText}`;
   }
-  const venue = doc.venues.find((item) => item.name.trim())?.name.trim() ?? '';
+  return when;
+}
+
+/** 第一個有名稱的場地；沒有就是空字串。 */
+export function firstVenueName(doc: Pick<CompetitionDoc, 'venues'>): string {
+  return doc.venues.find((item) => item.name.trim())?.name.trim() ?? '';
+}
+
+/** `2027/01/09 – 01/10　示範運動公園`。沒有場地就只有日期。 */
+export function formatInAppWhenWhere(
+  doc: Pick<CompetitionDoc, 'firstMatchAt' | 'lastMatchAt' | 'venues'>,
+): string {
+  const when = formatInAppDates(doc);
+  const venue = firstVenueName(doc);
   return venue ? `${when}　${venue}` : when;
 }
 
@@ -147,6 +167,9 @@ function cardFromDoc(
     category: categoryOf(doc),
     phase,
     dates: formatInAppWhenWhere(doc),
+    date: formatInAppDates(doc),
+    venue: firstVenueName(doc),
+    firstMatchAt: doc.firstMatchAt,
     line: statusLineFor(doc, phase, now, today),
     mine,
     ended: phase === 'done',
@@ -154,9 +177,17 @@ function cardFromDoc(
   };
 }
 
-function compareCards(a: InAppListCard, b: InAppListCard, times: ReadonlyMap<string, number>): number {
-  const ta = times.get(a.cid);
-  const tb = times.get(b.cid);
+/** 真的在進行中：階段是進行中，而且沒有整場延期或取消。 */
+export function isTrulyLive(card: Pick<InAppListCard, 'phase' | 'statusMark'>): boolean {
+  return card.phase === 'live' && card.statusMark === null;
+}
+
+function compareCards(a: InAppListCard, b: InAppListCard): number {
+  const la = isTrulyLive(a);
+  const lb = isTrulyLive(b);
+  if (la !== lb) return la ? -1 : 1;
+  const ta = a.firstMatchAt;
+  const tb = b.firstMatchAt;
   if (ta == null && tb == null) return a.cid < b.cid ? -1 : a.cid > b.cid ? 1 : 0;
   if (ta == null) return 1;
   if (tb == null) return -1;
@@ -187,10 +218,8 @@ export function assembleInAppCards(input: {
     if (row.doc) remember(row.doc);
   }
 
-  const times = new Map<string, number>();
   const cards: InAppListCard[] = [];
   for (const doc of docs.values()) {
-    times.set(doc.id, doc.firstMatchAt);
     cards.push(cardFromDoc(
       doc,
       mineIds.has(doc.id) || hostedIds.has(doc.id),
@@ -208,6 +237,9 @@ export function assembleInAppCards(input: {
       category: categoryOf(row),
       phase: null,
       dates: '',
+      date: '',
+      venue: '',
+      firstMatchAt: null,
       line: null,
       mine: true,
       ended: false,
@@ -215,8 +247,53 @@ export function assembleInAppCards(input: {
     });
   }
 
-  cards.sort((a, b) => compareCards(a, b, times));
+  cards.sort(compareCards);
   return cards;
+}
+
+const BOARD_RANK: Partial<Record<CompetitionPhase, number>> = { live: 0, warm: 1, recruit: 2 };
+
+/**
+ * 卡板判定。輸入是目前畫面上這一份清單（分類、階段、只看我的都篩過）。
+ * 資格：沒有整場延期或取消、階段是進行中／預熱中／招募中、而且有重點句（有重點句才有真的數字）。
+ * 順位：進行中 → 預熱中 → 招募中；同一種取首場最早；再相同取 cid 小的。
+ * 等待：畫面上任何一張真的在進行中的卡，當日摘要還沒有結果（成功、空片、失敗都算有結果），就先不放板，
+ * 免得板子先給預熱中的卡、摘要回來又跳給進行中的卡。
+ * 回傳選中的那一張移到第一張、其餘順序不變的清單；沒有板時 boardCid 是 null、清單原樣。
+ */
+export function pickInAppBoard(
+  cards: readonly InAppListCard[],
+  todaySettled: ReadonlySet<string>,
+): { cards: readonly InAppListCard[]; boardCid: string | null } {
+  if (cards.some((card) => isTrulyLive(card) && !todaySettled.has(card.cid))) {
+    return { cards, boardCid: null };
+  }
+  let best: InAppListCard | null = null;
+  let bestRank = 0;
+  for (const card of cards) {
+    if (card.statusMark !== null || card.phase == null || card.line == null) continue;
+    const rank = BOARD_RANK[card.phase];
+    if (rank == null) continue;
+    if (best == null || rank < bestRank || (rank === bestRank && boardBefore(card, best))) {
+      best = card;
+      bestRank = rank;
+    }
+  }
+  if (!best) return { cards, boardCid: null };
+  const board = best;
+  return { cards: [board, ...cards.filter((card) => card !== board)], boardCid: board.cid };
+}
+
+/** 同一順位裡 a 是否該排在 b 前面：首場早的先；沒有時間的排後；再用 cid。 */
+function boardBefore(a: InAppListCard, b: InAppListCard): boolean {
+  const ta = a.firstMatchAt;
+  const tb = b.firstMatchAt;
+  if (ta !== tb) {
+    if (ta == null) return false;
+    if (tb == null) return true;
+    return ta < tb;
+  }
+  return a.cid < b.cid;
 }
 
 export function passesInAppStatus(card: Pick<InAppListCard, 'phase'>, filter: InAppStatusFilter): boolean {

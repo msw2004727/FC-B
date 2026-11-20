@@ -27,6 +27,9 @@ afterEach(() => {
 function card(partial: Partial<InAppListCard> & Pick<InAppListCard, 'cid' | 'name' | 'category' | 'phase'>): InAppListCard {
   return {
     dates: '',
+    date: '',
+    venue: '',
+    firstMatchAt: null,
     line: null,
     mine: false,
     ended: partial.phase === 'done',
@@ -451,5 +454,44 @@ describe('進行中卡當日摘要', () => {
       expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(2);
       expect(document.querySelector('[data-cid="live_fr"] .cpl-line')?.textContent).toBe(`今天 1 場${DOT}下一場 13:00`);
     });
+  });
+
+  it('卡板：進行中排最上面；摘要回來前不換位置，回來是空片時預熱中那張移到第一張；讀取次數不變', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const repo = createFakeCpRepo({
+      launch: { isPublic: true, bannedWords: [] },
+      competitions: [
+        competition({
+          id: 'warm_cup',
+          name: '預熱盃',
+          category: 'cup',
+          hostType: 'personal',
+          hostTeamId: null,
+          regCloseAt: taipeiMs(2026, 12, 1, 23, 59),
+          firstMatchAt: taipeiMs(2027, 2, 1, 8, 0),
+          lastMatchAt: taipeiMs(2027, 2, 2, 18, 0),
+        }),
+        liveDoc('live_fr', '進行友誼', 'friendly'),
+      ],
+      summary: { live_fr: [{ id: shard, entries: [] }] },
+    });
+    const orig = repo.getSummaryShard.bind(repo);
+    repo.getSummaryShard = async (cid, shardId) => {
+      await gate;
+      return orig(cid, shardId);
+    };
+    const order = (): string[] => [...document.querySelectorAll('[data-cid]')].map((el) => el.getAttribute('data-cid') ?? '');
+    render(section(repo));
+    expect(await screen.findByText('進行友誼')).toBeTruthy();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(order()).toEqual(['live_fr', 'warm_cup']);
+    release();
+    await waitFor(() => expect(order()).toEqual(['warm_cup', 'live_fr']));
+    expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(1);
   });
 });
