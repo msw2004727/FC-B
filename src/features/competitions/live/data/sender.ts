@@ -282,8 +282,9 @@ export class Sender {
       await this.rejectStaleTakenOver(server);
       return 'stop';
     }
-    // 場次有本機未確認的寫入（重整後的持久化佇列、別分頁）：rev 是疊加過的，不能拿來取號；等結果出來再送（Opus 審 P3-1）。
-    if (server.pending === true) return 'wait';
+    // 顧問 §3.446 取代 P3-1「場次有未確認寫入就先等」：同文件有常駐監聽時，寫入確認後監聽還沒跟上的短暫空窗也讀成未確認，
+    // 造成 e2e 8 偶發與群組第二步延遲。順序已由 pickNext（最舊先送）＋recover／look（已取號且未確認就維持送出中）保護；
+    // 日誌沒有的 SDK 未確認寫入只會讓新項目的寫入被規則擋下再依 S2 處理，不會寫錯號。
 
     if (working.seq != null) {
       let view: DecideServer;

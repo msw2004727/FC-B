@@ -2348,20 +2348,122 @@ describe('第 4 步 A：本機未確認寫入（hasPendingWrites）不得當成�
     expect(state.plans).toHaveLength(0);
   });
 
-  it('P3-1 場次有本機未確認寫入、項目還沒取號 → sendOne 等待，不 commit（rev 是疊加過的）', async () => {
+  it('§3.446 重整後還在送出中的那筆排在前面：沒取號的新項目等它，不 commit；它確認後新項目才取下一號', async () => {
     const log = new MemoryActionLog();
-    const goal = entry({ op: 'nseq-op-000000001', intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 5 } });
-    await log.put(goal);
-    const state = { match: baseMatch({ rev: 1 }), events: [] as ServerEvent[], pending: true, control: { uid: UID, sid: SID, takenAt: 1 } as ServerControl | null, plans: [] as BatchPlan[] };
+    const persisted = entry({ op: 'persisted-op-00001', state: 'sending', seq: 1, createdAt: 1, intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 5 } });
+    const fresh = entry({ op: 'fresh-op-000000001', createdAt: 2, intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 6 } });
+    await log.put(persisted);
+    await log.put(fresh);
+    // SDK 讀取疊上持久化佇列的寫入：rev 1、pending。
+    const state = { match: baseMatch({ rev: 1, score: { home: 1, away: 0 } }), events: [] as ServerEvent[], pending: true, control: { uid: UID, sid: SID, takenAt: 1 } as ServerControl | null, plans: [] as BatchPlan[] };
     const sender = new Sender({ log, port: persistedPort(state), uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
     await sender.flush();
     expect(state.plans).toHaveLength(0);
-    const row = await log.get(goal.op);
-    expect(row?.state).toBe('pending');
-    expect(row?.seq).toBeUndefined();
+    expect(await log.get(persisted.op)).toMatchObject({ state: 'sending', seq: 1 });
+    const waiting = await log.get(fresh.op);
+    expect(waiting?.state).toBe('pending');
+    expect(waiting?.seq).toBeUndefined();
+    // 持久化寫入被伺服器接受：快照 pending 轉 false，伺服器有 e1。
+    state.events.push({ ...goalEvent(1, 'home', persisted.op) });
     state.pending = false;
     await sender.flush();
+    expect(await log.get(persisted.op)).toMatchObject({ state: 'applied', seq: 1 });
     expect(state.plans.map((plan) => plan.seq)).toEqual([2]);
+    expect(await log.get(fresh.op)).toMatchObject({ state: 'applied', seq: 2 });
+  });
+
+  /**
+   * SDK 佇列裡有一筆日誌沒有的未確認寫入 W（例如儲存不可用、日誌是記憶體版時重整）。SDK 依序送：新寫入一定排在 W 之後。
+   * W 被接受：伺服器 rev 先到 1，新項目用疊加讀到的 rev 1 取號 2，剛好接上。
+   * W 被拒：伺服器 rev 仍 0，新項目的 seq 2 寫入被規則拒（rev 不接續），之後依 S2 處理。
+   */
+  function sdkQueuePort(outcome: 'accept' | 'reject') {
+    const server = { match: baseMatch(), events: [] as ServerEvent[] };
+    const control = { uid: UID, sid: SID, takenAt: 1 };
+    let wPending = true;
+    let resolveW = () => {};
+    const wDone = new Promise<void>((resolve) => { resolveW = resolve; });
+    const plans: BatchPlan[] = [];
+    const settleW = () => {
+      if (!wPending) return;
+      wPending = false;
+      if (outcome === 'accept') {
+        server.match.rev = 1;
+        server.match.score.home += 1;
+        server.events.push({ ...goalEvent(1, 'home', 'w-unlogged-op-00001') });
+      }
+      resolveW();
+    };
+    const overlaid = () => (wPending
+      ? { ...snapshotOf(server.match), rev: server.match.rev + 1, score: { home: server.match.score.home + 1, away: 0 } }
+      : snapshotOf(server.match));
+    const port: ScoringPort = {
+      async commit(plan) {
+        plans.push(plan);
+        // SDK 依序送出：W 先有結果。
+        settleW();
+        await wDone;
+        if (plan.match.rev !== server.match.rev + 1 || server.events.some((event) => event.seq === plan.seq)) {
+          throw { code: 'permission-denied' };
+        }
+        applyPlanLocal(server.match, server.events, plan, 10);
+      },
+      async loadServer() { return { match: overlaid(), control: { ...control }, pending: wPending }; },
+      async loadTimelineFrom(minSeq, resetRev) {
+        return { events: server.events.filter((event) => event.seq >= minSeq && event.seq > resetRev).map((event) => ({ ...event })), pending: wPending };
+      },
+      knownEvents: () => server.events,
+      async takeover() {},
+    };
+    return { port, server, plans, settleW };
+  }
+
+  it('§3.446 SDK 佇列有日誌沒有的未確認寫入、它被接受：新項目照常取號送出，不錯號、不重複', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({ op: 'after-unlogged-op01', intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 9 } });
+    await log.put(goal);
+    const fake = sdkQueuePort('accept');
+    const sender = new Sender({ log, port: fake.port, uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
+    await sender.flush();
+    expect(fake.plans.map((plan) => plan.seq)).toEqual([2]);
+    expect(await log.get(goal.op)).toMatchObject({ state: 'applied', seq: 2 });
+    expect(fake.server.events.map((event) => `${event.seq}:${event.op}`)).toEqual(['1:w-unlogged-op-00001', `2:${goal.op}`]);
+    expect(fake.server.match).toMatchObject({ rev: 2, score: { home: 1, away: 1 } });
+  });
+
+  it('§3.446 SDK 佇列有日誌沒有的未確認寫入、它被拒：新項目的寫入被規則擋下，伺服器沒有錯號或重複', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({ op: 'after-unlogged-op02', intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 9 } });
+    await log.put(goal);
+    const fake = sdkQueuePort('reject');
+    const sender = new Sender({ log, port: fake.port, uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
+    await sender.flush();
+    const afterFirst = await log.get(goal.op);
+    // 第一次用疊加讀到的 rev 取了 2，被拒；伺服器維持 rev 0、沒有任何事件。
+    expect(fake.plans[0]?.seq).toBe(2);
+    expect(fake.server.events.filter((event) => event.seq === 2)).toHaveLength(0);
+    // 再觸發幾次 flush（實際由快照與動作觸發），最後要送到、而且只有一筆。
+    for (let i = 0; i < 3 && (await log.get(goal.op))?.state !== 'applied'; i += 1) await sender.flush();
+    const final = await log.get(goal.op);
+    console.log('[§3.446 reject]', JSON.stringify({ afterFirst: { state: afterFirst?.state, seq: afterFirst?.seq, reason: afterFirst?.rejectReason }, final: { state: final?.state, seq: final?.seq, reason: final?.rejectReason }, plans: fake.plans.map((plan) => plan.seq), server: fake.server.events.map((event) => event.seq) }));
+    expect(fake.server.events.map((event) => event.op)).not.toContain('w-unlogged-op-00001');
+    expect(new Set(fake.server.events.map((event) => event.op)).size).toBe(fake.server.events.length);
+    for (const event of fake.server.events) expect(event.seq).toBeLessThanOrEqual(fake.server.match.rev);
+    expect(fake.server.events).toHaveLength(0);
+    expect(fake.server.match.rev).toBe(0);
+    // 現況（待顧問裁定）：日誌停在 pending、seq 2。S2 的 wait（rev < seq-1）等別人補上 seq 1，這裡沒有人會補，所以一直不送、也沒有紅列。
+    expect(final).toMatchObject({ state: 'pending', seq: 2 });
+  });
+
+  // 期望行為（目前不成立，用 it.fails 標記）：上一條的情境最後要換號送出、只有一筆。
+  it.fails('§3.446 期望：SDK 佇列裡日誌沒有的寫入被拒後，新項目最後換號送出（目前卡在 pending seq 2）', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({ op: 'after-unlogged-op03', intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 9 } });
+    await log.put(goal);
+    const fake = sdkQueuePort('reject');
+    const sender = new Sender({ log, port: fake.port, uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
+    for (let i = 0; i < 4 && (await log.get(goal.op))?.state !== 'applied'; i += 1) await sender.flush();
+    expect(await log.get(goal.op)).toMatchObject({ state: 'applied', seq: 1 });
   });
 
   it('P3-3 待送終場的撤回倒數起點是那筆終場的建立時間；沒有可用時間就是 null，不用現在時間', async () => {
