@@ -92,6 +92,10 @@ export const LIVE_COPY = {
   cardNoRoster: '這隊名單沒有球員，無法記牌',
   noScorePermission: '你沒有這場的記分權限',
   backToSchedule: '回賽程',
+  /** 記分頁的回去鈕要去「我的場次」（純記分員、裁判）時的鈕字（顧問 §3.508）。 */
+  backToMyMatches: '回我的場次',
+  /** 記分頁未登入畫面的一句話（顧問 §3.508；真正沒有權限仍用 noScorePermission）。 */
+  signInToScore: '請先登入再記分',
   /** 進場讀取失敗（網路類，會自動重試）。 */
   loadFailedAuto: '讀取失敗，連線恢復後會自動重試',
   /** 進場讀取失敗（其他錯誤，只能按重試）。 */

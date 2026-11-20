@@ -88,6 +88,11 @@ export function scoringExitPath(cid: string, who: {
   return `/competitions/${cid}/my-matches`;
 }
 
+/** 回去鈕的字跟著去處走（顧問 §3.508）：去自己的場次寫「回我的場次」，去賽程管理或賽事頁照舊「回賽程」。 */
+export function scoringBackLabel(path: string): string {
+  return path.endsWith('/my-matches') ? LIVE_COPY.backToMyMatches : LIVE_COPY.backToSchedule;
+}
+
 export function ScoringScreen({
   cid,
   mtId,
@@ -146,6 +151,7 @@ export function ScoringScreen({
     clubRep,
   });
   const back = () => route(exitPath);
+  const backLabel = scoringBackLabel(exitPath);
   // 進場丟錯是讀取失敗，不是沒有權限（G-06）。網路類會自動重試，兩種都可手動重試。
   if (view.loadError) {
     return (
@@ -157,7 +163,7 @@ export function ScoringScreen({
             {view.loadError === 'network' ? LIVE_COPY.loadFailedAuto : LIVE_COPY.loadFailed}
           </p>
           <div class="cps-gate__btns">
-            <Button variant="secondary" onClick={back}>{LIVE_COPY.backToSchedule}</Button>
+            <Button variant="secondary" onClick={back}>{backLabel}</Button>
             <Button onClick={() => view.retry?.()}>{LIVE_COPY.retry}</Button>
           </div>
         </CpCard>
@@ -181,7 +187,7 @@ export function ScoringScreen({
           <p class="cps-gate__text">{LIVE_COPY.noScorePermission}</p>
           {access.hint ? <p class="cps-note">{LIVE_COPY.assignScorerHint}</p> : null}
           <div class="cps-gate__btns">
-            <Button onClick={back}>{LIVE_COPY.backToSchedule}</Button>
+            <Button onClick={back}>{backLabel}</Button>
           </div>
         </CpCard>
       </CpFrame>
@@ -213,14 +219,15 @@ export function SignedOut({ cid }: { cid: string }): JSX.Element {
   const { route } = useLocation();
   useScoreDocumentTitle(ct ? ct('scoreTitle') : null);
   if (!ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
-  const back = () => route(scoringExitPath(cid, { signedIn: false, isAdmin: false, roles: null, clubRep: false }));
+  const exitPath = scoringExitPath(cid, { signedIn: false, isAdmin: false, roles: null, clubRep: false });
+  const back = () => route(exitPath);
   return (
     <CpFrame title={ct('scoreTitle')} onBack={back}>
       <CpCard class="cps-gate">
         <LockIcon />
-        <p class="cps-gate__text">{LIVE_COPY.noScorePermission}</p>
+        <p class="cps-gate__text">{LIVE_COPY.signInToScore}</p>
         <div class="cps-gate__btns">
-          <Button onClick={back}>{LIVE_COPY.backToSchedule}</Button>
+          <Button onClick={back}>{scoringBackLabel(exitPath)}</Button>
         </div>
       </CpCard>
     </CpFrame>
