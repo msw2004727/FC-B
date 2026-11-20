@@ -5,7 +5,9 @@ import { useEffect, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { Button } from '@/ui/Button';
 import { PageSpinner } from '@/ui/PageSpinner';
+import { canHostOrCo, isCpAdmin } from '../access';
 import { resolveHostAccess } from '../data/host-access';
+import type { StaffRole } from '../data/types';
 import { getCompetitionsRepo } from '../data/cp-repo';
 import { scoreAccess } from '../live/access';
 import { LIVE_COPY } from '../live/copy';
@@ -59,12 +61,40 @@ export async function scoringClubRep(cid: string, uid: string): Promise<boolean>
   return access.clubRep;
 }
 
+/**
+ * 「回賽程」與「離開記分」共用的去處（顧問 §3.506）。賽程頁、賽程管理只給主辦用（canHostOrCo），
+ * 純記分員或裁判去自己的場次（my-matches），未登入回公開賽事頁。只用頁面已有的資料，不多讀。
+ * 主辦判斷沿用 access.ts canHostOrCo：管理員、staff host／coHost；俱樂部目前代表由頁面已算好的 clubRep 帶入
+ * （與 host-access.ts resolveHostAccess 同一拆法，代表身分要讀賽事主文件，這裡不另讀）。
+ * roles 為 null＝讀取失敗、還不知道 staff：非管理員一律回公開賽事頁（人人可看，不會撞到「只有主辦可以做這個操作」）。
+ */
+export function scoringExitPath(cid: string, who: {
+  signedIn: boolean;
+  isAdmin: boolean;
+  roles: readonly string[] | null;
+  clubRep: boolean;
+}): string {
+  if (!who.signedIn) return `/competitions/${cid}`;
+  const staffRoles = (who.roles ?? []).filter((role): role is StaffRole => role === 'host' || role === 'coHost');
+  const host = who.clubRep || canHostOrCo({
+    staffRoles,
+    hostType: 'personal',
+    hostTeamId: null,
+    repClubIds: [],
+    isAdmin: who.isAdmin,
+  });
+  if (host) return `/competitions/${cid}/matches`;
+  if (who.roles == null) return `/competitions/${cid}`;
+  return `/competitions/${cid}/my-matches`;
+}
+
 export function ScoringScreen({
   cid,
   mtId,
   deps,
   nowMs,
   clubRepCheck,
+  isAdmin = false,
 }: {
   cid: string;
   mtId: string;
@@ -72,6 +102,8 @@ export function ScoringScreen({
   nowMs?: number;
   /** 沒有本場指派時用來判斷是不是俱樂部目前代表（顯示「先指派自己」提示）。省略＝不判斷。 */
   clubRepCheck?: () => Promise<boolean>;
+  /** 站台管理員（actor.role）。只用來決定「回賽程」「離開記分」的去處，不影響能不能記分。 */
+  isAdmin?: boolean;
 }): JSX.Element {
   const cpDict = useCompetitionsT();
   const ct = cpDict.ct;
@@ -107,7 +139,13 @@ export function ScoringScreen({
   useScoreDocumentTitle(ct ? ct('scoreTitle') : null);
   if (!ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   if (view.loading) return <div class="cps-root"><PageSpinner /></div>;
-  const back = () => route(`/competitions/${cid}/schedule`);
+  const exitPath = scoringExitPath(cid, {
+    signedIn: true,
+    isAdmin,
+    roles: view.loadError ? null : view.staff.roles,
+    clubRep,
+  });
+  const back = () => route(exitPath);
   // 進場丟錯是讀取失敗，不是沒有權限（G-06）。網路類會自動重試，兩種都可手動重試。
   if (view.loadError) {
     return (
@@ -153,7 +191,7 @@ export function ScoringScreen({
     <FullscreenPad>
       <ScorePad
         {...scorePadPropsFrom(view, now)}
-        onLeave={() => route(`/competitions/${cid}/matches`)}
+        onLeave={back}
       />
     </FullscreenPad>
   );
@@ -168,13 +206,13 @@ function FullscreenPad({ children }: { children: JSX.Element }): JSX.Element {
   return children;
 }
 
-function SignedOut({ cid }: { cid: string }): JSX.Element {
+export function SignedOut({ cid }: { cid: string }): JSX.Element {
   const cpDict = useCompetitionsT();
   const ct = cpDict.ct;
   const { route } = useLocation();
   useScoreDocumentTitle(ct ? ct('scoreTitle') : null);
   if (!ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
-  const back = () => route(`/competitions/${cid}/schedule`);
+  const back = () => route(scoringExitPath(cid, { signedIn: false, isAdmin: false, roles: null, clubRep: false }));
   return (
     <CpFrame title={ct('scoreTitle')} onBack={back}>
       <CpCard class="cps-gate">
@@ -205,6 +243,7 @@ export default function ScoringPage(): JSX.Element {
             mtId={mtId}
             deps={{ uid: actor.uid }}
             clubRepCheck={() => scoringClubRep(cid, actor.uid ?? '')}
+            isAdmin={isCpAdmin(actor.role)}
           />
         )
       )}
