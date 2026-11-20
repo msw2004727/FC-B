@@ -2,9 +2,9 @@
   "title": "토너먼트",
   "nav": "토너먼트",
   "heading": "賽事",
-  "sourceLabel": "賽事來源",
-  "sourceIn": "站內賽事",
-  "sourceOut": "外部賽事",
+  "sourceLabel": "대회 출처",
+  "sourceIn": "사이트 내 대회",
+  "sourceOut": "외부 대회",
   "add": "＋ 新增賽事",
   "tab": {
     "all": "全部",

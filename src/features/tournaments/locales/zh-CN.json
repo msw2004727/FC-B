@@ -2,9 +2,9 @@
   "title": "锦标赛",
   "nav": "锦标赛",
   "heading": "賽事",
-  "sourceLabel": "賽事來源",
-  "sourceIn": "站內賽事",
-  "sourceOut": "外部賽事",
+  "sourceLabel": "赛事来源",
+  "sourceIn": "站内赛事",
+  "sourceOut": "外部赛事",
   "add": "＋ 新增賽事",
   "tab": {
     "all": "全部",

@@ -661,6 +661,12 @@ function launchFromDoc(raw: Record<string, unknown>): LaunchDoc | null {
   return { isPublic, bannedWords };
 }
 
+/**
+ * 開賽閘門快取多久（毫秒）。管理員改公開狀態或測試者名單後，已開著的分頁最晚這麼久會看到；
+ * 重新整理頁面立即生效。5 分鐘：閘門很少改，來回進出賽事頁不必每次都讀。
+ */
+export const LAUNCH_CACHE_MS = 5 * 60_000;
+
 export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
   async function ready(): Promise<{ db: unknown; sdk: CpFirestoreSdk }> {
     const [db, sdk] = await Promise.all([deps.getDb(), deps.loadSdk()]);
@@ -669,21 +675,47 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
 
   // 頁內記憶體。這個 repo 實例活多久，快取就活多久。成功（含空清單）才記住。
   const crestCache = new Map<string, Promise<EntryDoc[]>>();
+  // 開賽閘門的記憶體快取（顧問 §3.368 P2-1）。正式頁的 repo 是單例，所以同一個分頁內來回進出賽事頁
+  // 在 LAUNCH_CACHE_MS 內不再讀 cpConfig/launch 與 testers；同時進行中的讀取共用同一個 promise。
+  // 成功（含文件不存在＝null、不是測試者＝false）才留；失敗立刻拿掉，下次進頁重讀（仍 fail-closed）。
+  let launchCache: { at: number; pending: Promise<LaunchDoc | null> } | null = null;
+  const testerCache = new Map<string, { at: number; pending: Promise<boolean> }>();
 
   return {
-    async getLaunch() {
-      const { db, sdk } = await ready();
-      const snap = await sdk.getDoc(sdk.doc(db, 'cpConfig/launch'));
-      if (!snap.exists()) return null;
-      const data = snap.data();
-      return data ? launchFromDoc(data) : null;
+    getLaunch() {
+      const now = Date.now();
+      if (launchCache && now - launchCache.at < LAUNCH_CACHE_MS) return launchCache.pending;
+      const pending = (async () => {
+        const { db, sdk } = await ready();
+        const snap = await sdk.getDoc(sdk.doc(db, 'cpConfig/launch'));
+        if (!snap.exists()) return null;
+        const data = snap.data();
+        return data ? launchFromDoc(data) : null;
+      })();
+      const entry = { at: now, pending };
+      launchCache = entry;
+      pending.catch(() => {
+        if (launchCache === entry) launchCache = null;
+      });
+      return pending;
     },
 
-    async getLaunchTester(uid) {
-      if (!isSafeId(uid)) return false;
-      const { db, sdk } = await ready();
-      const snap = await sdk.getDoc(sdk.doc(db, `cpConfig/launch/testers/${uid}`));
-      return snap.exists();
+    getLaunchTester(uid) {
+      if (!isSafeId(uid)) return Promise.resolve(false);
+      const now = Date.now();
+      const hit = testerCache.get(uid);
+      if (hit && now - hit.at < LAUNCH_CACHE_MS) return hit.pending;
+      const pending = (async () => {
+        const { db, sdk } = await ready();
+        const snap = await sdk.getDoc(sdk.doc(db, `cpConfig/launch/testers/${uid}`));
+        return snap.exists();
+      })();
+      const entry = { at: now, pending };
+      testerCache.set(uid, entry);
+      pending.catch(() => {
+        if (testerCache.get(uid) === entry) testerCache.delete(uid);
+      });
+      return pending;
     },
 
     async listMine(uid) {

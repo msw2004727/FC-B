@@ -230,15 +230,15 @@ describe('開關打開時的來源與讀取', () => {
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
   });
 
-  it('閘門判定中不先畫外部清單，改顯示載入骨架', async () => {
+  // 顧問 §3.368 P2-1 取代原「判定中不先畫外部清單、改顯示骨架」：判定中照開關關閉時畫外部清單。
+  it('閘門判定中照常畫外部清單，不顯示切換', async () => {
     slot.holdGate = true;
     draw();
     await waitFor(() => expect(slot.mounts).toBe(1));
-    expect(screen.queryByText('2027 春季聯賽')).toBeNull();
-    expect(screen.queryByText('週末友誼賽')).toBeNull();
+    await waitFor(() => expect(screen.getByText('2027 春季聯賽')).toBeTruthy());
+    expect(screen.getByText('週末友誼賽')).toBeTruthy();
     expect(document.querySelector('.cpl-src')).toBeNull();
-    expect(document.querySelector('[aria-busy="true"]')).toBeTruthy();
-    expect(document.querySelector('.reg-loading-skeleton')).toBeTruthy();
+    expect(document.querySelector('.reg-loading-skeleton')).toBeNull();
   });
 
   it('來源切換有 aria-controls，左右鍵切換', async () => {
