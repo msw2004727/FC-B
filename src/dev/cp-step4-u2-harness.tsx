@@ -105,7 +105,7 @@ const ANCHORS: Record<string, string> = {
   'u2-live': '34:00',
   'u2-pending': '待送',
   'u2-pk-confirm': '開始 PK 大戰？',
-  'u2-pk-live': 'PK 3:2',
+  'u2-pk-live': 'PK3:2', // 卡 2-2：PK 比分搬到板子下排、小標與數字分開節點
   'u2-pk-goal-locked': 'PK 期間不能復原或改判一般進球',
   'u2-timeout-stop': '暫停',
   'u2-crowded': '結束暫停',

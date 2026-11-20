@@ -83,8 +83,8 @@ describe('進球上方隊名標籤與分隔線', () => {
     expect(rule('.s4-cards')).toMatch(/height:\s*56px/);
     expect(rule('.s4-tag')).toMatch(/background:\s*var\(--d2-home\)/);
     expect(rule('.s4-tag--away')).toMatch(/background:\s*var\(--d2-away\)/);
-    // 記分頁不寫深色專屬規則；只剩與觀眾即時頁並列的隊徽色票那一條（第 3 批處理）。
+    // 記分頁不寫深色專屬規則；只剩觀眾即時頁的隊徽色票那一條（卡 2-2 拿掉 .s4-root 那一半，第 3 批處理其餘）。
     const dark = css.match(/\[data-theme="dark"\] \.s4-[\w-]+/g) ?? [];
-    expect(dark).toEqual(['[data-theme="dark"] .s4-root', '[data-theme="dark"] .s4-page']);
+    expect(dark).toEqual(['[data-theme="dark"] .s4-page']);
   });
 });

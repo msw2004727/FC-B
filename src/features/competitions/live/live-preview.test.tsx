@@ -958,10 +958,13 @@ describe('第 4 步預覽元件', () => {
     const onRecord = vi.fn();
     const onUndo = vi.fn();
     const view = pad(S4_SCENE_PK, { onRecord, onUndo });
-    expect(screen.getByText('PK 3:2')).toBeTruthy();
-    expect(screen.getByText('2:2')).toBeTruthy();
-    expect(screen.getByText('40:00')).toBeTruthy();
+    // 施工-第2批 3.2（顧問已裁定 PK 不放時鐘）：上排正規比分拆三格、下排是 PK 比分加小標，右邊是第幾輪。
+    expect(view.container.querySelector('.s4-top .s4-score')?.textContent).toBe('2:2');
+    expect(view.container.querySelector('.s4-clockrow > .s4-pk')?.textContent).toBe('PK3:2');
+    expect(view.container.querySelector('.s4-top .s4-clock')).toBeNull();
+    expect(screen.queryByText('40:00')).toBeNull();
     expect(screen.getByText('PK')).toBeTruthy();
+    expect(view.container.querySelector('.s4-clockrow > .s4-round')?.textContent).toBe('第4輪');
     expect(screen.queryByRole('button', { name: '雷霆隊 進球' })).toBeNull();
     expect(screen.queryByRole('button', { name: '海風隊 進球' })).toBeNull();
     expect(button('雷霆隊 進')).toBeTruthy();

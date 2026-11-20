@@ -128,8 +128,9 @@ describe('scorePadPropsFrom', () => {
     expect(props.pkCanStart).toBe(true);
     expect(props.pkDigits).toBeNull();
     expect(props.timeoutRule).toEqual(current.timeoutRule);
-    expect(props.feed?.[0]).toMatchObject({ key: 'pend-goal-0000000001', pending: true });
-    expect(props.feed?.[1]).toMatchObject({ key: 'goal-op-000000000001', pending: false, seq: 1 });
+    // 施工-第2批 3.7：待送列與伺服器列都帶哪一隊（記分頁紀錄列照主客隊上色）。
+    expect(props.feed?.[0]).toMatchObject({ key: 'pend-goal-0000000001', pending: true, side: 'away' });
+    expect(props.feed?.[1]).toMatchObject({ key: 'goal-op-000000000001', pending: false, seq: 1, side: 'home' });
     expect(props.feed?.some((row) => row.key === 'rej-goal-00000000001')).toBe(false);
 
     expect(props.onRecord?.({ side: 'home', action: 'goal', plId: null, goalKind: 'normal', minute: 3 })).toBe(true);
