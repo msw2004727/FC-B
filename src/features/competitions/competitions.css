@@ -1085,7 +1085,8 @@
 /* 提示列：一般級（中性底深字）與資料可能遺失級（深紅底白字）。同一個長相只寫一份，記分頁的提示列（.s4-root .s4-alerts，
  * 第 2 批卡 2-1）把選擇器加進清單，尺寸另寫在 live.css。一般級原本在 step4b.css，記分頁不載那支檔，卡 2-1 整條搬來（內容不改）。 */
 .s4b-alert,
-.s4-alerts .s4-banner {
+.s4-alerts .s4-banner,
+.s4-block .s4-banner {
   margin: 0;
   padding: 6px 10px;
   border-radius: 8px;

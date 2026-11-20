@@ -33,7 +33,6 @@
   padding: 4px 8px 0;
   overflow: hidden;
 }
-.s4-root,
 .s4-page {
   --crest-0: #0f766e;
   --crest-1: #0e7490;
@@ -45,7 +44,6 @@
   --crest-7: #047857;
   --crest-fg: #fff;
 }
-[data-theme="dark"] .s4-root,
 [data-theme="dark"] .s4-page {
   --crest-0: #2dd4bf;
   --crest-1: #22d3ee;
@@ -123,19 +121,19 @@
   font-weight: 700;
   line-height: 1;
 }
-.s4-root .cp3-crest--txt,
+/* 卡 2-2：記分頁的文字隊徽不顯示，隊徽色票與八個色號只剩觀眾即時頁那一半 */
 .s4-page .cp3-crest--txt {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
   color: var(--crest-fg);
 }
-.s4-root .cp3-crest--c0, .s4-page .cp3-crest--c0 { background: var(--crest-0); }
-.s4-root .cp3-crest--c1, .s4-page .cp3-crest--c1 { background: var(--crest-1); }
-.s4-root .cp3-crest--c2, .s4-page .cp3-crest--c2 { background: var(--crest-2); }
-.s4-root .cp3-crest--c3, .s4-page .cp3-crest--c3 { background: var(--crest-3); }
-.s4-root .cp3-crest--c4, .s4-page .cp3-crest--c4 { background: var(--crest-4); }
-.s4-root .cp3-crest--c5, .s4-page .cp3-crest--c5 { background: var(--crest-5); }
-.s4-root .cp3-crest--c6, .s4-page .cp3-crest--c6 { background: var(--crest-6); }
-.s4-root .cp3-crest--c7, .s4-page .cp3-crest--c7 { background: var(--crest-7); }
+.s4-page .cp3-crest--c0 { background: var(--crest-0); }
+.s4-page .cp3-crest--c1 { background: var(--crest-1); }
+.s4-page .cp3-crest--c2 { background: var(--crest-2); }
+.s4-page .cp3-crest--c3 { background: var(--crest-3); }
+.s4-page .cp3-crest--c4 { background: var(--crest-4); }
+.s4-page .cp3-crest--c5 { background: var(--crest-5); }
+.s4-page .cp3-crest--c6 { background: var(--crest-6); }
+.s4-page .cp3-crest--c7 { background: var(--crest-7); }
 .s4-scoreline {
   display: flex;
   align-items: baseline;
@@ -204,10 +202,7 @@
   white-space: nowrap;
 }
 .s4-hold {
-  /* 卡 2-1（3.3 先行）：「已停錶／已休息」疊在時鐘列右邊那一格的下半，板高不因停錶多一列（2-2 改成節次格兩行）。 */
-  position: absolute;
-  right: 12px;
-  bottom: 7px;
+  /* 卡 2-2（3.3）：節次格的第二行（.s4-stagecell 裡、節次下面），板高不因停錶多一列 */
   display: flex;
   align-items: center;
   margin: 0;
@@ -229,13 +224,11 @@
   background: currentColor;
   box-shadow: 5px 0 0 0 currentColor;
 }
-/* 壓過 :root:lang .ui-text 與 badge 的兩行裁切，短標籤維持一行。 */
-.s4-root .ui-badge,
+/* 壓過 :root:lang .ui-text 與 badge 的兩行裁切，短標籤維持一行。（卡 2-2：記分頁不再用 Badge，拿掉 .s4-root 那一半） */
 .s4-page .ui-badge {
   max-width: none;
   white-space: nowrap;
 }
-.s4-root .ui-badge__label.ui-text,
 .s4-page .ui-badge__label.ui-text {
   display: inline;
   overflow: visible;
@@ -274,7 +267,6 @@
   margin-right: -.1em;
   color: var(--d2-sb-fg);
 }
-.s4-top .s4-pk { font-family: var(--d2-num); font-size: 19px; line-height: 1; font-weight: 700; color: var(--d2-sb-fg2); }
 .s4-top .s4-clockrow { height: 42px; min-height: 42px; margin-top: 1px; padding-top: 2px; border-top: 1px solid var(--d2-sb-line); }
 /* 窄體數字在行框裡偏高，往下校正 1/16 字高 */
 .s4-top .s4-clock {
@@ -287,45 +279,123 @@
   letter-spacing: .04em;
   color: var(--d2-sb-fg);
 }
-.s4-top .s4-clockrow > .s4-stage { justify-self: end; font-size: 15px; line-height: 24px; font-weight: 700; color: var(--d2-sb-fg); }
-/* 停錶、中場（時鐘列後面跟著 .s4-hold）：節次移到上半，大時鐘降成次要色＝沒在走 */
-.s4-top .s4-clockrow:not(:last-child) > .s4-stage { align-self: start; margin-top: 1px; line-height: 20px; }
-.s4-top .s4-clockrow:not(:last-child) > .s4-clock { color: var(--d2-sb-fg2); }
-/* 連線狀態：板上的小字＋圓點（已連線青綠點；離線白字紅點，不用琥珀）。放不下單行省略。 */
-.s4-top .s4-clockrow > .ui-badge {
-  gap: 6px;
-  height: 24px;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--d2-sb-fg2);
-  font-size: 13px;
-  line-height: 24px;
-  font-weight: 600;
+/* 卡 2-2（3.3）：時鐘列右邊那一格＝節次，停錶或中場時下面多一行「已停錶／已休息」（板高不變）；錶停著時大時鐘降成次要色 */
+.s4-top .s4-stagecell {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 0;
+}
+.s4-top .s4-stage { font-size: 15px; line-height: 24px; font-weight: 700; color: var(--d2-sb-fg); }
+.s4-top--held .s4-stage { line-height: 20px; }
+.s4-top--held .s4-clock { color: var(--d2-sb-fg2); }
+/* 卡 2-2（3.2）：PK 期間上排正規比分退成次要色、拆成「主｜:｜客」三格；下排（原本時鐘的位置）是 PK 比分，數字對在上排兩個數字正下方 */
+.s4-top--pk .s4-score,
+.s4-top .s4-clockrow > .s4-pk {
+  display: inline-grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  column-gap: 3px;
+  margin-right: 0;
+  letter-spacing: .03em;
   white-space: nowrap;
 }
-.s4-top .s4-clockrow > .ui-badge::before {
-  content: '';
-  flex: 0 0 auto;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--d2-sb-now);
+.s4-top--pk .s4-score { color: var(--d2-sb-fg2); }
+.s4-top .s4-score__n,
+.s4-top .s4-pk__n { min-width: 26px; text-align: center; }
+.s4-top .s4-score__c,
+.s4-top .s4-pk__c { position: relative; top: -2px; }
+.s4-top .s4-clockrow > .s4-pk {
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
+  top: 2px;
+  font-family: var(--d2-num);
+  font-size: 40px;
+  line-height: 1;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--d2-sb-fg);
 }
-.s4-top .s4-clockrow > .ui-badge--warning { color: var(--d2-sb-fg); }
-.s4-top .s4-clockrow > .ui-badge--warning::before { background: var(--d2-sb-alarm); }
-.s4-top .ui-badge .ui-badge__label.ui-text {
-  display: block;
+/* 數字下一條 3px 隊色線（輔助記號，一圈淡白框補對比） */
+.s4-top .s4-pk__n { position: relative; }
+.s4-top .s4-pk__n::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  left: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--d2-home);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .3);
+}
+.s4-top .s4-pk__n--away::after { background: var(--d2-away); }
+/* 「PK」小標掛在數字左邊、不佔寬度，反白 */
+.s4-top .s4-pk__tag {
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  margin: -10px 10px 0 0;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--d2-sb-fg);
+  color: var(--d2-sb-bg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+.s4-top .s4-round { grid-column: 3; grid-row: 1; justify-self: end; font-size: 15px; line-height: 24px; font-weight: 700; color: var(--d2-sb-fg); white-space: nowrap; }
+/* 卡 2-2（3.4）：連線指示是記分板上的小字＋圓點（已連線青綠點；離線白字紅點，不用琥珀），長相跟著 data-link。放不下單行省略。 */
+.s4-top .s4-link {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
   line-height: 24px;
   font-weight: 600;
+  color: var(--d2-sb-fg2);
 }
-.s4-top .ui-badge wbr { display: none; }
+.s4-top .s4-link::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--d2-sb-now);
+  vertical-align: 1px;
+}
+.s4-top .s4-link[data-link="off"] { color: var(--d2-sb-fg); }
+.s4-top .s4-link[data-link="off"]::before { background: var(--d2-sb-alarm); }
+/* 卡 2-2（3.5）：長隊名犧牲中間、保住結尾。板上兩行 13px（前段放不下省略、後段靠右一定完整）；標籤一行，前段可縮省略、後段不縮 */
+.s4-top .s4-team .s4-nm__a,
+.s4-top .s4-team .s4-nm__b {
+  display: block;
+  margin: 0 -2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 16px;
+  text-align: left;
+}
+.s4-top .s4-team .s4-nm__b { text-align: right; text-overflow: clip; }
+.s4-tags .s4-tag .s4-col__name { display: flex; max-width: 100%; }
+.s4-tags .s4-tag .s4-nm__a { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.s4-tags .s4-tag .s4-nm__b { flex: 0 0 auto; }
+.s4-tags .s4-tag .s4-nm--long { font-size: 13px; }
 
 .s4-alerts {
   flex: 0 0 auto;
@@ -377,12 +447,6 @@
   background: currentColor;
   -webkit-mask: var(--d2-ico-info) center / 16px 16px no-repeat;
   mask: var(--d2-ico-info) center / 16px 16px no-repeat;
-}
-/* 擋住（另一分頁在記；2-2 搬到隊名標籤正上方並改 44px）：鎖頭、粗字 */
-.s4-root .s4-alerts .s4-banner:not(.s4-banner--saved):not(.s4-banner--danger):not(.s4-banner--held) { font-weight: 700; }
-.s4-alerts .s4-banner:not(.s4-banner--saved):not(.s4-banner--danger):not(.s4-banner--held)::before {
-  -webkit-mask-image: var(--d2-ico-lock);
-  mask-image: var(--d2-ico-lock);
 }
 /* 資料可能遺失（離線紀錄無法保存；紅色「沒送出」那一行在 2-3(a) 之前也是這一級的 28px）：三角驚嘆號、粗字 */
 .s4-root .s4-alerts .s4-banner--danger,
@@ -745,6 +809,57 @@ button.s4-ev__main:active { opacity: 0.7; }
 .s4-feed .s4-ev--void .s4-ev__main { color: var(--d2-text-3); font-weight: 400; }
 .s4-feed .s4-ev--void .s4-mark { opacity: .45; }
 .s4-feed .s4-ev__tag { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--d2-text-3); }
+/* 卡 2-2：進球圓點、PK 進／沒進照主客隊上色（列帶 s4-ev--home／--away；沒有就維持中性） */
+.s4-feed .s4-ev--home .s4-mark--goal { background: var(--d2-home); }
+.s4-feed .s4-ev--away .s4-mark--goal { background: var(--d2-away); }
+.s4-feed .s4-ev--home .s4-mark--miss { box-shadow: inset 0 0 0 2px var(--d2-home); }
+.s4-feed .s4-ev--away .s4-mark--miss { box-shadow: inset 0 0 0 2px var(--d2-away); }
+
+/* 卡 2-2（3.10）：整區不能按時，原因與出路放在隊名標籤正上方（紀錄區與按鈕區之間）。
+   句子是「擋住」級：一般級的顏色（competitions.css 提示那一條）＋ 44px、15px 粗體、鎖頭 18px；不是按鈕，沒有框與陰影。
+   尺寸比 competitions.css 那一條多一層 class，不靠兩支檔的載入順序。 */
+.s4-block {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.s4-root .s4-block .s4-banner {
+  position: relative;
+  min-height: 44px;
+  padding: 10px 12px 10px 42px;
+  border-radius: 12px;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.s4-block .s4-banner::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  background: currentColor;
+  -webkit-mask: var(--d2-ico-lock) center / 18px 18px no-repeat;
+  mask: var(--d2-ico-lock) center / 18px 18px no-repeat;
+}
+/* 接手鈕＝這個狀態唯一該按的鈕：整列寬、墨色（深色反白）；蓋 .s4-root .ui-button 的青綠與圓角 */
+.s4-block .ui-button { width: 100%; min-height: 48px; }
+.s4-block .ui-button.ui-button--primary {
+  --comp-button-background-default: var(--d2-go-btn);
+  --comp-button-background-hover: var(--d2-go-btn);
+  --comp-button-background-active: var(--d2-go-btn);
+  --comp-button-foreground-default: var(--d2-go-btn-fg);
+  border-radius: 12px;
+  font-weight: 700;
+}
+.s4-block .ui-button::before { top: 0; bottom: 0; }
 
 .s4-extra,
 .s4-ctrl {
@@ -817,6 +932,9 @@ button.s4-ev__main:active { opacity: 0.7; }
   background: var(--d2-glass-gloss), var(--d2-glass-base);
   box-shadow: var(--d2-glass-sh);
 }
+/* 卡 2-2：錶停著時「繼續計時」是下一步：比旁邊的玻璃鈕重一階（2px 深色內框、粗字）；外框蓋 competitions.css 次要鈕的 ::before */
+.s4-ctrl .ui-button.s4-resume { font-weight: 700; }
+.s4-dock .s4-ctrl .ui-button.s4-resume:not([aria-disabled="true"])::before { box-shadow: var(--d2-glass-sh), inset 0 0 0 2px var(--d2-text); }
 /* 終場：墨色（深色是深灰藍底＋亮框，不當全頁最亮的一塊）。標記仍是 variant="danger"，
    這兩條蓋 competitions.css 的 .s4-root .ui-button.ui-button--danger（白底紅字紅框）。 */
 .s4-dock .s4-ctrl .ui-button.s4-end {
@@ -890,6 +1008,9 @@ button.s4-ev__main:active { opacity: 0.7; }
   color: var(--d2-text);
   box-shadow: var(--d2-glass-sh), inset 4px 0 0 0 var(--s4-side, var(--d2-text-3));
 }
+/* 卡 2-2：左緣隊色＝誰喊的暫停 */
+.s4-timeout--home { --s4-side: var(--d2-home); }
+.s4-timeout--away { --s4-side: var(--d2-away); }
 /* 收合條外觀 30px（高度 600 以下 32px），可點範圍往上下延伸「等於區塊間距」，合計 44～46、不疊到別的可點元件 */
 .s4-timeout--mini {
   position: relative;
@@ -1400,6 +1521,8 @@ button.s4-ev__main:active { opacity: 0.7; }
 }
 /* 320 寬：單行隊名 13px（3.5 的 11-21 補充）；控制鈕內距與最小寬收一點，四顆才排得下、不折行 */
 @media (max-width: 340px) {
+  .s4-root .s4-block .s4-banner { padding-left: 38px; padding-right: 8px; font-size: 13px; }
+  .s4-block .s4-banner::before { left: 12px; }
   .s4-top .s4-board .s4-team,
   .s4-tag .s4-col__name { font-size: 13px; }
   .s4-dock .s4-ctrl .ui-button { min-inline-size: 48px; padding-inline: 10px; }

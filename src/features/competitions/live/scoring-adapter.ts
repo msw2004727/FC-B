@@ -187,6 +187,7 @@ function pendingRow(
       secondYellow: false,
       pkScored: intent.scored,
       voided: false,
+      side,
     };
   }
   const kind = intent.kind === 'goal'
@@ -207,6 +208,7 @@ function pendingRow(
     kind: secondYellow ? 'yellow' : kind,
     secondYellow,
     voided: false,
+    side,
   };
 }
 
@@ -235,6 +237,7 @@ function feedOf(view: ScoringView, timeline: readonly TimelineEvent[], voids: re
     secondYellow: line.secondYellow,
     ...(line.pkScored != null ? { pkScored: line.pkScored } : {}),
     voided: line.voided,
+    side: line.side,
   }));
   const pending = view.unapplied
     .filter((row) => (row.state === 'pending' || row.state === 'sending') && !serverOps.has(row.op))
