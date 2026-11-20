@@ -4,8 +4,6 @@ import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
-import { appConfirm } from '@/ui/AppConfirm';
-import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { liveCpActions } from '../actions';
@@ -15,7 +13,9 @@ import { positionLabel } from '../format';
 import { LiveBoundary } from '../live';
 import type { EntryStatus, RosterPublicDoc } from '../data/types';
 import { CpError, CpLoadFailed, errorOf, loadFailOf, type CpLoadFail } from '../ui/feedback';
+import { dangerConfirm } from '../ui/danger-confirm';
 import { CpCard, CpFrame, CpI18nPending, TrashIcon } from '../ui/shell';
+import { StatusTag } from '../ui/status-tag';
 import { TeamCrest } from '../ui/TeamCrest';
 
 async function loadRoster(env: CpInjectedEnv, cid: string, enId: string): Promise<CpBundle> {
@@ -30,14 +30,12 @@ async function loadRoster(env: CpInjectedEnv, cid: string, enId: string): Promis
   return { competition, divisions, entries, roster, privates: [], staff };
 }
 
-function entryStatusBadge(
-  ct: CompetitionsT,
-  status: EntryStatus,
-): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
-  if (status === 'approved') return { label: ct('approved'), tone: 'success' };
-  if (status === 'pending') return { label: ct('pending'), tone: 'warning' };
-  if (status === 'rejected') return { label: ct('rejected'), tone: 'danger' };
-  return { label: ct('withdrawn'), tone: 'neutral' };
+/** 報隊狀態的字。新外觀卡 3-2：四種都是中性標籤（3.0.5），不再分色。 */
+function entryStatusLabel(ct: CompetitionsT, status: EntryStatus): string {
+  if (status === 'approved') return ct('approved');
+  if (status === 'pending') return ct('pending');
+  if (status === 'rejected') return ct('rejected');
+  return ct('withdrawn');
 }
 
 function PlayerRow({
@@ -66,7 +64,7 @@ function PlayerRow({
       {/* 顧問 §3.471 X-02：20 字暱稱把這列撐出卡片。只在名單頁暱稱加 --fit：可縮、超過省略（單行列）。 */}
       <span class="cps-player__name cps-player__name--fit">{player.displayName}</span>
       <span class="cps-player__pos">{pos}</span>
-      {player.isMinor ? <Badge tone="warning" label={ct('minor')} size="sm" /> : null}
+      {player.isMinor ? <StatusTag kind="neutral" label={ct('minor')} /> : null}
       {canEdit ? (
         <button type="button" class="cps-iconbtn cps-iconbtn--flat" aria-label={ct('removePlayer', { name: player.displayName })} onClick={onRemove}>
           <TrashIcon />
@@ -122,11 +120,10 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const canEdit = isRep && !locked && !started && entry.status === 'approved';
   const canAdd = isRep && !locked && !started;
   const canJoin = isMember && !locked && !started && (entry.status === 'pending' || entry.status === 'approved');
-  const statusBadge = entryStatusBadge(ct, entry.status);
 
   async function remove(player: RosterPublicDoc): Promise<void> {
     if (busy) return;
-    const ok = await appConfirm(ct('removePlayerConfirm', { name: player.displayName }), {
+    const ok = await dangerConfirm(ct('removePlayerConfirm', { name: player.displayName }), {
       okText: ct('remove'),
       danger: true,
     });
@@ -172,14 +169,9 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   }
 
   return (
-    <CpFrame title={ct('rosterTitle')}>
+    <CpFrame title={ct('rosterTitle')} context={competition.name}>
+      {/* 新外觀卡 3-2：隊伍卡順序改成 隊徽＋隊名 → 兩顆標籤 → 人數 → 進度條 → 說明句（標記順序＝讀螢幕順序） */}
       <CpCard>
-        <div class="cps-badges" style="margin-bottom:6px">
-          <Badge tone={statusBadge.tone} label={statusBadge.label} size="sm" />
-          {entry.rosterConfirmed || locked
-            ? <Badge tone="success" label={ct('rosterConfirmed')} size="sm" />
-            : <Badge tone="warning" label={ct('rosterUnconfirmed')} size="sm" />}
-        </div>
         <div class="cp3-roster-head">
           {/* ASSUMPTION: 名單這頁的 listEntries 已經帶 teamLogo，不再多打一筆 listEntriesForCrest。 */}
           <TeamCrest teamId={entry.teamId} name={entry.name} teamLogo={entry.teamLogo} size={48} />
@@ -188,19 +180,28 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
             <p class="cps-sub">{division.name}　{ct('formatN', { n: division.playersOnField })}</p>
           </div>
         </div>
-        <div class="cps-bar" aria-hidden="true">
-          <i class={short ? 'low' : ''} style={`width:${Math.min(100, (players.length / max) * 100)}%`} />
+        <div class="cps-badges cp3-roster-tags">
+          <StatusTag kind="neutral" label={entryStatusLabel(ct, entry.status)} />
+          <StatusTag kind="neutral" label={entry.rosterConfirmed || locked ? ct('rosterConfirmed') : ct('rosterUnconfirmed')} />
         </div>
-        <div class="cps-kv">
+        <div class="cps-kv cp3-roster-count">
           <span>{ct('currentCount')}</span>
           <span>{ct('rosterCount', { n: players.length, max, min })}</span>
         </div>
-        {!locked && short ? <p class="cps-note cps-warn" style="margin-top:8px">{ct('needMore', { n: min - players.length, min })}</p> : null}
-        {locked ? <p class="cps-note" style="margin-top:8px">{ct('rosterLocked')}</p> : null}
+        <div class="cps-bar cp3-roster-bar" aria-hidden="true">
+          <i class={short ? 'low' : ''} style={`width:${Math.min(100, (players.length / max) * 100)}%`} />
+        </div>
+        {!locked && short ? <p class="cps-note cps-warn cp3-roster-note">{ct('needMore', { n: min - players.length, min })}</p> : null}
+        {locked ? <p class="cps-note cp3-roster-note">{ct('rosterLocked')}</p> : null}
         {error ? <CpError reason={error.reason} params={error.params} /> : null}
       </CpCard>
-      <CpCard>
-        <h2 class="cps-h">{ct('players')}</h2>
+      <CpCard class="cp3-roster-list">
+        <div class="cp3-roster-list__h">
+          <h2 class="cps-h">{ct('players')}</h2>
+          {canAdd ? (
+            <Button variant="secondary" size="sm" onClick={() => route(`/competitions/${cid}/entries/${enId}/add`)}>{ct('addPlayer')}</Button>
+          ) : null}
+        </div>
         <ul class="cps-list">
           {players.map((player) => (
             <PlayerRow key={player.id} player={player} canEdit={canEdit} onRemove={() => { void remove(player); }} />
@@ -208,13 +209,12 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
         </ul>
       </CpCard>
       {canAdd ? (
-        <div class="cps-actions cps-actions--col" style="margin-top:0">
-          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/entries/${enId}/add`)}>{ct('addPlayer')}</Button>
+        <div class="cps-actions cp3-roster-act">
           <Button variant="primary" disabled={short || entry.status !== 'approved'} onClick={() => { void confirm(); }}>{ct('confirmRoster')}</Button>
         </div>
       ) : null}
       {canJoin ? (
-        <div class="cps-actions">
+        <div class="cps-actions cp3-roster-act">
           <Button variant="primary" onClick={() => route(`/competitions/${cid}/entries/${enId}/join`)}>{ct('joinAction')}</Button>
         </div>
       ) : null}

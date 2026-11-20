@@ -37,8 +37,8 @@ const ANCHORS = {
 };
 const CODE = 'AbCdEfGhIjKlMnOpQrStUv';
 // 介面標籤（不含使用者內容：賽事名、原因、說明可以換行）
-const SELECTORS = '.s4b-staff__meta, .s4b-staff__exp, .s4b-staff__exp-inline, .s4b-role-tag, .s4b-k, .s4b-err, .s4b-foot, .s4b-status, .s4b-day, button, .ui-badge, h1, .cpa-h, .cpa-reason, .cpa-meta > span, .cpa-muted, .ui-checkbox label, .ui-radio label, .ui-input label'
-  // 新外觀第 1b 批：一句話版面、檢舉未登入那一句（cps-nowrap）、邀請頁提示
+const SELECTORS = '.s4b-staff__meta, .s4b-staff__exp, .s4b-staff__exp-inline, .s4b-role-tag, .s4b-k, .s4b-err, .s4b-foot, .s4b-status, .s4b-day, button, .ui-badge, h1, .cpa-head h2, .cpa-reason, .cpa-meta > span, .ui-checkbox label, .ui-radio label, .ui-input label'
+  // 新外觀第 1b 批：一句話版面、檢舉未登入那一句（cps-nowrap）、邀請頁提示；卡 4-F：管理員區標題改掛 .cpm-h、讀取中與空的改掛 .cps-note
   + ', .cps-note, .s4b-alert';
 
 const browser = await chromium.launch({ args: ['--noerrdialogs'] });

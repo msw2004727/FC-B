@@ -6,7 +6,6 @@ import { useEffect, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
 import { ctOrKey, useCompetitionsT } from '../i18n';
-import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Input } from '@/ui/Input';
@@ -22,6 +21,7 @@ import { buildAddInput, type PositionChoice } from '../payload';
 import { CpError, CpLoadFailed, errorOf, loadFailOf, RosterBlocked } from '../ui/feedback';
 import { DateField, POSITION_TEXT_MAX, PositionField } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
+import { StatusTag } from '../ui/status-tag';
 
 async function loadHead(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
   const [competition, divisions, entries] = await Promise.all([
@@ -161,27 +161,28 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
   if (block) return <RosterBlocked reason={block} cid={cid} enId={enId} />;
 
   return (
-    <CpFrame title={ct('addTitle')} onBack={backToRoster}>
-      <CpCard>
+    <CpFrame title={ct('addTitle')} context={competition.name} onBack={backToRoster}>
+      {/* 新外觀卡 3-2：隊伍卡縮成一列（隊名可縮並省略、組別賽制不換行） */}
+      <CpCard class="cp3-jteam">
         <h2 class="cps-title">{entry?.name ?? ''}</h2>
         {division ? <p class="cps-sub">{division.name}　{ct('formatN', { n: division.playersOnField })}</p> : null}
       </CpCard>
       <CpCard>
-        <div class="cps-fields">
+        <div class="cps-fields cp3-jform">
           <Input label={ct('realName')} required value={realName} maxLength={40} onValueChange={setRealName} />
           <div>
             <DateField id="cp-birthday" label={ct('birthday')} required value={birthday} onValueChange={setBirthday} />
-            <p class="cps-cap" style="margin-top:6px">{ct('birthdayHint')}</p>
+            <p class="cps-cap cp3-cap">{ct('birthdayHint')}</p>
           </div>
           {minor ? (
-            <div class="cps-hint-line"><Badge tone="warning" label={ct('minor')} size="sm" /></div>
+            <div class="cps-hint-line"><StatusTag kind="neutral" label={ct('minor')} /></div>
           ) : null}
           <div class="cps-grid2">
             <Input label={ct('number')} type="number" value={number} min={0} max={99} onValueChange={setNumber} />
             <div />
           </div>
           <PositionField value={position} text={positionText} onChange={(next, text) => { setPosition(next); setPositionText(text); }} />
-          {shown ? <p class="cps-sub" data-public-name>{ct('maskedPreview', { name: shown })}</p> : null}
+          {shown ? <p class="cps-sub cp3-pubname" data-public-name>{ct('maskedPreview', { name: shown })}</p> : null}
           {adult ? (
             <Input label={ct('nickname')} value={nickname} maxLength={20} onValueChange={setNickname} />
           ) : null}
@@ -191,7 +192,7 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
           {error ? <CpError reason={error.reason} params={error.params} /> : null}
         </div>
       </CpCard>
-      <div class="cps-actions">
+      <div class="cps-actions cp3-jact">
         <Button variant="secondary" onClick={backToRoster}>{ct('cancel')}</Button>
         <Button variant="primary" loading={busy} onClick={() => { void submit(); }}>{ct('addSubmit')}</Button>
       </div>

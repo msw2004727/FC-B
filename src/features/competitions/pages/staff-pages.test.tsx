@@ -570,7 +570,8 @@ describe('指派頁與我的場次', () => {
     const text = view.container.textContent ?? '';
     expect(text).toContain('1/9（');
     expect(text).toContain('1/10（');
-    expect(text).toContain('未開賽');
+    // 新外觀卡 3-3：未開賽不放標籤（共同裁定第 12 條），取代原本「含『未開賽』」
+    expect(text).not.toContain('未開賽');
     expect(text).toContain('進行中');
     expect(text).toContain('中場');
     expect(text).toContain('已結束');
@@ -581,12 +582,50 @@ describe('指派頁與我的場次', () => {
     expect(repo.calls()[0]).toBe('getStaffAssignment');
     expect(repo.calls().filter((name) => name === 'getMatch')).toHaveLength(7);
     expect(repo.calls()).not.toContain('getCompetition');
+    // 板卡＝進行中那一場（亮燈），全頁只有它是實心主要鈕
+    const boards = view.container.querySelectorAll('.s4b-mb');
+    expect(boards).toHaveLength(1);
+    expect(boards[0]?.textContent).toContain('進行中');
+    expect(boards[0]?.querySelector('.d2-sb--lit')).toBeTruthy();
+    expect(view.container.querySelectorAll('button.ui-button--primary')).toHaveLength(1);
     const liveRow = [...view.container.querySelectorAll('.s4b-m')].find((el) => (el.textContent ?? '').includes('進行中'));
     const enter = liveRow?.querySelector('button');
     if (!enter) throw new Error('進行中應有進入記分');
     fireEvent.click(enter);
     await waitFor(() => expect(window.location.pathname).toBe('/competitions/cup/matches/mt_live/score'));
     window.history.pushState(null, '', previous || '/');
+  });
+
+  it('新外觀卡 3-3：沒有進行中時板卡是最早一場未開賽（不亮燈）；全部結束時沒有板、沒有主要鈕', async () => {
+    const draft = (ids: string[], matches: MatchDoc[]) => createFakeCpRepo({
+      competitions: [competition({ id: 'cup' })],
+      assignments: { cup: [{ uid: 'uid_member', roles: ['scorer'], matchIds: ids, expiresAt: null }] },
+      matches: { cup: matches },
+    });
+    const pre = draft(['mt_b', 'mt_a', 'mt_done'], [
+      match('mt_b', { status: 'scheduled', kickoffAt: taipeiMs(2027, 1, 9, 16, 0) }),
+      match('mt_a', { status: 'scheduled', kickoffAt: taipeiMs(2027, 1, 9, 14, 0) }),
+      match('mt_done', { status: 'confirmed', finishedAt: NOW - 3_600_000, kickoffAt: taipeiMs(2027, 1, 9, 9, 0) }),
+    ]);
+    const view = draw({ actor: memberActor, repo: pre, actions: idleActions(), now: NOW, route: { cid: 'cup' } }, <ScorerMatchesPage />);
+    await screen.findByRole('heading', { name: '我的場次' });
+    const boards = view.container.querySelectorAll('.s4b-mb');
+    expect(boards).toHaveLength(1);
+    expect(boards[0]?.querySelector('.d2-sb--lit')).toBeNull();
+    expect(boards[0]?.textContent).toContain('14:00');
+    expect(view.container.querySelectorAll('button.ui-button--primary')).toHaveLength(1);
+    expect(view.container.textContent).not.toContain('未開賽');
+    cleanup();
+
+    const done = draft(['mt_x', 'mt_y'], [
+      match('mt_x', { status: 'confirmed', finishedAt: NOW - 3_600_000, kickoffAt: taipeiMs(2027, 1, 9, 9, 0) }),
+      match('mt_y', { status: 'cancelled', kickoffAt: taipeiMs(2027, 1, 9, 10, 0) }),
+    ]);
+    const after = draw({ actor: memberActor, repo: done, actions: idleActions(), now: NOW, route: { cid: 'cup' } }, <ScorerMatchesPage />);
+    await screen.findByRole('heading', { name: '我的場次' });
+    expect(after.container.querySelector('.s4b-mb')).toBeNull();
+    expect(after.container.querySelector('button.ui-button--primary')).toBeNull();
+    expect(after.container.querySelector('.d2-tag--cancelled')?.textContent).toContain('已取消');
   });
 
   it('沒有指派或未登入時我的場次是空狀態，未登入不讀', async () => {

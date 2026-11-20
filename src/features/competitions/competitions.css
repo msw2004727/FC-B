@@ -8,6 +8,7 @@
  * 後面的批次要用新變數或新根節點，加進這兩條，不另開一份。 */
 .cps-root,
 .s4-page,
+.s4-root,
 .d2-panel,
 .cp-danger-confirm #app-confirm-modal {
   --d2-accent: #0d9488;
@@ -53,11 +54,31 @@
   --d2-sb-sh-lit: inset 0 0 0 1px rgba(255,255,255,.07), inset 0 2px 3px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.95);
   --d2-sb-bar: 0 0 0 0 transparent;
   --d2-num: 'CP Score', 'DIN Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
+  /* 記分頁（第 2 批卡 2-1）：隊色、當下該按的那一顆（go）、終場（ink）、矮板落影、提示列圖示（遮罩）；
+   * PK 沒進的底與框寬、控制列停用的底與字、板上離線紅點改成變數，深淺色只換值。 */
+  --d2-home: #0f766e;
+  --d2-away: #1d4ed8;
+  --d2-go-btn: #111a18;
+  --d2-go-btn-fg: #ffffff;
+  --d2-ink-btn: #111a18;
+  --d2-ink-btn-fg: #ffffff;
+  --d2-ink-btn-line: 0 0 0 0 transparent;
+  --d2-frame-drop: rgba(15, 23, 42, .4);
+  --d2-miss-bg: var(--d2-glass-gloss), var(--d2-glass-base);
+  --d2-miss-w: 2px;
+  --d2-ctrl-off-bg: var(--d2-off-bg);
+  --d2-ctrl-off-fg: #5e687c;
+  --d2-sb-alarm: #ff6b6b;
+  --d2-ico-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v6M12 7.4v.2'/%3E%3C/svg%3E");
+  --d2-ico-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4 2.8 20h18.4z'/%3E%3Cpath d='M12 10v4.6M12 17.3v.2'/%3E%3C/svg%3E");
+  --d2-ico-lock: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='2'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E");
+  --d2-ico-phone: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='7' y='3' width='10' height='18' rx='2'/%3E%3Cpath d='M11 17.5h2'/%3E%3C/svg%3E");
   /* 賽事範圍內最小字 12px（全站說明小字是 11px，不動全站） */
   --font-size-caption: 12px;
 }
 [data-theme="dark"] .cps-root,
 [data-theme="dark"] .s4-page,
+[data-theme="dark"] .s4-root,
 [data-theme="dark"] .d2-panel,
 [data-theme="dark"].cp-danger-confirm #app-confirm-modal {
   --d2-accent: #34d399;
@@ -99,10 +120,23 @@
   --d2-sb-sh: inset 0 0 0 1px rgba(255,255,255,.16), inset 0 2px 3px rgba(0,0,0,.6);
   --d2-sb-sh-lit: inset 0 0 0 1px rgba(52,211,153,.6);
   --d2-sb-bar: inset 3px 0 0 0 #34d399;
+  --d2-home: #047857;
+  --d2-away: #2563eb;
+  --d2-go-btn: #f2f6f4;
+  --d2-go-btn-fg: #111a18;
+  --d2-ink-btn: #2b3446;
+  --d2-ink-btn-fg: #f5f7fa;
+  --d2-ink-btn-line: inset 0 0 0 2px rgba(255,255,255,.5);
+  --d2-frame-drop: rgba(0, 0, 0, .8);
+  --d2-miss-bg: transparent;
+  --d2-miss-w: 3px;
+  --d2-ctrl-off-bg: transparent;
+  --d2-ctrl-off-fg: #8892a4;
 }
 
 
 .cps-root .ui-button,
+.s4-root .ui-button,
 .s4-page .ui-button,
 .d2-panel .ui-button {
   --comp-button-background-default: var(--d2-accent-ink);
@@ -118,12 +152,15 @@
   white-space: nowrap;
 }
 .cps-root .ui-button__label,
+.s4-root .ui-button__label,
 .s4-page .ui-button__label,
 .d2-panel .ui-button__label { white-space: nowrap; overflow-wrap: normal; word-break: keep-all; }
 .cps-root .ui-button--sm,
+.s4-root .ui-button--sm,
 .s4-page .ui-button--sm,
 .d2-panel .ui-button--sm { font-size: 13px; line-height: 20px; }
 .cps-root .ui-button--ghost,
+.s4-root .ui-button--ghost,
 .s4-page .ui-button--ghost,
 .d2-panel .ui-button--ghost {
   --comp-button-background-hover: transparent;
@@ -131,6 +168,7 @@
   --comp-button-foreground-default: var(--d2-accent-ink);
 }
 .cps-root .ui-button.ui-button--secondary,
+.s4-root .ui-button.ui-button--secondary,
 .s4-page .ui-button.ui-button--secondary,
 .d2-panel .ui-button.ui-button--secondary {
   --comp-button-background-hover: var(--d2-glass-gloss), var(--d2-glass-base);
@@ -138,9 +176,11 @@
   color: var(--d2-text);
 }
 .cps-root .ui-button.ui-button--secondary::before,
+.s4-root .ui-button.ui-button--secondary::before,
 .s4-page .ui-button.ui-button--secondary::before,
 .d2-panel .ui-button.ui-button--secondary::before { border-color: transparent; background: var(--d2-glass-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh); }
 .cps-root .ui-button.ui-button--danger,
+.s4-root .ui-button.ui-button--danger,
 .s4-page .ui-button.ui-button--danger,
 .d2-panel .ui-button.ui-button--danger {
   --comp-button-background-hover: var(--d2-field-bg);
@@ -148,12 +188,15 @@
   color: var(--d2-danger);
 }
 .cps-root .ui-button.ui-button--danger::before,
+.s4-root .ui-button.ui-button--danger::before,
 .s4-page .ui-button.ui-button--danger::before,
 .d2-panel .ui-button.ui-button--danger::before { border-color: transparent; background: var(--d2-field-bg); box-shadow: inset 0 0 0 1.5px var(--d2-danger); }
 .cps-root .ui-button.ui-button--danger.ui-button--sm,
+.s4-root .ui-button.ui-button--danger.ui-button--sm,
 .s4-page .ui-button.ui-button--danger.ui-button--sm,
 .d2-panel .ui-button.ui-button--danger.ui-button--sm { --comp-button-background-hover: transparent; --comp-button-background-active: transparent; }
 .cps-root .ui-button.ui-button--danger.ui-button--sm::before,
+.s4-root .ui-button.ui-button--danger.ui-button--sm::before,
 .s4-page .ui-button.ui-button--danger.ui-button--sm::before,
 .d2-panel .ui-button.ui-button--danger.ui-button--sm::before { background: none; box-shadow: none; }
 .cps-root .ui-button.ui-button--secondary[aria-expanded="true"],
@@ -161,17 +204,21 @@
 .cps-root .ui-button.ui-button--secondary[aria-expanded="true"]::before,
 .d2-panel .ui-button.ui-button--secondary[aria-expanded="true"]::before { background: var(--d2-seg-on), var(--d2-glass-base); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
 .cps-root .ui-button[aria-disabled="true"],
+.s4-root .ui-button[aria-disabled="true"],
 .s4-page .ui-button[aria-disabled="true"],
 .d2-panel .ui-button[aria-disabled="true"] { opacity: 1; color: var(--d2-text-3); }
 .cps-root .ui-button[aria-disabled="true"]::before,
+.s4-root .ui-button[aria-disabled="true"]::before,
 .s4-page .ui-button[aria-disabled="true"]::before,
 .d2-panel .ui-button[aria-disabled="true"]::before { border-color: transparent; background: var(--d2-off-bg); box-shadow: inset 0 0 0 1px var(--d2-off-line); }
 .cps-root .ui-button.ui-button--danger[aria-disabled="true"]::before,
+.s4-root .ui-button.ui-button--danger[aria-disabled="true"]::before,
 .d2-panel .ui-button.ui-button--danger[aria-disabled="true"]::before { background: none; box-shadow: inset 0 0 0 1.5px var(--d2-off-line); }
 /* 線上支付預留鈕：安靜的停用小鈕 */
 .cps-root .cps-fee .ui-button[aria-disabled="true"] { min-inline-size: 0; color: var(--d2-text-3); }
 .cps-root .cps-fee .ui-button[aria-disabled="true"]::before { background: none; box-shadow: inset 0 0 0 1px var(--d2-line); }
 .cps-root .ui-button:focus-visible,
+.s4-root .ui-button:focus-visible,
 .s4-page .ui-button:focus-visible,
 .cps-root .ui-tabs__tab:focus-visible,
 .s4-page .ui-tabs__tab:focus-visible,
@@ -481,16 +528,6 @@
 /* 頁首裡的圓形鈕：外觀 36px 貼齊內容邊緣（點擊區 44 往外多出 4px） */
 .cps-top > .cps-iconbtn:first-child { margin-left: -4px; }
 .cps-top > .cps-iconbtn ~ .cps-iconbtn { margin-left: auto; margin-right: -4px; }
-.cps-top h1.cps-top__user {
-  /* 顧問 §3.460：頂列標題是賽事名稱時（進行中、已結束的詳情頁）最多兩行、超過才省略；固定文字標題維持一行。 */
-  white-space: normal;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  line-height: var(--line-height-body);
-}
 /* 圓形圖示鈕：點擊區 44×44，外觀是 36px 圓形玻璃；--flat（垃圾桶）沒有玻璃底 */
 .cps-iconbtn {
   position: relative; z-index: 0; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
@@ -578,19 +615,22 @@
 .cps-li__name { display: block; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cps-li__meta { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin-top: 2px; }
 .cps-li__meta .cps-cap { font-size: 13px; line-height: 20px; color: var(--d2-text-2); white-space: nowrap; }
+/* 名單頁背號（新外觀卡 3-2）：32px 中性圓、15px 粗體等寬數字；取代原本青綠底與深色專屬那一條 */
 .cps-num {
-  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%;
-  background: var(--color-brand-soft-bg); color: var(--color-brand-soft-fg); font-size: var(--font-size-body); font-weight: 700;
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--d2-line); color: var(--d2-text); font-size: 15px; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-[data-theme="dark"] .cps-num { background: rgba(52,211,153,.16); color: var(--palette-emerald-300); }
 
-/* 名單列：背號、顯示名、位置同一行，不換行、不截斷。 */
-.cps-player { flex-wrap: nowrap; white-space: nowrap; }
+/* 名單列（卡 3-2）：每列高 48、間距 10、列間細線；背號｜顯示名｜位置｜未成年 …… 靠最右的垃圾桶（點擊區 44，圖示右緣對齊卡片內距）。
+ * 這一列與它的父層不加 overflow: hidden（垃圾桶的點擊區不被裁）；省略只加在顯示名。 */
+.cps-player { flex-wrap: nowrap; gap: 10px; min-height: 48px; padding: 0; border-top: 1px solid var(--d2-line); white-space: nowrap; }
 .cps-player__name, .cps-player__pos {
-  flex: 0 0 auto; white-space: nowrap; font-size: var(--font-size-body); line-height: var(--line-height-body);
+  flex: 0 0 auto; white-space: nowrap; font-size: 15px; line-height: 24px;
 }
-.cps-player__name { font-weight: 600; }
+.cps-player__name { font-weight: 600; color: var(--d2-text); }
+.cps-player__pos { font-size: 13px; color: var(--d2-text-2); }
+.cps-player .cps-iconbtn { width: 44px; height: 44px; margin: 0 -13px 0 auto; }
 /* 顧問 §3.471 X-02：使用者取的暱稱（名單頁）。長暱稱可縮、超過省略，背號、位置、標籤、刪除鈕不讓位（取代上方「不截斷」只對暱稱）。 */
 .cps-player__name.cps-player__name--fit { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cps-player .ui-badge { flex: 0 0 auto; white-space: nowrap; }
@@ -599,7 +639,8 @@
 .cps-bar i { display: block; height: 100%; background: var(--color-brand); }
 .cps-bar i.low { background: var(--d2-text-3); }
 
-.cps-hint-line { display: flex; align-items: center; gap: var(--space-2); }
+/* 代為新增：「未成年」標籤往上靠近生日欄（卡 3-2） */
+.cps-hint-line { display: flex; align-items: center; gap: var(--space-2); margin-top: -8px; }
 .cps-fee { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-2); }
 .cps-fee__amount { white-space: nowrap; font-size: var(--font-size-body); font-weight: 600; }
 .cps-fee .ui-button { flex: 0 0 auto; white-space: nowrap; }
@@ -609,9 +650,10 @@
 .cps-kv { display: flex; justify-content: space-between; gap: var(--space-3); font-size: var(--font-size-body-sm); }
 .cps-kv span:first-child { color: var(--color-text-muted); white-space: nowrap; }
 .cps-kv span:last-child { white-space: nowrap; }
+/* 未成年隱私說明（卡 3-2）：不是色塊，左邊一條 2px 線＋次要字；三行的換行是字串自帶的 */
 .cps-privacy {
-  margin: 0; padding: var(--space-3); border-radius: var(--radius-sm); background: none; box-shadow: inset 0 0 0 1px var(--d2-line-strong); color: var(--d2-text);
-  font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm);
+  margin: 0; padding: 0 0 0 12px; background: none; box-shadow: inset 2px 0 0 0 var(--d2-line-strong); color: var(--d2-text-2);
+  font-size: 13px; line-height: 20px;
 }
 .cps-success { text-align: center; padding: var(--space-6) var(--space-4); }
 .cps-success svg { width: 44px; height: 44px; fill: none; stroke: var(--d2-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -658,13 +700,66 @@
 .cps-gate__btns > :first-child:nth-last-child(2),
 .cps-gate__btns > :last-child:nth-child(2) { flex: 1 1 0; min-inline-size: 0; }
 
-/* 玻璃頂部外框（第 1b 批規格 3.4 的 .d2-hero／.d2-hero--bare／.d2-foot，不綁頁面）。
- * 1b-3 還沒合進來，報隊管理先用這一份；1b-3 合併時保留詳情線那份、刪這一段。 */
+/* 詳情頂部（卡 1b-3）：玻璃外框上緣嵌記分板，不放板時是同排法的玻璃卡（.d2-plain），下半是主辦列。
+ * .d2-hero／.d2-hero--bare／.d2-foot 不綁詳情頁，別頁的玻璃頂部直接套；板的底色、框、數字字型吃上面的 .d2-sb 共用元件。 */
 .d2-hero { position: relative; padding: 6px 6px 0; border-radius: 16px; overflow: hidden; background: var(--d2-glass-base); box-shadow: var(--d2-glass-sh); }
-.d2-hero::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: inherit; box-shadow: var(--d2-glass-edge); pointer-events: none; }
+.d2-hero::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: inherit; pointer-events: none; box-shadow: var(--d2-glass-edge); }
 .d2-hero--bare { padding-bottom: 6px; }
-.d2-foot { margin: 0 -6px; background: var(--d2-glass-gloss); }
-/* 細線分列（詳情線定名 .d2-lines／.d2-lines--48，1b-3 落地）：這裡只為截圖先給樣子，1b-3 合併時刪這兩條。 */
+.d2-foot { margin: 0 -6px; padding: 0 10px 0 14px; background: var(--d2-glass-gloss); }
+.d2-board { --sb-radius: 11px; --sb-pad: 12px 14px 14px; }
+.d2-board__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.d2-board__cat { font-size: 12px; line-height: 16px; color: var(--d2-sb-fg2); }
+/* 賽事名稱是這一頁唯一的 h1：自然折行、最多兩行，第三行以上省略 */
+.d2-board__name {
+  margin: 10px 0 0; font-size: 22px; line-height: 32px; font-weight: 700; color: var(--d2-sb-fg);
+  white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.d2-board__meta { display: flex; align-items: center; min-width: 0; margin: 0; white-space: nowrap; font-size: 13px; line-height: 20px; color: var(--d2-sb-fg2); font-variant-numeric: tabular-nums; }
+.d2-board__meta span { flex: 0 0 auto; }
+.d2-board__meta span:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 同一行兩段資訊中間一顆 3px 圓點 */
+.d2-board__meta span + span::before,
+.d2-board .d2-cell__k span + span::before { content: ''; display: inline-block; width: 3px; height: 3px; margin: 0 8px; border-radius: 50%; background: currentColor; vertical-align: middle; }
+.d2-board .d2-cells { margin-top: 12px; padding-top: 10px; }
+.d2-board .d2-cell:first-child { flex: 1 1 auto; }
+.d2-board .d2-cell + .d2-cell { flex: 0 0 auto; min-width: 72px; }
+.d2-board .d2-cell__k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d2-board .d2-cell__v { min-width: 0; gap: 8px; }
+.d2-board .d2-cell__v .d2-num { flex: 0 0 auto; }
+.d2-cell__t { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; font-size: 13px; line-height: 28px; font-weight: 600; color: var(--d2-sb-fg); }
+.d2-cell__t span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.d2-cell__t i { flex: 0 0 auto; font-style: normal; font-size: 12px; font-weight: 400; color: var(--d2-sb-fg2); }
+.d2-plain { padding: 8px 8px 12px; white-space: nowrap; }
+.d2-plain .d2-sb__st,
+.d2-plain .d2-board__cat,
+.d2-plain .d2-board__meta { color: var(--d2-text-2); }
+.d2-plain .d2-sb__st--danger { color: var(--d2-danger); font-weight: 700; }
+.d2-plain .d2-board__name { color: var(--d2-text); }
+.d2-plain__notes { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--d2-line); }
+.d2-plain__notes .cpm-reason { margin: 0; font-size: 13px; line-height: 20px; color: var(--d2-text); white-space: normal; overflow-wrap: anywhere; }
+.d2-plain__notes .cpm-reason b { font-weight: 400; color: var(--d2-text-2); }
+/* 冠軍：一組＝小標＋隊名一行；多組＝小標自己一行、下面一組一行，最多三行，超過「等 N 組」 */
+.d2-plain__champ { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin: 0; }
+.d2-plain__champ b { flex: 0 0 auto; font-size: 12px; line-height: 28px; font-weight: 400; color: var(--d2-text-2); }
+.d2-plain__champ span,
+.d2-plain__champs dd { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; font-size: 19px; line-height: 28px; font-weight: 700; color: var(--d2-text); }
+.d2-plain__champs dd { font-size: 17px; }
+.d2-plain__champk,
+.d2-plain__more { margin: 0; font-size: 12px; line-height: 20px; color: var(--d2-text-2); }
+.d2-plain__more { font-size: 13px; }
+.d2-plain__champs { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; margin: 0; }
+.d2-plain__champs dt { max-width: 120px; margin: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; line-height: 28px; color: var(--d2-text-2); }
+/* 主辦列（頂部下半）：小字「主辦」｜名稱｜（招募中）主辦類型｜靠右「聯絡主辦」小鈕；聯絡文字接下一行 */
+.cpm-contact { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 52px; }
+.d2-foot .cpm-h { flex: 0 0 auto; font-size: 12px; line-height: 20px; font-weight: 400; color: var(--d2-text-2); }
+.d2-foot > .cpm-h { display: block; padding-top: 10px; }
+.cpm-host { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
+.cpm-contact .ui-badge { flex: 0 0 auto; }
+.cpm-contact .ui-button { flex: 0 0 auto; min-inline-size: 0; margin-left: auto; padding: 0 12px; }
+.cpm-public { margin: -4px 0 12px; font-size: 13px; line-height: 20px; color: var(--d2-text-2); overflow-wrap: anywhere; }
+.d2-foot > .cpm-h + .cpm-public { margin: 0 0 12px; font-size: 15px; line-height: 24px; color: var(--d2-text); }
+
+/* 細線分列（共用，第 3、4 批引用）：直接子層每列最小高 44、列與列之間 1px 細線；--48 是列高 48 的變體。只管列高與分線，列內怎麼排由各頁決定 */
 .d2-lines > * { min-height: 44px; }
 .d2-lines > * + * { border-top: 1px solid var(--d2-line); }
 .d2-lines--48 > * { min-height: 48px; }
@@ -758,17 +853,6 @@
 .cps-root .ui-radio-group__label,
 .cps-root .ui-tabs__label { white-space: nowrap; }
 
-.cp3-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; }
-.cp3-strip { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-.cp3-strip__txt { font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.cp3-strip .ui-badge { flex: 0 0 auto; white-space: nowrap; }
-
-.cp3-champ { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
-.cp3-champ svg { flex: 0 0 auto; width: 36px; height: 36px; fill: none; stroke: var(--d2-text-2); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.cp3-champ__t { min-width: 0; }
-.cp3-champ__k { display: block; font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--color-text-muted); white-space: nowrap; }
-.cp3-champ__v { display: block; font-size: var(--font-size-title); line-height: var(--line-height-title); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
 .cp3-day { margin: 0 0 var(--space-2); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-weight: 700; color: var(--color-text-secondary); white-space: nowrap; }
 .cp3-ml { list-style: none; margin: 0 0 var(--space-4); padding: 0; }
 .cp3-ml:last-child { margin-bottom: 0; }
@@ -813,9 +897,13 @@
 .cp3-st__r--top .t, .cp3-st__r--top .rk { color: var(--color-brand-soft-fg); }
 [data-theme="dark"] .cp3-st__r--top .t, [data-theme="dark"] .cp3-st__r--top .rk { color: var(--palette-emerald-300); }
 
-.cp3-fold { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: var(--color-text-primary); font: inherit; font-size: var(--font-size-body); font-weight: 600; white-space: nowrap; cursor: pointer; }
-.cp3-fold svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* 收合列（共用，第 3 批引用）：卡片 .d2-foldcard＋收合鈕 .cp3-fold；收起來跟入口列一樣高，展開後鈕下緣一條細線、內容才撐開 */
+.cps-card.d2-foldcard { padding: 0 14px 0 16px; }
+.cp3-fold { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; padding: 0; border: 0; background: none; color: var(--d2-text); font: inherit; font-size: 15px; line-height: 24px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.cp3-fold svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; color: var(--d2-text-3); }
+.cp3-fold--open { border-bottom: 1px solid var(--d2-line); }
 .cp3-fold--open svg { transform: rotate(180deg); }
+.cp3-fold--open + * { padding: 12px 2px 16px 0; }
 
 .cps-card--ok { border-left: 3px solid var(--d2-accent); }
 
@@ -834,18 +922,35 @@
 .cp3-tn--h { justify-content: flex-end; width: 100%; }
 .cp3-m__vs .cp3-tn { overflow: hidden; }
 
-.cp3-cover { position: relative; border-radius: var(--radius-lg, 14px); overflow: hidden; aspect-ratio: 8 / 3; }
-.cp3-cover__def { position: relative; display: block; width: 100%; height: 100%; }
-.cp3-cover__def--league { background: linear-gradient(120deg, var(--cat-league-from), var(--cat-league-to)); }
-.cp3-cover__def--cup { background: linear-gradient(120deg, var(--cat-cup-from), var(--cat-cup-to)); }
-.cp3-cover__def--friendly { background: linear-gradient(120deg, var(--cat-friendly-from), var(--cat-friendly-to)); }
-.cp3-cover__def::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 14px, rgba(255,255,255,0) 14px 28px); }
-.cp3-cover__def svg { position: absolute; right: 6%; top: 50%; transform: translateY(-50%); height: 80%; fill: none; stroke: rgba(255,255,255,.55); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
-.cp3-cover__cat { position: absolute; left: 10px; bottom: 10px; padding: 3px 10px; border-radius: 999px; background: rgba(15,23,42,.62); box-shadow: inset 0 1px 0 rgba(255,255,255,.22); color: #fff; font-size: var(--font-size-caption); font-weight: 700; white-space: nowrap; }
-
+/* 本隊名單（新外觀卡 3-2）：隊伍卡 隊徽 48＋隊名 → 兩顆標籤 → 人數 → 進度條 → 說明句；球員卡標題列右邊接小顆「代為新增球員」 */
 .cp3-roster-head { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .cp3-roster-head__t { min-width: 0; flex: 1 1 auto; }
-.cp3-roster-head__t .cps-title { overflow: hidden; text-overflow: ellipsis; }
+.cp3-roster-head__t .cps-title { overflow: hidden; text-overflow: ellipsis; font-size: 19px; line-height: 28px; color: var(--d2-text); }
+.cp3-roster-head__t .cps-sub { line-height: 20px; color: var(--d2-text-2); }
+.cp3-roster-tags { margin-top: 12px; }
+.cp3-roster-count { align-items: baseline; margin-top: 6px; font-size: 13px; line-height: 20px; }
+.cp3-roster-count > span:first-child { color: var(--d2-text-2); }
+.cp3-roster-count > span:last-child { font-weight: 600; color: var(--d2-text); font-variant-numeric: tabular-nums; }
+.cp3-roster-bar { margin: 6px 0 0; background: var(--d2-line); }
+.cp3-roster-note { margin-top: 8px; line-height: 20px; color: var(--d2-text-2); }
+.cps-card.cp3-roster-list { padding: 12px 16px 4px; }
+.cp3-roster-list__h { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.cp3-roster-list__h .cps-h { margin: 0; }
+.cp3-roster-list__h .ui-button { flex: 0 0 auto; min-inline-size: 0; margin: -6px 0; }
+.cp3-roster-list .cps-list { margin-top: 10px; border-top: 1px solid var(--d2-line); }
+.cps-actions.cp3-roster-act { margin-top: 0; }
+/* 登錄名單、代為新增（卡 3-2）：隊伍卡一列、位置三欄兩列、說明字往上靠、勾選連排收緊、取消窄鈕在左 */
+.cps-card.cp3-jteam { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 16px; }
+.cp3-jteam .cps-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 17px; line-height: 24px; color: var(--d2-text); }
+.cp3-jteam .cps-sub { flex: 0 0 auto; line-height: 24px; color: var(--d2-text-2); white-space: nowrap; }
+.cp3-pos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 8px; }
+.cp3-pos .ui-chip { min-width: 0; }
+.cp3-pos .ui-chip__select { justify-content: center; min-width: 0; min-height: 44px; overflow: hidden; text-overflow: ellipsis; }
+.cp3-pubname { margin-top: -8px; line-height: 20px; color: var(--d2-text-2); }
+.cp3-cap { display: block; margin: 6px 0 0; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
+.cp3-jform > .ui-checkbox + .ui-checkbox { margin-top: -12px; }
+.cps-actions.cp3-jact { gap: 8px; margin-top: 4px; }
+.cp3-jact .ui-button.ui-button--secondary { flex: 0 0 104px; }
 
 /* 主辦排賽程、賽程管理、比分面板。class 對照預覽 harness。 */
 .cp3-tags { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
@@ -909,7 +1014,6 @@
   color: var(--color-text-secondary);
 }
 .cpm-reason b { color: var(--color-text-muted); font-weight: 600; }
-.cp3-row .cpm-reason { margin: 0; flex: 1 1 auto; }
 .cpm-ended {
   margin: 0;
   font-size: var(--font-size-body-lg);
@@ -929,6 +1033,9 @@
   color: var(--d2-text);
 }
 .cpm-hint + .cpm-hint { margin-top: -6px; }
+/* 同分「已有裁定」卡、裁定小卡：提示句與原因列後面接表單時，留與卡內表單相同的 16px（設計審查 03:52） */
+.cpm-hint + .cps-sheet-body,
+.cpm-reason + .cps-sheet-body { margin-top: var(--space-4); }
 .cpm-hint::before,
 .cpm-warn::before {
   content: '';
@@ -1195,51 +1302,25 @@
 /* 取消（ghost）不吃 120px 最小寬，避免「已發 n／20 則」被壓到疊在取消上（11-20 外框驗收 P2-1）。 */
 .cpm-ann__btns .ui-button--ghost { min-inline-size: 0; padding-inline: var(--space-3); }
 .cpm-ann__foot .cpm-meta { margin: 0; white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.cpm-contact {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-  min-width: 0;
-}
-.cpm-host {
-  min-width: 0;
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-body);
+/* 提示列：一般級（中性底深字）與資料可能遺失級（深紅底白字）。同一個長相只寫一份，記分頁的提示列（.s4-root .s4-alerts，
+ * 第 2 批卡 2-1）把選擇器加進清單，尺寸另寫在 live.css。一般級原本在 step4b.css，記分頁不載那支檔，卡 2-1 整條搬來（內容不改）。 */
+.s4b-alert,
+.s4-alerts .s4-banner {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--d2-line);
+  color: var(--d2-text);
+  font-size: 13px;
+  line-height: 20px;
   font-weight: 600;
   white-space: nowrap;
 }
-.cpm-public {
-  margin: var(--space-2) 0 0;
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-body);
-}
-.cpm-pm {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
-  min-height: 32px;
-  padding: 4px 12px;
-  border: 1px solid var(--color-info);
-  border-radius: 999px;
-  background: var(--color-info-bg);
-  color: var(--color-info-fg);
-  font: inherit;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-}
-.cpm-pm svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linejoin: round;
+.cpa-hidden,
+.s4-alerts .s4-banner--danger,
+.s4-alerts .s4-banner--held {
+  background: var(--d2-alert-bg);
+  color: var(--d2-alert-fg);
 }
 
 /* 第 4 步 K12：管理員區（後台一般風格，不用液態玻璃）與下架提示。 */
@@ -1251,38 +1332,34 @@
   margin: 0;
   padding: 10px 12px;
   border-radius: 12px;
-  background: var(--d2-alert-bg);
-  color: var(--d2-alert-fg);
   font-size: 13px;
   line-height: 20px;
   font-weight: 600;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* 卡 4-F：平的面（實色底、細線、圓角 14，沒有光澤與陰影）；在 .cps-stack 裡（間距 12），再加 12 與上面的內容共距 24。
+ * 標題掛 .cpm-h、讀取中與空的掛 cps-note cps-nowrap、清單掛 cps-list；「標為不處理」「重新開啟」是中性文字鈕（只換字色變數）。 */
 .cpa-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   min-width: 0;
+  margin-top: 12px;
   padding: var(--space-4);
   border: 1px solid var(--d2-line);
-  border-radius: var(--radius-md);
-  background: var(--d2-field-bg);
+  border-radius: 14px;
+  background: var(--d2-menu-bg);
   color: var(--d2-text);
 }
 .cpa-head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.cpa-h { margin: 0; font-size: var(--font-size-body-lg); line-height: var(--line-height-body-lg); font-weight: 700; white-space: nowrap; }
 .cpa-btns { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
 .cpa-btns .ui-button { width: auto; min-inline-size: 0; }
-.cpa-reports { min-width: 0; }
-.cpa-muted { margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-body-sm); white-space: nowrap; }
+.cpa-btns .ui-button--ghost { --comp-button-foreground-default: var(--d2-text-2); }
 .cpa-retry { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
-.cpa-list { list-style: none; margin: 0; padding: 0; }
-.cpa-li { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: var(--space-3) 0; border-top: 1px solid var(--color-border); }
-.cpa-li:first-child { border-top: 0; padding-top: 0; }
-.cpa-li:last-child { padding-bottom: 0; }
+.cpa-li { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: var(--space-3) 0; }
+.cpa-li + .cpa-li { border-top: 1px solid var(--d2-line); }
 .cpa-li__top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .cpa-reason { font-weight: 700; white-space: nowrap; font-size: var(--font-size-body); }
 .cpa-detail { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; }
-.cpa-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-body-sm); font-variant-numeric: tabular-nums; }
-.cpa-meta > span { white-space: nowrap; }
+.cpa-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; color: var(--d2-text-2); font-size: var(--font-size-body-sm); font-variant-numeric: tabular-nums; }

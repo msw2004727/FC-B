@@ -43,9 +43,9 @@ describe('進球上方隊名標籤與分隔線', () => {
     expect(name).toMatch(/overflow:\s*hidden/);
     expect(name).toMatch(/text-overflow:\s*ellipsis/);
     expect(rule('.s4-tag')).toMatch(/min-width:\s*0/);
-    expect(rule('.s4-tags')).toMatch(/height:\s*24px/);
-    // 顧問：標籤用 body 字級＋粗體，裁判站著也看得清楚。
-    expect(rule('.s4-tag .s4-col__name')).toMatch(/font-size:\s*var\(--font-size-body\)/);
+    // 新外觀（施工-第2批 3.6）：標籤列 24 改 30px、實心隊色塊白字 15px 粗體。
+    expect(rule('.s4-tags')).toMatch(/height:\s*30px/);
+    expect(rule('.s4-tag .s4-col__name')).toMatch(/font-size:\s*15px/);
     expect(rule('.s4-tag .s4-col__name')).toMatch(/font-weight:\s*700/);
   });
 
@@ -78,10 +78,13 @@ describe('進球上方隊名標籤與分隔線', () => {
     expect(line).toMatch(/left:\s*50%/);
   });
 
-  it('進球與牌高度不變，深色模式另有標籤色', () => {
+  it('進球與牌高度不變，標籤用隊色變數、深淺色只換變數值', () => {
     expect(rule('.s4-goals')).toMatch(/height:\s*104px/);
     expect(rule('.s4-cards')).toMatch(/height:\s*56px/);
-    expect(css).toMatch(/\[data-theme="dark"\] \.s4-tag\s*\{[^}]*--s4-tag-fg:/);
-    expect(css).toMatch(/\[data-theme="dark"\] \.s4-tag--away\s*\{[^}]*--s4-tag-fg:/);
+    expect(rule('.s4-tag')).toMatch(/background:\s*var\(--d2-home\)/);
+    expect(rule('.s4-tag--away')).toMatch(/background:\s*var\(--d2-away\)/);
+    // 記分頁不寫深色專屬規則；只剩與觀眾即時頁並列的隊徽色票那一條（第 3 批處理）。
+    const dark = css.match(/\[data-theme="dark"\] \.s4-[\w-]+/g) ?? [];
+    expect(dark).toEqual(['[data-theme="dark"] .s4-root', '[data-theme="dark"] .s4-page']);
   });
 });

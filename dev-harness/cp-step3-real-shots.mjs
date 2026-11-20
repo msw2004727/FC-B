@@ -43,6 +43,8 @@ const ANCHORS = {
   'real-swap-open': '確認對調', 'real-shift-clash': '仍要順延', 'real-shift-clash-settled': '仍要順延', 'real-pending-fresh': '登錄比分', 'real-host-matches-empty': '請先排賽程',
   'real-schedule-preview': '共 12 場、需 2 天、每隊 3 場', 'real-schedule-unplaced': '還有 4 場排不下', 'real-schedule-too-many': '場次太多，請調整賽制',
   'real-schedule-replace': '清除賽程',
+  // 卡 2-5 補、頁首賽事名小字（設計總監 03:38／03:52）
+  'real-tie-ranked': '對戰積分', 'real-tie-four': '赤焰隊', 'real-ctx-short': '三重春季盃', 'real-ctx-long': '賽程管理',
 };
 const SCREENS = [
   ['real:list-in', ALL, THEMES, true],
@@ -103,6 +105,11 @@ const SCREENS = [
   ['real:real-schedule-unplaced', NEW, THEMES, true],
   ['real:real-schedule-too-many', NEW, THEMES, true],
   ['real:real-schedule-replace', NEW, THEMES, true],
+  // 卡 2-5 補、頁首賽事名小字（設計總監 03:38／03:52）；1280 加外框另見 cp-tie-ctx-shots.mjs
+  ['real:real-tie-ranked', NEW, THEMES, true],
+  ['real:real-tie-four', NEW, THEMES, true],
+  ['real:real-ctx-short', NEW, THEMES, false],
+  ['real:real-ctx-long', NEW, THEMES, false],
 ];
 
 const SELECTORS = '.cpm-drag__n, .cpm-drag__li > *, .cpl-src button, .cpl-select, .cpl-st, .tc-chip, .tc-tab, .cpl-line, .tc-card-name, .tc-card-dates, button, .ui-badge, .ui-chip, dt, .cp3-name, .cp3-meta, .cp3-strip__txt, .cp3-day, .cp3-m__when, .cp3-m__vs span, .cp3-st__r > *, .cp3-champ span, .cp3-fold span, .cp3-result, .cp3-result--bad, .cp3-judge, .cp3-sec-h, .cp3-ctx, .cp3-score__name, .cp3-modal-p, .ui-input label, .ui-checkbox label, .ui-radio label, h1, h2, h3, .cps-sub'
