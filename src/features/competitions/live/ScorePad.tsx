@@ -336,7 +336,8 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const holdText = holdLive && reading.holdSec != null
     ? (phase === 'ht' ? restedFor(formatMatchClock(reading.holdSec)) : pausedFor(formatMatchClock(reading.holdSec)))
     : null;
-  const showPause = phase === 'play' && !pk && !pkReady;
+  // 同分停錶可進 PK 時仍要能「繼續計時」，與「PK 大戰」並存（顧問 staging 複驗 P1-C，取代 !pkReady 時整顆藏起）。
+  const showPause = phase === 'play' && !pk;
   const lines = eventLines({
     events,
     voids,
@@ -937,16 +938,19 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
             </Button>
             {menuOpen ? (
               <div id="s4-clock-menu" class="s4-menu">
-                <Button
-                  variant="ghost"
-                  disabled={padOff || reserved}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    props.onCorrectClock?.();
-                  }}
-                >
-                  {LIVE_COPY.correctClock}
-                </Button>
+                {/* 正式頁尚未接上修正時鐘（onCorrectClock 沒有提供者），沒接上就不顯示，避免按了沒反應（顧問 staging 複驗）。 */}
+                {props.onCorrectClock ? (
+                  <Button
+                    variant="ghost"
+                    disabled={padOff || reserved}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      props.onCorrectClock?.();
+                    }}
+                  >
+                    {LIVE_COPY.correctClock}
+                  </Button>
+                ) : null}
                 {phase === 'play' && !pk ? (
                   <Button
                     variant="ghost"

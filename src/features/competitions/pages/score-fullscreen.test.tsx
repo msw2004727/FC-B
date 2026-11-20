@@ -50,4 +50,13 @@ describe('記分頁全幅', () => {
       style.remove();
     }
   });
+
+  it('記分選單貼齊按鈕左緣往右展開（開賽前選單鈕在最左邊，往左展開會出界）', () => {
+    const css = readFileSync(resolve(__dirname, '../live/live.css'), 'utf8');
+    const start = css.indexOf('.s4-menu {');
+    const block = css.slice(start, css.indexOf('}', start)).replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(block).toMatch(/left: 0;/);
+    expect(block).not.toMatch(/right: 0;/);
+  });
 });

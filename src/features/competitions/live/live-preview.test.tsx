@@ -54,7 +54,8 @@ function expectOff(name: string | RegExp, off: boolean): void {
 }
 
 function pad(scene: S4ScoreScene, extra: Partial<ScorePadProps> = {}) {
-  return render(<ScorePad {...scene} {...extra} />);
+  // 預覽元件測試照舊驗「修正時鐘」選項：給一個 onCorrectClock（正式頁未接上時選項不顯示，另有測試）。
+  return render(<ScorePad onCorrectClock={() => undefined} {...scene} {...extra} />);
 }
 
 describe('第 4 步預覽元件', () => {
@@ -914,12 +915,14 @@ describe('第 4 步預覽元件', () => {
     expect(screen.getByText('下半場')).toBeTruthy();
     expect(button('PK 大戰')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /停錶|暫停/ })).toBeNull();
+    // 同分停錶可進 PK 時仍有「繼續計時」，與「PK 大戰」並存（顧問 staging 複驗 P1-C）。
+    expect(button('繼續計時')).toBeTruthy();
     const startCtrl = [...start.container.querySelector('.s4-ctrl')!.children].map((node) => {
       if (node.classList.contains('s4-ctrl__gap')) return 'gap';
       if (node.classList.contains('s4-menu-wrap')) return 'menu';
       return (node.textContent || '').trim();
     });
-    expect(startCtrl).toEqual(['PK 大戰', 'menu', 'gap', '終場']);
+    expect(startCtrl).toEqual(['PK 大戰', '繼續計時', 'menu', 'gap', '終場']);
     fireEvent.click(button('PK 大戰'));
     expect(onStartPk).toHaveBeenCalledTimes(1);
     expect(onClock).not.toHaveBeenCalled();
