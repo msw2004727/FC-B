@@ -148,14 +148,29 @@ export default function TournamentsPage(): JSX.Element {
   }, []);
   // 非法 ?src 只影響畫面預設，這裡不改網址。
   const rawSrc = location.query?.src;
-  // 閘門延後開始：外部清單有結果（ready／error）之後才載入站內區塊與讀 cpConfig/launch，
-  // 冷開時不和外部清單搶頻寬與 CPU；網址明確帶 ?src=in 時照舊立刻開始。2 秒逾時從開始時才起算。
-  // （11-20 staging 冷開實測：閘門同時載入 chunk＋第二條連線，把外部清單既有的 8 秒逾時推過界，取代「進頁立刻開始」。）
+  // 閘門延後開始（顧問 §3.377）：外部清單讀取結束（成功、失敗、8 秒逾時都算，即 state 離開 loading）之後，
+  // 才掛站內區塊、才 import 它的程式檔、才讀 cpConfig/launch；2 秒逾時從那時起算。網址帶 ?src=in 也一樣先等。
+  // 有本機快取（進頁就畫出外部卡片）時，改在快取畫出後的下一個 idle 開始，不必等伺服器回來。
+  // 在那之前開關開或關走同一條路徑。（11-20 staging 冷開實測：閘門同時載入 chunk＋第二條連線，
+  // 把外部清單既有的 8 秒逾時推過界；取代「進頁立刻開始」。）
   const [gateArmed, setGateArmed] = useState(false);
+  const hadCacheAtMount = useRef(cards.length > 0);
   useEffect(() => {
-    if (!COMPETITIONS_ENABLED || gateArmed) return;
-    if (rawSrc === 'in' || state !== 'loading') setGateArmed(true);
-  }, [gateArmed, rawSrc, state]);
+    if (!COMPETITIONS_ENABLED || gateArmed) return undefined;
+    if (state !== 'loading') {
+      setGateArmed(true);
+      return undefined;
+    }
+    if (!hadCacheAtMount.current) return undefined;
+    const idle = (globalThis as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+    const cancelIdle = (globalThis as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
+    if (typeof idle === 'function') {
+      const id = idle(() => setGateArmed(true), { timeout: 1_000 });
+      return () => cancelIdle?.(id);
+    }
+    const timer = setTimeout(() => setGateArmed(true), 200);
+    return () => clearTimeout(timer);
+  }, [gateArmed, state]);
   useEffect(() => {
     if (!COMPETITIONS_ENABLED || !gateArmed) return undefined;
     const timer = setTimeout(() => {

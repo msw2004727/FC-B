@@ -348,13 +348,46 @@ describe('閘門結果', () => {
     expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true');
   });
 
-  it('冷開帶 ?src=in：不等外部清單，閘門立刻開始', async () => {
+  it('冷開帶 ?src=in：同樣先等外部清單結束才開始閘門（顧問 §3.377）', async () => {
     history.replaceState(null, '', '/tournaments?src=in');
+    const cardsReady = deferred<{ docs: Array<{ id: string; data: () => unknown }> }>();
+    sdk.getDocs.mockReset();
+    sdk.getDocs.mockReturnValue(cardsReady.promise);
+    gateCtl.getLaunch = () => Promise.resolve({ isPublic: true, bannedWords: [] });
+    draw();
+    await tick(3_000);
+    expect(gateCtl.mounts).toBe(0);
+    expect(gateCtl.calls).toBe(0);
+    cardsReady.resolve({ docs: DOCS.map((doc) => ({ id: doc.id, data: () => doc.data })) });
+    await tick();
+    await tick();
+    expect(gateCtl.calls).toBe(1);
+    expect(gateAttr()).toBe('open');
+    expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('8 秒逾時也算外部清單結束：之後才開始閘門', async () => {
     sdk.getDocs.mockReset();
     sdk.getDocs.mockReturnValue(new Promise(() => undefined));
     gateCtl.getLaunch = () => Promise.resolve({ isPublic: true, bannedWords: [] });
     draw();
+    await tick(7_900);
+    expect(gateCtl.calls).toBe(0);
+    await tick(200);
     await tick();
+    expect(gateCtl.calls).toBe(1);
+  });
+
+  it('有本機快取：快取畫出後的下一個 idle 就開始，不等伺服器', async () => {
+    mockUseViewer.mockReturnValue(viewer(null));
+    writeCardsCache(null, CACHED);
+    sdk.getDocs.mockReset();
+    sdk.getDocs.mockReturnValue(new Promise(() => undefined));
+    gateCtl.getLaunch = () => Promise.resolve({ isPublic: true, bannedWords: [] });
+    draw();
+    expect(screen.getByText('快取裡的盃賽')).toBeTruthy();
+    expect(gateCtl.calls).toBe(0);
+    await tick(1_000);
     await tick();
     expect(gateCtl.calls).toBe(1);
     expect(gateAttr()).toBe('open');
