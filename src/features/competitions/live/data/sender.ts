@@ -14,6 +14,7 @@ import type {
   ServerControl,
   ServerEvent,
   ServerMatch,
+  ServerRead,
 } from './types';
 
 /**
@@ -27,7 +28,8 @@ export function decideRetry(entry: DecideEntry, server: DecideServer, inflight: 
   if (resetRev > (entry.baseResetRev ?? 0)) return { kind: 'discard', reason: 'reset' };
   if (server.matchedSeq != null) return { kind: 'applied', seq: server.matchedSeq };
   if (entry.seq != null && server.eventAtSeq?.op === entry.op) return { kind: 'applied', seq: entry.seq };
-  if (inflight) return { kind: 'inflight' };
+  // 讀到本機未確認的寫入（同一個 SDK 的進行中寫入、重整後的持久化佇列）：等 SDK 結果，不換號、不重送（第 4 步 A F2）。
+  if (inflight || server.pending === true) return { kind: 'inflight' };
   if (entry.seq == null) return { kind: 'assign' };
   const seq = entry.seq;
   if (server.rev >= seq && (server.eventAtSeq == null || server.eventAtSeq.op !== entry.op)) {
@@ -117,6 +119,8 @@ export interface SenderOptions {
   mtId: string;
   localSid: () => string;
   now: () => number;
+  /** 日誌被 sender 改過（applied、discarded、被拒、送出中）。工作階段據此重讀日誌並更新畫面（第 4 步 A F4）。 */
+  onChange?: () => void;
 }
 
 type Step = 'continue' | 'stop' | 'wait' | 'queued';
@@ -153,7 +157,7 @@ export class Sender {
   async reconcileInflight(): Promise<void> {
     const ops = [...this.inflight];
     if (ops.length === 0 || this.dead) return;
-    let server: { match: ServerMatch; control: ServerControl | null };
+    let server: ServerRead;
     try {
       server = await this.options.port.loadServer();
     } catch {
@@ -164,7 +168,8 @@ export class Sender {
       const entry = await this.options.log.get(op);
       if (!entry?.seq) continue;
       try {
-        const view = await this.look(entry, server.match);
+        // 自己的進行中寫入在確認前一定是 pending（decideRetry 回 inflight），只有已確認的資料才會標 applied。
+        const view = await this.look(entry, server);
         const decision = decideRetry(entry, view, true);
         if (decision.kind === 'discard') {
           await this.markDiscarded(entry.op);
@@ -180,7 +185,7 @@ export class Sender {
   /** 重整後：對 sending／已取號的 pending 先對帳，S2 才清 seq。 */
   async recover(): Promise<void> {
     if (this.dead) return;
-    let server: { match: ServerMatch; control: ServerControl | null };
+    let server: ServerRead;
     try {
       server = await this.options.port.loadServer();
     } catch {
@@ -197,7 +202,7 @@ export class Sender {
       if (this.inflight.has(entry.op)) continue;
       let view: DecideServer;
       try {
-        view = await this.look(entry, server.match);
+        view = await this.look(entry, server);
       } catch {
         continue;
       }
@@ -206,6 +211,8 @@ export class Sender {
         await this.markDiscarded(entry.op);
         continue;
       }
+      // 重整後持久化佇列還有寫入（或別分頁的）：維持原狀與 seq。結果出來時場次快照的 pending 會轉 false，監聽觸發 flush 再決策（F2-6）。
+      if (decision.kind === 'inflight') continue;
       if (decision.kind === 'applied') {
         await this.markApplied(entry.op, decision.seq);
         continue;
@@ -260,7 +267,7 @@ export class Sender {
   private async sendOne(entry: LogEntry): Promise<Step> {
     if (this.dead) return 'stop';
     if (this.inflight.has(entry.op)) return 'wait';
-    let server: { match: ServerMatch; control: ServerControl | null };
+    let server: ServerRead;
     try {
       server = await this.options.port.loadServer();
     } catch {
@@ -272,14 +279,16 @@ export class Sender {
     let working = (await this.options.log.get(entry.op)) ?? entry;
     if (working.state === 'discarded') return 'continue';
     if (this.needsTakeover) {
-      await this.rejectStaleTakenOver();
+      await this.rejectStaleTakenOver(server);
       return 'stop';
     }
+    // 場次有本機未確認的寫入（重整後的持久化佇列、別分頁）：rev 是疊加過的，不能拿來取號；等結果出來再送（Opus 審 P3-1）。
+    if (server.pending === true) return 'wait';
 
     if (working.seq != null) {
       let view: DecideServer;
       try {
-        view = await this.look(working, server.match);
+        view = await this.look(working, server);
       } catch {
         return 'queued';
       }
@@ -325,6 +334,7 @@ export class Sender {
     if (!saved || saved.state === 'discarded' || this.dead) {
       return saved?.state === 'discarded' ? 'continue' : 'stop';
     }
+    this.changed();
 
     const commitP = this.options.port.commit(plan);
     this.inflight.add(saved.op);
@@ -335,13 +345,14 @@ export class Sender {
       return 'continue';
     } catch (err) {
       if (this.dead) return 'stop';
+      // commit 被拒是最終結果。日誌先前被標 applied 也不採信（那是推定），一律以已確認資料重新分類（第 4 步 A F2-4，
+      // 取代「已 applied 就 continue」：它把伺服器的拒絕吞掉，不分類、不換號、不標被拒）。
       const current = await this.options.log.get(saved.op);
-      if (current?.state === 'applied') return 'continue';
       if (current?.state === 'discarded') return 'continue';
       let looked: DecideServer | null = null;
       try {
         const fresh = await this.options.port.loadServer();
-        looked = await this.look({ ...saved, seq }, fresh.match);
+        looked = await this.look({ ...saved, seq }, fresh);
         server = fresh;
       } catch {
         return 'queued';
@@ -359,6 +370,9 @@ export class Sender {
         await this.markApplied(saved.op, decision.seq);
         return 'continue';
       }
+      // 同一個 SDK 還有別筆未確認（例如另一分頁）：疊加過的 rev 不能拿來判衝突。維持送出中，
+      // 等那筆結果出來（場次快照 pending 轉 false → 監聽觸發 flush）再分類（F2-5）。
+      if (decision.kind === 'inflight') return 'queued';
       if (isOfflineError(err)) return 'queued';
       const reason = classifyReject({
         entrySeq: seq,
@@ -383,7 +397,7 @@ export class Sender {
         console.error('[live-scoring] 規則拒絕', { op: saved.op, seq, rev: server.match.rev });
       }
       await this.patchOpen(saved.op, { state: 'rejected', rejectReason: reason, seq });
-      if (reason === 'takenOver') await this.rejectStaleTakenOver();
+      if (reason === 'takenOver') await this.rejectStaleTakenOver(server);
       return 'stop';
     } finally {
       this.inflight.delete(saved.op);
@@ -431,19 +445,35 @@ export class Sender {
     });
   }
 
-  private async look(entry: DecideEntry, match: ServerMatch): Promise<DecideServer> {
+  /**
+   * 決策用的伺服器視圖。eventAtSeq、matchedSeq 只來自已確認文件（loadTimelineFrom 已排除未確認）；
+   * 場次或時間軸任一有本機未確認寫入就帶 pending（第 4 步 A F2-1）。
+   */
+  private async look(entry: DecideEntry, server: ServerRead): Promise<DecideServer> {
+    const match = server.match;
+    const matchPending = server.pending === true;
     if (entry.seq == null) {
-      return { rev: match.rev, resetRev: match.resetRev, eventAtSeq: null, matchedSeq: null };
+      return { rev: match.rev, resetRev: match.resetRev, eventAtSeq: null, matchedSeq: null, pending: matchPending };
     }
-    const events = await this.options.port.loadTimelineFrom(entry.seq, match.resetRev);
-    const at = events.find((event) => event.seq === entry.seq) ?? null;
-    const matched = events.find((event) => event.op === entry.op) ?? null;
+    const read = await this.options.port.loadTimelineFrom(entry.seq, match.resetRev);
+    const at = read.events.find((event) => event.seq === entry.seq) ?? null;
+    const matched = read.events.find((event) => event.op === entry.op) ?? null;
     return {
       rev: match.rev,
       resetRev: match.resetRev,
       eventAtSeq: at ? { op: at.op } : null,
       matchedSeq: matched ? matched.seq : null,
+      pending: matchPending || read.pending,
     };
+  }
+
+  private changed(): void {
+    if (this.dead) return;
+    try {
+      this.options.onChange?.();
+    } catch {
+      // 通知失敗不影響送出。
+    }
   }
 
   /** 已是 discarded 就不動。重置後原 commit 成功，狀態維持 discarded。 */
@@ -456,6 +486,7 @@ export class Sender {
       return;
     }
     await this.options.log.patch(op, { state: 'applied', seq, rejectReason: null });
+    this.changed();
   }
 
   private async markDiscarded(op: string): Promise<void> {
@@ -463,6 +494,7 @@ export class Sender {
     const current = await this.options.log.get(op);
     if (!current || current.state === 'discarded') return;
     await this.options.log.patch(op, { state: 'discarded', rejectReason: 'reset' });
+    this.changed();
   }
 
   /** 改狀態前再看一次。discarded 或已過重置線就不覆寫。 */
@@ -473,10 +505,16 @@ export class Sender {
       await this.markDiscarded(op);
       return this.options.log.get(op);
     }
-    return this.options.log.patch(op, patch);
+    const next = await this.options.log.patch(op, patch);
+    this.changed();
+    return next;
   }
 
-  private async rejectStaleTakenOver(): Promise<void> {
+  /**
+   * 被接手：接手前記的待送標被拒。已取號的項目先以已確認資料對帳（Opus 審 P2-1，取代只看 control 就標被拒）：
+   * 伺服器已有自己的 op → applied；還有本機未確認的寫入（重整後持久化佇列）→ 維持原狀，等快照 pending 轉 false 後再分類。
+   */
+  private async rejectStaleTakenOver(server?: ServerRead): Promise<void> {
     this.needsTakeover = true;
     if (this.blockedAt == null) this.blockedAt = this.options.now();
     const blockedAt = this.blockedAt;
@@ -489,6 +527,24 @@ export class Sender {
         continue;
       }
       if (entry.createdAt >= blockedAt) continue;
+      if (entry.seq != null && server) {
+        let view: DecideServer;
+        try {
+          view = await this.look(entry, server);
+        } catch {
+          continue;
+        }
+        const decision = decideRetry(entry, view, false);
+        if (decision.kind === 'applied') {
+          await this.markApplied(entry.op, decision.seq);
+          continue;
+        }
+        if (decision.kind === 'discard') {
+          await this.markDiscarded(entry.op);
+          continue;
+        }
+        if (decision.kind === 'inflight') continue;
+      }
       await this.patchOpen(entry.op, { state: 'rejected', rejectReason: 'takenOver' });
     }
   }

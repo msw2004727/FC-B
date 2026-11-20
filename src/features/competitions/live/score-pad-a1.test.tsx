@@ -1,0 +1,200 @@
+// 第 4 步 A（顧問 11-20）：不能復原的確認框防連點、開賽確認、被拒擋住提示、看這張牌不被事件面板蓋住。
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { installUi4TestLocale } from '@/ui/ui4-test-helpers';
+import { S4_SCENE_LIVE, S4_SCENE_PK_START, S4_SCENE_PRE, S4_SCENE_TAKEOVER } from '../testing/step4-fixtures';
+import { blockedStep, heldQueued, heldRejected, LIVE_COPY } from './copy';
+import { ScorePad } from './ScorePad';
+import { CONFIRM_ARM_MS } from './score-states';
+
+installUi4TestLocale();
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+function button(name: string | RegExp): HTMLButtonElement {
+  return screen.getByRole('button', { name }) as HTMLButtonElement;
+}
+
+function advance(ms: number): void {
+  act(() => { vi.advanceTimersByTime(ms); });
+}
+
+/** 對話框底部按鈕的順序（文字）。 */
+function footerOrder(): string[] {
+  const footer = document.querySelector('.s4-dialog .ui-modal__footer');
+  return [...(footer?.querySelectorAll('button') ?? [])].map((node) => (node.textContent ?? '').trim());
+}
+
+function expectArmCycle(confirmName: string, onConfirm: ReturnType<typeof vi.fn>): void {
+  const confirm = button(confirmName);
+  // 剛打開：停用（看得出來），按了沒作用。
+  expect(confirm.disabled).toBe(true);
+  expect(confirm.getAttribute('aria-disabled')).toBe('true');
+  fireEvent.click(confirm);
+  expect(onConfirm).not.toHaveBeenCalled();
+  advance(CONFIRM_ARM_MS - 1);
+  expect(button(confirmName).disabled).toBe(true);
+  fireEvent.click(button(confirmName));
+  expect(onConfirm).not.toHaveBeenCalled();
+  // 時間到自動可按。
+  advance(1);
+  expect(button(confirmName).disabled).toBe(false);
+  expect(button(confirmName).getAttribute('aria-disabled')).toBeNull();
+  fireEvent.click(button(confirmName));
+  expect(onConfirm).toHaveBeenCalledTimes(1);
+}
+
+describe('不能復原的確認框：取消在左、確認在右，打開後 600ms 內確認停用', () => {
+  it('PK 大戰', () => {
+    const start = vi.fn();
+    render(<ScorePad {...S4_SCENE_PK_START} confirmPk onStartPk={start} />);
+    fireEvent.click(button(LIVE_COPY.pkStart));
+    expect(footerOrder()).toEqual([LIVE_COPY.pkConfirmCancel, LIVE_COPY.pkConfirmGo]);
+    expectArmCycle(LIVE_COPY.pkConfirmGo, start);
+  });
+
+  it('PK 大戰：連點兩下（第二下落在確認鈕）不會開始', () => {
+    const start = vi.fn();
+    render(<ScorePad {...S4_SCENE_PK_START} confirmPk onStartPk={start} />);
+    fireEvent.click(button(LIVE_COPY.pkStart));
+    advance(120);
+    fireEvent.click(button(LIVE_COPY.pkConfirmGo));
+    expect(start).not.toHaveBeenCalled();
+    expect(screen.getByText(LIVE_COPY.pkConfirmTitle)).toBeTruthy();
+  });
+
+  it('PK 大戰：有被拒項目擋住時不開確認框，直接送出（由工作階段回被擋提示）', () => {
+    const start = vi.fn();
+    render(<ScorePad {...S4_SCENE_PK_START} confirmPk pkStartBlocked onStartPk={start} heldLines={[{ key: 'held', text: blockedStep('pkStart'), alert: true }]} />);
+    fireEvent.click(button(LIVE_COPY.pkStart));
+    expect(screen.queryByText(LIVE_COPY.pkConfirmTitle)).toBeNull();
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('先處理沒送出的紀錄，才能開始 PK').getAttribute('role')).toBe('alert');
+  });
+
+  it('開賽：正式頁先確認（標題、說明、取消在左）', () => {
+    const kickoff = vi.fn();
+    render(<ScorePad {...S4_SCENE_PRE} confirmKickoff onKickoff={kickoff} />);
+    fireEvent.click(button(LIVE_COPY.kickoff));
+    expect(kickoff).not.toHaveBeenCalled();
+    expect(screen.getByText(LIVE_COPY.kickoffConfirmTitle)).toBeTruthy();
+    expect(screen.getByText(LIVE_COPY.kickoffConfirmLine)).toBeTruthy();
+    expect(footerOrder()).toEqual([LIVE_COPY.pkConfirmCancel, LIVE_COPY.kickoff]);
+    const confirm = document.querySelector('.s4-dialog .ui-modal__footer button:last-child') as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(kickoff).not.toHaveBeenCalled();
+    advance(CONFIRM_ARM_MS);
+    expect(confirm.disabled).toBe(false);
+    fireEvent.click(confirm);
+    expect(kickoff).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(LIVE_COPY.kickoffConfirmTitle)).toBeNull();
+  });
+
+  it('開賽：取消不送；沒開 confirmKickoff（預覽）維持按了就送', () => {
+    const kickoff = vi.fn();
+    const { unmount } = render(<ScorePad {...S4_SCENE_PRE} confirmKickoff onKickoff={kickoff} />);
+    fireEvent.click(button(LIVE_COPY.kickoff));
+    fireEvent.click(button(LIVE_COPY.pkConfirmCancel));
+    expect(kickoff).not.toHaveBeenCalled();
+    expect(screen.queryByText(LIVE_COPY.kickoffConfirmTitle)).toBeNull();
+    unmount();
+    render(<ScorePad {...S4_SCENE_PRE} onKickoff={kickoff} />);
+    fireEvent.click(button(LIVE_COPY.kickoff));
+    expect(kickoff).toHaveBeenCalledTimes(1);
+  });
+
+  it('接手記分', () => {
+    const takeover = vi.fn();
+    render(<ScorePad {...S4_SCENE_TAKEOVER} onTakeover={takeover} />);
+    fireEvent.click(button(LIVE_COPY.takeoverEntry));
+    expect(footerOrder()).toEqual([LIVE_COPY.takeoverLater, LIVE_COPY.takeoverAction]);
+    expectArmCycle(LIVE_COPY.takeoverAction, takeover);
+  });
+
+  it('復原被引用的第一張黃牌（連帶第二黃）', () => {
+    const onUndo = vi.fn(() => true);
+    render(<ScorePad {...S4_SCENE_LIVE} onUndo={onUndo} />);
+    fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
+    fireEvent.click(button(/^復原/));
+    expect(footerOrder()).toEqual([LIVE_COPY.takeoverLater, LIVE_COPY.undoBothConfirm]);
+    const confirm = button(LIVE_COPY.undoBothConfirm);
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(onUndo).not.toHaveBeenCalled();
+    advance(CONFIRM_ARM_MS);
+    fireEvent.click(button(LIVE_COPY.undoBothConfirm));
+    expect(onUndo).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('被拒擋住送出的提示', () => {
+  it('常駐兩行：哪一筆沒送出、之後記的幾筆先存在手機；剛被擋的階段動作用 alert', () => {
+    const { rerender } = render(
+      <ScorePad
+        {...S4_SCENE_LIVE}
+        heldLines={[
+          { key: 'held', text: heldRejected(1), alert: false },
+          { key: 'queued', text: heldQueued(2), alert: false },
+        ]}
+      />,
+    );
+    const first = screen.getByText(heldRejected(1));
+    expect(first.getAttribute('role')).toBe('status');
+    expect(first.className).toContain('s4-banner--held');
+    expect(screen.getByText(heldQueued(2)).className).toContain('s4-banner--saved');
+    rerender(
+      <ScorePad
+        {...S4_SCENE_LIVE}
+        heldLines={[{ key: 'held', text: blockedStep('resume'), alert: true }]}
+      />,
+    );
+    expect(screen.getByText(blockedStep('resume')).getAttribute('role')).toBe('alert');
+    expect(screen.queryByText(heldQueued(2))).toBeNull();
+  });
+
+  it('提示文字沒有代號或技術字', () => {
+    const texts = [heldRejected(1), heldRejected(3), heldQueued(4),
+      blockedStep('kickoff'), blockedStep('halftime'), blockedStep('resume'), blockedStep('fulltime'), blockedStep('undoFinish')];
+    for (const text of texts) expect(text).not.toMatch(/佇列|同步|queue|sync|rejected|blocked|[A-Za-z]{3,}/);
+    expect(blockedStep('resume')).toBe('先處理沒送出的紀錄，才能開始下半場');
+  });
+});
+
+describe('看這張牌：先收起事件面板再亮牌，關掉亮牌後面板開回來', () => {
+  it('亮牌期間這筆被作廢（他機復原）：關掉亮牌後不開回不存在的面板', () => {
+    const { rerender } = render(<ScorePad {...S4_SCENE_LIVE} />);
+    fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${LIVE_COPY.showCard}`) }));
+    const target = S4_SCENE_LIVE.events.find((event) => event.type === 'card' && event.cardType === 'yellow' && Math.floor(event.matchSecond / 60) === 12);
+    expect(target).toBeTruthy();
+    rerender(<ScorePad {...S4_SCENE_LIVE} voids={[...S4_SCENE_LIVE.voids, { targetSeq: target?.seq ?? -1, seq: 99, createdAt: 1 }]} />);
+    fireEvent.click(document.querySelector('.s4-flash') as HTMLElement);
+    expect(document.querySelector('.s4-flash')).toBeNull();
+    expect(document.querySelector('.s4-sheet')).toBeNull();
+  });
+
+  it('亮牌出現時事件面板已關閉、亮牌可互動；關閉後面板回來、焦點回到「看這張牌」', () => {
+    render(<ScorePad {...S4_SCENE_LIVE} />);
+    fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
+    expect(document.querySelector('.s4-sheet')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${LIVE_COPY.showCard}`) }));
+    // 事件面板（showModal 的 top layer，背景 inert）不在了，亮牌才不會被蓋住。
+    expect(document.querySelector('.s4-sheet')).toBeNull();
+    const flash = document.querySelector('.s4-flash') as HTMLElement;
+    expect(flash).toBeTruthy();
+    expect(flash.closest('[inert]')).toBeNull();
+    fireEvent.click(flash);
+    expect(document.querySelector('.s4-flash')).toBeNull();
+    expect(document.querySelector('.s4-sheet')).toBeTruthy();
+    advance(1);
+    expect((document.activeElement?.textContent ?? '').trim()).toBe(LIVE_COPY.showCard);
+  });
+});

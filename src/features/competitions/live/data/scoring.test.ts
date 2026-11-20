@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LIVE_COPY } from '../copy';
+import { blockedStep, heldQueued, heldRejected, LIVE_COPY } from '../copy';
 import { IndexedDbActionLog, MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
 import { applyPlanLocal, buildBatch } from './batch';
 import { budgetView, groupWithinBudget, pauseUseCount } from './budget';
@@ -8,7 +8,7 @@ import { activeYellowRefs, findOpenYellow, groupMessage, liveSecondYellow, overl
 import { memorySidStore } from './sid';
 import { classifyReject, decideRetry, Sender } from './sender';
 import type { LiveListener } from './live-repo';
-import { createScoringSession, type ScoringSession } from './session';
+import { createScoringSession, loadingView, type ScoringSession } from './session';
 import { acquireTabLock, TAB_HINT, type LockManager, type TabChannel } from './tab-lock';
 import type {
   BatchPlan,
@@ -533,7 +533,7 @@ async function openHarness(options?: {
       return { match: snapshotOf(box.match), control: box.control ? { ...box.control } : null };
     },
     async loadTimelineFrom(minSeq, resetRev) {
-      return box.events.filter((event) => event.seq >= minSeq && event.seq > resetRev).map((event) => ({ ...event }));
+      return { events: box.events.filter((event) => event.seq >= minSeq && event.seq > resetRev).map((event) => ({ ...event })), pending: false };
     },
     knownEvents: () => box.events,
     async takeover(sid) {
@@ -651,7 +651,7 @@ describe('送出與工作階段', () => {
         const rev = reads <= 2 ? 4 : 1;
         return { match: { ...match, rev }, control: { uid: UID, sid: SID, takenAt: 1 } };
       },
-      async loadTimelineFrom() { return events; },
+      async loadTimelineFrom() { return { events, pending: false }; },
       knownEvents: () => events,
       async takeover() {},
     };
@@ -768,7 +768,7 @@ describe('送出與工作階段', () => {
         return { match: snapshotOf(match), control: { uid: UID, sid: SID, takenAt: 1 } };
       },
       async loadTimelineFrom() {
-        return events.filter((event) => event.seq > match.resetRev);
+        return { events: events.filter((event) => event.seq > match.resetRev), pending: false };
       },
       knownEvents: () => events,
       async takeover() {},
@@ -804,7 +804,7 @@ describe('送出與工作階段', () => {
         applyPlanLocal(match, events, plan, 10);
       },
       async loadServer() { return { match: snapshotOf(match), control: { uid: UID, sid: SID, takenAt: 1 } }; },
-      async loadTimelineFrom(minSeq) { return events.filter((event) => event.seq >= minSeq).map((event) => ({ ...event })); },
+      async loadTimelineFrom(minSeq) { return { events: events.filter((event) => event.seq >= minSeq).map((event) => ({ ...event })), pending: false }; },
       knownEvents: () => events,
       async takeover() {},
     };
@@ -1805,7 +1805,16 @@ describe('P1-A 疊加狀態擋規則不允許的動作', () => {
     h.failBefore = null;
     const failed = (await h.log.list(CID, MT)).find((row) => row.state === 'rejected');
     h.online = false;
-    expect((await h.session.getState().actions.halftime()).status).toBe('queued');
+    // 第 4 步 A F5-3：有被拒項目時階段動作不再建項目（回 blocked）。待送半場只會在被拒之前就已排入，這裡直接放進日誌。
+    expect(await h.session.getState().actions.halftime()).toEqual({ status: 'rejected', reason: 'blocked' });
+    await h.log.put(entry({
+      op: 'queued-halftime-op01',
+      intent: { kind: 'halftime', matchSecond: 60, clock: { running: false, period: 'ht', pausedSec: 60, startedAt: 1 } },
+      createdAt: (failed?.createdAt ?? 0) + 5,
+    }));
+    h.listener.onMatch(snapshotOf(h.match));
+    await h.session.whenIdle();
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
     expect(h.session.getState().liveStatus).toBe('halftime');
     const result = await h.session.getState().actions.reapply(failed?.op ?? '');
     expect(result).not.toEqual({ status: 'rejected', reason: 'rules' });
@@ -1823,7 +1832,15 @@ describe('P1-A 疊加狀態擋規則不允許的動作', () => {
     // 被拒那筆會暫停佇列，所以直接讓伺服器進中場（等同另一路徑已送出半場）。
     serverStatus(h, 'halftime');
     h.online = false;
-    expect((await h.session.getState().actions.resume()).status).toBe('queued');
+    expect(await h.session.getState().actions.resume()).toEqual({ status: 'rejected', reason: 'blocked' });
+    await h.log.put(entry({
+      op: 'queued-resume-op0001',
+      intent: { kind: 'resume', matchSecond: 60, clock: { running: true, period: 'h2', pausedSec: 60, startedAt: 1 } },
+      createdAt: (failed?.createdAt ?? 0) + 5,
+    }));
+    h.listener.onMatch(snapshotOf(h.match));
+    await h.session.whenIdle();
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
     expect(h.session.getState().liveStatus).toBe('live');
     const logged = (await h.log.list(CID, MT)).length;
     expect(await h.session.getState().actions.reapply(failed?.op ?? '')).toEqual({ status: 'rejected', reason: 'rules' });
@@ -1965,5 +1982,406 @@ describe('預演離線疊加：額度與連記兩球（Opus 終審 c、e）', ()
     });
     const echoed = { seq: 3, type: 'clock', op: 'clock-pause-000000001', sid: SID, matchSecond: 1, createdAt: 1 };
     expect(pauseUseCount([echoed], [pending], 0)).toBe(1);
+  });
+});
+
+
+describe('第 4 步 A：本機未確認寫入（hasPendingWrites）不得當成伺服器已確認', () => {
+  it('decideRetry：pending 且沒有已確認的對應 → inflight（不換號、不重送、不標 applied）', () => {
+    expect(decideRetry({ op: 'op-a', seq: 3 }, { rev: 5, eventAtSeq: null, matchedSeq: null, pending: true }, false))
+      .toEqual({ kind: 'inflight' });
+    expect(decideRetry({ op: 'op-a' }, { rev: 5, eventAtSeq: null, matchedSeq: null, pending: true }, false))
+      .toEqual({ kind: 'inflight' });
+    // 沒有 pending 時照舊依 S2。
+    expect(decideRetry({ op: 'op-a', seq: 3 }, { rev: 5, eventAtSeq: null, matchedSeq: null }, false))
+      .toEqual({ kind: 'resequence' });
+  });
+
+  it('decideRetry：已確認的 matchedSeq／eventAtSeq 對到自己 → applied（pending 也一樣）；重置仍最優先', () => {
+    expect(decideRetry({ op: 'op-a', seq: 3 }, { rev: 5, eventAtSeq: null, matchedSeq: 4, pending: true }, false))
+      .toEqual({ kind: 'applied', seq: 4 });
+    expect(decideRetry({ op: 'op-a', seq: 3 }, { rev: 5, eventAtSeq: { op: 'op-a' }, matchedSeq: null, pending: true }, false))
+      .toEqual({ kind: 'applied', seq: 3 });
+    expect(decideRetry({ op: 'op-a', seq: 3, baseResetRev: 0 }, { rev: 5, resetRev: 2, eventAtSeq: null, matchedSeq: null, pending: true }, false))
+      .toEqual({ kind: 'discard', reason: 'reset' });
+  });
+
+  /** 重整後的持久化佇列：日誌是 sending（已取號），這個頁面沒有 commit promise；SDK 讀取疊上自己的寫入。 */
+  function persistedPort(state: {
+    match: ServerMatch;
+    events: ServerEvent[];
+    pending: boolean;
+    control: ServerControl | null;
+    plans: BatchPlan[];
+  }): ScoringPort {
+    return {
+      async commit(plan) {
+        state.plans.push(plan);
+        if (!state.control || state.control.sid !== SID) throw { code: 'permission-denied' };
+        applyPlanLocal(state.match, state.events, plan, 10);
+      },
+      async loadServer() {
+        return { match: snapshotOf(state.match), control: state.control ? { ...state.control } : null, pending: state.pending };
+      },
+      async loadTimelineFrom(minSeq, resetRev) {
+        return {
+          events: state.events.filter((event) => event.seq >= minSeq && event.seq > resetRev).map((event) => ({ ...event })),
+          pending: state.pending,
+        };
+      },
+      knownEvents: () => state.events,
+      async takeover() {},
+    };
+  }
+
+  it('recover：pending 時 sending 項目維持原狀與 seq、不 commit；pending 轉 false 後依已確認資料重送', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({ op: 'persist-op-0000001', state: 'sending', seq: 1, intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 5 } });
+    await log.put(goal);
+    const state = { match: baseMatch(), events: [] as ServerEvent[], pending: true, control: { uid: UID, sid: SID, takenAt: 1 }, plans: [] as BatchPlan[] };
+    const changes: number[] = [];
+    const sender = new Sender({
+      log, port: persistedPort(state), uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100,
+      onChange: () => changes.push(1),
+    });
+    await sender.flush();
+    expect(await log.get(goal.op)).toMatchObject({ state: 'sending', seq: 1 });
+    expect(state.plans).toHaveLength(0);
+    // 持久化佇列的那筆被拒（伺服器沒有 e1、rev 仍 0），快照回滾後 pending 變 false，監聽觸發 flush。
+    state.pending = false;
+    await sender.flush();
+    expect(state.plans).toHaveLength(1);
+    expect(state.plans[0]?.seq).toBe(1);
+    expect(await log.get(goal.op)).toMatchObject({ state: 'applied', seq: 1 });
+    expect(state.match.score).toEqual({ home: 1, away: 0 });
+    expect(changes.length).toBeGreaterThan(0);
+  });
+
+  it('recover：pending 轉 false 時伺服器已有自己的 e1 → applied、不再送', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({ op: 'persist-op-0000002', state: 'sending', seq: 1, intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 5 } });
+    await log.put(goal);
+    const state = { match: baseMatch(), events: [] as ServerEvent[], pending: true, control: { uid: UID, sid: SID, takenAt: 1 }, plans: [] as BatchPlan[] };
+    const sender = new Sender({ log, port: persistedPort(state), uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
+    await sender.flush();
+    expect(await log.get(goal.op)).toMatchObject({ state: 'sending', seq: 1 });
+    state.match.rev = 1;
+    state.match.score.home = 1;
+    state.events.push({ ...goalEvent(1, 'home', goal.op) });
+    state.pending = false;
+    await sender.flush();
+    expect(state.plans).toHaveLength(0);
+    expect(await log.get(goal.op)).toMatchObject({ state: 'applied', seq: 1 });
+  });
+
+  it('recover：重整後另一台接手、持久化寫入被拒 → 原頁面出現被拒（takenOver），不默默當成已送出', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({ op: 'persist-op-0000003', state: 'sending', seq: 1, createdAt: 1, intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 5 } });
+    await log.put(goal);
+    const state = { match: baseMatch(), events: [] as ServerEvent[], pending: true, control: { uid: UID, sid: SID, takenAt: 1 } as ServerControl | null, plans: [] as BatchPlan[] };
+    const sender = new Sender({ log, port: persistedPort(state), uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
+    await sender.flush();
+    expect((await log.get(goal.op))?.state).toBe('sending');
+    state.control = { uid: UID, sid: 'other-device-sid-00009', takenAt: 2 };
+    state.pending = false;
+    await sender.flush();
+    expect(await log.get(goal.op)).toMatchObject({ state: 'rejected', rejectReason: 'takenOver' });
+    expect(state.plans).toHaveLength(0);
+  });
+
+  it('sendOne catch：日誌先被標 applied（推定）、commit 仍被拒 → 照樣分類成被拒，不吞掉', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({ op: 'catch-op-000000001', intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 5 } });
+    await log.put(goal);
+    const match = baseMatch();
+    let control: ServerControl = { uid: UID, sid: SID, takenAt: 1 };
+    const port: ScoringPort = {
+      async commit() {
+        await log.patch(goal.op, { state: 'applied', seq: 1 });
+        control = { uid: UID, sid: 'other-device-sid-00008', takenAt: 2 };
+        throw { code: 'permission-denied' };
+      },
+      async loadServer() { return { match: snapshotOf(match), control: { ...control }, pending: false }; },
+      async loadTimelineFrom() { return { events: [], pending: false }; },
+      knownEvents: () => [],
+      async takeover() {},
+    };
+    const sender = new Sender({ log, port, uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
+    await sender.flush();
+    expect(await log.get(goal.op)).toMatchObject({ state: 'rejected', rejectReason: 'takenOver', seq: 1 });
+  });
+
+  it('sendOne catch：被拒後讀到別筆未確認寫入 → 維持送出中等待，不用疊加過的 rev 判衝突', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({ op: 'catch-op-000000002', intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 5 } });
+    await log.put(goal);
+    const match = baseMatch();
+    let pending = false;
+    const port: ScoringPort = {
+      async commit() {
+        pending = true;
+        throw { code: 'permission-denied' };
+      },
+      async loadServer() { return { match: snapshotOf({ ...match, rev: pending ? 1 : 0 }), control: { uid: UID, sid: SID, takenAt: 1 }, pending }; },
+      async loadTimelineFrom() { return { events: [], pending }; },
+      knownEvents: () => [],
+      async takeover() {},
+    };
+    const sender = new Sender({ log, port, uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
+    await sender.flush();
+    const row = await log.get(goal.op);
+    expect(row?.state).toBe('sending');
+    expect(row?.seq).toBe(1);
+    expect(row?.autoRetried).not.toBe(true);
+  });
+
+  it('session：送出中先來 rev=seq 的本機快照，之後被拒並回滾 → 比分、事件、待送都回到送出前，被拒列自己出現', async () => {
+    const h = await openHarness();
+    let releaseGate = () => {};
+    h.gate = new Promise<void>((resolve) => { releaseGate = resolve; });
+    const action = h.session.getState().actions.goal({ side: 'home', plId: 'pl_a' });
+    for (let i = 0; i < 30 && h.commits.length < 1; i += 1) await new Promise((resolve) => { setTimeout(resolve, 0); });
+    expect(h.commits).toHaveLength(1);
+    // SDK 延遲補償：本機快照先到（rev=1、1:0）。
+    h.listener.onMatch({ ...snapshotOf(h.match), rev: 1, score: { home: 1, away: 0 } });
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    expect(h.session.getState().score.home).toBe(1);
+    // 另一台接手，寫入被拒；SDK 回滾快照（rev 0）。
+    h.control = { uid: UID, sid: 'other-device-sid-00007', takenAt: 2 };
+    h.failBefore = () => { throw { code: 'permission-denied' }; };
+    releaseGate();
+    h.gate = null;
+    const result = await action;
+    expect(result).toEqual({ status: 'rejected', reason: 'takenOver' });
+    h.listener.onMatch(snapshotOf(h.match));
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    const view = h.session.getState();
+    expect(view.score).toMatchObject({ home: 0, away: 0, pendingCount: 0 });
+    expect(view.events).toEqual([]);
+    expect(view.unapplied.map((row) => `${row.kind}:${row.state}:${row.rejectReason}`)).toEqual(['goal:rejected:takenOver']);
+  });
+
+  it('F4：sender 標被拒後不用任何動作，工作階段自己重讀日誌並更新畫面', async () => {
+    const h = await openHarness();
+    let releaseGate = () => {};
+    h.gate = new Promise<void>((resolve) => { releaseGate = resolve; });
+    h.online = false;
+    expect((await h.session.getState().actions.goal({ side: 'home' })).status).toBe('queued');
+    for (let i = 0; i < 30 && h.commits.length < 1; i += 1) await new Promise((resolve) => { setTimeout(resolve, 0); });
+    expect(h.session.getState().unapplied.map((row) => row.state)).toEqual(['sending']);
+    const seen: string[] = [];
+    h.session.subscribe((view) => { seen.push(view.unapplied.map((row) => row.state).join(',')); });
+    h.control = { uid: UID, sid: 'other-device-sid-00006', takenAt: 2 };
+    h.failBefore = () => { throw { code: 'permission-denied' }; };
+    // 寫入被拒只發生在 sender 內部，沒有任何會 emit 的動作或快照；只靠 onChange 更新畫面。
+    releaseGate();
+    await h.session.whenIdle();
+    for (let i = 0; i < 10; i += 1) await new Promise((resolve) => { setTimeout(resolve, 0); });
+    expect(h.session.getState().unapplied.map((row) => row.state)).toEqual(['rejected']);
+    expect(seen.at(-1)).toBe('rejected');
+  });
+
+  it('已套用、監聽還沒讀到事件時：連記兩張黃牌第二張仍是第二黃，復原第一黃會連帶第二黃', async () => {
+    const h = await openHarness();
+    // 監聽改成只在已確認快照後讀事件：commit 回來到事件讀進來之間有空檔。這裡讓事件一直不送進工作階段。
+    h.listener = { ...h.listener, onEvents() {} };
+    expect((await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' })).status).toBe('applied');
+    expect((await h.session.getState().actions.card({ side: 'home', plId: 'pl_a', cardType: 'yellow' })).status).toBe('applied');
+    expect(h.commits[1]?.event.cardType).toBe('second_yellow');
+    expect(h.commits[1]?.event.refSeq).toBe(1);
+    expect((await h.session.getState().actions.undoFirstYellow({ seq: 1 })).status).toBe('applied');
+    expect(h.commits.slice(2).map((plan) => [plan.event.type, plan.event.targetSeq])).toEqual([['void', 2], ['void', 1]]);
+  });
+
+  it('phase 看疊加：待送下半場開始是 play、待送終場是 undo（不落到 locked）', async () => {
+    const h = await openHarness({ match: baseMatch({ status: 'halftime', clockBase: { startedAt: 1, pausedSec: 1500, running: false, period: 'ht' } }) });
+    expect(h.session.getState().phase).toBe('ht');
+    h.online = false;
+    expect((await h.session.getState().actions.resume()).status).toBe('queued');
+    expect(h.session.getState().liveStatus).toBe('live');
+    expect(h.session.getState().clock.period).toBe('h2');
+    expect(h.session.getState().phase).toBe('play');
+    expect((await h.session.getState().actions.fulltime()).status).toBe('queued');
+    expect(h.session.getState().liveStatus).toBe('finished');
+    expect(h.session.getState().phase).toBe('undo');
+    const props = scorePadPropsFrom(h.session.getState(), 20_000);
+    expect(props.match.status).toBe('finished');
+    expect(props.match.finishedAt).not.toBeNull();
+  });
+
+  it('被拒項目存在時：階段動作回 blocked 不建項目；進球照常排入；held 給畫面筆數與擋住的那一步', async () => {
+    const h = await openHarness();
+    h.failBefore = (plan) => {
+      if (plan.event.type === 'goal') throw { code: 'permission-denied' };
+    };
+    expect(await h.session.getState().actions.goal({ side: 'home' })).toEqual({ status: 'rejected', reason: 'rules' });
+    h.failBefore = null;
+    const logged = (await h.log.list(CID, MT)).length;
+    for (const press of ['halftime', 'fulltime'] as const) {
+      expect(await h.session.getState().actions[press]()).toEqual({ status: 'rejected', reason: 'blocked' });
+    }
+    expect(await h.log.list(CID, MT)).toHaveLength(logged);
+    expect(h.session.getState().held).toEqual({ rejected: 1, queued: 0, blockedAction: 'fulltime' });
+    h.online = false;
+    expect((await h.session.getState().actions.goal({ side: 'away' })).status).toBe('queued');
+    expect(await h.log.list(CID, MT)).toHaveLength(logged + 1);
+    expect(h.session.getState().held).toEqual({ rejected: 1, queued: 1, blockedAction: 'fulltime' });
+    const lines = scorePadPropsFrom(h.session.getState(), 20_000).heldLines ?? [];
+    expect(lines.map((line) => line.text)).toEqual([blockedStep('fulltime'), heldQueued(1)]);
+    expect(lines[0]?.alert).toBe(true);
+    // 處理掉被拒那筆（捨棄）後提示消失、階段動作恢復。
+    const failed = (await h.log.list(CID, MT)).find((row) => row.state === 'rejected');
+    await h.session.getState().actions.discard(failed?.op ?? '');
+    expect(h.session.getState().held).toEqual({ rejected: 0, queued: 0, blockedAction: null });
+    expect(scorePadPropsFrom(h.session.getState(), 20_000).heldLines).toEqual([]);
+    expect((await h.session.getState().actions.halftime()).status).toBe('queued');
+  });
+
+  it('開始 PK：有被拒項目時回 blocked、不建項目、提示要先處理；記分頁按 PK 大戰不開確認框；沒有被拒時照常', async () => {
+    const tied = () => baseMatch({ clockBase: { startedAt: 1, pausedSec: 5400, running: false, period: 'h2' } });
+    const h = await openHarness({ match: tied() });
+    h.failBefore = (plan) => {
+      if (plan.event.type === 'goal') throw { code: 'permission-denied' };
+    };
+    expect(await h.session.getState().actions.goal({ side: 'home' })).toEqual({ status: 'rejected', reason: 'rules' });
+    h.failBefore = null;
+    expect(h.session.getState().pk.canStart).toBe(true);
+    const logged = (await h.log.list(CID, MT)).length;
+    expect(await h.session.getState().actions.pkStart()).toEqual({ status: 'rejected', reason: 'blocked' });
+    expect(await h.log.list(CID, MT)).toHaveLength(logged);
+    expect(h.commits.filter((plan) => plan.event.type === 'pkStart')).toHaveLength(0);
+    expect(h.session.getState().held.blockedAction).toBe('pkStart');
+    const props = scorePadPropsFrom(h.session.getState(), 20_000);
+    expect((props.heldLines ?? []).map((line) => line.text)).toEqual([blockedStep('pkStart')]);
+    expect(blockedStep('pkStart')).toBe('先處理沒送出的紀錄，才能開始 PK');
+    expect(props.pkStartBlocked).toBe(true);
+    // 個別 PK 踢球不擋（這裡還沒開始 PK，只確認 pkStart 以外的判斷沒被動到）：沒有被拒時照常開始。
+    const clean = await openHarness({ match: tied() });
+    expect(scorePadPropsFrom(clean.session.getState(), 20_000).pkStartBlocked).toBe(false);
+    expect((await clean.session.getState().actions.pkStart()).status).toBe('applied');
+  });
+
+  it('P2-1 被接手：已取號項目在場次還有本機未確認寫入時維持送出中；pending 轉 false 才分類', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({ op: 'taken-op-000000001', state: 'sending', seq: 1, createdAt: 1, intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 5 } });
+    await log.put(goal);
+    const state = { match: baseMatch(), events: [] as ServerEvent[], pending: true, control: { uid: UID, sid: 'other-device-sid-00010', takenAt: 2 } as ServerControl | null, plans: [] as BatchPlan[] };
+    const sender = new Sender({ log, port: persistedPort(state), uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
+    await sender.flush();
+    expect(sender.needsTakeover).toBe(true);
+    expect(await log.get(goal.op)).toMatchObject({ state: 'sending', seq: 1 });
+    state.pending = false;
+    await sender.flush();
+    expect(await log.get(goal.op)).toMatchObject({ state: 'rejected', rejectReason: 'takenOver' });
+    expect(state.plans).toHaveLength(0);
+  });
+
+  it('P2-1 被接手：寫入其實已在伺服器（確認遺失）→ 標 applied，不標被拒', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({ op: 'taken-op-000000002', state: 'sending', seq: 1, createdAt: 1, intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 5 } });
+    await log.put(goal);
+    const state = { match: baseMatch(), events: [] as ServerEvent[], pending: true, control: { uid: UID, sid: 'other-device-sid-00011', takenAt: 2 } as ServerControl | null, plans: [] as BatchPlan[] };
+    const sender = new Sender({ log, port: persistedPort(state), uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
+    await sender.flush();
+    expect((await log.get(goal.op))?.state).toBe('sending');
+    state.match.rev = 1;
+    state.match.score.home = 1;
+    state.events.push({ ...goalEvent(1, 'home', goal.op) });
+    state.pending = false;
+    await sender.flush();
+    expect(await log.get(goal.op)).toMatchObject({ state: 'applied', seq: 1 });
+    expect(state.plans).toHaveLength(0);
+  });
+
+  it('§3.436 守則 1：從沒送出過的項目（沒取號）被接手時照舊直接標被拒，不等 pending', async () => {
+    const log = new MemoryActionLog();
+    const fresh = entry({ op: 'never-sent-op-00001', createdAt: 1, intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 5 } });
+    const sent = entry({ op: 'sent-op-0000000001', state: 'sending', seq: 1, createdAt: 0, intent: { kind: 'goal', side: 'away', goalKind: 'normal', matchSecond: 4 } });
+    await log.put(sent);
+    await log.put(fresh);
+    const state = { match: baseMatch(), events: [] as ServerEvent[], pending: true, control: { uid: UID, sid: 'other-device-sid-00012', takenAt: 2 } as ServerControl | null, plans: [] as BatchPlan[] };
+    const sender = new Sender({ log, port: persistedPort(state), uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
+    await sender.flush();
+    expect(await log.get(fresh.op)).toMatchObject({ state: 'rejected', rejectReason: 'takenOver' });
+    expect(await log.get(sent.op)).toMatchObject({ state: 'sending', seq: 1 });
+    expect(state.plans).toHaveLength(0);
+  });
+
+  it('§3.436 守則 2：被接手時記分區與接手入口立刻停用，不等送出中的項目分類', async () => {
+    const h = await openHarness();
+    let releaseGate = () => {};
+    h.gate = new Promise<void>((resolve) => { releaseGate = resolve; });
+    h.online = false;
+    await h.session.getState().actions.goal({ side: 'home' });
+    for (let i = 0; i < 30 && h.commits.length < 1; i += 1) await new Promise((resolve) => { setTimeout(resolve, 0); });
+    expect(h.session.getState().unapplied.map((row) => row.state)).toEqual(['sending']);
+    h.listener.onControl({ uid: UID, sid: 'other-device-sid-00013', takenAt: 2 });
+    // 同一輪就停用：不經過任何 await。
+    expect(h.session.getState().control.needsTakeover).toBe(true);
+    expect(scorePadPropsFrom(h.session.getState(), 20_000).takeoverOffered).toBe(true);
+    expect(h.session.getState().unapplied.map((row) => row.state)).toEqual(['sending']);
+    releaseGate();
+    h.gate = null;
+  });
+
+  it('§3.436 守則 3：離線（讀不到伺服器，或只讀到疊加本機寫入的快取）時被接手，送出中維持原狀不誤標', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({ op: 'offline-op-0000001', state: 'sending', seq: 1, createdAt: 1, intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 5 } });
+    await log.put(goal);
+    let offline = true;
+    const state = { match: baseMatch(), events: [] as ServerEvent[], pending: true, control: { uid: UID, sid: 'other-device-sid-00014', takenAt: 2 } as ServerControl | null, plans: [] as BatchPlan[] };
+    const base = persistedPort(state);
+    const port: ScoringPort = {
+      ...base,
+      async loadServer() {
+        if (offline) throw { code: 'unavailable' };
+        return base.loadServer();
+      },
+    };
+    const sender = new Sender({ log, port, uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
+    await sender.flush();
+    expect(await log.get(goal.op)).toMatchObject({ state: 'sending', seq: 1 });
+    // SDK 回快取：場次疊加本機未送寫入（pending）。
+    offline = false;
+    await sender.flush();
+    expect(await log.get(goal.op)).toMatchObject({ state: 'sending', seq: 1 });
+    expect(state.plans).toHaveLength(0);
+  });
+
+  it('P3-1 場次有本機未確認寫入、項目還沒取號 → sendOne 等待，不 commit（rev 是疊加過的）', async () => {
+    const log = new MemoryActionLog();
+    const goal = entry({ op: 'nseq-op-000000001', intent: { kind: 'goal', side: 'home', goalKind: 'normal', matchSecond: 5 } });
+    await log.put(goal);
+    const state = { match: baseMatch({ rev: 1 }), events: [] as ServerEvent[], pending: true, control: { uid: UID, sid: SID, takenAt: 1 } as ServerControl | null, plans: [] as BatchPlan[] };
+    const sender = new Sender({ log, port: persistedPort(state), uid: UID, cid: CID, mtId: MT, localSid: () => SID, now: () => 100 });
+    await sender.flush();
+    expect(state.plans).toHaveLength(0);
+    const row = await log.get(goal.op);
+    expect(row?.state).toBe('pending');
+    expect(row?.seq).toBeUndefined();
+    state.pending = false;
+    await sender.flush();
+    expect(state.plans.map((plan) => plan.seq)).toEqual([2]);
+  });
+
+  it('P3-3 待送終場的撤回倒數起點是那筆終場的建立時間；沒有可用時間就是 null，不用現在時間', async () => {
+    const h = await openHarness();
+    h.online = false;
+    expect((await h.session.getState().actions.fulltime()).status).toBe('queued');
+    const row = (await h.log.list(CID, MT)).find((item) => item.kind === 'fulltime');
+    expect(scorePadPropsFrom(h.session.getState(), 99_999_999).match.finishedAt).toBe(row?.createdAt);
+    const bare = { ...loadingView(), loading: false, match: baseMatch(), liveStatus: 'finished', unapplied: [], events: [] };
+    expect(scorePadPropsFrom(bare, 99_999_999).match.finishedAt).toBeNull();
+  });
+
+  it('held 提示：沒有剛被擋的動作時顯示哪一筆沒送出；被接手（整區停用）時不顯示', async () => {
+    const h = await openHarness();
+    h.failBefore = () => { throw { code: 'permission-denied' }; };
+    await h.session.getState().actions.goal({ side: 'home' });
+    h.failBefore = null;
+    expect((scorePadPropsFrom(h.session.getState(), 20_000).heldLines ?? []).map((line) => line.text)).toEqual([heldRejected(1)]);
+    h.control = { uid: UID, sid: 'other-device-sid-00005', takenAt: 2 };
+    h.listener.onControl(h.control);
+    expect(scorePadPropsFrom(h.session.getState(), 20_000).heldLines).toEqual([]);
   });
 });

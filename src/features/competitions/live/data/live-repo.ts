@@ -30,6 +30,7 @@ import type {
   ServerEvent,
   ServerMatch,
   TimeMark,
+  TimelineRead,
 } from './types';
 
 export interface LiveListener {
@@ -208,16 +209,22 @@ function eventPayload(plan: BatchPlan): Record<string, unknown> {
   return out;
 }
 
+/**
+ * 只回伺服器已確認的事件。Firestore 的讀取（含 getDocsFromServer）一律疊上本機未送寫入，
+ * 唯一分辨方式是逐筆 metadata.hasPendingWrites（第 4 步 A F1，取代原本全部照收：對帳會誤判 applied、事件列留假事件）。
+ * 分頁 cursor 仍用整頁最後一筆（含未確認），避免漏頁。
+ */
 async function readTimeline(
   db: Firestore,
   cid: string,
   mtId: string,
   minSeq: number,
   resetRev: number,
-): Promise<ServerEvent[]> {
+): Promise<TimelineRead> {
   const floor = Math.max(minSeq, resetRev + 1);
   const col = collection(db, `${matchPath(cid, mtId)}/timeline`);
   const out: ServerEvent[] = [];
+  let pending = false;
   let cursor: QueryDocumentSnapshot | null = null;
   for (let page = 0; page < 2 && out.length < 200; page += 1) {
     const q: Query<DocumentData> = cursor
@@ -226,13 +233,17 @@ async function readTimeline(
     const snap = await getDocs(q);
     if (snap.empty) break;
     for (const item of snap.docs) {
+      if (item.metadata.hasPendingWrites) {
+        pending = true;
+        continue;
+      }
       const event = parseEvent(item.data());
       if (event && event.seq > resetRev) out.push(event);
     }
     cursor = snap.docs[snap.docs.length - 1] ?? null;
     if (snap.size < PAGE) break;
   }
-  return out.slice(0, 200);
+  return { events: out.slice(0, 200), pending };
 }
 
 async function readRoster(db: Firestore, cid: string, enId: string): Promise<RosterPublicDoc[]> {
@@ -285,12 +296,13 @@ export function createFirestoreBackend(db: Firestore, cid: string, mtId: string,
       if (!match) throw new Error('場次不存在');
       matchCache = match;
       const control = controlSnap.exists() ? parseControl(controlSnap.data()) : null;
-      return { match, control };
+      // control 記分端只在接手時寫，不參與送出決策；只看場次文件。
+      return { match, control, pending: matchSnap.metadata.hasPendingWrites };
     },
     async loadTimelineFrom(minSeq, resetRev) {
-      const events = await readTimeline(db, cid, mtId, minSeq, resetRev);
-      appendKnown(events, false);
-      return events;
+      const read = await readTimeline(db, cid, mtId, minSeq, resetRev);
+      appendKnown(read.events, false);
+      return read;
     },
     async commit(plan) {
       const batch = writeBatch(db);
@@ -348,7 +360,7 @@ export function createFirestoreBackend(db: Firestore, cid: string, mtId: string,
       matchCache = match;
       const controlSnap = await getDoc(doc(db, `${matchPath(cid, mtId)}/control/scorer`));
       const control = controlSnap.exists() ? parseControl(controlSnap.data()) : null;
-      const events = match ? await readTimeline(db, cid, mtId, match.resetRev + 1, match.resetRev) : [];
+      const events = match ? (await readTimeline(db, cid, mtId, match.resetRev + 1, match.resetRev)).events : [];
       cache = [];
       appendKnown(events, true);
       const home = match ? await readRoster(db, cid, match.home.teamId) : [];
@@ -372,7 +384,9 @@ export function createFirestoreBackend(db: Firestore, cid: string, mtId: string,
           timeoutRaw = null;
         }
       }
-      let lastRev = match?.rev ?? -1;
+      // 開啟時讀到的是疊加本機未送寫入的版本（重整後持久化佇列）時 rev 不可信：等第一個已確認快照再讀事件。
+      let lastRev = match && !matchSnap.metadata.hasPendingWrites ? match.rev : -1;
+      let lastShape = '';
       let unsubs: Array<() => void> = [];
       let stopped = false;
 
@@ -383,19 +397,28 @@ export function createFirestoreBackend(db: Firestore, cid: string, mtId: string,
 
       const subscribe = () => {
         if (stopped || unsubs.length > 0) return;
-        unsubs.push(onSnapshot(doc(db, matchPath(cid, mtId)), (snap) => {
+        // includeMetadataChanges：寫入被確認時（hasPendingWrites true→false）資料可能完全相同，沒有這個選項就收不到回呼，
+        // 已確認 rev 的事件會讀不到（第 4 步 A F3）。資料與 pending 都沒變的回呼（例如只有 fromCache 變）不轉給工作階段。
+        unsubs.push(onSnapshot(doc(db, matchPath(cid, mtId)), { includeMetadataChanges: true }, (snap) => {
           const next = snap.exists() ? parseMatch(snap.id, snap.data()) : null;
+          const pending = snap.metadata.hasPendingWrites;
+          const shape = `${pending ? 1 : 0}|${JSON.stringify(next)}`;
+          if (shape === lastShape) return;
+          lastShape = shape;
           const prevReset = matchCache?.resetRev ?? -1;
           matchCache = next;
+          // 畫面與「已涵蓋不重算」照舊吃本機快照。pending 由 true 變 false 也會走到這裡，工作階段因此 flush 重新決策（F3-5）。
           listener.onMatch(next);
           if (next && prevReset >= 0 && next.resetRev > prevReset) appendKnown([], true);
+          // 讀事件只看已確認的 rev：本機快照的 rev 會讀到自己未送的 e{seq}，maxSeq 被推過去後，退回時假事件拿不掉、同 seq 的真事件也讀不到。
+          if (pending) return;
           if (next && next.rev !== lastRev) {
             const from = maxSeq + 1;
             lastRev = next.rev;
             const resetRev = next.resetRev;
-            void readTimeline(db, cid, mtId, from, resetRev).then((added) => {
-              appendKnown(added, true);
-              const visible = added.filter((event) => event.seq > resetRev);
+            void readTimeline(db, cid, mtId, from, resetRev).then((read) => {
+              appendKnown(read.events, true);
+              const visible = read.events.filter((event) => event.seq > resetRev);
               if (visible.length === 0) return;
               listener.onEvents(visible, 'append');
             }).catch((err) => listener.onError(err));
@@ -427,9 +450,9 @@ export function createFirestoreBackend(db: Firestore, cid: string, mtId: string,
           if (!matchCache) return;
           const resetRev = matchCache.resetRev;
           const from = maxSeq + 1;
-          void readTimeline(db, cid, mtId, from, resetRev).then((added) => {
-            appendKnown(added, true);
-            const visible = added.filter((event) => event.seq > resetRev);
+          void readTimeline(db, cid, mtId, from, resetRev).then((read) => {
+            appendKnown(read.events, true);
+            const visible = read.events.filter((event) => event.seq > resetRev);
             if (visible.length === 0) return;
             listener.onEvents(visible, 'append');
           }).catch((err) => listener.onError(err));

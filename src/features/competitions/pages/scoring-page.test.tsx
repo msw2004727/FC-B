@@ -103,7 +103,7 @@ function backend(options: {
       };
     },
     async loadTimelineFrom(minSeq: number) {
-      return events.filter((event) => event.seq >= minSeq);
+      return { events: events.filter((event) => event.seq >= minSeq), pending: false };
     },
     knownEvents: () => events,
     async takeover() {},
@@ -351,6 +351,8 @@ describe('正式記分頁走 useScoring', () => {
       (node.textContent ?? '').includes(LIVE_COPY.takeoverAction),
     );
     expect(confirm).toBeTruthy();
+    // 接手確認鈕打開後短暫停用（防連點），等它可按再按。
+    await waitFor(() => expect((confirm as HTMLButtonElement).disabled).toBe(false), { timeout: 2000 });
     fireEvent.click(confirm as HTMLButtonElement);
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: LIVE_COPY.takeoverAction })).toBeNull();

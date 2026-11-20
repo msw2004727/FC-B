@@ -42,7 +42,7 @@ function backend(): ScoringBackend {
       };
     },
     async loadTimelineFrom(minSeq: number) {
-      return events.filter((event) => event.seq >= minSeq);
+      return { events: events.filter((event) => event.seq >= minSeq), pending: false };
     },
     knownEvents: () => events,
     async takeover() {},

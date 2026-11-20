@@ -41,6 +41,19 @@ export const U2_SCREENS = [
   'u2-no-permission',
   'u2-storage-unavailable',
   'u2-long-name',
+  // 第 4 步 A（顧問 11-20）：被拒擋住送出、階段動作被擋、不能復原的確認框、看這張牌。
+  'a1-held',
+  'a1-held-sheet',
+  'a1-blocked-ht',
+  'a1-resumed',
+  'a1-pk-confirm-wait',
+  'a1-pk-confirm-armed',
+  'a1-kickoff-confirm',
+  'a1-takeover-confirm',
+  'a1-showcard',
+  'a1-undo-confirm',
+  'a1-blocked-ht-before',
+  'a1-pk-blocked',
 ] as const;
 
 const ANCHORS: Record<string, string> = {
@@ -56,6 +69,18 @@ const ANCHORS: Record<string, string> = {
   'u2-no-permission': '你沒有這場的記分權限',
   'u2-storage-unavailable': '離線紀錄無法保存',
   'u2-long-name': '34:00',
+  'a1-held': '之後記的 2 筆先存在這支手機',
+  'a1-held-sheet': '重新套用',
+  'a1-blocked-ht': '先處理沒送出的紀錄，才能開始下半場',
+  'a1-resumed': '終場',
+  'a1-pk-confirm-wait': '開始 PK 大戰？',
+  'a1-pk-confirm-armed': '開始 PK 大戰？',
+  'a1-kickoff-confirm': '開始比賽？',
+  'a1-takeover-confirm': '接手後，另一支裝置記的動作會送不出去',
+  'a1-showcard': '點一下關閉',
+  'a1-undo-confirm': '會一併復原第二張黃牌',
+  'a1-blocked-ht-before': '前一筆沒送出，請點「未套用的動作」處理',
+  'a1-pk-blocked': '先處理沒送出的紀錄，才能開始 PK',
 };
 
 const HOME: RosterPublicDoc[] = [
@@ -133,6 +158,42 @@ function pendingGoal(op: string, side: 'home' | 'away', plId: string, at: number
   };
 }
 
+function rejectedEntry(op: string, intent: LogEntry['intent'], seq: number, reason: LogEntry['rejectReason'], at: number): LogEntry {
+  return {
+    op,
+    cid: CID,
+    mtId: MT,
+    uid: UID,
+    sid: SID,
+    kind: intent.kind,
+    intent,
+    state: 'rejected',
+    rejectReason: reason,
+    seq,
+    createdAt: at,
+    attempts: 1,
+    baseResetRev: 0,
+  };
+}
+
+function secondYellowAt(seq: number, minute: number, refSeq: number): ServerEvent {
+  return { ...cardAt(seq, minute), op: `card2-home-${String(seq).padStart(4, '0')}`, cardType: 'second_yellow', refSeq };
+}
+
+function cardAt(seq: number, minute: number): ServerEvent {
+  return {
+    seq,
+    type: 'card',
+    op: `card-home-${String(seq).padStart(4, '0')}`,
+    sid: SID,
+    side: 'home',
+    plId: 'pl_th9',
+    cardType: 'yellow',
+    matchSecond: minute * 60,
+    createdAt: NOW - (90 - minute) * 1000,
+  };
+}
+
 function deadLog(): ActionLog {
   return {
     async probe() { return false; },
@@ -165,6 +226,8 @@ interface Seed {
   wakeOff?: boolean;
   reader?: boolean;
   pending?: LogEntry[];
+  /** 控制權在別的裝置（同帳號另一個 sid）。 */
+  otherDevice?: boolean;
 }
 
 function seedOf(name: string): Seed {
@@ -301,6 +364,59 @@ function seedOf(name: string): Seed {
       reader: true,
     };
   }
+  if (name === 'a1-held' || name === 'a1-held-sheet') {
+    return {
+      match: match({ status: 'live', rev: 1, score: { home: 1, away: 0 }, clockBase: clock(31 * 60, 'h1', true) }),
+      events: [goalAt(1, 'home', 12)],
+      pending: [
+        rejectedEntry('rej-goal-away-00001', { kind: 'goal', side: 'away', plId: 'pl_hf10', goalKind: 'normal', matchSecond: 1500 }, 2, 'conflict', NOW - 60_000),
+        pendingGoal('pend-goal-home-00002', 'home', 'pl_th9', NOW - 30_000),
+        pendingGoal('pend-goal-home-00003', 'home', 'pl_th9', NOW - 10_000),
+      ],
+    };
+  }
+  if (name === 'a1-pk-blocked') {
+    return {
+      ...seedOf('u2-pk-confirm'),
+      pending: [
+        rejectedEntry('rej-goal-home-00009', { kind: 'goal', side: 'home', plId: 'pl_th9', goalKind: 'normal', matchSecond: 5300 }, 3, 'conflict', NOW - 30_000),
+      ],
+    };
+  }
+  if (name === 'a1-blocked-ht' || name === 'a1-resumed' || name === 'a1-blocked-ht-before') {
+    return {
+      match: match({ status: 'halftime', rev: 1, score: { home: 1, away: 0 }, clockBase: clock(45 * 60, 'ht', false, NOW - 120_000) }),
+      events: [goalAt(1, 'home', 12)],
+      pending: [
+        rejectedEntry('rej-resume-00000001', {
+          kind: 'resume',
+          matchSecond: 2700,
+          clock: { running: true, period: 'h2', pausedSec: 2700, startedAt: NOW - 60_000 },
+        }, 2, 'takenOver', NOW - 60_000),
+      ],
+    };
+  }
+  if (name === 'a1-pk-confirm-wait' || name === 'a1-pk-confirm-armed') return seedOf('u2-pk-confirm');
+  if (name === 'a1-kickoff-confirm') return seedOf('u2-pre');
+  if (name === 'a1-takeover-confirm') {
+    return {
+      match: match({ status: 'live', rev: 1, score: { home: 1, away: 0 }, clockBase: clock(20 * 60, 'h1', true) }),
+      events: [goalAt(1, 'home', 12)],
+      otherDevice: true,
+    };
+  }
+  if (name === 'a1-showcard') {
+    return {
+      match: match({ status: 'live', rev: 2, score: { home: 1, away: 0 }, clockBase: clock(34 * 60, 'h1', true) }),
+      events: [goalAt(1, 'home', 12), cardAt(2, 20)],
+    };
+  }
+  if (name === 'a1-undo-confirm') {
+    return {
+      match: match({ status: 'live', rev: 2, score: { home: 0, away: 0 }, clockBase: clock(34 * 60, 'h1', true) }),
+      events: [cardAt(1, 20), secondYellowAt(2, 30, 1)],
+    };
+  }
   if (name === 'u2-no-permission') {
     return {
       match: match({ status: 'scheduled', clockBase: clock(0, 'pre', false, null) }),
@@ -316,6 +432,7 @@ function seedOf(name: string): Seed {
 
 function makeBackend(seed: Seed, failCommit: boolean): ScoringBackend {
   const state = { match: { ...seed.match, score: { ...seed.match.score }, clockBase: { ...seed.match.clockBase } } };
+  const control = { uid: UID, sid: seed.otherDevice ? 'u2-other-sid-0000000002' : SID, takenAt: 1 };
   const events = [...(seed.events ?? [])];
   let listener: Parameters<ScoringBackend['open']>[0] | null = null;
   const port: ScoringPort = {
@@ -336,11 +453,11 @@ function makeBackend(seed: Seed, failCommit: boolean): ScoringBackend {
           score: { ...state.match.score },
           clockBase: { ...state.match.clockBase },
         },
-        control: { uid: UID, sid: SID, takenAt: 1 },
+        control: { ...control },
       };
     },
     async loadTimelineFrom(minSeq: number) {
-      return events.filter((event) => event.seq >= minSeq);
+      return { events: events.filter((event) => event.seq >= minSeq), pending: false };
     },
     knownEvents: () => events,
     async takeover() {},
@@ -351,7 +468,7 @@ function makeBackend(seed: Seed, failCommit: boolean): ScoringBackend {
       listener = live;
       return {
         match: state.match,
-        control: { uid: UID, sid: SID, takenAt: 1 },
+        control: { ...control },
         events: [...events],
         home: HOME,
         away: AWAY,
@@ -420,6 +537,78 @@ async function until(label: string, ready: () => boolean): Promise<void> {
 }
 
 const OPEN: Record<string, () => Promise<void>> = {
+  'a1-held': async () => {
+    await until('待送列', () => document.querySelectorAll('.s4-pending').length >= 2);
+  },
+  'a1-held-sheet': async () => {
+    await until('未套用的動作', () => buttonsNamed('未套用的動作').length > 0);
+    clickButton('未套用的動作');
+  },
+  'a1-blocked-ht-before': async () => {
+    await until('下半場開始', () => buttonsNamed('下半場開始').length > 0);
+  },
+  'a1-pk-blocked': async () => {
+    await until('PK 大戰', () => buttonsNamed('PK 大戰').length > 0);
+    clickButton('PK 大戰');
+  },
+  'a1-blocked-ht': async () => {
+    await until('下半場開始', () => buttonsNamed('下半場開始').length > 0);
+    clickButton('下半場開始');
+  },
+  'a1-resumed': async () => {
+    await until('未套用的動作', () => buttonsNamed('未套用的動作').length > 0);
+    clickButton('下半場開始');
+    await until('被擋提示', () => hasText('先處理沒送出的紀錄'));
+    clickButton('未套用的動作');
+    await until('重新套用', () => buttonsNamed('重新套用').length > 0);
+    clickButton('重新套用');
+    await until('下半場', () => buttonsNamed('終場').length > 0 && !hasText('先處理沒送出的紀錄'));
+    // 關掉未套用面板，看記分頁本身。
+    const close = document.querySelector<HTMLButtonElement>('.s4-sheet .ui-modal__close, .s4-sheet button[aria-label="關閉"]');
+    close?.click();
+  },
+  'a1-pk-confirm-wait': async () => {
+    await until('PK 大戰', () => buttonsNamed('PK 大戰').length > 0);
+    // 量 390 寬時「PK 大戰」與確認框「開始 PK」的位置，給回報用。
+    const pk = buttonsNamed('PK 大戰')[0]?.getBoundingClientRect();
+    clickButton('PK 大戰');
+    await until('開始 PK 大戰？', () => hasText('開始 PK 大戰？'));
+    const go = buttonsNamed('開始 PK')[0];
+    const box = go?.getBoundingClientRect();
+    (window as unknown as { __A1_RECTS?: unknown }).__A1_RECTS = {
+      pkStart: pk ? { x: pk.x, y: pk.y, w: pk.width, h: pk.height } : null,
+      confirm: box ? { x: box.x, y: box.y, w: box.width, h: box.height } : null,
+      confirmDisabled: go?.disabled ?? null,
+    };
+  },
+  'a1-pk-confirm-armed': async () => {
+    await until('PK 大戰', () => buttonsNamed('PK 大戰').length > 0);
+    clickButton('PK 大戰');
+    await until('確認可按', () => buttonsNamed('開始 PK')[0]?.disabled === false);
+  },
+  'a1-kickoff-confirm': async () => {
+    await until('開賽', () => document.querySelector('.s4-kickoff') != null);
+    document.querySelector<HTMLButtonElement>('.s4-kickoff')?.click();
+    await until('開始比賽？', () => hasText('開始比賽？'));
+  },
+  'a1-takeover-confirm': async () => {
+    await until('其他裝置記分中', () => buttonsNamed('其他裝置記分中').length > 0);
+    clickButton('其他裝置記分中');
+  },
+  'a1-undo-confirm': async () => {
+    await until('黃牌列', () => hasText('劉冠廷'));
+    const rows = [...document.querySelectorAll<HTMLButtonElement>('.s4-ev button')].filter((el) => (el.textContent ?? '').includes("20'"));
+    rows[0]?.click();
+    await until('復原', () => [...document.querySelectorAll('button')].some((el) => (el.textContent ?? '').trim().startsWith('復原')));
+    [...document.querySelectorAll<HTMLButtonElement>('.s4-sheet button')].find((el) => (el.textContent ?? '').trim().startsWith('復原'))?.click();
+  },
+  'a1-showcard': async () => {
+    await until('黃牌列', () => hasText('劉冠廷'));
+    const row = [...document.querySelectorAll('button')].find((el) => (el.textContent ?? '').includes('劉冠廷') && (el.getAttribute('aria-label') ?? el.textContent ?? '').includes('20'));
+    (row ?? [...document.querySelectorAll<HTMLButtonElement>('.s4-ev button')].find((el) => (el.textContent ?? '').includes("20'")))?.click();
+    await until('看這張牌', () => buttonsNamed('看這張牌').length > 0);
+    clickButton('看這張牌');
+  },
   'u2-pk-confirm': async () => {
     await until('PK 大戰', () => buttonsNamed('PK 大戰').length > 0);
     clickButton('PK 大戰');

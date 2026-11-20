@@ -20,7 +20,8 @@ export type ActionKind =
   | 'pkStart'
   | 'pk';
 export type LogState = 'pending' | 'sending' | 'applied' | 'rejected' | 'discarded';
-export type RejectReason = 'conflict' | 'takenOver' | 'locked' | 'limit' | 'rules' | 'unknown' | 'reset';
+// blocked：有被拒項目擋住送出時，階段動作不建新項目（第 4 步 A F5-3）。只回給呼叫端，不寫進日誌。
+export type RejectReason = 'conflict' | 'takenOver' | 'locked' | 'limit' | 'rules' | 'unknown' | 'reset' | 'blocked';
 export type GroupLabel = 'amend' | 'undoFirstYellow' | 'amendFirstYellow';
 export type ClockActionName = 'pause' | 'resume' | 'correct';
 export type ScoringPhase = 'pre' | 'play' | 'ht' | 'undo' | 'locked';
@@ -256,6 +257,11 @@ export interface DecideServer {
   resetRev?: number;
   eventAtSeq: { op: string } | null;
   matchedSeq: number | null;
+  /**
+   * 讀到的場次或時間軸有本機還沒被伺服器確認的寫入（Firestore metadata.hasPendingWrites）。
+   * eventAtSeq、matchedSeq 只來自已確認的文件；pending 為真時不換號、不重送、不標 applied，等 SDK 結果（第 4 步 A F2）。
+   */
+  pending?: boolean;
 }
 
 export type RetryDecision =
@@ -267,11 +273,24 @@ export type RetryDecision =
   | { kind: 'resequence' }
   | { kind: 'discard'; reason: 'reset' };
 
+/** 時間軸讀取結果。events 只含伺服器已確認的文件；pending 表示讀到過本機未確認的文件（已排除）。 */
+export interface TimelineRead {
+  events: ServerEvent[];
+  pending: boolean;
+}
+
+export interface ServerRead {
+  match: ServerMatch;
+  control: ServerControl | null;
+  /** 場次文件有本機未確認的寫入。缺值視為 false（舊的假後端）。 */
+  pending?: boolean;
+}
+
 export interface ScoringPort {
   commit(plan: BatchPlan): Promise<void>;
-  loadServer(): Promise<{ match: ServerMatch; control: ServerControl | null }>;
-  /** seq >= minSeq 且 seq > resetRev，由小到大，最多 200 筆。 */
-  loadTimelineFrom(minSeq: number, resetRev: number): Promise<ServerEvent[]>;
+  loadServer(): Promise<ServerRead>;
+  /** seq >= minSeq 且 seq > resetRev，由小到大，最多 200 筆，只含已確認文件。 */
+  loadTimelineFrom(minSeq: number, resetRev: number): Promise<TimelineRead>;
   knownEvents(): readonly ServerEvent[];
   takeover(sid: string): Promise<void>;
 }
