@@ -87,6 +87,10 @@ export const U2_SCREENS = [
   // 設計總監 05:08：客隊喊暫停（暫停條左緣客隊色 s4-timeout--away）、客隊暫停收合。
   'u2-timeout-away',
   'u2-timeout-away-collapsed',
+  // 設計總監 05:38（卡 2-4 面板新外觀）：暫停選隊時主隊次數用完（主隊鈕停用、客隊剩 1 次）、客隊選球員面板、PK 那一腳只有「復原」。
+  'u2-timeout-picks-used',
+  'u2-pick-away',
+  'u2-pk-kick-sheet',
   'u2-menu-disabled',
   'u2-pre-disabled',
   'u2-fullscreen',
@@ -150,6 +154,9 @@ const ANCHORS: Record<string, string> = {
   'u2-timeout-done': '繼續計時',
   'u2-timeout-away': '海風隊暫停 0:47',
   'u2-timeout-away-collapsed': '海風隊',
+  'u2-timeout-picks-used': '每半場重新計算',
+  'u2-pick-away': '不指定球員',
+  'u2-pk-kick-sheet': '復原',
   'u2-menu-disabled': '球隊暫停',
   'u2-pre-disabled': '開賽',
   'u2-fullscreen': '34:00',
@@ -306,6 +313,8 @@ interface Seed {
   pending?: LogEntry[];
   /** 控制權在別的裝置（同帳號另一個 sid）。 */
   otherDevice?: boolean;
+  /** 組別 rules.timeout 原始值（backend.open 的 timeoutRaw）。沒給就照舊不帶（預設：不限次數）。 */
+  timeoutRaw?: unknown;
   /** 進場（backend.open）丟錯：network＝{ code: 'unavailable' }、error＝一般錯誤（G-06 讀取失敗畫面）。 */
   failOpen?: 'network' | 'error';
 }
@@ -600,6 +609,15 @@ function seedOf(name: string): Seed {
       events: [goalAt(1, 'home', 8), { ...timeoutAt(2, op), side: 'away' }],
     };
   }
+  if (name === 'u2-timeout-picks-used') {
+    // 規則：每半場 1 次。上半場進行中、主隊已在 2 分鐘前喊過一次（已走完），客隊還沒用 → 主隊鈕停用、客隊「剩 1 次」。
+    return {
+      ...seedOf('u2-live'),
+      events: [goalAt(1, 'home', 12), goalAt(2, 'away', 28), { seq: 3, type: 'timeout', op: 'timeout-op-00000021', sid: SID, side: 'home', matchSecond: 1900, createdAt: NOW - 120_000 }],
+      timeoutRaw: { enabled: true, per: 'half', count: 1, seconds: 60, stopsClock: true },
+    };
+  }
+  if (name === 'u2-pick-away' || name === 'u2-pk-kick-sheet') return seedOf(name === 'u2-pick-away' ? 'u2-live' : 'u2-pk-live');
   if (name === 'u2-timeout-done') {
     // 暫停在 60 秒前開始（規則預設 60 秒）：倒數剛好走完，橫幅留著，主鈕變「繼續計時」。
     return {
@@ -679,6 +697,7 @@ function makeBackend(seed: Seed, failCommit: boolean): ScoringBackend {
         away: AWAY,
         staffRoles: seed.staffRoles ?? ['scorer'],
         matchIds: seed.matchIds ?? [MT],
+        ...(seed.timeoutRaw !== undefined ? { timeoutRaw: seed.timeoutRaw } : {}),
         expiresAt: null,
         setVisible() {},
         stop() { listener = null; },
@@ -856,6 +875,32 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('紅色列＋暫停條', () => heldRow() != null && buttonsNamed('收合').length > 0);
     clickButton('收合');
     await until('收合條', () => buttonsNamed('收合').length === 0 && document.querySelector('.s4-timeout') != null);
+  },
+  'u2-timeout-picks-used': async () => {
+    await until('選單', () => document.querySelector('.s4-menu-btn') != null);
+    document.querySelector<HTMLButtonElement>('.s4-menu-btn')?.click();
+    await until('選單項目', () => document.querySelector('.s4-menu') != null);
+    const item = [...document.querySelectorAll<HTMLButtonElement>('.s4-menu button')].find((el) => (el.textContent ?? '').trim() === '球隊暫停');
+    if (!item) throw new Error('找不到按鈕：球隊暫停');
+    item.click();
+    await until('選隊鈕一顆停用', () => [...document.querySelectorAll<HTMLButtonElement>('.s4-timeout-picks button')].some((el) => el.disabled));
+  },
+  'u2-pick-away': async () => {
+    // 客隊進球鈕：底部兩顆「進球」的第二顆（s4-hit--away）。
+    await until('客隊進球鈕', () => document.querySelector('.s4-hit--away') != null);
+    const goal = [...document.querySelectorAll<HTMLButtonElement>('button.s4-hit--away')].find((el) => (el.textContent ?? '').includes('進球'));
+    if (!goal) throw new Error('找不到客隊進球鈕');
+    goal.click();
+    await until('客隊選球員面板', () => document.querySelector('.s4-sheet--away') != null && hasText('不指定球員'));
+  },
+  'u2-pk-kick-sheet': async () => {
+    // 點最近一腳 PK 的紀錄列，事件面板只有「復原」（PK 不改判）。
+    // PK 列文字是「第N輪 隊名 背號 姓名 進／未進」，取最上面（最近）那一列。
+    const isKick = (el: Element) => /^第\d+輪/.test((el.textContent ?? '').trim());
+    await until('PK 紀錄列', () => [...document.querySelectorAll('.s4-ev button')].some(isKick));
+    const row = [...document.querySelectorAll<HTMLButtonElement>('.s4-ev button')].find(isKick);
+    row?.click();
+    await until('只有復原', () => !!document.querySelector('.ui-modal') && !hasText('改判'));
   },
   'u2-timeout-away': () => until('客隊暫停條', () => document.querySelector('.s4-timeout.s4-timeout--away') != null),
   'u2-timeout-away-collapsed': async () => {

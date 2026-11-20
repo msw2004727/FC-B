@@ -45,7 +45,18 @@ const AWAY = [
   ['cp-step4-u2', 'u2-timeout-away-collapsed', '&frame=shell', null],
   ['cp-step4-u2', 'u2-timeout-stop', '&frame=shell', null],
 ];
-const SHOTS = FLAGS.set === 'fix' ? FIX : FLAGS.set === 'away' ? AWAY : COV;
+// 設計總監 05:38（卡 2-4 面板）：暫停選隊次數用完、客隊選球員、PK 那一腳只有復原；第 5 欄是窄寬（確認框 359 以下內文 13px 用 320 拍）。
+// 確認框四個都是既有狀態，只是補拍 320 寬。
+const PANELS = [
+  ['cp-step4-u2', 'u2-timeout-picks-used', '&frame=shell', null],
+  ['cp-step4-u2', 'u2-pick-away', '&frame=shell', null],
+  ['cp-step4-u2', 'u2-pk-kick-sheet', '&frame=shell', null],
+  ['cp-step4-u2', 'a1-undo-confirm', '&frame=shell', null, 320],
+  ['cp-step4-u2', 'a1-kickoff-confirm', '&frame=shell', null, 320],
+  ['cp-step4-u2', 'u2-pk-confirm', '&frame=shell', null, 320],
+  ['cp-step4-u2', 'a1-takeover-confirm', '&frame=shell', null, 320],
+];
+const SHOTS = FLAGS.set === 'fix' ? FIX : FLAGS.set === 'away' ? AWAY : FLAGS.set === 'panels' ? PANELS : COV;
 // 長文字：介面標籤不該被動斷行；隊名、組別名等單行省略要有省略號；使用者長文（原因、公告）可以換行但不能撐破。
 const TEXT_SEL = '.cp3-m__when, .cp3-m__vs span, .cp3-m__top, .cp3-tn em, .cps-h, .d2-div .cps-sub, .cpm-reason, .cpm-ended, .cpm-ann__txt, .cpm-ann__time, .cpm-public, .cp3-day, .cps-top h1';
 const SIZES = [{ w: 360, h: FLAGS.set === 'away' ? 640 : 800, frame: false }, { w: 1280, h: 800, frame: true }];
@@ -144,6 +155,18 @@ function measureGeneric() {
     bottomTabsDisplay: tabs ? getComputedStyle(tabs).display : null,
     s4RootHeight: root ? Math.round(root.getBoundingClientRect().height) : null,
     viewportHeight: window.innerHeight,
+    sheet: (() => {
+      const sh = document.querySelector('.s4-sheet');
+      const head = sh?.querySelector('.ui-modal__header');
+      return sh ? { cls: sh.className, headerShadow: head ? getComputedStyle(head).boxShadow : null } : null;
+    })(),
+    picks: [...document.querySelectorAll('.s4-timeout-picks button')].map((el) => ({ text: (el.textContent || '').trim(), disabled: el.disabled })),
+    modalButtons: [...document.querySelectorAll('.ui-modal button')].filter((el) => el.getBoundingClientRect().width > 0 && !el.classList.contains('ui-modal__close')).map((el) => (el.textContent || el.getAttribute('aria-label') || '').trim()),
+    dialogNotes: [...document.querySelectorAll('.s4-dialog .s4-note')].map((el) => {
+      const r = document.createRange(); r.selectNodeContents(el);
+      return { text: (el.textContent || '').trim().slice(0, 20), fontSize: getComputedStyle(el).fontSize, lines: new Set([...r.getClientRects()].filter((q) => q.width > 0).map((q) => Math.round(q.top))).size };
+    }),
+    awayVarResolved: (() => { const t = document.createElement('div'); t.style.color = 'var(--d2-away)'; document.querySelector('.s4-root')?.appendChild(t); const c = getComputedStyle(t).color; t.remove(); return c; })(),
     timeoutBar: bar ? {
       cls: bar.className,
       side: getComputedStyle(bar).getPropertyValue('--s4-side').trim(),
@@ -185,9 +208,9 @@ function measureText(sel) {
   }
   return out;
 }
-for (const [html, name, frameParam, scrollSel] of SHOTS) {
+for (const [html, name, frameParam, scrollSel, narrow] of SHOTS) {
   if (ONLY && !ONLY.has(`${html}:${name}`)) continue;
-  for (const size of SIZES) {
+  for (const size of SIZES.map((sz) => (narrow && !sz.frame ? { ...sz, w: narrow } : sz))) {
     for (const theme of THEMES) {
       const ctx = await browser.newContext({ viewport: { width: size.w, height: size.h }, deviceScaleFactor: 2 });
       const tag = `${name}-${size.w}${size.frame ? 'frame' : ''}-${theme}`;
