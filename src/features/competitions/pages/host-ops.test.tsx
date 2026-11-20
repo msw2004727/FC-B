@@ -1542,6 +1542,26 @@ describe('刪除公告確認', () => {
     await waitFor(() => expect(deleteNotice).toHaveBeenCalledWith({ cid: 'cup', noticeId: 'nt_sys' }));
     expect(screen.queryByText('系統已改期')).toBeNull();
   });
+
+  it('刪除公告走危險確認框：開著時 <html> 帶 cp-danger-confirm，取消後拿掉且不刪除', async () => {
+    const deleteNotice = vi.fn(async () => ({}));
+    draw(hostDetail([
+      { id: 'nt_host', text: '手動公告', kind: 'host', at: 1, by: null },
+    ], { ...idleActions(), deleteNotice }), CompetitionDetailPage);
+    const root = document.documentElement;
+    expect(root.classList.contains('cp-danger-confirm')).toBe(false);
+
+    noticeDeleteButton('手動公告').click();
+    await screen.findByRole('alertdialog');
+    expect(root.classList.contains('cp-danger-confirm')).toBe(true);
+    expect(root.getAttribute('data-cp-danger-confirm')).toBe('1');
+    confirmButton('app-confirm-cancel').click();
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    await waitFor(() => expect(root.classList.contains('cp-danger-confirm')).toBe(false));
+    expect(root.hasAttribute('data-cp-danger-confirm')).toBe(false);
+    expect(deleteNotice).not.toHaveBeenCalled();
+    expect(screen.getByText('手動公告')).toBeTruthy();
+  });
 });
 
 describe('聯絡文字', () => {
