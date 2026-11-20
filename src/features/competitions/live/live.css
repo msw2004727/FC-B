@@ -263,7 +263,8 @@
   text-align: center;
 }
 .s4-top .s4-board .s4-team--away { background: var(--d2-away); }
-.s4-top .s4-board .cp3-crest--txt { display: none; }
+/* 板上一律不顯示隊徽（文字章與圖片都藏；標記留著）：矮板放不下、只有一邊有圖時左右不對稱（設計總監 11-21 04:20 裁定） */
+.s4-top .s4-board .cp3-crest { display: none; }
 .s4-top .s4-score {
   font-family: var(--d2-num);
   font-size: 40px;
