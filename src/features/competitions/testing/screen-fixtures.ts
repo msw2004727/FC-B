@@ -890,8 +890,12 @@ function crestLiveBoard(pkOnly: boolean): { summary: SummaryEntry[]; standings: 
   };
 }
 
-/** 五個組別各一份積分（各有冠軍）。組別名稱要在 bundle.divisions 裡才標得出來。 */
-const FIVE_DIVISIONS: DivisionDoc[] = ['成人組', '壯年組', 'U15', 'U12', '女子組'].map((name, index) => division({
+/** 30 字組名（卡 1b-3 驗組名省略）。 */
+export const LONG_DIVISION_NAME = '新北市三重區二〇二七年社區五人制足球聯賽成人男子組第一級別組';
+
+/** 五個組別各一份積分（各有冠軍）。冠軍那一行的組名讀積分文件的 divisionName，其中一組是 30 字組名。 */
+const FIVE_DIVISION_NAMES = ['成人組', '壯年組', 'U15', 'U12', LONG_DIVISION_NAME];
+const FIVE_DIVISIONS: DivisionDoc[] = FIVE_DIVISION_NAMES.map((name, index) => division({
   dvId: `dv_${index + 1}`,
   name,
   order: index,
@@ -906,6 +910,7 @@ function fiveChampionBoard(): { summary: SummaryEntry[]; standings: StandingDoc[
     standings: FIVE_DIVISIONS.map((dv, index) => standingDoc({
       id: `${dv.dvId}__group__A`,
       divisionId: dv.dvId,
+      divisionName: dv.name,
       rows: [
         standingRow({ teamId: `en_c${index}`, name: teams[index] ?? '海風隊', points: 9, rank: 1, win: 3, draw: 0, loss: 1 }),
         standingRow({ teamId: `en_r${index}`, name: '山貓隊', points: 4, rank: 2 }),
@@ -1270,12 +1275,6 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return detailEnv(memberActor, taipeiMs(2027, 1, 10, 12, 0), { category: 'cup' }, liveBoard());
     case 'real-warm-no-schedule':
       return detailEnv(memberActor, WARM_NOW, {}, { summary: [], standings: [] });
-    case 'real-recruit-nocap': {
-      // 組別沒有隊數上限（maxTeams 0）。
-      const env = detailEnv(memberActor, NOW, {}, { summary: [], standings: [] });
-      const b = env.bundle;
-      return b ? { ...env, bundle: { ...b, divisions: b.divisions.map((dv) => ({ ...dv, maxTeams: 0 })) } } : env;
-    }
     case 'real-recruit-nodiv': {
       const env = detailEnv(memberActor, NOW, {}, { summary: [], standings: [] });
       return env.bundle ? { ...env, bundle: { ...env.bundle, divisions: [], entries: [] } } : env;
@@ -1319,6 +1318,7 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
     case 'real-swap-open':
       return hostEnv(clashMatches(), actions);
     case 'real-shift-clash':
+    case 'real-shift-clash-settled':
       return withSecondVenue(hostEnv(clashMatches(), shiftClashActions(actions)));
     case 'real-pending-fresh':
       return hostEnv(freshPendingMatches(), actions);
