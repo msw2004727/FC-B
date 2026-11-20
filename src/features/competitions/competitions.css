@@ -615,19 +615,22 @@
 .cps-li__name { display: block; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cps-li__meta { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin-top: 2px; }
 .cps-li__meta .cps-cap { white-space: nowrap; }
+/* 名單頁背號（新外觀卡 3-2）：32px 中性圓、15px 粗體等寬數字；取代原本青綠底與深色專屬那一條 */
 .cps-num {
-  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%;
-  background: var(--color-brand-soft-bg); color: var(--color-brand-soft-fg); font-size: var(--font-size-body); font-weight: 700;
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--d2-line); color: var(--d2-text); font-size: 15px; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-[data-theme="dark"] .cps-num { background: rgba(52,211,153,.16); color: var(--palette-emerald-300); }
 
-/* 名單列：背號、顯示名、位置同一行，不換行、不截斷。 */
-.cps-player { flex-wrap: nowrap; white-space: nowrap; }
+/* 名單列（卡 3-2）：每列高 48、間距 10、列間細線；背號｜顯示名｜位置｜未成年 …… 靠最右的垃圾桶（點擊區 44，圖示右緣對齊卡片內距）。
+ * 這一列與它的父層不加 overflow: hidden（垃圾桶的點擊區不被裁）；省略只加在顯示名。 */
+.cps-player { flex-wrap: nowrap; gap: 10px; min-height: 48px; padding: 0; border-top: 1px solid var(--d2-line); white-space: nowrap; }
 .cps-player__name, .cps-player__pos {
-  flex: 0 0 auto; white-space: nowrap; font-size: var(--font-size-body); line-height: var(--line-height-body);
+  flex: 0 0 auto; white-space: nowrap; font-size: 15px; line-height: 24px;
 }
-.cps-player__name { font-weight: 600; }
+.cps-player__name { font-weight: 600; color: var(--d2-text); }
+.cps-player__pos { font-size: 13px; color: var(--d2-text-2); }
+.cps-player .cps-iconbtn { width: 44px; height: 44px; margin: 0 -13px 0 auto; }
 /* 顧問 §3.471 X-02：使用者取的暱稱（名單頁）。長暱稱可縮、超過省略，背號、位置、標籤、刪除鈕不讓位（取代上方「不截斷」只對暱稱）。 */
 .cps-player__name.cps-player__name--fit { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cps-player .ui-badge { flex: 0 0 auto; white-space: nowrap; }
@@ -636,7 +639,8 @@
 .cps-bar i { display: block; height: 100%; background: var(--color-brand); }
 .cps-bar i.low { background: var(--d2-text-3); }
 
-.cps-hint-line { display: flex; align-items: center; gap: var(--space-2); }
+/* 代為新增：「未成年」標籤往上靠近生日欄（卡 3-2） */
+.cps-hint-line { display: flex; align-items: center; gap: var(--space-2); margin-top: -8px; }
 .cps-pay { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--color-border-subtle); }
 .cps-pay .ui-switch, .cps-pay label { white-space: nowrap; }
 .cps-fee { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-2); }
@@ -648,9 +652,10 @@
 .cps-kv { display: flex; justify-content: space-between; gap: var(--space-3); font-size: var(--font-size-body-sm); }
 .cps-kv span:first-child { color: var(--color-text-muted); white-space: nowrap; }
 .cps-kv span:last-child { white-space: nowrap; }
+/* 未成年隱私說明（卡 3-2）：不是色塊，左邊一條 2px 線＋次要字；三行的換行是字串自帶的 */
 .cps-privacy {
-  margin: 0; padding: var(--space-3); border-radius: var(--radius-sm); background: none; box-shadow: inset 0 0 0 1px var(--d2-line-strong); color: var(--d2-text);
-  font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm);
+  margin: 0; padding: 0 0 0 12px; background: none; box-shadow: inset 2px 0 0 0 var(--d2-line-strong); color: var(--d2-text-2);
+  font-size: 13px; line-height: 20px;
 }
 .cps-success { text-align: center; padding: var(--space-6) var(--space-4); }
 .cps-success svg { width: 44px; height: 44px; fill: none; stroke: var(--color-success); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -786,9 +791,35 @@
 .cp3-cover__def svg { position: absolute; right: 6%; top: 50%; transform: translateY(-50%); height: 80%; fill: none; stroke: rgba(255,255,255,.55); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .cp3-cover__cat { position: absolute; left: 10px; bottom: 10px; padding: 3px 10px; border-radius: 999px; background: rgba(15,23,42,.62); box-shadow: inset 0 1px 0 rgba(255,255,255,.22); color: #fff; font-size: var(--font-size-caption); font-weight: 700; white-space: nowrap; }
 
+/* 本隊名單（新外觀卡 3-2）：隊伍卡 隊徽 48＋隊名 → 兩顆標籤 → 人數 → 進度條 → 說明句；球員卡標題列右邊接小顆「代為新增球員」 */
 .cp3-roster-head { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .cp3-roster-head__t { min-width: 0; flex: 1 1 auto; }
-.cp3-roster-head__t .cps-title { overflow: hidden; text-overflow: ellipsis; }
+.cp3-roster-head__t .cps-title { overflow: hidden; text-overflow: ellipsis; font-size: 19px; line-height: 28px; color: var(--d2-text); }
+.cp3-roster-head__t .cps-sub { line-height: 20px; color: var(--d2-text-2); }
+.cp3-roster-tags { margin-top: 12px; }
+.cp3-roster-count { align-items: baseline; margin-top: 6px; font-size: 13px; line-height: 20px; }
+.cp3-roster-count > span:first-child { color: var(--d2-text-2); }
+.cp3-roster-count > span:last-child { font-weight: 600; color: var(--d2-text); font-variant-numeric: tabular-nums; }
+.cp3-roster-bar { margin: 6px 0 0; background: var(--d2-line); }
+.cp3-roster-note { margin-top: 8px; line-height: 20px; color: var(--d2-text-2); }
+.cps-card.cp3-roster-list { padding: 12px 16px 4px; }
+.cp3-roster-list__h { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.cp3-roster-list__h .cps-h { margin: 0; }
+.cp3-roster-list__h .ui-button { flex: 0 0 auto; min-inline-size: 0; margin: -6px 0; }
+.cp3-roster-list .cps-list { margin-top: 10px; border-top: 1px solid var(--d2-line); }
+.cps-actions.cp3-roster-act { margin-top: 0; }
+/* 登錄名單、代為新增（卡 3-2）：隊伍卡一列、位置三欄兩列、說明字往上靠、勾選連排收緊、取消窄鈕在左 */
+.cps-card.cp3-jteam { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 16px; }
+.cp3-jteam .cps-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 17px; line-height: 24px; color: var(--d2-text); }
+.cp3-jteam .cps-sub { flex: 0 0 auto; line-height: 24px; color: var(--d2-text-2); white-space: nowrap; }
+.cp3-pos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 8px; }
+.cp3-pos .ui-chip { min-width: 0; }
+.cp3-pos .ui-chip__select { justify-content: center; min-width: 0; min-height: 44px; overflow: hidden; text-overflow: ellipsis; }
+.cp3-pubname { margin-top: -8px; line-height: 20px; color: var(--d2-text-2); }
+.cp3-cap { display: block; margin: 6px 0 0; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
+.cp3-jform > .ui-checkbox + .ui-checkbox { margin-top: -12px; }
+.cps-actions.cp3-jact { gap: 8px; margin-top: 4px; }
+.cp3-jact .ui-button.ui-button--secondary { flex: 0 0 104px; }
 
 /* 主辦排賽程、賽程管理、比分面板。class 對照預覽 harness。 */
 .cp3-tags { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }

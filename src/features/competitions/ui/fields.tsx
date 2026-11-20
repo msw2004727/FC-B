@@ -101,7 +101,8 @@ export function PositionField({
   return (
     <div>
       <span class="cps-label">{ct('position')}</span>
-      <div class="cps-chips">
+      {/* 新外觀卡 3-2：位置六個選項固定三欄兩列（.cps-chips 另有建立賽事在用，只加修飾 class） */}
+      <div class="cps-chips cp3-pos">
         {POSITIONS.map((choice) => (
           <Chip
             key={choice}
