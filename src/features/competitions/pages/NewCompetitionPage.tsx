@@ -2,7 +2,7 @@
 // 場地選點沿用活動的 EventLocationPicker，只在點開時才載入。
 
 import type { JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { ctOrKey, useCompetitionsT } from '../i18n';
 import { Badge } from '@/ui/Badge';
@@ -16,7 +16,10 @@ import { Switch } from '@/ui/Switch';
 import { Textarea } from '@/ui/Textarea';
 import type { EventLocationSelection } from '@/features/events/components/event-form/EventLocationPicker';
 import { liveCpActions } from '../actions';
-import { useInjectedEnv, type CpInjectedEnv } from '../env';
+import { canSeeInAppSection, isCpAdmin } from '../access';
+import type { CompetitionsRepo } from '../data/cp-repo';
+import type { LaunchDoc } from '../data/types';
+import { useInjectedEnv, type CpActor, type CpInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { clipCodePoints, fromDatetimeLocalValue, formatTaipeiDateTime } from '../format';
 import { contactNoteProblem } from '../data/flex-schedule';
@@ -27,6 +30,7 @@ import { representativeClubs } from '../rep-clubs';
 import { CpError, errorOf, reasonText } from '../ui/feedback';
 import { DateTimeField, FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending, CpRow, TrashIcon } from '../ui/shell';
+import { PageSpinner } from '@/ui/PageSpinner';
 
 const FORMATS = [5, 7, 8, 9, 11] as const;
 
@@ -656,12 +660,109 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   );
 }
 
+type CreateAccess = 'pending' | 'login' | 'denied' | 'error' | 'ok';
+
+/**
+ * 建賽頁與站內清單同一個開賽閘門（canSeeInAppSection）：內部期只給管理員與測試者，對外公開後給所有已登入會員。
+ * 伺服器同樣會擋，這裡只決定表單出不出現。登入、角色或閘門還沒定案時一律轉圈，不先閃表單、也不先說不能用。
+ * cpConfig/launch 每次進頁最多讀 1 次（另有 repo 的分頁快取）；管理員角色已確定時不讀。
+ */
+function useCreateAccess(actor: CpActor, repo: CompetitionsRepo): CreateAccess {
+  const adminKnown = !actor.rolePending && isCpAdmin(actor.role);
+  const [gate, setGate] = useState<{ uid: string; result: 'ok' | 'denied' | 'error' } | null>(null);
+  const launchOnce = useRef<Promise<LaunchDoc | null> | null>(null);
+
+  useEffect(() => {
+    if (actor.authPending || !actor.uid || adminKnown) return;
+    const uid = actor.uid;
+    let alive = true;
+    void (async () => {
+      launchOnce.current ??= repo.getLaunch();
+      const launch = await launchOnce.current;
+      const isPublic = launch ? launch.isPublic : null;
+      if (isPublic !== true && actor.rolePending) return; // 角色到了 effect 會重跑，launch 不再讀
+      const isTester = isPublic === false ? await repo.getLaunchTester(uid) : false;
+      if (!alive) return;
+      setGate({ uid, result: canSeeInAppSection({ isPublic, isTester, isAdmin: false }) ? 'ok' : 'denied' });
+    })().catch(() => {
+      launchOnce.current = null;
+      if (alive) setGate({ uid, result: 'error' });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [actor.authPending, actor.uid, actor.rolePending, adminKnown, repo]);
+
+  if (actor.authPending) return 'pending';
+  if (!actor.uid) return 'login';
+  if (adminKnown) return 'ok';
+  if (!gate || gate.uid !== actor.uid) return 'pending';
+  return gate.result;
+}
+
+function CreateGate({
+  actor,
+  repo,
+  children,
+}: {
+  actor: CpActor;
+  repo: CompetitionsRepo;
+  children: () => JSX.Element;
+}): JSX.Element {
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
+  const { route } = useLocation();
+  const access = useCreateAccess(actor, repo);
+  const [loginBusy, setLoginBusy] = useState(false);
+  if (access === 'ok') return children();
+  if (access === 'pending') return <div class="cps-root" data-cp-create="pending"><PageSpinner /></div>;
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
+
+  function login(): void {
+    if (loginBusy) return;
+    setLoginBusy(true);
+    // 沿用站內登入：signIn 的回跳網址是目前這頁，登入後回到建賽頁。轉去 LINE 不算失敗。
+    void import('@/data/auth')
+      .then((auth) => auth.signIn())
+      .catch(() => undefined)
+      .finally(() => setLoginBusy(false));
+  }
+
+  const back = <Button variant={access === 'login' ? 'secondary' : 'primary'} onClick={() => route('/tournaments', true)}>{ct('backToTournaments')}</Button>;
+  return (
+    <CpFrame title={ct('createTitle')}>
+      <CpCard>
+        <p class="cps-note" role={access === 'login' ? undefined : 'alert'} data-cp-create={access}>
+          {access === 'login' ? ct('createLoginHint') : access === 'error' ? ct('loadFailed') : ct('createNotOpen')}
+        </p>
+        <div class="cps-actions">
+          {back}
+          {access === 'login'
+            ? <Button variant="primary" loading={loginBusy} onClick={login}>{ct('createLogin')}</Button>
+            : null}
+        </div>
+      </CpCard>
+    </CpFrame>
+  );
+}
+
 export default function NewCompetitionPage(): JSX.Element {
   const injected = useInjectedEnv();
-  if (injected) return <WizardView env={injected} />;
+  if (injected) {
+    return <CreateGate actor={injected.actor} repo={injected.repo}>{() => <WizardView env={injected} />}</CreateGate>;
+  }
+  // 外層只過閘門、不查代表俱樂部；通過才掛內層去讀，沒資格的人一筆 teams 都不讀。
   return (
-    <LiveBoundary>
-      {(actor, repo) => <WizardView env={{ actor, repo, actions: liveCpActions }} />}
+    <LiveBoundary loadClubs={false}>
+      {(gateActor, gateRepo) => (
+        <CreateGate actor={gateActor} repo={gateRepo}>
+          {() => (
+            <LiveBoundary>
+              {(actor, repo) => <WizardView env={{ actor, repo, actions: liveCpActions }} />}
+            </LiveBoundary>
+          )}
+        </CreateGate>
+      )}
     </LiveBoundary>
   );
 }

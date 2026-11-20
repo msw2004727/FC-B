@@ -148,6 +148,8 @@ export const clubRepActor = actor({
 
 export const wizardActor = actor({
   uid: 'uid_host',
+  // 管理員直接過建賽閘門，harness 與測試不必另備 cpConfig/launch。
+  role: 'admin',
   displayName: '王示範',
   // 建賽下拉讀的是代表俱樂部（文件路徑 id）。
   repClubs: [{ id: 'club_host', name: '示範俱樂部' }],
