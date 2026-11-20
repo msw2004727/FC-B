@@ -851,8 +851,6 @@
 /* 積分表卡片最下面的「排序規則」收合列：左右貼齊卡片邊、上緣細線（長相是共用的 .cp3-fold） */
 .cp3-fold.cp-tbl__fold { width: calc(100% + 11px); margin: 0 -1px 0 -10px; padding: 0 14px 0 16px; border-top: 1px solid var(--d2-line); }
 /* 射手榜與紅黃牌：停更提示 → 切換列（兩組分段同一列、上緣對齊，放不下時右邊整組掉到下一行）→ 表格卡或空狀態 → 名額附註 */
-/* 射手榜元件的根仍是 .s4-page（單獨畫元件時拿色票），在詳情頁裡不要 .s4-page 的頁面底色、最小高與內距（卡 3-5 刪掉 .s4-page 頁面級規則時一起刪這一條） */
-.s4-page.cp-sc { min-height: 0; padding: 0; background: none; }
 .cp-sc__stall { margin: 0 0 8px; padding: 0 4px; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
 .cp-sc__bar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; min-width: 0; }
 .cp-sc__bar > .ui-tabs { display: contents; }

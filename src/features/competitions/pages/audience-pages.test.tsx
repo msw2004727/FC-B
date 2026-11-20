@@ -3,6 +3,7 @@ import type { ComponentChildren, ComponentType } from 'preact';
 import { act } from 'preact/test-utils';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { markHistoryRoot } from '@/core/back-guard';
 import { matchDayOf } from '../data/match-day';
 import { summaryShardIdOf } from '../data/schedule-load';
 import type { AudienceMatch, AudiencePorts, ParsedStats, ParsedTimeline } from '../data/audience';
@@ -461,6 +462,9 @@ describe('單場頁', () => {
 
   it('讀不到顯示既有空狀態，返回賽事頁；有 bundle 且沒有 audience 不監聽', async () => {
     const previous = `${window.location.pathname}${window.location.search}`;
+    // 新外觀卡 3-5（顧問 §3.466 第 8 題）：「找不到比賽」也走 useGoBack；先把這筆標成起點（從分享連結直接進來），返回＝取代成賽事頁
+    window.history.replaceState(null, '', '/competitions/cup/matches/mt1/live');
+    markHistoryRoot();
     drawMatch(liveEnv({
       audience: quietPorts({
         watchMatch: (_input, onMatch) => {
@@ -508,8 +512,12 @@ describe('單場頁', () => {
       }),
     });
     expect(await screen.findByText('雷霆隊')).toBeTruthy();
-    expect(document.querySelector('.s4-stage')?.textContent).toBe('09:00　一號場');
-    expect(document.querySelector('.s4-clock')).toBeNull();
+    // 新外觀卡 3-5：開賽時間與場地分開擺（原本斷言 .s4-stage 是「09:00　一號場」、沒有 .s4-clock）；未開賽是「vs」、不亮燈、沒有「比賽紀錄」
+    expect(document.querySelector('.cp-lv__when')?.textContent).toBe('09:00');
+    expect(document.querySelector('.cp-lv__venue')?.textContent).toBe('一號場');
+    expect(document.querySelector('.cp-lv__vs')?.textContent).toBe('vs');
+    expect(document.querySelector('.d2-sb--lit')).toBeNull();
+    expect(screen.queryByRole('button', { name: '比賽紀錄' })).toBeNull();
     expect(screen.queryByText('上半場')).toBeNull();
 
     push.current?.(audienceMatch({
@@ -520,7 +528,8 @@ describe('單場頁', () => {
     }));
     expect(await screen.findByText('PK 0:0')).toBeTruthy();
     expect(screen.getByText('比分已更正')).toBeTruthy();
-    expect(screen.getByText('2:1')).toBeTruthy();
+    // 新外觀卡 3-5：比分拆成「數字｜冒號｜數字」三個元素（相連、不加空白），改讀整塊的文字（原本 getByText('2:1')）
+    expect(document.querySelector('.cp-lv__score')?.textContent).toBe('2:1');
   });
 
   it('已終場顯示「終場」，不是「上半場」（11-20 走查回歸）', async () => {
@@ -538,8 +547,59 @@ describe('單場頁', () => {
       }),
     });
     expect(await screen.findByText('雷霆隊')).toBeTruthy();
-    expect(document.querySelector('.s4-stage')?.textContent).toBe('終場');
+    // 新外觀卡 3-5：狀態字在板子下排左邊（原本斷言 .s4-stage）；終場不亮燈
+    expect(document.querySelector('.cp-lv__bot .d2-sb__st')?.textContent).toBe('終場');
+    expect(document.querySelector('.d2-sb--lit')).toBeNull();
     expect(screen.queryByText('上半場')).toBeNull();
+  });
+
+  it('新外觀卡 3-5：正常狀態有頁首返回鈕、小字「賽事」與視覺隱藏的第 1 級標題；起點按返回＝取代成賽事頁，不是起點＝上一頁', async () => {
+    const watch = quietPorts({
+      watchMatch: (_input, onMatch) => {
+        onMatch({ kind: 'ok', match: audienceMatch({ status: 'live' }) });
+        return () => {};
+      },
+    });
+    window.history.replaceState(null, '', '/competitions/cup/matches/mt1/live');
+    markHistoryRoot();
+    const before = window.history.length;
+    drawMatch(liveEnv({ audience: watch }));
+    expect(await screen.findByRole('heading', { level: 1, name: '單場' })).toBeTruthy();
+    expect(document.querySelector('.cps-top__crumb')?.textContent).toBe('賽事');
+    expect(document.querySelector('.d2-sb--lit')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+    await waitFor(() => expect(window.location.pathname).toBe('/competitions/cup'));
+    expect(window.history.length).toBe(before);
+    cleanup();
+
+    window.history.replaceState(null, '', '/competitions/cup');
+    markHistoryRoot();
+    window.history.pushState(null, '', '/competitions/cup/matches/mt1/live');
+    drawMatch(liveEnv({ audience: watch }));
+    expect(await screen.findByRole('heading', { level: 1, name: '單場' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+    await waitFor(() => expect(window.location.pathname).toBe('/competitions/cup'));
+  });
+
+  it('新外觀卡 3-5：已取消不放板、不顯示 0:0，有「已取消」與原因；改期帶日期', async () => {
+    const push = cell<(match: AudienceMatch) => void>();
+    drawMatch(liveEnv({
+      audience: quietPorts({
+        watchMatch: (_input, onMatch) => {
+          onMatch({ kind: 'ok', match: audienceMatch({ status: 'cancelled', score: { home: 0, away: 0 }, cancelReason: '大雨' }) });
+          push.current = (match) => onMatch({ kind: 'ok', match });
+          return () => {};
+        },
+      }),
+    }));
+    expect(await screen.findByText('已取消')).toBeTruthy();
+    expect(document.querySelector('.d2-sb')).toBeNull();
+    expect(document.body.textContent ?? '').not.toContain('0:0');
+    expect(document.querySelector('.cp-lvo__why')?.textContent).toBe('原因　大雨');
+    expect(screen.queryByRole('button', { name: '比賽紀錄' })).toBeNull();
+    push.current?.(audienceMatch({ status: 'postponed', score: { home: 0, away: 0 }, kickoffAt: taipeiMs(2027, 1, 16, 14, 30) }));
+    expect(await screen.findByText('改期')).toBeTruthy();
+    expect(screen.getByText('1/16 14:30')).toBeTruthy();
   });
 
   it('收合不讀；展開從 resetRev 讀；rev 變大只補讀；收合後不再讀', async () => {
@@ -584,8 +644,12 @@ describe('單場頁', () => {
       voids: [{ targetSeq: 4, seq: 6, createdAt: 6 }],
       reads: 4,
     });
-    expect(await screen.findByText("5' 雷霆隊 9 劉冠廷")).toBeTruthy();
-    expect(view.container.querySelector('.s4-ev--void')?.textContent ?? '').toContain('已復原');
+    // 新外觀卡 3-5：事件列拆成 分鐘｜記號｜隊名｜球員（原本斷言整句「5' 雷霆隊 9 劉冠廷」與 .s4-ev--void）
+    expect(await screen.findByText('9 劉冠廷')).toBeTruthy();
+    const goalRow = screen.getByText('9 劉冠廷').closest('.cp-ev');
+    expect(goalRow?.querySelector('.cp-ev__min')?.textContent).toBe("5'");
+    expect(goalRow?.querySelector('.cp-ev__team')?.textContent).toBe('雷霆隊');
+    expect(view.container.querySelector('.cp-ev--void')?.textContent ?? '').toContain('已復原');
 
     push.current?.(audienceMatch({ status: 'live', rev: 5 }));
     await waitFor(() => expect(calls).toHaveLength(2));
@@ -604,8 +668,10 @@ describe('單場頁', () => {
       reads: 2,
     });
     await waitFor(() => {
-      const mains = [...document.querySelectorAll('.s4-ev__main')].map((node) => node.textContent);
-      expect(mains).toContain('第1輪 雷霆隊 不指定球員 進');
+      // 新外觀卡 3-5：原本斷言 .s4-ev__main 是「第1輪 雷霆隊 不指定球員 進」，改成逐欄
+      const pkRow = [...document.querySelectorAll('.cp-ev')].find((node) => node.querySelector('.cp-ev__pk'));
+      expect([...(pkRow?.querySelectorAll('.cp-ev__min, .cp-ev__team, .cp-ev__who, .cp-ev__pk') ?? [])].map((node) => node.textContent))
+        .toEqual(['第1輪', '雷霆隊', '不指定球員', '進']);
     });
 
     fireEvent.click(screen.getByRole('button', { name: '比賽紀錄' }));

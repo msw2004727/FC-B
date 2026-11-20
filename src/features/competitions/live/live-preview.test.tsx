@@ -783,7 +783,8 @@ describe('第 4 步預覽元件', () => {
     );
     expect(screen.queryByText(/蔡明哲/)).toBeNull();
     fireEvent.click(button('比賽紀錄'));
-    const rows = [...view.container.querySelectorAll('.s4-ev__main')].map((node) => node.textContent);
+    // 新外觀卡 3-5：事件列換成觀眾頁自己的 .cp-ev（原本 .s4-ev__main）
+    const rows = [...view.container.querySelectorAll('.cp-ev')].map((node) => node.textContent);
     expect(rows.map((text) => text?.includes('蔡明哲'))).toEqual([true, false, false]);
     expect(rows.map((text) => text?.includes('劉冠廷'))).toEqual([false, true, false]);
     expect(rows.map((text) => text?.includes('謝東霖'))).toEqual([false, false, true]);

@@ -1,7 +1,6 @@
 /* 賽事第 4 步預覽。只用既有 token；亮牌與大按鈕的黃／紅是固定亮色，深色模式也不改暗。 */
 
-.s4-root,
-.s4-page {
+.s4-root {
   box-sizing: border-box;
   background: var(--color-bg-root);
   color: var(--color-text-primary);
@@ -15,11 +14,6 @@
 .s4-sheet *,
 .s4-dialog * { box-sizing: border-box; }
 
-.s4-page {
-  min-height: 100vh;
-  min-height: 100dvh;
-  padding: 8px 8px 12px;
-}
 .s4-root {
   /* 一屏記分。提示列只壓縮 .s4-feed，進球、牌、底欄不縮小。 */
   height: 100vh;
@@ -698,12 +692,6 @@
   text-overflow: ellipsis;
   cursor: default;
 }
-.s4-page .s4-ev,
-.s4-page .s4-ev__main {
-  height: 40px;
-  min-height: 40px;
-  line-height: 40px;
-}
 button.s4-ev__main { cursor: pointer; }
 button.s4-ev__main:focus-visible {
   outline: 2px solid var(--color-focus-ring);
@@ -1252,11 +1240,59 @@ button.s4-ev__main:active { opacity: 0.7; }
   50% { opacity: 0.4; }
 }
 
-.s4-fold {
-  width: 100%;
-  min-height: 56px;
-  margin-top: 12px;
-}
+/* 觀眾即時頁（新外觀卡 3-5，取代 .s4-page .s4-ev／.s4-fold 與 .s4-page 的頁面級規則）：這一頁自己的 class，不用記分頁的 .s4-board 等共用規則。
+ * 一片玻璃外框，上緣嵌記分板（板底、亮燈、窄體數字都引用 .d2-sb／.d2-num）；板下玻璃上是「比賽紀錄」收合列（長相是共用的 .cp3-fold）。 */
+.cp-lv { padding: 6px 6px 0; border-radius: 16px; background: var(--d2-glass-base); box-shadow: var(--d2-glass-sh); overflow: hidden; }
+.cp-lv--nolog { padding-bottom: 6px; }
+.cp-lv__sb { --sb-pad: 20px 14px 0; --sb-radius: 11px; }
+.cp-lv__top { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; column-gap: 8px; max-width: 440px; margin: 0 auto; padding-bottom: 18px; }
+.cp-lv__team { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+.cp-lv__team img.cp3-crest { box-shadow: 0 0 0 1px var(--d2-sb-line); }
+.cp-lv__name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 15px; line-height: 24px; font-weight: 700; color: var(--d2-sb-fg); }
+.cp-lv__mid { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.cp-lv__score { display: flex; align-items: center; gap: 10px; }
+.cp-lv__score .d2-num { font-size: 56px; line-height: 1; color: var(--d2-sb-fg); }
+.cp-lv__colon { position: relative; top: -4px; font-family: var(--d2-num); font-size: 28px; line-height: 1; color: var(--d2-sb-fg2); }
+.cp-lv__vs { font-size: 19px; line-height: 28px; letter-spacing: .08em; color: var(--d2-sb-fg2); }
+.cp-lv__pk { font-size: 13px; line-height: 16px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--d2-sb-fg2); }
+.cp-lv__bot { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; column-gap: 8px; height: 52px; border-top: 1px solid var(--d2-sb-line); }
+.cp-lv__bot > :first-child { justify-self: start; }
+.cp-lv__clock { font-size: 28px; line-height: 1; letter-spacing: .04em; color: var(--d2-sb-fg); }
+.d2-sb--lit .cp-lv__clock { color: var(--d2-sb-now); }
+.cp-lv__when { display: inline-flex; align-items: baseline; gap: 4px; }
+.cp-lv__when small { font-size: 12px; line-height: 16px; color: var(--d2-sb-fg2); }
+.cp-lv__tbd { font-size: 15px; line-height: 28px; font-weight: 600; color: var(--d2-sb-fg); }
+.cp-lv__venue { justify-self: end; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 16px; color: var(--d2-sb-fg2); }
+.cp3-fold.cp-lv__fold { width: calc(100% + 12px); margin: 0 -6px; padding: 0 16px 0 20px; background: var(--d2-glass-gloss); }
+/* 事件列：分鐘（寬 40、靠右）｜記號｜隊名（可縮、至少 3 個字寬）｜球員（不縮、最多六成）｜PK 進／沒進靠最右；進球圓點主客隊同色 */
+.cp3-fold--open + .cp-lv__evs { margin: 0 -6px; padding: 0 16px 4px 12px; list-style: none; }
+.cp-ev { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; border-top: 1px solid var(--d2-line); white-space: nowrap; }
+.cp-ev:first-child { border-top: 0; }
+.cp-ev__min { flex: 0 0 auto; min-width: 40px; text-align: right; font-size: 13px; line-height: 24px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--d2-text-2); }
+.cp-ev__mk { position: relative; flex: 0 0 14px; height: 14px; }
+.cp-ev__mk::before { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--d2-text); }
+.cp-ev__mk--miss::before { background: none; box-shadow: inset 0 0 0 2px var(--d2-text-3); }
+.cp-ev__mk--yellow::before, .cp-ev__mk--red::before { top: 0; height: 14px; border-radius: 2px; background: var(--d2-card-r); }
+.cp-ev__mk--yellow::before { background: var(--d2-card-y); box-shadow: inset 0 0 0 1px var(--d2-card-y-edge); }
+.cp-ev__team { flex: 0 1 auto; min-width: 3em; overflow: hidden; text-overflow: ellipsis; font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
+.cp-ev__who { flex: 0 0 auto; max-width: 60%; overflow: hidden; text-overflow: ellipsis; font-size: 15px; line-height: 24px; font-variant-numeric: tabular-nums; color: var(--d2-text); }
+.cp-ev__pk { flex: 0 0 auto; margin-left: auto; font-size: 12px; line-height: 24px; font-weight: 600; color: var(--d2-text-2); }
+.cp-ev--void .cp-ev__team, .cp-ev--void .cp-ev__who { text-decoration: line-through; color: var(--d2-text-2); }
+.cp-ev__tag { flex: 0 0 auto; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--d2-text-2); }
+/* 已取消、改期：不放板，玻璃卡（狀態字＋場地｜兩隊｜改期的日期時間或取消原因） */
+.cp-lvo { padding: 10px 10px 14px; }
+.cp-lvo__top { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
+.cp-lvo__st { flex: 0 0 auto; font-size: 12px; line-height: 16px; font-weight: 700; color: var(--d2-text-2); }
+.cp-lvo--x .cp-lvo__st { color: var(--d2-danger); }
+.cp-lvo__venue { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
+.cp-lvo__vs { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; margin-top: 12px; }
+.cp-lvo__team { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cp-lvo__team:last-child { flex-direction: row-reverse; }
+.cp-lvo__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
+.cp-lvo--x .cp-lvo__name { color: var(--d2-text-2); }
+.cp-lvo__x { font-size: 13px; line-height: 20px; color: var(--d2-text-2); }
+.cp-lvo__when { margin: 10px 0 0; font-size: 15px; line-height: 24px; color: var(--d2-text); }
+.cp-lvo__why { margin: 10px 0 0; font-size: 13px; line-height: 20px; color: var(--d2-text-2); }
 
 @media (prefers-reduced-motion: reduce) {
   .s4-live .d2-tag--live::before { animation: none; }
