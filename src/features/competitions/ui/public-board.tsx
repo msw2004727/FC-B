@@ -15,7 +15,7 @@ import {
 } from '../data/flex-schedule';
 import type { CompetitionNotice } from '../data/types';
 import type { CompetitionsT } from '../i18n';
-import { CpCard } from './shell';
+import { CpCard, TrashIcon } from './shell';
 import { StatusTag } from './status-tag';
 
 const NOTICE_TOGGLE_ID = 'cp-notice-toggle';
@@ -76,49 +76,54 @@ export function PublicBoard({
     <>
       {showNotices ? (
         <CpCard>
-          <h2 class="cpm-h">{ct('announce')}</h2>
-          {visible.length > 0 ? (
-            <ul class="cpm-ann">
-              {visible.map((notice) => (
-                <li key={notice.id}>
-                  <div class="cpm-ann__row">
-                    {notice.kind === 'system' && !hostOps ? <StatusTag kind="neutral" label={ct('system')} /> : null}
-                    <span class="cpm-ann__txt">{notice.text}</span>
-                  </div>
-                  {hostOps ? (
-                    // 顧問 §R2：主辦視角公告文字佔滿整列（「系統」標籤與刪除鈕都移到日期那一行：日期靠左、刪除靠右），
-                    // 不再替刪除留一欄把字擠成三行。非主辦維持原樣。
-                    <div class="cpm-ann__meta">
-                      <span class="cpm-ann__when">
-                        {notice.kind === 'system' ? <StatusTag kind="neutral" label={ct('system')} /> : null}
-                        <span class="cpm-ann__time">{noticeWhen(notice.at)}</span>
-                      </span>
-                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => { void onDelete(notice.id); }}>
-                        {ct('noticeDelete')}
-                      </Button>
-                    </div>
-                  ) : (
-                    <span class="cpm-ann__time">{noticeWhen(notice.at)}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {more ? (
-            <button type="button" class="cp3-textlink" onClick={() => setShowAll(true)}>{ct('more')}</button>
-          ) : null}
-          {hostOps && !composing ? (
-            <div class="cps-actions">
+          {/* 卡片標題列（新外觀卡 1b-5）：左標題、右邊這張卡自己的動作「發布公告」小鈕 */}
+          <div class="d2-cardhead">
+            <h2 class="cpm-h">{ct('announce')}</h2>
+            {hostOps && !composing ? (
               <Button
                 id={NOTICE_TOGGLE_ID}
                 variant="secondary"
+                size="sm"
                 aria-expanded={false}
                 aria-controls={NOTICE_COMPOSE_ID}
                 onClick={() => setCompose(true)}
               >
                 {ct('publishNotice')}
               </Button>
-            </div>
+            ) : null}
+          </div>
+          {visible.length > 0 ? (
+            <ul class="cpm-ann">
+              {visible.map((notice) => (
+                <li key={notice.id}>
+                  <div class="cpm-ann__row">
+                    <span class="cpm-ann__txt">{notice.text}</span>
+                  </div>
+                  {/* 兩種視角同一種排法（顧問 §3.465 同意統一）：內文佔滿整列；下一行左邊「系統」標籤＋時間，
+                      主辦右邊一顆灰色垃圾桶（名稱仍是「刪除」）。 */}
+                  <div class="cpm-ann__meta">
+                    <span class="cpm-ann__when">
+                      {notice.kind === 'system' ? <StatusTag kind="neutral" label={ct('system')} /> : null}
+                      <span class="cpm-ann__time">{noticeWhen(notice.at)}</span>
+                    </span>
+                    {hostOps ? (
+                      <button
+                        type="button"
+                        class="cps-iconbtn cps-iconbtn--flat"
+                        aria-label={ct('noticeDelete')}
+                        disabled={busy}
+                        onClick={() => { void onDelete(notice.id); }}
+                      >
+                        <TrashIcon />
+                      </button>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {more ? (
+            <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>{ct('more')}</Button>
           ) : null}
           {hostOps && composing ? (
             <div id={NOTICE_COMPOSE_ID}>

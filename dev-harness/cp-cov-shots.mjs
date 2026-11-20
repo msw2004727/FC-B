@@ -16,7 +16,7 @@ const ONLY = FLAGS.only ? new Set(FLAGS.only.split(',')) : null;
 
 // [harness html, screen, 1280 外框參數（k1112 本來就包 app-shell，不用帶）, 拍照前捲到的選擇器]
 const SHOTS = [
-  ['cp-step3-real', 'real-tie-three', '&frame=shell', '.cpm-tie'],
+  ['cp-step3-real', 'real-tie-three-h2h', '&frame=shell', '.cpm-tie'],
   ['cp-k1112', 'detail-admin-reports-loading', '', '.cpa-panel'],
   ['cp-k1112', 'detail-admin-reports-empty', '', '.cpa-panel'],
   ['cp-k1112', 'detail-admin-reports-error', '', '.cpa-panel'],

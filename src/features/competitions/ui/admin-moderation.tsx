@@ -212,11 +212,11 @@ export function AdminPanel(props: AdminPanelProps): JSX.Element {
       </div>
       <div class="cpa-btns">
         {props.hidden ? (
-          <Button variant="secondary" size="sm" disabled={busy} onClick={() => { void restore(); }}>{ct('moderateRestore')}</Button>
+          <Button variant="secondary" disabled={busy} onClick={() => { void restore(); }}>{ct('moderateRestore')}</Button>
         ) : (
           <Button variant="danger" disabled={busy} onClick={() => { setHideError(null); props.setHideOpen(true); }}>{ct('moderateHide')}</Button>
         )}
-        <Button variant="secondary" size="sm" aria-expanded={reportsOpen} onClick={toggleReports}>{ct('reportsTitle')}</Button>
+        <Button variant="secondary" aria-expanded={reportsOpen} onClick={toggleReports}>{ct('reportsTitle')}</Button>
       </div>
       {reportsOpen ? (
         <div data-reports>

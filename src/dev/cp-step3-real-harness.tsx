@@ -66,6 +66,7 @@ const PAGES: Record<string, ComponentType> = {
   'real-tie-ranked': CompetitionDetailPage,
   'real-tie-four': CompetitionDetailPage,
   'real-tie-three': CompetitionDetailPage,
+  'real-tie-three-h2h': CompetitionDetailPage,
   // 設計總監 04:20：主辦公告展開輸入框（底下「取消／發布公告」按鈕列）。
   'real-notice-compose': CompetitionDetailPage,
   // 新外觀第 1b 批第 7 節「要補示範狀態」（截圖拍正式版現況；面板類由下方 OPEN 點正式按鈕打開）。
@@ -335,8 +336,10 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('裁定卡', () => buttonsNamed('撤銷裁定').length > 0);
   },
   'real-tie-ranked': () => openTie('銀河隊', () => !!document.querySelector('.cpm-cmp__r--hit') && hasText('對戰積分')),
+  'real-tie-three': () => openTie('銀河隊', () => hasText('公平競賽（行為分）') && !!document.querySelector('.cpm-cmp--stack .cpm-cmp__r--hit')),
   'real-tie-four': () => openTie('銀河隊', () => document.querySelectorAll('.cpm-cmp__r--h > span').length === 5 && !!document.querySelector('.cpm-cmp__r--hit')),
-  'real-tie-three': () => openTie('銀河隊', () => document.querySelectorAll('.cpm-cmp__r--h > span').length === 4 && !!document.querySelector('.cpm-cmp__r--hit')),
+  // 三隊以上比較表改直排（卡 2-5，1cb10b09）：等直排裡的淡青綠列與「對戰淨勝」出現。
+  'real-tie-three-h2h': () => openTie('銀河隊', () => hasText('直接對戰淨勝') && !!document.querySelector('.cpm-cmp__r--hit')),
   'real-notice-compose': async () => {
     await until('發布公告鈕', () => buttonsNamed('發布公告').length > 0);
     clickButton('發布公告');
