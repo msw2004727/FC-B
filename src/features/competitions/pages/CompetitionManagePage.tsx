@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { appConfirm } from '@/ui/AppConfirm';
-import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
 import { Input } from '@/ui/Input';
@@ -27,6 +26,7 @@ import type { CompetitionCategory, DivisionDoc, EntryDoc, EntryPrivateDoc, Payme
 import { CpError, CpLoadFailed, errorOf, loadFailOf } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
+import { StatusTag } from '../ui/status-tag';
 
 const INFO_TOGGLE_ID = 'cp-comp-info-toggle';
 const INFO_PANEL_ID = 'cp-comp-info';
@@ -63,10 +63,10 @@ async function readPrivates(env: CpInjectedEnv, cid: string): Promise<EntryPriva
   }
 }
 
-function payLabel(ct: CompetitionsT, status: PaymentStatus): { label: string; tone: 'success' | 'neutral' } {
-  if (status === 'paid') return { label: ct('paid'), tone: 'success' };
-  if (status === 'refunded') return { label: ct('refunded'), tone: 'neutral' };
-  return { label: ct('unpaid'), tone: 'neutral' };
+function payLabel(ct: CompetitionsT, status: PaymentStatus): string {
+  if (status === 'paid') return ct('paid');
+  if (status === 'refunded') return ct('refunded');
+  return ct('unpaid');
 }
 
 function privateOf(rows: readonly EntryPrivateDoc[], entry: EntryDoc): EntryPrivateDoc | null {
@@ -387,7 +387,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           <CpCard key={entry.id}>
             <div class="cps-head-row">
               <h3 class="cps-h">{entry.name}</h3>
-              <Badge tone="warning" label={ct('pending')} size="sm" />
+              <StatusTag kind="neutral" label={ct('pending')} />
             </div>
             <p class="cps-sub" style="margin:4px 0 8px">{divisionName(entry.dvId)}</p>
             {priv?.contactName ? (
@@ -420,8 +420,8 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                 </a>
               </h3>
               {entry.rosterConfirmed || locked
-                ? <Badge tone="success" label={ct('rosterConfirmed')} size="sm" />
-                : <Badge tone="warning" label={ct('rosterUnconfirmed')} size="sm" />}
+                ? <StatusTag kind="neutral" label={ct('rosterConfirmed')} />
+                : <StatusTag kind="neutral" label={ct('rosterUnconfirmed')} />}
             </div>
             <p class="cps-sub" style="margin:4px 0 8px">{divisionName(entry.dvId)}</p>
             {/* 報名費、繳費標籤、標示已繳費只限俱樂部主辦（顧問 §3.257） */}
@@ -432,7 +432,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             </div>
             {manage && competition?.hostType === 'club' ? (
               <div class="cps-pay">
-                <Badge tone={pay.tone} label={pay.label} size="sm" />
+                <StatusTag kind="neutral" label={pay} />
                 <Switch
                   label={ct('markPaid')}
                   checked={priv?.paymentStatus === 'paid'}
@@ -464,7 +464,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           <CpCard key={entry.id}>
             <div class="cps-head-row">
               <h3 class="cps-h">{entry.name}</h3>
-              <Badge tone="danger" label={ct('rejected')} size="sm" />
+              <StatusTag kind="neutral" label={ct('rejected')} />
             </div>
             <p class="cps-sub" style="margin:4px 0 8px">{divisionName(entry.dvId)}</p>
             {priv?.reviewNote ? (

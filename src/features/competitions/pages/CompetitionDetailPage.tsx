@@ -6,7 +6,6 @@ import { useLocation, useRoute } from 'preact-iso';
 import { openHttpAnchor } from '@/core/open-external';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { dangerConfirm } from '../ui/danger-confirm';
-import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
 import { PageSpinner } from '@/ui/PageSpinner';
@@ -48,6 +47,7 @@ import { TieWorkspace } from '../ui/tie-panel';
 import { AdminPanel, HiddenNotice } from '../ui/admin-moderation';
 import { DeleteCompetition, teamCountOf } from '../ui/delete-competition';
 import { PublicBoard } from '../ui/public-board';
+import { StatusTag, type StatusKind } from '../ui/status-tag';
 import { CpCard, CpFrame, CpI18nPending, CpRow, MoreIcon } from '../ui/shell';
 import { TeamCrest } from '../ui/TeamCrest';
 
@@ -60,26 +60,26 @@ function statusBadge(
   ct: CompetitionsT,
   competition: CompetitionDoc,
   now: number,
-): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
-  if (competition.status === 'draft') return { label: ct('draft'), tone: 'warning' };
-  if (competition.status === 'postponed') return { label: ct('compPostponed'), tone: 'warning' };
-  if (competition.status === 'cancelled') return { label: ct('cancelled'), tone: 'danger' };
-  if (now < competition.regOpenAt) return { label: ct('reason.REG_NOT_OPEN'), tone: 'neutral' };
-  if (now > competition.regCloseAt) return { label: ct('reason.REG_CLOSED'), tone: 'neutral' };
-  return { label: ct('recruiting'), tone: 'success' };
+): { label: string; kind: StatusKind } {
+  if (competition.status === 'draft') return { label: ct('draft'), kind: 'neutral' };
+  if (competition.status === 'postponed') return { label: ct('compPostponed'), kind: 'neutral' };
+  if (competition.status === 'cancelled') return { label: ct('cancelled'), kind: 'cancelled' };
+  if (now < competition.regOpenAt) return { label: ct('reason.REG_NOT_OPEN'), kind: 'neutral' };
+  if (now > competition.regCloseAt) return { label: ct('reason.REG_CLOSED'), kind: 'neutral' };
+  return { label: ct('recruiting'), kind: 'neutral' };
 }
 
 function phaseBadge(
   ct: CompetitionsT,
   competition: CompetitionDoc,
   phase: Exclude<CompetitionPhase, 'recruit'>,
-): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' | 'info' } {
-  if (competition.status === 'draft') return { label: ct('draft'), tone: 'warning' };
-  if (competition.status === 'postponed') return { label: ct('compPostponed'), tone: 'warning' };
-  if (competition.status === 'cancelled') return { label: ct('cancelled'), tone: 'danger' };
-  if (phase === 'warm') return { label: ct('phaseWarm'), tone: 'info' };
-  if (phase === 'live') return { label: ct('phaseLive'), tone: 'warning' };
-  return { label: ct('phaseDone'), tone: 'neutral' };
+): { label: string; kind: StatusKind } {
+  if (competition.status === 'draft') return { label: ct('draft'), kind: 'neutral' };
+  if (competition.status === 'postponed') return { label: ct('compPostponed'), kind: 'neutral' };
+  if (competition.status === 'cancelled') return { label: ct('cancelled'), kind: 'cancelled' };
+  if (phase === 'warm') return { label: ct('phaseWarm'), kind: 'neutral' };
+  if (phase === 'live') return { label: ct('phaseLive'), kind: 'live' };
+  return { label: ct('phaseDone'), kind: 'neutral' };
 }
 
 function hostName(competition: CompetitionDoc, env: CpInjectedEnv): string {
@@ -865,10 +865,9 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         <CpCard>
           <div class="cp3-row">
             <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{competition.statusReason}</p>
-            <Badge
-              tone={competition.status === 'cancelled' ? 'danger' : 'warning'}
+            <StatusTag
+              kind={competition.status === 'cancelled' ? 'cancelled' : 'neutral'}
               label={competition.status === 'cancelled' ? ct('cancelled') : ct('compPostponed')}
-              size="sm"
             />
           </div>
         </CpCard>
@@ -889,11 +888,10 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       <>
       <CpCard>
         <div class="cps-badges" style="margin-bottom:8px">
-          <Badge tone={badge.tone} label={badge.label} size="sm" />
-          <Badge
-            tone={competition.hostType === 'club' ? 'info' : 'neutral'}
+          <StatusTag kind={badge.kind} label={badge.label} />
+          <StatusTag
+            kind="neutral"
             label={competition.hostType === 'club' ? ct('hostClub') : ct('hostPersonal')}
-            size="sm"
           />
         </div>
         <h2 class="cps-title cps-title--user" style="margin-bottom:12px">{competition.name}</h2>
@@ -1121,7 +1119,7 @@ function DivisionBlock({
     <CpCard>
       <div class="cps-head-row">
         <h3 class="cps-h">{division.name}</h3>
-        <Badge tone={statusBadge(ct, competition, now).tone} label={statusBadge(ct, competition, now).label} size="sm" />
+        <StatusTag kind={statusBadge(ct, competition, now).kind} label={statusBadge(ct, competition, now).label} />
       </div>
       <p class="cps-sub cps-nowrap" style="margin-top:4px">{meta}</p>
       {/* 報名費與停用的線上支付鈕只限俱樂部主辦（顧問 §3.257） */}
@@ -1140,7 +1138,7 @@ function DivisionBlock({
               </a>
             </div>
             {/* 顧問 §3.463：長隊名時「已核准」被擠成兩行。只在這一列讓標籤不縮、不換行，隊名讓位省略；不動共用 Badge。 */}
-            <Badge tone="success" label={ct('approved')} size="sm" class="cps-li__tag" />
+            <StatusTag kind="neutral" label={ct('approved')} class="cps-li__tag" />
           </li>
         ))}
       </ul>

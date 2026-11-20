@@ -1001,11 +1001,8 @@ button.s4-ev__main:active { opacity: 0.7; }
   flex: 0 0 auto;
   white-space: nowrap;
 }
-.s4-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-danger);
+/* 亮燈標籤的圓點（competitions.css 的 .d2-tag--live::before）在這裡慢慢呼吸；主辦頁沒有 .s4-live，不呼吸。 */
+.s4-live .d2-tag--live::before {
   animation: s4-pulse 2.8s ease-in-out infinite;
 }
 @keyframes s4-pulse {
@@ -1098,7 +1095,7 @@ button.s4-ev__main:active { opacity: 0.7; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .s4-dot { animation: none; }
+  .s4-live .d2-tag--live::before { animation: none; }
   .s4-hit:active,
   .s4-pl:active,
   .s4-flash:active { transform: none; }

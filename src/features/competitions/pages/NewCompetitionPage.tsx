@@ -5,7 +5,6 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { ctOrKey, useCompetitionsT } from '../i18n';
-import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Chip } from '@/ui/Chip';
 import { Input } from '@/ui/Input';
@@ -30,6 +29,7 @@ import { representativeClubs } from '../rep-clubs';
 import { CpError, errorOf, reasonText } from '../ui/feedback';
 import { DateTimeField, FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending, CpRow, TrashIcon } from '../ui/shell';
+import { StatusTag } from '../ui/status-tag';
 import { PageSpinner } from '@/ui/PageSpinner';
 
 const FORMATS = [5, 7, 8, 9, 11] as const;
@@ -580,8 +580,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         <>
           <CpCard>
             <div class="cps-badges" style="margin-bottom:8px">
-              <Badge tone={form.hostType === 'club' ? 'info' : 'neutral'} label={form.hostType === 'club' ? ct('hostClub') : ct('hostPersonal')} size="sm" />
-              <Badge tone="warning" label={ct('draft')} size="sm" />
+              <StatusTag kind="neutral" label={form.hostType === 'club' ? ct('hostClub') : ct('hostPersonal')} />
+              <StatusTag kind="neutral" label={ct('draft')} />
             </div>
             <h2 class="cps-title cps-title--user" style="margin-bottom:12px">{form.name.trim()}</h2>
             <dl class="cps-rows">
