@@ -266,6 +266,13 @@ describe('G-06 進場失敗不是沒有權限', () => {
     });
   }
 
+  function internal(): Error {
+    return Object.assign(new Error('INTERNAL ASSERTION FAILED'), {
+      code: 'internal',
+      name: 'FirebaseError',
+    });
+  }
+
   /** 前 fails 次 open 丟 err，之後照常。gate 不為 null 時成功那次等 gate 放行。 */
   function flaky(target: ScoringDeps, fails: number, err: () => Error, gate: Promise<void> | null = null) {
     const real = target.backend!.open.bind(target.backend!);
@@ -366,7 +373,7 @@ describe('G-06 進場失敗不是沒有權限', () => {
     const made = await deps({ match: LIVE_MATCH });
     const visible = { value: true };
     const fire = withWatchers(made.deps, visible);
-    const open = flaky(made.deps, 1, denied);
+    const open = flaky(made.deps, 1, internal);
     draw(made.deps);
     await settle();
     expect(screen.getByText(LIVE_COPY.loadFailed)).toBeTruthy();
@@ -392,6 +399,24 @@ describe('G-06 進場失敗不是沒有權限', () => {
     draw(made.deps);
     await settle();
     expect(screen.getByText(LIVE_COPY.noScorePermission)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: LIVE_COPY.retry })).toBeNull();
+    for (const cb of [...fire.online]) cb(true);
+    for (const cb of [...fire.visible]) cb();
+    await settle(300_000);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it('Rules 拒讀（沒有指派的人讀 control）：照舊沒有記分權限，沒有重試鈕，不自動重試', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const made = await deps({ match: LIVE_MATCH, staffRoles: [], matchIds: [] });
+    const visible = { value: true };
+    const fire = withWatchers(made.deps, visible);
+    const open = flaky(made.deps, 99, denied);
+    draw(made.deps);
+    await settle();
+    expect(screen.getByText(LIVE_COPY.noScorePermission)).toBeTruthy();
+    expect(screen.queryByText(LIVE_COPY.loadFailed)).toBeNull();
+    expect(screen.queryByText(LIVE_COPY.loadFailedAuto)).toBeNull();
     expect(screen.queryByRole('button', { name: LIVE_COPY.retry })).toBeNull();
     for (const cb of [...fire.online]) cb(true);
     for (const cb of [...fire.visible]) cb();

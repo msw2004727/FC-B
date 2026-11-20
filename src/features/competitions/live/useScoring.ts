@@ -110,7 +110,8 @@ async function defaultBackend(cid: string, mtId: string, uid: string): Promise<S
 
 /**
  * 進場失敗的種類。network＝網路類（unavailable、deadline-exceeded、client is offline），會自動重試；
- * error＝其他錯誤，只給重試鈕。讀取成功但沒有指派不算失敗（由記分頁顯示「沒有記分權限」）。
+ * error＝其他錯誤，只給重試鈕。讀取成功但沒有指派、或 Rules 拒讀（permission-denied）都不算失敗：
+ * 記分頁照舊顯示「沒有記分權限」，不重試。
  */
 export type ScoringLoadError = 'network' | 'error';
 
@@ -122,6 +123,12 @@ export type ScoringScreenView = ScoringView & {
 
 /** 網路類失敗的自動重試間隔：5、10、20 秒，之後每 30 秒。 */
 export const BOOT_RETRY_MS: readonly number[] = [5_000, 10_000, 20_000, 30_000];
+
+/** Rules 拒讀（例如沒有指派的人讀 control/scorer）：伺服器已回答「沒有權限」，照原本顯示沒有記分權限、不重試。 */
+export function isDeniedBootError(err: unknown): boolean {
+  const code = err && typeof err === 'object' && 'code' in err ? String((err as { code?: unknown }).code) : '';
+  return code === 'permission-denied' || code.endsWith('/permission-denied');
+}
 
 export function isNetworkBootError(err: unknown): boolean {
   if (isOfflineError(err)) return true;
@@ -143,7 +150,7 @@ export function useScoring(cid: string, mtId: string, deps?: ScoringDeps): Scori
     let session: ScoringSession | null = null;
     let booting = false;
     let uid: string | null = snap?.uid ?? null;
-    let lastError: ScoringLoadError | null = null;
+    let lastError: ScoringLoadError | 'denied' | null = null;
     let attempt = 0;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let backend: ScoringBackend | null = snap?.backend ?? null;
@@ -240,6 +247,13 @@ export function useScoring(cid: string, mtId: string, deps?: ScoringDeps): Scori
           if (session === created) session = null;
         }
         if (stopped) return;
+        if (isDeniedBootError(err)) {
+          // 與修正前相同：空的 staff，記分頁算出沒有指派而顯示「沒有記分權限」，沒有重試。
+          lastError = 'denied';
+          clearTimer();
+          setView({ ...loadingView(), loading: false });
+          return;
+        }
         lastError = isNetworkBootError(err) ? 'network' : 'error';
         showError(lastError);
         schedule();
