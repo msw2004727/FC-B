@@ -115,19 +115,6 @@
   font-weight: 700;
   line-height: 1;
 }
-/* 卡 2-2：記分頁的文字隊徽不顯示，隊徽色票與八個色號只剩觀眾即時頁那一半 */
-.s4-page .cp3-crest--txt {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
-  color: var(--crest-fg);
-}
-.s4-page .cp3-crest--c0 { background: var(--crest-0); }
-.s4-page .cp3-crest--c1 { background: var(--crest-1); }
-.s4-page .cp3-crest--c2 { background: var(--crest-2); }
-.s4-page .cp3-crest--c3 { background: var(--crest-3); }
-.s4-page .cp3-crest--c4 { background: var(--crest-4); }
-.s4-page .cp3-crest--c5 { background: var(--crest-5); }
-.s4-page .cp3-crest--c6 { background: var(--crest-6); }
-.s4-page .cp3-crest--c7 { background: var(--crest-7); }
 .s4-scoreline {
   display: flex;
   align-items: baseline;
@@ -163,24 +150,6 @@
 .s4-clockrow > .s4-clock {
   grid-column: 2;
   grid-row: 1;
-}
-.s4-clockrow > .s4-stage {
-  grid-column: 3;
-  grid-row: 1;
-  justify-self: start;
-}
-.s4-clockrow > .ui-badge,
-.s4-clockrow > .s4-live {
-  grid-column: 1;
-  grid-row: 1;
-  justify-self: start;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-}
-.s4-clockrow > .s4-stage:only-child {
-  grid-column: 1 / -1;
-  justify-self: center;
 }
 .s4-clock {
   font-size: 32px;
@@ -777,15 +746,6 @@ button.s4-ev__main:active { opacity: 0.7; }
   white-space: nowrap;
   color: var(--color-text-muted);
 }
-.s4-ev .ui-button {
-  flex: 0 0 auto;
-  width: auto;
-  min-inline-size: 0;
-  min-block-size: 44px;
-  padding-inline: 10px;
-  white-space: nowrap;
-}
-.s4-ev .ui-button__label { white-space: nowrap; overflow-wrap: normal; }
 /* 卡 2-1（3.7）：記分頁紀錄列。.s4-ev、.s4-ev__main、.s4-mark*、.s4-ev__tag 觀眾即時頁也在用，新值掛在 .s4-feed 底下。
    進球圓點照主客隊上色要等 2-2 帶 side，這一張先中性。 */
 .s4-feed .s4-ev { gap: 10px; border-bottom-color: var(--d2-line); }
@@ -876,8 +836,7 @@ button.s4-ev__main:active { opacity: 0.7; }
   overflow-wrap: normal;
   word-break: keep-all;
 }
-.s4-root .ui-button,
-.s4-page .ui-button {
+.s4-root .ui-button {
   min-inline-size: 0;
   max-width: 100%;
 }
