@@ -1705,6 +1705,26 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
     case 'form-ineligible':
       // 不是這支俱樂部的成員：rosterFormBlock 回 NOT_CLUB_MEMBER，畫「一句話＋回名單」。
       return base(actions, hostActor, rosterBundle(SHORT_PLAYERS, false), { prefillForm: true });
+    // ── 既有小修（顧問 §3.505）：報隊管理三分頁空狀態、全部已確認的鎖定句、名單已確認的次要鈕、同一天的比賽期間 ──
+    case 'host-pending-empty':
+    case 'host-approved-empty':
+    case 'host-rejected-empty': {
+      const tab = screen.replace('host-', '').replace('-empty', '') as 'pending' | 'approved' | 'rejected';
+      const b = manageBundle();
+      return base(actions, hostActor, { ...b, divisions: b.divisions.map((row) => ({ ...row, approvedCount: 0 })), entries: [], privates: [] }, { manageTab: tab });
+    }
+    case 'host-lock-all': {
+      const b = manageBundle();
+      return base(actions, hostActor, { ...b, entries: b.entries.map((row) => ({ ...row, rosterConfirmed: true })) }, { lockDialog: true });
+    }
+    case 'roster-confirmed': {
+      const b = rosterBundle(READY_PLAYERS, false);
+      return base(actions, repActor, { ...b, entries: b.entries.map((row) => ({ ...row, rosterConfirmed: true })) });
+    }
+    case 'detail-oneday': {
+      const b = detailBundle();
+      return base(actions, repActor, { ...b, competition: competition({ lastMatchAt: taipeiMs(2027, 1, 9, 18, 0) }) });
+    }
     default:
       return base(actions, wizardActor, undefined, { wizardStep: 1 }, wizardSeed());
   }

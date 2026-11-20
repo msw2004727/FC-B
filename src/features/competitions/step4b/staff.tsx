@@ -13,31 +13,25 @@ import { StatusTag, type StatusKind } from '../ui/status-tag';
 import {
   S4B_ASSIGN_PEOPLE,
   S4B_COMP_NAME,
-  S4B_INVITE_EXPIRES,
-  S4B_INVITE_PATH,
-  S4B_INVITES,
   S4B_MATCHES,
   S4B_NOW,
   S4B_SCORER_ID,
   S4B_STAFF,
   canRemoveStaff,
-  canRevokeInvite,
   clockLabel,
   formatMdHm,
   groupMatches,
-  inviteLife,
   matchById,
   matchesByIds,
   scorerMatchOrder,
   staffAssignmentCount,
   weekdayIndex,
   type AssignRole,
-  type S4bInvite,
   type S4bMatch,
   type S4bStaff,
   type StaffViewer,
 } from '../testing/step4b-fixtures';
-import { assignRoleLabel, copy, inviteLifeLabel, matchStatusLabel, staffRoleLabel, weekdayName } from './copy';
+import { assignRoleLabel, copy, matchStatusLabel, staffRoleLabel, weekdayName } from './copy';
 import { Line, MatchBits, S4bCard, S4bFrame, vsLabel } from './ui';
 
 /**
@@ -345,67 +339,6 @@ export function StaffAssignScreen(props: {
             </Button>
           </div>
         </div>
-      </S4bCard>
-    </S4bFrame>
-  );
-}
-
-function InviteRow({ row, onRevoke }: { row: S4bInvite; onRevoke: (id: string) => void }): JSX.Element {
-  const life = inviteLife(row, S4B_NOW);
-  const match = matchById(row.matchIds[0] ?? '');
-  return (
-    <li class="s4b-li">
-      <div class="s4b-gap" style="width:100%">
-        <div class="s4b-m__top">
-          <span class="s4b-k">{assignRoleLabel[row.role]}</span>
-          {match ? <span class="s4b-k">{clockLabel(match.kickoffAt).time}</span> : null}
-          <StatusTag kind="neutral" label={inviteLifeLabel[life]} />
-          <span class="s4b-staff__gap" />
-          {canRevokeInvite(life) ? (
-            <span class="s4b-mini">
-              <Button variant="danger" size="sm" onClick={() => onRevoke(row.id)}>{copy.revoke}</Button>
-            </span>
-          ) : null}
-        </div>
-        <p class="s4b-status">{copy.expireOn(formatMdHm(row.expiresAt))}</p>
-      </div>
-    </li>
-  );
-}
-
-export function StaffInviteScreen(): JSX.Element {
-  const [rows, setRows] = useState<readonly S4bInvite[]>(S4B_INVITES);
-  const sample = matchById('m_1400');
-  return (
-    <S4bFrame title={copy.inviteTitle} admin screen="staff-invite">
-      <S4bCard plain>
-        <div class="s4b-gap">
-          <Line text={copy.kv(copy.role, assignRoleLabel.scorer)} />
-          {sample ? (
-            <div class="s4b-m__top">
-              <span class="s4b-k">{copy.matches}</span>
-              <MatchBits match={sample} />
-            </div>
-          ) : null}
-          {sample ? <Line text={vsLabel(sample)} /> : null}
-          <Line text={copy.kv(copy.expiry, formatMdHm(S4B_INVITE_EXPIRES))} />
-          <p class="s4b-line"><span class="s4b-k">{S4B_INVITE_PATH}</span></p>
-          <div class="s4b-pair">
-            <Button variant="secondary" size="sm">{copy.copyLink}</Button>
-            <Button variant="secondary" size="sm">{copy.shareLine}</Button>
-          </div>
-        </div>
-      </S4bCard>
-      <S4bCard plain>
-        <ul class="cps-list">
-          {rows.map((row) => (
-            <InviteRow
-              key={row.id}
-              row={row}
-              onRevoke={(id) => setRows((prev) => prev.map((item) => item.id === id ? { ...item, revoked: true } : item))}
-            />
-          ))}
-        </ul>
       </S4bCard>
     </S4bFrame>
   );

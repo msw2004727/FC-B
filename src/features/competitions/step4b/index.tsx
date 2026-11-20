@@ -5,7 +5,7 @@ import type { Step4bScreen } from '../testing/step4b-fixtures';
 import { AdditionRequestScreen, AdditionReviewScreen, ClaimScreen, LinkJoinScreen, LinkRepScreen } from './links';
 import { AuditLogScreen, CheckinPrintScreen, ScheduleMidnightScreen } from './other';
 import { RulesAdvancedScreen, RulesPublicScreen, RulesTemplateScreen } from './rules';
-import { InviteAcceptScreen, ScorerMatchesScreen, StaffAssignScreen, StaffInviteScreen, StaffListScreen } from './staff';
+import { InviteAcceptScreen, ScorerMatchesScreen, StaffAssignScreen, StaffListScreen } from './staff';
 // 示範畫面專用樣式：排在元件匯入之後，才會接在 step4b.css 後面載入。
 import './step4b-demo.css';
 
@@ -24,21 +24,14 @@ export {
   ScheduleMidnightScreen,
   ScorerMatchesScreen,
   StaffAssignScreen,
-  StaffInviteScreen,
   StaffListScreen,
 };
 
 /** 依畫面 id 畫預覽。每個 id 都有對應分支，缺一個就過不了型別檢查。 */
 export function renderStep4bScreen(screen: Step4bScreen): JSX.Element {
   switch (screen) {
-    case 'staff-list':
-      return <StaffListScreen />;
     case 'staff-list-cohost':
       return <StaffListScreen viewerRole="coHost" />;
-    case 'staff-assign':
-      return <StaffAssignScreen />;
-    case 'staff-invite':
-      return <StaffInviteScreen />;
     case 'invite-accept':
       return <InviteAcceptScreen />;
     case 'invite-accept-invalid':

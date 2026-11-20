@@ -24,6 +24,8 @@ import HostSchedulePage from '@/features/competitions/pages/HostSchedulePage';
 import NewCompetitionPage from '@/features/competitions/pages/NewCompetitionPage';
 import { CpCard, CpFrame, InfoIcon, MoreIcon } from '@/features/competitions/ui/shell';
 import { CpGate } from '@/features/competitions/ui/feedback';
+import { TeamCrest } from '@/features/competitions/ui/TeamCrest';
+import { crestIndex } from '@/features/competitions/data/present';
 import { Button } from '@/ui/Button';
 
 const params = new URLSearchParams(location.search);
@@ -159,7 +161,36 @@ function GateTwo(): ComponentChildren {
   );
 }
 
+/**
+ * 沒有隊徽圖時的八個底色（cp3-crest--c0～c7，底色由 teamId 雜湊決定）。取代總收尾刪掉的第 3 步手寫預覽 crest-sheet，
+ * 改用正式 TeamCrest 畫；示範資料只會碰到其中幾色，樣式覆蓋率靠這一頁對到全部八色。
+ */
+function CrestColors(): ComponentChildren {
+  const ids: string[] = [];
+  for (let i = 0; ids.length < 8 && i < 500; i++) {
+    const id = `crest-${i}`;
+    if (!ids.some((x) => crestIndex(x) === crestIndex(id))) ids.push(id);
+  }
+  ids.sort((a, b) => crestIndex(a) - crestIndex(b));
+  return (
+    <CpFrame title="隊徽底色">
+      <CpCard>
+        <div style="display:flex;flex-wrap:wrap;gap:12px">
+          {ids.map((id, i) => <TeamCrest key={id} teamId={id} name={'海山青赤銀雷晨飛'[i] + '隊'} teamLogo={null} size={32} />)}
+        </div>
+      </CpCard>
+    </CpFrame>
+  );
+}
+
 function Screen(): ComponentChildren {
+  if (screenName === 'real-crest-colors') {
+    return (
+      <CpEnvProvider value={screenEnv('real-host-matches')}>
+        <CrestColors />
+      </CpEnvProvider>
+    );
+  }
   if (screenName === 'real-gate-two') {
     return (
       <CpEnvProvider value={screenEnv('real-host-matches')}>
@@ -368,6 +399,7 @@ const OPEN: Record<string, () => Promise<void>> = {
   'real-notice-delete-sys': () => openNoticeDelete('因雨延後一小時', '這是系統公告，確定要刪除？'),
   'real-load-failed': () => until('讀取失敗', () => hasText('讀取失敗') && buttonsNamed('重試').length > 0),
   'real-crest-live': () => until('即時列', () => hasText('雷霆隊') && hasText('藍鯨隊')),
+  'real-crest-colors': () => until('八色隊徽', () => document.querySelectorAll('.cp3-crest--txt').length === 8),
   'real-corrected-pk': () => until('已更正列', () => hasText('藍鯨隊')),
   // ── 新外觀第 4 批 ──
   'real-swap-open': async () => {

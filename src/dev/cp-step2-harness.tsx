@@ -70,6 +70,13 @@ const PAGES: Record<string, ComponentType> = {
   'form-ineligible': JoinRosterPage,
   // 第 3 批小修補拍（設計總監 05:08）：代為新增表單填 24 字真實姓名（資料同 form-rep，畫完後由 OPEN 填字）
   'form-long-name': AddRosterPage,
+  // 既有小修（顧問 §3.505）
+  'host-pending-empty': CompetitionManagePage,
+  'host-approved-empty': CompetitionManagePage,
+  'host-rejected-empty': CompetitionManagePage,
+  'host-lock-all': CompetitionManagePage,
+  'roster-confirmed': RosterPage,
+  'detail-oneday': CompetitionDetailPage,
 };
 
 /** 沿用既有資料的畫面：畫面名稱 → screenEnv 的狀態名。 */
