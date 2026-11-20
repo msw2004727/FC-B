@@ -54,3 +54,25 @@ describe('名單頁長暱稱（顧問 §3.471 X-02）', () => {
     expect(css).toMatch(/\.cps-player \.ui-badge \{[^}]*flex: 0 0 auto;[^}]*white-space: nowrap;/);
   });
 });
+
+describe('賽事新外觀色票（第 0 批卡 0-2）', () => {
+  const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/@import[^;]*;/g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: (m[1] ?? '').trim().replace(/\s+/g, ' '), body: m[2] ?? '' }));
+  const varsOf = (body: string) => [...body.matchAll(/(--d2-[\w-]+)\s*:/g)].map((m) => m[1] ?? '');
+
+  it('--d2-* 只宣告在淺色、深色兩條規則裡，每個變數每個主題一次', () => {
+    const declaring = rules.filter((r) => varsOf(r.body).length > 0);
+    expect(declaring.map((r) => r.sel)).toEqual([
+      '.cps-root, .s4-page, .d2-panel',
+      '[data-theme="dark"] .cps-root, [data-theme="dark"] .s4-page, [data-theme="dark"] .d2-panel',
+    ]);
+    const [light = [], dark = []] = declaring.map((r) => varsOf(r.body));
+    expect(new Set(light).size).toBe(light.length);
+    expect(new Set(dark).size).toBe(dark.length);
+    expect(dark.filter((v) => !light.includes(v))).toEqual([]);
+  });
+
+  it('賽事樣式不用 !important', () => {
+    expect(css).not.toContain('!important');
+  });
+});

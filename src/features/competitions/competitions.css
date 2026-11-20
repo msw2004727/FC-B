@@ -3,6 +3,96 @@
  * 分類色與隊徽底色從 category-tokens 進來（站內賽事 chunk），不從 tokens.css 進首頁。
  * 手機輸入框字級用 max(16px, 1rem)，避免聚焦時被瀏覽器放大。 */
 
+/* 賽事新外觀「記分板」色票（第 0 批）：只宣告在下面淺色、深色這兩條規則裡，每個變數每個主題一次；
+ * 深淺色差異全靠這兩條換值，不另寫深色專屬規則。面板畫在頁面最上層、不在根節點內，所以 .d2-panel 一起列。
+ * 後面的批次要用新變數或新根節點，加進這兩條，不另開一份。 */
+.cps-root,
+.s4-page,
+.d2-panel {
+  --d2-accent: #0d9488;
+  --d2-accent-ink: #0f766e;
+  --d2-accent-on: #ffffff;
+  --d2-accent-line: rgba(13, 148, 136, .34);
+  --d2-seg-on: linear-gradient(180deg, rgba(255,255,255,.7) 0%, rgba(255,255,255,0) 60%), rgba(13,148,136,.09);
+  --d2-seg-fg: #0c6b64;
+  --d2-text: #1a1d24;
+  --d2-text-2: #5a6478;
+  --d2-text-3: #5e687c;
+  --d2-line: #dfe3ea;
+  --d2-line-strong: rgba(148, 163, 184, .6);
+  --d2-divider: rgba(148, 163, 184, .45);
+  --d2-switch-edge: #717d91;
+  --d2-off-bg: #e9edf2;
+  --d2-off-line: #c5cdd9;
+  --d2-field-bg: #ffffff;
+  --d2-danger: #b91c1c;
+  --d2-danger-line: rgba(185, 28, 28, .42);
+  --d2-glass-base: linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
+  --d2-glass-gloss: linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%);
+  --d2-glass-sh: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
+  --d2-glass-edge: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff;
+  --d2-frame: #f8fafc;
+  --d2-frame-line: rgba(190, 200, 214, .9);
+  --d2-overlay: rgba(9, 13, 19, .5);
+  --d2-panel-sh: 0 -1px 0 rgba(255,255,255,.9), 0 -16px 36px -18px rgba(15,23,42,.5);
+  --d2-alert-bg: #b91c1c;
+  --d2-alert-fg: #ffffff;
+  --d2-menu-bg: #ffffff;
+  --d2-menu-sh: 0 12px 32px rgba(15,23,42,.18), inset 0 0 0 1px #dfe3ea;
+  --d2-sb-bg: #0d1816;
+  --d2-sb-bg-off: #0d1816;
+  --d2-sb-fg: #f2f6f4;
+  --d2-sb-fg2: #a3b5af;
+  --d2-sb-line: rgba(255, 255, 255, .14);
+  --d2-sb-now: #34d399;
+  --d2-sb-sh: inset 0 0 0 1px rgba(255,255,255,.07), inset 0 2px 3px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.95);
+  --d2-sb-sh-lit: inset 0 0 0 1px rgba(255,255,255,.07), inset 0 2px 3px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.95);
+  --d2-sb-bar: 0 0 0 0 transparent;
+  --d2-num: 'CP Score', 'DIN Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
+  /* 賽事範圍內最小字 12px（全站說明小字是 11px，不動全站） */
+  --font-size-caption: 12px;
+}
+[data-theme="dark"] .cps-root,
+[data-theme="dark"] .s4-page,
+[data-theme="dark"] .d2-panel {
+  --d2-accent: #34d399;
+  --d2-accent-ink: #34d399;
+  --d2-accent-on: #06231c;
+  --d2-accent-line: rgba(52, 211, 153, .38);
+  --d2-seg-on: linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,0) 60%), rgba(52,211,153,.14);
+  --d2-seg-fg: #6ee7b7;
+  --d2-text: #f5f7fa;
+  --d2-text-2: #cdd3de;
+  --d2-text-3: #a3adbd;
+  --d2-line: #323a4e;
+  --d2-line-strong: rgba(255, 255, 255, .22);
+  --d2-divider: rgba(255, 255, 255, .14);
+  --d2-switch-edge: #767e8e;
+  --d2-off-bg: #1b212d;
+  --d2-off-line: #3a4357;
+  --d2-field-bg: #141924;
+  --d2-danger: #fca5a5;
+  --d2-danger-line: rgba(252, 165, 165, .42);
+  --d2-glass-base: linear-gradient(180deg, #262e40 0%, #171c27 100%);
+  --d2-glass-gloss: linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%);
+  --d2-glass-sh: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
+  --d2-glass-edge: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16);
+  --d2-frame: #1f2634;
+  --d2-frame-line: rgba(255, 255, 255, .1);
+  --d2-overlay: rgba(0, 0, 0, .56);
+  --d2-panel-sh: 0 -1px 0 rgba(255,255,255,.12), 0 -16px 36px -18px rgba(0,0,0,.9);
+  --d2-alert-bg: #8f1d1d;
+  --d2-menu-bg: #1c2230;
+  --d2-menu-sh: 0 12px 32px rgba(0,0,0,.55), inset 0 0 0 1px #323a4e;
+  --d2-sb-bg: #0b241f;
+  --d2-sb-bg-off: #080b10;
+  --d2-sb-fg2: #a9bab4;
+  --d2-sb-line: rgba(255, 255, 255, .16);
+  --d2-sb-sh: inset 0 0 0 1px rgba(255,255,255,.16), inset 0 2px 3px rgba(0,0,0,.6);
+  --d2-sb-sh-lit: inset 0 0 0 1px rgba(52,211,153,.6);
+  --d2-sb-bar: inset 3px 0 0 0 #34d399;
+}
+
 .cps-root {
   box-sizing: border-box;
   min-height: 100%;
