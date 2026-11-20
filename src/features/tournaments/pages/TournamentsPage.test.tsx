@@ -221,7 +221,7 @@ describe('清單與讀取預算', () => {
     fireEvent.click(link);
     expect(open).toHaveBeenCalledWith('https://cup.toosterx.com/', 'toosterx_external');
     open.mockRestore();
-    expect(link.textContent).toContain('2026/10/09～2026/10/11');
+    expect(link.textContent).toContain('2026/10/09～10/11');
     expect(link.textContent).toContain('盃賽');
     expect((link.querySelector('img') as HTMLImageElement).getAttribute('src')).toBe('https://storage.example/feda.webp');
   });

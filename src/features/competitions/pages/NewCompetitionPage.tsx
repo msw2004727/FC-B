@@ -26,9 +26,9 @@ import { buildCreateInput, type DivisionDraft, type VenueDraft, type WizardDraft
 import type { CompetitionCategory } from '../data/types';
 import { categoryText } from '../ui/schedule-board';
 import { representativeClubs } from '../rep-clubs';
-import { CpError, errorOf, reasonText } from '../ui/feedback';
+import { CpError, CpGate, errorOf, reasonText } from '../ui/feedback';
 import { DateTimeField, FeeLine } from '../ui/fields';
-import { CpCard, CpFrame, CpI18nPending, CpRow, TrashIcon } from '../ui/shell';
+import { CpCard, CpFrame, CpI18nPending, CpRow, InfoIcon, LockIcon, PinIcon, PlusIcon, TrashIcon } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
 import { PageSpinner } from '@/ui/PageSpinner';
 
@@ -330,7 +330,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         <CpCard class="cps-success">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M7.5 12.5l3 3 6-6.5" /></svg>
           <h2 class="cps-title" style="margin:12px 0 4px">{ct('createdDraft')}</h2>
-          <p class="cps-sub">{form.name.trim()}</p>
+          <p class="cps-sub cps-success__name">{form.name.trim()}</p>
           {error ? <CpError reason={error.reason} params={error.params} /> : null}
           <div class="cps-actions cps-actions--col">
             <Button variant="primary" loading={busy} onClick={() => { void publish(); }}>{ct('publish')}</Button>
@@ -346,13 +346,15 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   return (
     <CpFrame
       title={ct('createTitle')}
+      menu={<span class="cph-stepno">{ct('stepOf', { step })}</span>}
       onBack={step === 1 ? undefined : () => { setError(null); setStep(step === 3 ? 2 : 1); }}
     >
+      {/* 兩層頁首的第二層：這一步的名稱當大標，下面三段進度條 */}
       <div>
+        <div class="cps-stepname"><b>{stepName}</b></div>
         <div class="cps-steps" aria-hidden="true">
           {[1, 2, 3].map((n) => <i key={n} class={n <= step ? 'on' : ''} />)}
         </div>
-        <div class="cps-stepname"><span>{ct('stepOf', { step })}</span><b>{stepName}</b></div>
       </div>
 
       {step === 1 ? (
@@ -414,7 +416,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                     maxLength={500}
                     onValueChange={(feeNote) => patch({ feeNote })}
                   />
-                  <p class="cps-cap" style="margin-top:6px">
+                  <p class="cps-cap cph-hint">
                     <span class="cps-line">{ct('feeHandledByHost')}</span>
                     <span class="cps-line">{ct('feeSiteDoesNotHandle')}</span>
                   </p>
@@ -431,29 +433,29 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   setError((current) => (current?.field === 'contactNote' ? null : current));
                 }}
               />
-              {form.hostType === 'personal' ? <p class="cps-cap">{ct('contactEmptyHint')}</p> : null}
+              {form.hostType === 'personal' ? <p class="cps-cap cph-hint">{ct('contactEmptyHint')}</p> : null}
             </div>
           </CpCard>
           <CpCard>
-            <h2 class="cps-h">{ct('regPeriod')}</h2>
+            <h2 class="cp3-sec-h">{ct('regPeriod')}</h2>
             <div class="cps-fields">
               <DateTimeField id="cp-reg-open" label={ct('regStart')} value={form.regOpen} onValueChange={(regOpen) => patch({ regOpen })} />
               <DateTimeField id="cp-reg-close" label={ct('regEnd')} value={form.regClose} onValueChange={(regClose) => patch({ regClose })} />
             </div>
           </CpCard>
           <CpCard>
-            <h2 class="cps-h">{ct('matchPeriod')}</h2>
+            <h2 class="cp3-sec-h">{ct('matchPeriod')}</h2>
             <div class="cps-fields">
               <DateTimeField id="cp-first" label={ct('firstMatch')} value={form.firstMatch} onValueChange={(firstMatch) => patch({ firstMatch })} />
               <DateTimeField id="cp-last" label={ct('lastMatch')} value={form.lastMatch} onValueChange={(lastMatch) => patch({ lastMatch })} />
             </div>
           </CpCard>
           <CpCard>
-            <h2 class="cps-h">{ct('venue')}</h2>
+            <h2 class="cp3-sec-h">{ct('venue')}</h2>
             <div class="cps-fields">
               {form.venues.map((venue, index) => (
                 <div class="cps-fields" key={index}>
-                  <div class="cps-head-row">
+                  <div class="cps-head-row cph-venue">
                     <Input
                       label={ct('venueName')}
                       value={venue.name}
@@ -461,7 +463,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                       onValueChange={(name) => patchVenue(index, { name })}
                     />
                     {form.venues.length > 1 ? (
-                      <button type="button" class="cps-iconbtn cps-iconbtn--flat" aria-label={ct('removeVenue')} onClick={() => patch({ venues: form.venues.filter((_, i) => i !== index) })}>
+                      <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} onClick={() => patch({ venues: form.venues.filter((_, i) => i !== index) })}>
                         <TrashIcon />
                       </button>
                     ) : null}
@@ -472,11 +474,15 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                     maxLength={100}
                     onValueChange={(address) => patchVenue(index, { address, mapPlaceId: '', mapProvider: address === venue.address ? venue.mapProvider : 'manual' })}
                   />
-                  <Button variant="secondary" onClick={() => setMapIndex(index)}>{ct('pickOnMap')}</Button>
+                  <div class="cph-start">
+                    <Button variant="secondary" size="sm" leading={<PinIcon />} onClick={() => setMapIndex(index)}>{ct('pickOnMap')}</Button>
+                  </div>
                 </div>
               ))}
               {form.venues.length < 10 ? (
-                <Button variant="secondary" onClick={() => patch({ venues: [...form.venues, emptyVenue()] })}>{ct('addVenue')}</Button>
+                <div class="cph-start">
+                  <Button variant="secondary" size="sm" leading={<PlusIcon />} onClick={() => patch({ venues: [...form.venues, emptyVenue()] })}>{ct('addVenue')}</Button>
+                </div>
               ) : null}
             </div>
           </CpCard>
@@ -488,11 +494,11 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           {form.divisions.map((division, index) => (
             <CpCard key={index}>
               <div class="cps-head-row" style="margin-bottom:12px">
-                <h2 class="cps-h">{ct('divisionN', { n: index + 1 })}</h2>
+                <h2 class="cp3-sec-h">{ct('divisionN', { n: index + 1 })}</h2>
                 {form.divisions.length > 1 ? (
                   <button
                     type="button"
-                    class="cps-iconbtn cps-iconbtn--flat"
+                    class="cps-iconbtn cps-iconbtn--flat cph-trash"
                     aria-label={ct('removeDivision')}
                     onClick={() => patch({ divisions: form.divisions.filter((_, i) => i !== index) })}
                   >
@@ -504,7 +510,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 <Input label={ct('divisionName')} value={division.name} maxLength={30} onValueChange={(name) => patchDivision(index, { name })} />
                 <div>
                   <span class="cps-label">{ct('playersOnField')}</span>
-                  <div class="cps-chips">
+                  <div class="cps-chips cph-five">
                     {FORMATS.map((count) => (
                       <Chip
                         key={count}
@@ -521,6 +527,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                     ))}
                   </div>
                 </div>
+                {/* 連續的加減器與開關：細線等高列（列高 48），左標籤、右控制 */}
+                <div class="d2-lines d2-lines--48 cph-ctl">
                 <Stepper label={ct('maxTeams')} value={division.maxTeams} min={2} max={64} onValueChange={(maxTeams) => patchDivision(index, { maxTeams })} />
                 <Stepper label={ct('rosterMin')} value={division.rosterMin} min={1} max={division.rosterMax} onValueChange={(rosterMin) => patchDivision(index, { rosterMin })} />
                 <Stepper
@@ -534,6 +542,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   })}
                 />
                 <Switch
+                  class="cph-switch"
                   label={ct('limitAge')}
                   checked={division.limitAge}
                   onCheckedChange={(limitAge) => patchDivision(index, {
@@ -548,10 +557,12 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   </>
                 ) : null}
                 <Switch
+                  class="cph-switch"
                   label={ct('requireRealName')}
                   checked={division.requireRealName}
                   onCheckedChange={(requireRealName) => patchDivision(index, { requireRealName })}
                 />
+                </div>
                 {/* 報名費只限俱樂部主辦（顧問 §3.257，站長親口）：個人主辦不顯示費用欄 */}
                 {form.hostType === 'club' ? (
                   <Input
@@ -571,7 +582,9 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
             </CpCard>
           ))}
           {form.divisions.length < 8 ? (
-            <Button variant="secondary" onClick={() => patch({ divisions: [...form.divisions, emptyDivision()] })}>{ct('addDivision')}</Button>
+            <div class="cph-start">
+              <Button variant="secondary" size="sm" leading={<PlusIcon />} onClick={() => patch({ divisions: [...form.divisions, emptyDivision()] })}>{ct('addDivision')}</Button>
+            </div>
           ) : null}
         </>
       ) : null}
@@ -601,7 +614,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
             </dl>
           </CpCard>
           <CpCard>
-            <h2 class="cps-h">{ct('stepDivisions')}</h2>
+            <h2 class="cp3-sec-h">{ct('stepDivisions')}</h2>
             <ul class="cps-list">
               {form.divisions.map((division) => (
                 <li class="cps-li" key={division.name}>
@@ -632,8 +645,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         ? <CpError reason={error.reason} params={error.params} />
         : null}
 
-      <div class="cps-actions">
-        {step > 1 ? <Button variant="secondary" onClick={() => { setError(null); setStep(step === 3 ? 2 : 1); }}>{ct('prev')}</Button> : null}
+      <div class="cph-split">
+        {step > 1 ? <Button variant="secondary" class="cph-narrow" onClick={() => { setError(null); setStep(step === 3 ? 2 : 1); }}>{ct('prev')}</Button> : null}
         {step < 3 ? <Button variant="primary" onClick={goNext}>{ct('next')}</Button> : (
           <Button variant="primary" loading={busy} onClick={() => { void create(); }}>{ct('createAction')}</Button>
         )}
@@ -729,19 +742,20 @@ function CreateGate({
   }
 
   const back = <Button variant={access === 'login' ? 'secondary' : 'primary'} onClick={() => route('/tournaments', true)}>{ct('backToTournaments')}</Button>;
+  // 「一句話＋回去的鈕」：未登入與讀取失敗用圓圈 i、沒開放用鎖頭；未登入那一句不是錯誤，不帶 role="alert"。
   return (
     <CpFrame title={ct('createTitle')}>
-      <CpCard>
-        <p class="cps-note" role={access === 'login' ? undefined : 'alert'} data-cp-create={access}>
-          {access === 'login' ? ct('createLoginHint') : access === 'error' ? ct('loadFailed') : ct('createNotOpen')}
-        </p>
-        <div class="cps-actions">
-          {back}
-          {access === 'login'
-            ? <Button variant="primary" loading={loginBusy} onClick={login}>{ct('createLogin')}</Button>
-            : null}
-        </div>
-      </CpCard>
+      <CpGate
+        icon={access === 'denied' ? <LockIcon /> : <InfoIcon />}
+        text={access === 'login' ? ct('createLoginHint') : access === 'error' ? ct('loadFailed') : ct('createNotOpen')}
+        load={access}
+        alert={access !== 'login'}
+      >
+        {back}
+        {access === 'login'
+          ? <Button variant="primary" loading={loginBusy} onClick={login}>{ct('createLogin')}</Button>
+          : null}
+      </CpGate>
     </CpFrame>
   );
 }

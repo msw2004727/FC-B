@@ -87,19 +87,22 @@ export function CpGate({
   icon,
   text,
   load,
+  alert = true,
   children,
 }: {
   icon: JSX.Element;
   text: string;
   /** 寫在那一句上的 data-cp-load（測試與示範頁靠它找）。 */
   load?: string;
+  /** false：那一句不帶 role="alert"（不是錯誤，例如建立賽事「登入後才能建立賽事」，不讓報讀立刻打斷）。 */
+  alert?: boolean;
   children?: ComponentChildren;
 }): JSX.Element {
   const hasButtons = toChildArray(children).length > 0;
   return (
     <CpCard class="cps-gate">
       {icon}
-      <p class="cps-gate__text" role="alert" data-cp-load={load}>{text}</p>
+      <p class="cps-gate__text" role={alert ? 'alert' : undefined} data-cp-load={load}>{text}</p>
       {hasButtons ? <div class="cps-gate__btns">{children}</div> : null}
     </CpCard>
   );

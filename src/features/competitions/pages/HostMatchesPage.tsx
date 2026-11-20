@@ -46,17 +46,20 @@ import {
   type WriteIntent,
 } from '../data/host-write';
 import { formatKickoffClock } from '../data/schedule-present';
+import { rememberCompName } from '../data/comp-name-hint';
+import { hostMatchesBoard, splitCount } from '../data/host-board';
+import { competitionPhase } from '../data/present';
 import { hasPendingTie } from '../data/tie-present';
-import type { CompetitionDoc, EntryDoc, MatchDoc, MatchStatus, StaffDoc } from '../data/types';
+import { CP_READ_LIMIT, type CompetitionDoc, type EntryDoc, type MatchDoc, type MatchStatus, type StaffDoc } from '../data/types';
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { undoClock } from '../live/clock';
 import { LiveBoundary } from '../live';
-import { CpLoadFailed, errorOf, loadFailOf, reasonText } from '../ui/feedback';
+import { CpGate, CpLoadFailed, errorOf, loadFailOf, reasonText } from '../ui/feedback';
 import { DateField } from '../ui/fields';
 import { scheduleLabels } from '../ui/schedule-board';
-import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
+import { CpCard, CpFrame, CpI18nPending, LockIcon, NextIcon, ResetIcon } from '../ui/shell';
 import { StatusTag, type StatusKind } from '../ui/status-tag';
 import { MatchVs, MatchWhen } from '../ui/match-row';
 import { HostFlexCards, type FlexWriteResult, type ShiftRequest, type SwapRequest } from './host-flex';
@@ -199,6 +202,11 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   const competition = bundle?.competition ?? null;
   const divisions = bundle?.divisions ?? [];
   const crests = bundle?.entries ?? [];
+  const compName = competition?.name;
+  useEffect(() => {
+    // 頁首賽事名小字：記下來給人員、指派頁用（不為名稱多讀）。
+    if (compName) rememberCompName(cid, compName);
+  }, [cid, compName]);
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   if (env.actor.authPending || phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
@@ -208,7 +216,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   if (!allowedOf(env, competition, bundle?.staff ?? null)) {
     return (
       <CpFrame title={ct('hostListTitle')}>
-        <p class="cps-note" role="alert">{ct('reason.NOT_HOST')}</p>
+        <CpGate icon={<LockIcon />} text={ct('reason.NOT_HOST')} />
       </CpFrame>
     );
   }
@@ -671,12 +679,47 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   // 順延／對調比照結束賽事，但已結束時管理員仍看得到。沒有場次不顯示。
   const showFlex = canShowFlexSchedule(comp, isCpAdmin(env.actor.role)) && matches.length > 0;
 
+  // 矮板（3.4）：只用這頁已讀到的場次與賽事文件。場次讀到上限（100）時數字都可能少算，整塊不放。
+  // 第一格「進行中 N」或「下一場 HH:MM」；再加「今天 N 場」「待確認 N 場」；是 0 的格不放；一格都沒有不放板。
+  const sb = matches.length >= CP_READ_LIMIT.matches ? null : hostMatchesBoard(matches, now);
+  type Cell = { k: string; n: string; tail?: string; now?: boolean; say: string };
+  const cells: Cell[] = [];
+  if (sb && sb.live > 0) {
+    cells.push({ k: ct('phaseLive'), n: String(sb.live), now: true, say: `${ct('phaseLive')} ${sb.live}` });
+  } else if (sb?.next) {
+    const time = formatKickoffClock(sb.next.kickoffAt);
+    cells.push({ k: ct('boardNext'), n: time, now: true, say: `${ct('boardNext')} ${time}` });
+  }
+  if (sb && sb.today > 0) {
+    const say = ct('todayOnly', { n: sb.today });
+    const cut = splitCount((n) => ct('todayOnly', { n }), sb.today, 0);
+    cells.push(cut ? { k: cut.k, n: String(cut.n), tail: cut.tail, say } : { k: say, n: '', say });
+  }
+  if (sb && sb.pending > 0) {
+    cells.push({ k: ct('matchPending'), n: String(sb.pending), tail: ct('matchUnit'), say: ct('pendingMatchesN', { n: sb.pending }) });
+  }
+  const lit = competitionPhase(comp, now) === 'live';
+  const board = cells.length > 0 ? (
+    <div class={`d2-sb d2-sb--row cph-sb${lit ? ' d2-sb--lit' : ''}`}>
+      <p class="cps-vh">{cells.map((cell) => cell.say).join('　')}</p>
+      <div class="d2-cells d2-cells--row" aria-hidden="true">
+        {cells.map((cell) => (
+          <div class={cell.now ? 'd2-cell d2-cell--now' : 'd2-cell'} key={cell.k}>
+            <span class="d2-cell__k">{cell.k}</span>
+            {cell.n ? <span class="d2-cell__v"><b class="d2-num">{cell.n}</b>{cell.tail ? <small>{cell.tail}</small> : null}</span> : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : null;
+  const nextId = sb?.next?.id ?? null;
+
   return (
-    <CpFrame title={ct('hostListTitle')}>
-      <p class="cps-sub" style="margin:0">{comp.name}</p>
-      {posted ? <p class="cpm-ok" role="status">{ct('autoPost')}</p> : null}
+    <CpFrame title={ct('hostListTitle')} context={comp.name}>
+      {posted ? <p class="s4b-alert" role="status">{ct('autoPost')}</p> : null}
       {showFlex ? (
         <HostFlexCards
+          board={board}
           ct={ct}
           matches={matches}
           weekdays={scheduleLabels(ct).weekdays}
@@ -685,12 +728,12 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
           onSwap={runSwap}
           onOpen={() => setPosted(false)}
         />
-      ) : null}
+      ) : board ? <section class="d2-hero d2-hero--bare">{board}</section> : null}
       {matches.length === 0 ? (
         <CpCard>
           <p class="cps-note">{ct('reason.SCHEDULE_REQUIRED')}</p>
-          <div class="cps-actions">
-            <Button variant="secondary" onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
+          <div class="cph-start">
+            <Button variant="secondary" size="sm" onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
           </div>
         </CpCard>
       ) : null}
@@ -698,7 +741,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
         <div key={group.divisionId}>
           {group.heading ? <h3 class="cp3-day">{group.heading}</h3> : null}
           {group.days.map((day) => (
-            <div key={day.key}>
+            <div key={day.key} class="cph-day">
               <h4 class="cp3-day">{day.label}</h4>
               <CpCard>
                 <ul class="cp3-ml">
@@ -709,7 +752,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                     const rowActions = actions.filter((action) => action !== 'reset');
                     const scoreEntry = showScoreEntry(match, now);
                     return (
-                      <li class={`cp3-m${badge === 'live' ? ' cp3-m--live' : badge === 'cancelled' ? ' cp3-m--off' : ''}`} key={match.id}>
+                      <li class={`cp3-m${badge === 'live' ? ' cp3-m--live' : badge === 'cancelled' ? ' cp3-m--off' : match.id === nextId ? ' cp3-m--next' : ''}`} key={match.id}>
                         <div class="cp3-m__top">
                           {match.kickoffAt == null ? (
                             <MatchWhen time={ct('timeTbd')} />
@@ -719,7 +762,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                           {badge && reset ? (
                             <span class="cp3-tags">
                               <StatusTag kind={badgeKind(badge)} label={statusText(ct, match.status)} />
-                              <Button variant="ghost" size="sm" disabled={busy} onClick={() => openReset(match)}>{ct('resetMatch')}</Button>
+                              <Button variant="ghost" size="sm" class="cph-reset" leading={<ResetIcon />} disabled={busy} onClick={() => openReset(match)}>{ct('resetMatch')}</Button>
                             </span>
                           ) : null}
                           {badge && !reset ? <StatusTag kind={badgeKind(badge)} label={statusText(ct, match.status)} /> : null}
@@ -737,20 +780,21 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                         ) : null}
                         {rowActions.length > 0 || scoreEntry ? (
                           <div class="cp3-m__act">
-                            {rowActions.map((action) => {
-                              if (action === 'reschedule') {
-                                return <Button key={action} variant="ghost" size="sm" disabled={busy} onClick={() => openReschedule(match)}>{ct('reschedTitle')}</Button>;
-                              }
-                              if (action === 'score') {
-                                return <Button key={action} variant="secondary" size="sm" disabled={busy} onClick={() => openScore(match)}>{ct('enterScore')}</Button>;
-                              }
-                              if (action === 'cancel') {
-                                return <Button key={action} variant="danger" size="sm" disabled={busy} onClick={() => openCancel(match)}>{ct('cancelMatch')}</Button>;
-                              }
-                              return <Button key={action} variant="primary" size="sm" disabled={busy} onClick={() => { void submitConfirm(match); }}>{ct('confirmMatch')}</Button>;
-                            })}
+                            {/* 顧問 §3.469：DOM 順序跟著畫面（確認 → 登錄比分 → 記分 → 改期 ……… 取消這場），按鈕的集合與出現條件不動 */}
+                            {rowActions.includes('confirm') ? (
+                              <Button key="confirm" variant="primary" size="sm" disabled={busy} onClick={() => { void submitConfirm(match); }}>{ct('confirmMatch')}</Button>
+                            ) : null}
+                            {rowActions.includes('score') ? (
+                              <Button key="score" variant="secondary" size="sm" disabled={busy} onClick={() => openScore(match)}>{ct('enterScore')}</Button>
+                            ) : null}
                             {scoreEntry ? (
-                              <Button key="score-live" variant="secondary" size="sm" disabled={busy} onClick={() => route(`/competitions/${cid}/matches/${match.id}/score`)}>{ct('scoreTitle')}</Button>
+                              <Button key="score-live" variant="secondary" size="sm" trailing={<NextIcon />} disabled={busy} onClick={() => route(`/competitions/${cid}/matches/${match.id}/score`)}>{ct('scoreTitle')}</Button>
+                            ) : null}
+                            {rowActions.includes('reschedule') ? (
+                              <Button key="reschedule" variant="secondary" size="sm" disabled={busy} onClick={() => openReschedule(match)}>{ct('reschedTitle')}</Button>
+                            ) : null}
+                            {rowActions.includes('cancel') ? (
+                              <Button key="cancel" variant="danger" size="sm" disabled={busy} onClick={() => openCancel(match)}>{ct('cancelMatch')}</Button>
                             ) : null}
                           </div>
                         ) : null}
@@ -760,14 +804,13 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                   })}
                 </ul>
               </CpCard>
-              <div class="cp3-daygap" />
             </div>
           ))}
         </div>
       ))}
       {/* 顧問 §R2：結束賽事移到場次清單之後，第一屏只留順延／對調；危險色與確認流程不變。 */}
       {showEnd ? (
-        <div class="cps-actions" style="margin-top:0">
+        <div class="cph-end">
           <Button variant="danger" disabled={busy || endOpen} onClick={openEnd}>
             {ct('endTitle')}
           </Button>

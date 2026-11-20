@@ -64,6 +64,7 @@ export function HostFlexCards({
   onShift,
   onSwap,
   onOpen,
+  board,
 }: {
   ct: CompetitionsT;
   matches: readonly MatchDoc[];
@@ -73,6 +74,8 @@ export function HostFlexCards({
   onSwap: (input: SwapRequest) => Promise<FlexWriteResult>;
   /** 展開或點進順延、對調卡片時呼叫，父層用來清掉上一則成功公告。 */
   onOpen?: () => void;
+  /** 矮板（新外觀卡 4-B）：與兩顆工具鈕放在同一片玻璃頂部；展開的卡接在這一片正下方。 */
+  board?: JSX.Element | null;
 }): JSX.Element {
   const choices = shiftDayChoices(matches);
   const rows = swappableMatches(matches);
@@ -202,12 +205,16 @@ export function HostFlexCards({
 
   return (
     <>
-      {showShift || showSwap ? (
-        <div class="cps-actions" style="margin-top:0">
+      {board || showShift || showSwap ? (
+        <section class={showShift || showSwap ? 'd2-hero' : 'd2-hero d2-hero--bare'}>
+        {board}
+        {showShift || showSwap ? (
+        <div class="d2-foot cph-tools">
           {showShift ? (
             <Button
               id={FLEX_IDS.shift.toggle}
               variant="secondary"
+              size="sm"
               disabled={busy}
               aria-expanded={open === 'shift'}
               aria-controls={FLEX_IDS.shift.card}
@@ -220,6 +227,7 @@ export function HostFlexCards({
             <Button
               id={FLEX_IDS.swap.toggle}
               variant="secondary"
+              size="sm"
               disabled={busy}
               aria-expanded={open === 'swap'}
               aria-controls={FLEX_IDS.swap.card}
@@ -229,10 +237,12 @@ export function HostFlexCards({
             </Button>
           ) : null}
         </div>
+        ) : null}
+        </section>
       ) : null}
       {showShift && open === 'shift' ? (
         <div id={FLEX_IDS.shift.card} onClick={opened} onFocusCapture={opened}>
-        <CpCard>
+        <CpCard class="cph-flex">
           <h3 class="cpm-h">{ct('shiftDay')}</h3>
           <div class="cps-fields">
             <Select
@@ -260,7 +270,7 @@ export function HostFlexCards({
                 setShiftClash(null);
               }}
             />
-            <p class="cpm-preview">{ct('affected', { n: affected })}</p>
+            <p class="cpm-preview cph-effect">{ct('affected', { n: affected })}</p>
             <Textarea
               label={ct('shiftReason')}
               required
@@ -279,8 +289,8 @@ export function HostFlexCards({
                 {clashSentence(shiftHit, shiftClash.type, ct('clashTeam'), ct('clashVenue'), ct('vsWord'))}
               </p>
             ) : null}
-            <div class="cps-actions">
-              <Button variant="secondary" disabled={busy} onClick={() => { resetShift(); closePanel('shift'); }}>{ct('cancel')}</Button>
+            <div class="cph-split">
+              <Button variant="secondary" class="cph-narrow" disabled={busy} onClick={() => { resetShift(); closePanel('shift'); }}>{ct('cancel')}</Button>
               <Button variant="primary" disabled={busy} onClick={() => { void sendShift(false); }}>{ct('shiftOk')}</Button>
               {shiftClash ? (
                 <Button variant="secondary" disabled={busy} onClick={() => { void sendShift(true); }}>{ct('forceShift')}</Button>
@@ -292,7 +302,7 @@ export function HostFlexCards({
       ) : null}
       {showSwap && open === 'swap' ? (
         <div id={FLEX_IDS.swap.card} onClick={opened} onFocusCapture={opened}>
-        <CpCard>
+        <CpCard class="cph-flex">
           <h3 class="cpm-h">{ct('swapTwo')}</h3>
           <div class="cps-fields">
             <Select
@@ -339,8 +349,8 @@ export function HostFlexCards({
                 {clashSentence(swapHit, swapClash.type, ct('clashTeam'), ct('clashVenue'), ct('vsWord'))}
               </p>
             ) : null}
-            <div class="cps-actions">
-              <Button variant="secondary" disabled={busy} onClick={() => { resetSwap(); closePanel('swap'); }}>{ct('cancel')}</Button>
+            <div class="cph-split">
+              <Button variant="secondary" class="cph-narrow" disabled={busy} onClick={() => { resetSwap(); closePanel('swap'); }}>{ct('cancel')}</Button>
               <Button variant="primary" disabled={busy} onClick={() => { void sendSwap(false); }}>{ct('swapOk')}</Button>
               {swapClash ? (
                 <Button variant="secondary" disabled={busy} onClick={() => { void sendSwap(true); }}>{ct('forceSwap')}</Button>

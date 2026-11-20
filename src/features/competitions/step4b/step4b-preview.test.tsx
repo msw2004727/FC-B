@@ -331,7 +331,8 @@ describe('step4b 預覽畫面', () => {
     function removeButton(view: { container: Element }, name: string): HTMLButtonElement | null {
       const row = [...view.container.querySelectorAll('.s4b-li')].find((el) => (el.textContent ?? '').includes(name));
       if (!row) return null;
-      return [...row.querySelectorAll('button')].find((button) => (button.textContent ?? '').trim() === copy.remove) ?? null;
+      // 新外觀卡 4-D：移除改成垃圾桶圖示鈕，報讀名稱帶對象，用 aria-label 開頭找。
+      return [...row.querySelectorAll('button')].find((button) => (button.getAttribute('aria-label') ?? '').startsWith(copy.remove)) ?? null;
     }
     const host = render(<StaffListScreen />);
     expect(removeButton(host, '王主辦')).toBeNull();

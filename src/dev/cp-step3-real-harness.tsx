@@ -45,6 +45,9 @@ const PAGES: Record<string, ComponentType> = {
   'real-notices': CompetitionDetailPage,
   'real-notices-host': CompetitionDetailPage,
   'real-contact-club': CompetitionDetailPage,
+  // 設計總監 04:56：原本 real-contact-personal 把兩頁疊在同一頁，第二頁 .cps-root::before（fixed 全視窗底色、z-index -1，
+  // 但在第二個 .cps-root 自己的疊層裡，整層畫在第一頁之上）把第一頁蓋掉；改成一頁一個狀態。
+  'real-contact-personal': CompetitionDetailPage,
   'real-contact-personal-empty': CompetitionDetailPage,
   'real-host-matches': HostMatchesPage,
   'real-host-matches-many': HostMatchesPage,
@@ -78,6 +81,11 @@ const PAGES: Record<string, ComponentType> = {
   'real-done-nochamp': CompetitionDetailPage,
   'real-done-pending': CompetitionDetailPage,
   'real-long': CompetitionDetailPage,
+  // 設計總監 04:56：長隊名＋隔日 01:30、長組別名、長結束原因、長公告。
+  'real-long-overnight': CompetitionDetailPage,
+  'real-long-division': CompetitionDetailPage,
+  'real-ended-long-reason': CompetitionDetailPage,
+  'real-notice-long': CompetitionDetailPage,
   'real-long-recruit': CompetitionDetailPage,
   'real-draft-host': CompetitionDetailPage,
   'real-scorer': CompetitionDetailPage,
@@ -113,26 +121,6 @@ function ListIn(): ComponentChildren {
         <InAppSection tab="all" active />
       </section>
     </div>
-  );
-}
-
-/** 有填、沒填各畫一頁正式詳情。沒填時聯絡區整段不出現。 */
-function ContactPersonal(): ComponentChildren {
-  return (
-    <>
-      <section class="cpr-shot">
-        <p class="cpr-cap">有填公開聯絡文字</p>
-        <CpEnvProvider value={screenEnv('real-contact-personal')}>
-          <CompetitionDetailPage />
-        </CpEnvProvider>
-      </section>
-      <section class="cpr-shot">
-        <p class="cpr-cap">沒填公開聯絡文字（整區不顯示）</p>
-        <CpEnvProvider value={screenEnv('real-contact-personal-empty')}>
-          <CompetitionDetailPage />
-        </CpEnvProvider>
-      </section>
-    </>
   );
 }
 
@@ -194,7 +182,6 @@ function Screen(): ComponentChildren {
       </CpEnvProvider>
     );
   }
-  if (screenName === 'real-contact-personal') return <ContactPersonal />;
   const Page = PAGES[screenName];
   if (!Page) return <p class="cpr-cap">沒有這個 screen：{screenName}</p>;
   return (
@@ -349,6 +336,11 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('發布鈕可按', () => buttonsNamed('發布公告').some((el) => !el.disabled));
   },
   'real-gate-two': () => until('兩顆鈕', () => document.querySelectorAll('.cps-gate__btns button').length === 2),
+  'real-long-overnight': () => until('隔日場次', () => hasText('隔日 01:30') && hasText('新北市蘆洲區示範青年足球甲隊')),
+  'real-long-division': () => until('長組別名', () => hasText('五、六年級生限定')),
+  'real-ended-long-reason': () => until('長結束原因', () => hasText('敬請見諒')),
+  'real-notice-long': () => until('長公告', () => hasText('賽後一週以內可憑證件領回')),
+  'real-contact-personal': () => until('聯絡主辦', () => hasText('賽前到集合點找王示範')),
   'real-ctx-short': () => until('頁首賽事名', () => !!document.querySelector('.cps-top__ctx')),
   'real-ctx-long': () => until('頁首賽事名', () => !!document.querySelector('.cps-top__ctx')),
   // ── 新外觀第 1b 批 ──
@@ -443,7 +435,8 @@ async function openShiftClash(): Promise<void> {
 async function openNoticeDelete(text: string, confirm: string): Promise<void> {
   await until('公告', () => hasText(text));
   const row = [...document.querySelectorAll('.cpm-ann > li')].find((li) => (li.textContent ?? '').includes(text));
-  const btn = row ? [...row.querySelectorAll('button')].find((node) => (node.textContent ?? '').trim() === '刪除') : undefined;
+  // 刪除鈕改成垃圾桶圖示（沒有文字節點）後只認 aria-label，不比對按鈕文字（設計總監 04:56）。
+  const btn = row?.querySelector<HTMLButtonElement>('button[aria-label="刪除"]') ?? undefined;
   if (!btn) throw new Error(`找不到公告刪除鈕：${text}`);
   btn.click();
   await until('刪除確認框', () => hasText(confirm));

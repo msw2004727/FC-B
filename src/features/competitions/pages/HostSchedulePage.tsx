@@ -30,7 +30,8 @@ import { ctOrKey, useCompetitionsT } from '../i18n';
 import { LiveBoundary } from '../live';
 import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText } from '../ui/feedback';
 import { DateField } from '../ui/fields';
-import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
+import { CpCard, CpFrame, CpI18nPending, PlusIcon, TrashIcon } from '../ui/shell';
+import { rememberCompName } from '../data/comp-name-hint';
 
 interface HeldPreview {
   value: ParsedSchedule;
@@ -111,6 +112,12 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
     // 正式頁只在 cid 或身分變時重讀。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, env.actor.authPending, env.actor.uid, env.actor.role, env.bundle]);
+
+  const compName = competition?.name;
+  useEffect(() => {
+    // 頁首賽事名小字：記下來給人員、指派頁用（不為名稱多讀）。
+    if (compName) rememberCompName(cid, compName);
+  }, [cid, compName]);
 
   useEffect(() => {
     if (!competition || seeded.current) return;
@@ -270,8 +277,7 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
   }
 
   return (
-    <CpFrame title={ct('hostSchedTitle')}>
-      <p class="cps-sub" style="margin:0">{competition.name}</p>
+    <CpFrame title={ct('hostSchedTitle')} context={competition.name}>
       <CpCard>
         <div class="cps-fields">
           {divisions.length > 1 ? (
@@ -304,31 +310,33 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
             <div class="cp3-dayform__h">
               <span>{ct('schedDayN', { n: index + 1 })}</span>
               {index > 0 ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <button
+                  type="button"
+                  class="cps-iconbtn cps-iconbtn--flat"
+                  aria-label={ct('removePlayer', { name: ct('schedDayN', { n: index + 1 }) })}
                   disabled={busy}
                   onClick={() => {
                     setDays((prev) => prev.filter((_, i) => i !== index));
                     clearHeld();
                   }}
                 >
-                  {ct('remove')}
-                </Button>
+                  <TrashIcon />
+                </button>
               ) : null}
             </div>
-            <div class="cps-fields">
+            {/* 日期｜開始｜結束 同一列（3fr 2fr 2fr） */}
+            <div class="cph-day3">
               <DateField id={`cp-day-${day.id ?? index}`} label={ct('schedDate')} value={day.date} disabled={busy} onValueChange={(value) => patchDay(index, { date: value })} />
-              <div class="cps-grid2">
-                <Input label={ct('schedStart')} value={day.start} disabled={busy} onValueChange={(value) => patchDay(index, { start: value })} />
-                <Input label={ct('schedEnd')} value={day.end} disabled={busy} onValueChange={(value) => patchDay(index, { end: value })} />
-              </div>
+              <Input label={ct('schedStart')} value={day.start} disabled={busy} onValueChange={(value) => patchDay(index, { start: value })} />
+              <Input label={ct('schedEnd')} value={day.end} disabled={busy} onValueChange={(value) => patchDay(index, { end: value })} />
             </div>
           </div>
         ))}
-        <div class="cps-actions">
+        <div class="cph-start">
           <Button
             variant="secondary"
+            size="sm"
+            leading={<PlusIcon />}
             disabled={busy}
             onClick={() => {
               daySerial.current += 1;
@@ -363,9 +371,6 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
           ))}
         </div>
       </CpCard>
-      <div class="cps-actions" style="margin-top:0">
-        <Button variant="secondary" disabled={busy} onClick={() => { void previewSchedule(); }}>{ct('schedPreview')}</Button>
-      </div>
       {preview?.kind === 'ok' ? (
         <CpCard class="cps-card--ok"><p class="cp3-result">{ct('schedPreviewOk', { m: preview.m, d: preview.d, p: preview.p })}</p></CpCard>
       ) : null}
@@ -395,7 +400,9 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
           <p class="cp3-modal-p">{ct('schedClearConfirm')}</p>
         </Modal>
       ) : null}
-      <div class="cps-actions" style="margin-top:0">
+      {/* 預覽｜產生賽程 並成一列：還沒預覽時預覽是主要、產生賽程停用；預覽過後產生賽程是主要、預覽是次要 */}
+      <div class="cph-split">
+        <Button variant={held == null ? 'primary' : 'secondary'} disabled={busy} onClick={() => { void previewSchedule(); }}>{ct('schedPreview')}</Button>
         <Button variant="primary" disabled={busy || held == null} onClick={() => { void generate(); }}>{ct('schedGenerate')}</Button>
       </div>
     </CpFrame>
