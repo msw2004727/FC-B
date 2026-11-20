@@ -292,3 +292,38 @@ describe('開關打開時的來源與讀取', () => {
     expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
   });
 });
+
+describe('「＋ 新增賽事」只在外部分頁（站長 11-20：站內不要出現兩顆新增鈕）', () => {
+  function manager(): ViewerView {
+    return { ...viewer(), uid: 'u_super', role: 'super_admin', roleLevel: 9 };
+  }
+
+  it('閘門通過：外部分頁出現、切到站內消失、切回外部又出現', async () => {
+    mockUseViewer.mockReturnValue(manager());
+    draw();
+    await waitFor(() => expect(document.querySelector('.cpl-src')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('＋ 新增賽事')).toBeTruthy());
+    fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
+    await waitFor(() => expect(screen.queryByText('＋ 新增賽事')).toBeNull());
+    expect(document.getElementById('tc-add-btn')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
+    await waitFor(() => expect(screen.getByText('＋ 新增賽事')).toBeTruthy());
+  });
+
+  it('直接開 ?src=in：站內分頁不出現', async () => {
+    history.replaceState(null, '', '/tournaments?src=in');
+    mockUseViewer.mockReturnValue(manager());
+    draw();
+    await waitFor(() => expect(document.querySelector('.cpl-src')).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true'));
+    expect(screen.queryByText('＋ 新增賽事')).toBeNull();
+  });
+
+  it('閘門沒過（沒有切換列）：管理者照舊看得到', async () => {
+    slot.open = false;
+    mockUseViewer.mockReturnValue(manager());
+    draw();
+    await waitFor(() => expect(screen.getByText('＋ 新增賽事')).toBeTruthy());
+    expect(document.querySelector('.cpl-src')).toBeNull();
+  });
+});
