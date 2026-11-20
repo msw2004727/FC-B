@@ -378,16 +378,21 @@ describe('閘門結果', () => {
     expect(gateCtl.calls).toBe(1);
   });
 
-  it('有本機快取：快取畫出後的下一個 idle 就開始，不等伺服器', async () => {
+  it('有快取、伺服器還沒回：不得啟動閘門；伺服器回來才啟動（顧問 §3.381）', async () => {
     mockUseViewer.mockReturnValue(viewer(null));
     writeCardsCache(null, CACHED);
+    const cardsReady = deferred<{ docs: Array<{ id: string; data: () => unknown }> }>();
     sdk.getDocs.mockReset();
-    sdk.getDocs.mockReturnValue(new Promise(() => undefined));
+    sdk.getDocs.mockReturnValue(cardsReady.promise);
     gateCtl.getLaunch = () => Promise.resolve({ isPublic: true, bannedWords: [] });
     draw();
     expect(screen.getByText('快取裡的盃賽')).toBeTruthy();
+    await tick(5_000);
+    expect(gateCtl.mounts).toBe(0);
     expect(gateCtl.calls).toBe(0);
-    await tick(1_000);
+    expect(gateAttr()).toBe('pending');
+    cardsReady.resolve({ docs: DOCS.map((doc) => ({ id: doc.id, data: () => doc.data })) });
+    await tick();
     await tick();
     expect(gateCtl.calls).toBe(1);
     expect(gateAttr()).toBe('open');
