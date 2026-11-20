@@ -16,6 +16,7 @@ import { CpEnvProvider, type CpInjectedEnv, type CpPreview } from '@/features/co
 import { loadCompetitionsDict } from '@/features/competitions/i18n';
 import CompetitionDetailPage from '@/features/competitions/pages/CompetitionDetailPage';
 import { createFakeCpRepo } from '@/features/competitions/testing/fake-cp-repo';
+import { taipeiMs } from '@/features/competitions/format';
 import { adultDivision, hostActor, NOW, screenEnv, youthDivision } from '@/features/competitions/testing/screen-fixtures';
 
 const params = new URLSearchParams(location.search);
@@ -31,6 +32,7 @@ export const DELETE_SCREENS = [
   'dialog-error-started',
   'dialog-error-hidden',
   'detail-stuck',
+  'detail-stuck-late',
 ] as const;
 
 const PERSONAL: Partial<CompetitionDoc> = { name: '2027 春季社區足球聯賽', hostType: 'personal', hostTeamId: null, feeNote: null };
@@ -39,7 +41,9 @@ function envOf(screen: string): CpInjectedEnv {
   const base = screenEnv('real-recruit');
   const bundle = base.bundle;
   if (!bundle?.competition) throw new Error('fixture');
-  const stuck = screen === 'detail-stuck';
+  // detail-stuck-late：首場已過、主辦不能續刪（只剩管理員），看到請到首頁信封聯繫站長。
+  const late = screen === 'detail-stuck-late';
+  const stuck = screen === 'detail-stuck' || late;
   const preview: CpPreview = {};
   if (screen === 'dialog-unchecked') preview.deleteDialog = { ack: false };
   if (screen === 'dialog-arming') preview.deleteDialog = { ack: true, armed: false };
@@ -51,6 +55,7 @@ function envOf(screen: string): CpInjectedEnv {
     actor: hostActor,
     repo: createFakeCpRepo(),
     route: { cid: 'cup' },
+    now: late ? taipeiMs(2027, 1, 9, 10, 0) : base.now,
     preview,
     bundle: {
       ...bundle,
@@ -91,9 +96,10 @@ const OPEN: Record<string, () => Promise<void>> = {
   'dialog-unchecked': () => until('確認框', () => hasText('我了解刪除後無法復原')),
   'dialog-arming': () => until('確認框', () => hasText('我了解刪除後無法復原')),
   'dialog-ready': () => until('確認框', () => hasText('我了解刪除後無法復原')),
-  'dialog-error-started': () => until('錯誤', () => hasText('比賽已開始，不能刪除')),
+  'dialog-error-started': () => until('錯誤', () => hasText('比賽已開始，無法刪除')),
   'dialog-error-hidden': () => until('錯誤', () => hasText('這場賽事目前不公開')),
   'detail-stuck': () => until('續刪', () => hasText('繼續刪除')),
+  'detail-stuck-late': () => until('聯繫站長', () => hasText('聯繫站長')),
 };
 
 void start();

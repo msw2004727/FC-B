@@ -15,7 +15,7 @@ import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
 import { canHostOrCo, canManageCompetition, canRegisterClubEntry, canRestoreCompetition, isCpAdmin } from '../access';
-import { canDeleteCompetition } from '../delete-access';
+import { canDeleteCompetition, isPrimaryHostView } from '../delete-access';
 import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import type { CpBundle, CpInjectedEnv } from '../env';
@@ -479,6 +479,19 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     firstMatchAt: competition.firstMatchAt,
     now,
   });
+  // 刪到一半：只留續刪入口與返回，其他主辦操作一律藏起來（後端也會回 COMPETITION_DELETING）。
+  const frozen = deletingAt != null;
+  // 卡住時的說明：能續刪的人按下方；主辦但首場已過（只剩管理員能續刪）請聯絡管理員；共同主辦只看到刪除中。
+  const stuckText = showDelete
+    ? ct('deleteStuck')
+    : isPrimaryHostView({
+      hostType: competition.hostType,
+      hostTeamId: competition.hostTeamId,
+      staffRoles: bundle?.staff?.roles ?? [],
+      repClubIds: clubs.map((club) => club.id),
+    })
+      ? ct('deleteStuckAdmin')
+      : reasonText(ct, 'COMPETITION_DELETING');
   const entries = bundle?.entries ?? [];
   const sameYear = taipeiParts(competition.regOpenAt).year === taipeiParts(competition.regCloseAt).year;
 
@@ -690,7 +703,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     other: ct('reportOther'),
   };
 
-  const manageActions = (
+  const hostButtons = (
     <>
       {error ? <CpError reason={error.reason} params={error.params} /> : null}
       {showRegister ? (
@@ -721,6 +734,12 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           <Button variant="secondary" onClick={() => route(`/competitions/${cid}/my-matches`)}>{ct('myMatches')}</Button>
         </div>
       ) : null}
+    </>
+  );
+
+  const manageActions = (
+    <>
+      {frozen ? null : hostButtons}
       {showDelete ? (
         <DeleteCompetition
           ct={ct}
@@ -749,7 +768,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   return (
     <CpFrame
       title={phase === 'recruit' ? ct('detailTitle') : competition.name}
-      menu={(
+      menu={frozen ? undefined : (
         <>
           <button
             type="button"
@@ -779,7 +798,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {competition.hidden && deletingAt == null ? <HiddenNotice ct={ct} reason={competition.hiddenReason} /> : null}
       {/* 刪到一半：後端也寫了 hidden，但不是管理員下架。能續刪的人看到續刪提示，其他人（共同主辦）只看到刪除中。 */}
       {deletingAt != null ? (
-        <p class="cpa-hidden" role="status">{showDelete ? ct('deleteStuck') : reasonText(ct, 'COMPETITION_DELETING')}</p>
+        <p class="cpa-hidden" role="status" style="white-space:pre-line">{stuckText}</p>
       ) : null}
       <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
       {showHostEnd ? (
@@ -787,7 +806,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           <p class="cpm-ended">{ct(competition.endedBy === 'auto' ? 'endedAutoLine' : 'endedLine', { date: formatTaipeiDate(competition.endedAt ?? now) })}</p>
           {competition.endReason ? <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{competition.endReason}</p> : null}
           {hasPendingTie(standings) ? <p class="cpm-hint">{ct('endTieHint')}</p> : null}
-          {allowRestore ? (
+          {allowRestore && !frozen ? (
             <div class="cpm-endact">
               <Button variant="secondary" disabled={busy} onClick={() => { setRestoreReason(''); setRestoreMessage(null); setRestoreOpen(true); }}>
                 {ct('restore')}
@@ -834,7 +853,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         notices={competition.notices}
         contactNote={competition.contactNote}
         hostName={hostName(competition, env)}
-        hostOps={hostOps}
+        hostOps={hostOps && !frozen}
         busy={busy}
         clubTeamId={competition.hostType === 'club' ? competition.hostTeamId : null}
         onOpenClub={openClub}
@@ -927,7 +946,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                 docs={docs}
                 crests={entries}
                 divisions={divisions}
-                canHost={hostOps}
+                canHost={hostOps && !frozen}
                 cid={cid}
                 actions={env.actions}
                 summary={fullSchedule ?? summary}
@@ -944,7 +963,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         </>
       )}
 
-      {isAdmin ? (
+      {isAdmin && !frozen ? (
         <AdminPanel
           ct={ct}
           cid={cid}

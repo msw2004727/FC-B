@@ -211,6 +211,26 @@ describe('確認框', () => {
     expect(deleteCompetition).toHaveBeenCalledWith({ cid: 'cup' });
   });
 
+  it('勾掉再勾回時，就算倒數狀態還是可按，0.6 秒內送出也會被時間戳擋下', async () => {
+    const deleteCompetition = vi.fn(async ({ cid }: { cid: string }) => ({ cid, deleted: true as const }));
+    draw(env({ actor: adminActor, actions: { ...idleActions(), deleteCompetition } }));
+    await screen.findByText('示範盃');
+    await openAndArm();
+    const t0 = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(t0);
+    fireEvent.click(screen.getByLabelText('我了解刪除後無法復原'));
+    fireEvent.click(screen.getByLabelText('我了解刪除後無法復原'));
+    // 計時器照真實時間跑完、倒數狀態變回可按，但 Date.now 停在剛勾回的那一刻。
+    await new Promise((resolve) => setTimeout(resolve, DELETE_ARM_MS + 150));
+    expect(confirmButton().getAttribute('data-delete-armed')).toBe('true');
+    fireEvent.click(confirmButton());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(deleteCompetition).not.toHaveBeenCalled();
+    clock.mockReturnValue(t0 + DELETE_ARM_MS);
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(deleteCompetition).toHaveBeenCalledTimes(1));
+  });
+
   it('取消勾選後重新計時', async () => {
     draw(env({ actor: adminActor }));
     await screen.findByText('示範盃');
@@ -265,7 +285,7 @@ describe('刪除成功', () => {
 
 describe('錯誤文字', () => {
   const cases: Array<[string, string]> = [
-    ['DELETE_AFTER_START', '比賽已開始，不能刪除；請改用結束賽事'],
+    ['DELETE_AFTER_START', '比賽已開始，無法刪除；\n要刪除請到首頁右下角按信封聯繫站長'],
     ['COMPETITION_HIDDEN', '這場賽事目前不公開'],
     ['NOT_PRIMARY_HOST', '只有主要主辦可以做這個操作'],
     ['DELETE_FAILED', '刪除沒有完成，請再試一次'],
@@ -304,7 +324,7 @@ describe('刪到一半（deletingAt）', () => {
     expect(findButton('刪除賽事')).toBeUndefined();
   });
 
-  it('共同主辦只看到刪除中，沒有按鈕；首場後主辦也只看到刪除中、管理員仍可續刪', async () => {
+  it('共同主辦只看到刪除中，沒有按鈕；首場後主辦看到請按首頁信封聯繫站長、管理員仍可續刪', async () => {
     draw(env({ actor: coHostActor, staff: ['coHost'], comp: { ...PERSONAL, ...STUCK } }));
     await screen.findByText('示範盃');
     expect(document.body.textContent).toContain('這場賽事正在刪除中');
@@ -312,11 +332,30 @@ describe('刪到一半（deletingAt）', () => {
     cleanup();
     draw(env({ actor: hostActor, staff: ['host'], comp: { ...PERSONAL, ...STUCK }, now: LIVE }));
     await screen.findAllByText('示範盃');
-    expect(document.body.textContent).toContain('這場賽事正在刪除中');
+    expect(document.body.textContent).toContain('刪除沒有完成，\n請到首頁右下角按信封聯繫站長');
+    expect(document.body.textContent).not.toContain('這場賽事正在刪除中');
     expect(findButton('繼續刪除')).toBeUndefined();
+    cleanup();
+    draw(env({ actor: clubRepActor, comp: { ...STUCK }, now: LIVE }));
+    await screen.findAllByText('示範盃');
+    expect(document.body.textContent).toContain('刪除沒有完成，\n請到首頁右下角按信封聯繫站長');
     cleanup();
     draw(env({ actor: adminActor, comp: STUCK, now: LIVE }));
     await screen.findAllByText('示範盃');
+    expect(findButton('繼續刪除')).toBeTruthy();
+  });
+
+  it('刪到一半時其他主辦操作全部藏起來，只留續刪；更多選單也不出現', async () => {
+    draw(env({ actor: hostActor, staff: ['host'], comp: { ...PERSONAL, ...STUCK } }));
+    await screen.findByText('示範盃');
+    for (const name of ['報隊管理', '排賽程', '賽程管理', '發布公告', '發布']) expect(findButton(name)).toBeUndefined();
+    expect(screen.queryByLabelText('更多')).toBeNull();
+    expect(findButton('繼續刪除')).toBeTruthy();
+    cleanup();
+    draw(env({ actor: adminActor, comp: STUCK }));
+    await screen.findByText('示範盃');
+    expect(document.querySelector('[data-admin-panel]')).toBeNull();
+    expect(findButton('報隊管理')).toBeUndefined();
     expect(findButton('繼續刪除')).toBeTruthy();
   });
 
