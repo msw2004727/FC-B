@@ -1,9 +1,9 @@
 // useScoring：訂閱記分工作階段。預設依賴只在 effect 裡接上，測試可整包注入。
 
 import { useEffect, useState } from 'preact/hooks';
-import { LIVE_COPY } from './copy';
 import { IndexedDbActionLog, openScoringDatabase, type ActionLog } from './data/action-log';
 import { createFirestoreBackend, type ScoringBackend } from './data/live-repo';
+import { isOfflineError } from './data/sender';
 import { createScoringSession, loadingView, type ScoringSession, type ScoringView, type SessionOptions } from './data/session';
 import { idbSidStore, type SidStore } from './data/sid';
 import type { LockManager, TabChannel } from './data/tab-lock';
@@ -108,85 +108,186 @@ async function defaultBackend(cid: string, mtId: string, uid: string): Promise<S
   return createFirestoreBackend(db, cid, mtId, uid);
 }
 
-function failedView(): ScoringView {
-  return {
-    ...loadingView(),
-    loading: false,
-    storage: 'unavailable',
-    storageHint: LIVE_COPY.offlineUnstored,
-  };
+/**
+ * 進場失敗的種類。network＝網路類（unavailable、deadline-exceeded、client is offline），會自動重試；
+ * error＝其他錯誤，只給重試鈕。讀取成功但沒有指派不算失敗（由記分頁顯示「沒有記分權限」）。
+ */
+export type ScoringLoadError = 'network' | 'error';
+
+/** 記分頁看到的狀態：工作階段畫面，進場失敗時另帶失敗種類與重試。 */
+export type ScoringScreenView = ScoringView & {
+  loadError?: ScoringLoadError;
+  retry?: () => void;
+};
+
+/** 網路類失敗的自動重試間隔：5、10、20 秒，之後每 30 秒。 */
+export const BOOT_RETRY_MS: readonly number[] = [5_000, 10_000, 20_000, 30_000];
+
+export function isNetworkBootError(err: unknown): boolean {
+  if (isOfflineError(err)) return true;
+  const message = err && typeof err === 'object' && 'message' in err ? String((err as { message?: unknown }).message) : '';
+  return /client is offline/i.test(message);
 }
 
-/** 記分資料層。deps 只在這場 cid／mtId 生效時讀一次，避免每輪 render 重開工作階段。 */
-export function useScoring(cid: string, mtId: string, deps?: ScoringDeps): ScoringView {
-  const [view, setView] = useState<ScoringView>(loadingView());
+/**
+ * 記分資料層。deps 只在這場 cid／mtId 生效時讀一次，避免每輪 render 重開工作階段。
+ * 進場（開工作階段）丟錯時不再當成沒有權限（G-06，取代原本一律 failedView：staff 空陣列被判成無權限、永不重試）。
+ * 重試鈕、online、回到前景、退避計時器共用同一道門，同時只有一個進場；成功後全部停止。
+ */
+export function useScoring(cid: string, mtId: string, deps?: ScoringDeps): ScoringScreenView {
+  const [view, setView] = useState<ScoringScreenView>(loadingView());
 
   useEffect(() => {
     const snap = deps;
     let stopped = false;
     let session: ScoringSession | null = null;
+    let booting = false;
+    let uid: string | null = snap?.uid ?? null;
+    let lastError: ScoringLoadError | null = null;
+    let attempt = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let backend: ScoringBackend | null = snap?.backend ?? null;
+    let storage: Promise<{ log?: ActionLog; sids?: SidStore }> | null = null;
     let unsub = () => {};
     let unauth = () => {};
+    let unwatchOnline = () => {};
+    let unwatchVisible = () => {};
+    const isVisible = snap?.visible ?? browserVisible;
+    const watchOnline = snap && 'watchOnline' in snap ? snap.watchOnline : browserWatchOnline;
+    const watchVisible = snap && 'watchVisible' in snap ? snap.watchVisible : browserWatchVisible;
 
-    const boot = async (uid: string) => {
-      if (stopped || session) return;
+    const clearTimer = () => {
+      if (retryTimer != null) clearTimeout(retryTimer);
+      retryTimer = null;
+    };
+    const unwatch = () => {
+      unwatchOnline();
+      unwatchVisible();
+      unwatchOnline = () => {};
+      unwatchVisible = () => {};
+    };
+    const retry = () => { void tryBoot(); };
+    const showError = (kind: ScoringLoadError) => {
+      setView({ ...loadingView(), loading: false, loadError: kind, retry });
+    };
+    /** 只有網路類失敗、而且頁面看得到才排下一次；藏起來就停，回到前景再由 visibilitychange 觸發。 */
+    const schedule = () => {
+      clearTimer();
+      if (stopped || session || lastError !== 'network' || !isVisible()) return;
+      const wait = BOOT_RETRY_MS[Math.min(attempt, BOOT_RETRY_MS.length - 1)];
+      attempt += 1;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        void tryBoot();
+      }, wait);
+    };
+    const autoRetry = () => {
+      if (lastError !== 'network') return;
+      if (isVisible()) void tryBoot();
+      else clearTimer();
+    };
+
+    const boot = async (who: string): Promise<void> => {
+      let created: ScoringSession | null = null;
       try {
-        const backend = snap?.backend ?? await defaultBackend(cid, mtId, uid);
+        backend = backend ?? await defaultBackend(cid, mtId, who);
         if (stopped) return;
-        const storage = await resolveStorage(snap);
+        storage = storage ?? resolveStorage(snap);
+        const opened = await storage;
         if (stopped) return;
         const locks = snap && 'locks' in snap ? (snap.locks ?? null) : browserLocks();
         const channel = locks
           ? null
           : (snap && 'channel' in snap ? (snap.channel ?? null) : browserChannel(cid, mtId));
-        const created = createScoringSession({
+        created = createScoringSession({
           cid,
           mtId,
-          uid,
+          uid: who,
           backend,
-          log: storage.log,
-          sids: storage.sids,
+          log: opened.log,
+          sids: opened.sids,
           now: snap?.now,
           randomBytes: snap?.randomBytes,
           online: snap?.online ?? browserOnline,
-          watchOnline: snap && 'watchOnline' in snap ? snap.watchOnline : browserWatchOnline,
-          visible: snap?.visible ?? browserVisible,
-          watchVisible: snap && 'watchVisible' in snap ? snap.watchVisible : browserWatchVisible,
+          watchOnline,
+          visible: isVisible,
+          watchVisible,
           locks,
           channel,
           wakeRequest: snap && 'wakeRequest' in snap ? (snap.wakeRequest ?? null) : browserWake(),
           tick: snap?.tick,
         });
-        session = created;
-        unsub = created.subscribe((next) => {
-          if (!stopped) setView(next);
+        const current = created;
+        session = current;
+        unsub = current.subscribe((next) => {
+          if (!stopped && session === current) setView(next);
         });
-        await created.start();
+        await current.start();
         if (stopped) {
-          created.stop();
+          current.stop();
           return;
         }
-        setView(created.getState());
-      } catch {
-        if (!stopped) setView(failedView());
+        lastError = null;
+        clearTimer();
+        unwatch();
+        setView(current.getState());
+      } catch (err) {
+        // 失敗的工作階段整個收掉（放掉分頁鎖、取消訂閱），下次重新開。open 失敗時佇列還沒開始送。
+        if (created) {
+          unsub();
+          unsub = () => {};
+          created.stop();
+          if (session === created) session = null;
+        }
+        if (stopped) return;
+        lastError = isNetworkBootError(err) ? 'network' : 'error';
+        showError(lastError);
+        schedule();
       }
     };
 
-    if (snap?.uid) {
-      void boot(snap.uid);
-    } else {
+    /** 唯一的進場門：同時只有一個 boot，成功後不再進場。 */
+    async function tryBoot(): Promise<void> {
+      if (stopped || session || booting) return;
+      if (!uid) {
+        if (lastError) startAuth();
+        return;
+      }
+      booting = true;
+      clearTimer();
+      try {
+        await boot(uid);
+      } finally {
+        booting = false;
+      }
+    }
+
+    function startAuth(): void {
+      unauth();
+      unauth = () => {};
       void import('@/data/auth').then((mod) => {
         if (stopped) return;
         unauth = mod.onAuthChanged((user) => {
-          if (user?.uid) void boot(user.uid);
+          if (!user?.uid) return;
+          uid = user.uid;
+          void tryBoot();
         });
       }).catch(() => {
-        if (!stopped) setView(failedView());
+        if (stopped) return;
+        lastError = 'error';
+        showError('error');
       });
     }
 
+    unwatchOnline = watchOnline?.((next) => { if (next) autoRetry(); }) ?? (() => {});
+    unwatchVisible = watchVisible?.(() => autoRetry()) ?? (() => {});
+    if (uid) void tryBoot();
+    else startAuth();
+
     return () => {
       stopped = true;
+      clearTimer();
+      unwatch();
       unauth();
       unsub();
       session?.stop();

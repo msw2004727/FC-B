@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getCurrentLocale } from '@/i18n/i18n';
@@ -242,6 +242,232 @@ describe('正式記分頁權限', () => {
     draw(host.deps);
     expect(await screen.findByRole('button', { name: '開賽' })).toBeTruthy();
     expect(screen.queryByText(LIVE_COPY.assignScorerHint)).toBeNull();
+  });
+});
+
+describe('G-06 進場失敗不是沒有權限', () => {
+  const LIVE_MATCH: Partial<ServerMatch> = {
+    status: 'live',
+    rev: 1,
+    clockBase: { startedAt: NOW - 60_000, pausedSec: 0, running: true, period: 'h1' },
+  };
+
+  function offline(): Error {
+    return Object.assign(new Error('Failed to get document because the client is offline.'), {
+      code: 'unavailable',
+      name: 'FirebaseError',
+    });
+  }
+
+  function denied(): Error {
+    return Object.assign(new Error('Missing or insufficient permissions.'), {
+      code: 'permission-denied',
+      name: 'FirebaseError',
+    });
+  }
+
+  /** 前 fails 次 open 丟 err，之後照常。gate 不為 null 時成功那次等 gate 放行。 */
+  function flaky(target: ScoringDeps, fails: number, err: () => Error, gate: Promise<void> | null = null) {
+    const real = target.backend!.open.bind(target.backend!);
+    const open = vi.fn(async (...args: Parameters<ScoringBackend['open']>) => {
+      if (open.mock.calls.length <= fails) throw err();
+      if (gate) await gate;
+      return real(...args);
+    });
+    target.backend!.open = open;
+    return open;
+  }
+
+  /** 讓 promise 與 0 毫秒計時器跑完（假時鐘下不能用 findBy）。 */
+  async function settle(ms = 0): Promise<void> {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+    for (let index = 0; index < 5; index += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    }
+  }
+
+  function withWatchers(target: ScoringDeps, visible: { value: boolean }) {
+    const fire: { online: Array<(next: boolean) => void>; visible: Array<() => void> } = { online: [], visible: [] };
+    target.visible = () => visible.value;
+    target.watchOnline = (cb) => {
+      fire.online.push(cb);
+      return () => { fire.online = fire.online.filter((item) => item !== cb); };
+    };
+    target.watchVisible = (cb) => {
+      fire.visible.push(cb);
+      return () => { fire.visible = fire.visible.filter((item) => item !== cb); };
+    };
+    return fire;
+  }
+
+  async function pendingLog(): Promise<MemoryActionLog> {
+    const log = new MemoryActionLog();
+    for (const [op, side] of [['g06-pend-goal-000001', 'away'], ['g06-pend-goal-000002', 'away']] as const) {
+      await log.put({
+        op, cid: CID, mtId: MT, uid: UID, sid: SID, kind: 'goal', state: 'pending',
+        createdAt: NOW - 5_000, attempts: 0, baseResetRev: 0,
+        intent: { kind: 'goal', side, goalKind: 'normal', matchSecond: 400 },
+      });
+    }
+    return log;
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('網路類失敗顯示讀取失敗與重試，不是沒有權限；5 秒後自動重試成功並送出佇列一次', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const log = await pendingLog();
+    const made = await deps({ match: LIVE_MATCH, log });
+    const open = flaky(made.deps, 1, offline);
+    draw(made.deps);
+    await settle();
+    expect(screen.getByText(LIVE_COPY.loadFailedAuto)).toBeTruthy();
+    expect(screen.getByRole('button', { name: LIVE_COPY.retry })).toBeTruthy();
+    expect(screen.queryByText(LIVE_COPY.noScorePermission)).toBeNull();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(made.plans).toHaveLength(0);
+    await settle(4_999);
+    expect(open).toHaveBeenCalledTimes(1);
+    await settle(1);
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(LIVE_COPY.loadFailedAuto)).toBeNull();
+    expect(screen.queryByText(LIVE_COPY.noScorePermission)).toBeNull();
+    expect(made.plans.map((plan) => plan.op)).toEqual(['g06-pend-goal-000001', 'g06-pend-goal-000002']);
+    // 成功後不再進場。
+    await settle(120_000);
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(made.plans).toHaveLength(2);
+  });
+
+  it('退避 5／10／20 秒，之後每 30 秒', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const made = await deps({ match: LIVE_MATCH });
+    const open = flaky(made.deps, 99, offline);
+    draw(made.deps);
+    await settle();
+    const marks: number[] = [];
+    for (const wait of [5_000, 10_000, 20_000, 30_000, 30_000]) {
+      await settle(wait - 1);
+      marks.push(open.mock.calls.length);
+      await settle(1);
+    }
+    expect(marks).toEqual([1, 2, 3, 4, 5]);
+    expect(open).toHaveBeenCalledTimes(6);
+  });
+
+  it('其他錯誤只給重試鈕，不自動重試；按重試才再進場', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const made = await deps({ match: LIVE_MATCH });
+    const visible = { value: true };
+    const fire = withWatchers(made.deps, visible);
+    const open = flaky(made.deps, 1, denied);
+    draw(made.deps);
+    await settle();
+    expect(screen.getByText(LIVE_COPY.loadFailed)).toBeTruthy();
+    expect(screen.queryByText(LIVE_COPY.loadFailedAuto)).toBeNull();
+    expect(screen.queryByText(LIVE_COPY.noScorePermission)).toBeNull();
+    await settle(300_000);
+    for (const cb of [...fire.online]) cb(true);
+    for (const cb of [...fire.visible]) cb();
+    await settle();
+    expect(open).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.retry }));
+    await settle();
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(LIVE_COPY.loadFailed)).toBeNull();
+  });
+
+  it('讀取成功但沒有指派：沒有記分權限，不重試', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const made = await deps({ match: LIVE_MATCH, staffRoles: [], matchIds: [] });
+    const visible = { value: true };
+    const fire = withWatchers(made.deps, visible);
+    const open = flaky(made.deps, 0, offline);
+    draw(made.deps);
+    await settle();
+    expect(screen.getByText(LIVE_COPY.noScorePermission)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: LIVE_COPY.retry })).toBeNull();
+    for (const cb of [...fire.online]) cb(true);
+    for (const cb of [...fire.visible]) cb();
+    await settle(300_000);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it('重試鈕、online、回到前景、計時器同時觸發，只進場一次、佇列只送一次', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const log = await pendingLog();
+    const made = await deps({ match: LIVE_MATCH, log });
+    const visible = { value: true };
+    const fire = withWatchers(made.deps, visible);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const open = flaky(made.deps, 1, offline, gate);
+    draw(made.deps);
+    await settle();
+    expect(screen.getByText(LIVE_COPY.loadFailedAuto)).toBeTruthy();
+    // 第二次進場卡在 gate：期間其他來源一起觸發。
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.retry }));
+    for (const cb of [...fire.online]) cb(true);
+    for (const cb of [...fire.visible]) cb();
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.retry }));
+    await settle(5_000);
+    for (const cb of [...fire.online]) cb(true);
+    await settle();
+    expect(open).toHaveBeenCalledTimes(2);
+    release();
+    await settle();
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(made.plans.map((plan) => plan.op)).toEqual(['g06-pend-goal-000001', 'g06-pend-goal-000002']);
+    // 成功後監聽已解除。
+    expect(fire.online.length + fire.visible.length).toBeLessThanOrEqual(2);
+    for (const cb of [...fire.online]) cb(true);
+    for (const cb of [...fire.visible]) cb();
+    await settle(120_000);
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(made.plans).toHaveLength(2);
+  });
+
+  it('頁面藏起來不排重試，回到前景才進場', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const made = await deps({ match: LIVE_MATCH });
+    const visible = { value: false };
+    const fire = withWatchers(made.deps, visible);
+    const open = flaky(made.deps, 1, offline);
+    draw(made.deps);
+    await settle();
+    expect(screen.getByText(LIVE_COPY.loadFailedAuto)).toBeTruthy();
+    await settle(120_000);
+    expect(open).toHaveBeenCalledTimes(1);
+    for (const cb of [...fire.online]) cb(true);
+    await settle();
+    expect(open).toHaveBeenCalledTimes(1);
+    visible.value = true;
+    for (const cb of [...fire.visible]) cb();
+    await settle();
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(LIVE_COPY.loadFailedAuto)).toBeNull();
+  });
+
+  it('離開頁面清掉計時器與監聽', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const made = await deps({ match: LIVE_MATCH });
+    const visible = { value: true };
+    const fire = withWatchers(made.deps, visible);
+    const open = flaky(made.deps, 99, offline);
+    draw(made.deps);
+    await settle();
+    expect(open).toHaveBeenCalledTimes(1);
+    cleanup();
+    expect(fire.online).toHaveLength(0);
+    expect(fire.visible).toHaveLength(0);
+    await settle(300_000);
+    expect(open).toHaveBeenCalledTimes(1);
   });
 });
 
