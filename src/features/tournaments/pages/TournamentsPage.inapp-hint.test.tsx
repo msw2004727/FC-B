@@ -8,7 +8,7 @@ import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import zhTw from '../locales/zh-TW.json';
-import TournamentsPage, { COMPETITIONS_GATE_TIMEOUT_MS, COMPETITIONS_PREFER_IN_CAP_MS } from './TournamentsPage';
+import TournamentsPage, { COMPETITIONS_GATE_TIMEOUT_MS, COMPETITIONS_PREFER_IN_CAP_MS, TOURNAMENTS_LOAD_TIMEOUT_MS } from './TournamentsPage';
 import { resetCardsCacheForTest } from '../data/cards-cache';
 import { CP_INAPP_HINT_KEY } from '../inapp-hint';
 
@@ -392,6 +392,24 @@ describe('有線索：先畫站內', () => {
 
 // 單一上限（顧問 11-20 退修）：從進頁起算，涵蓋「閘門定案＋站內清單讀好」；取代閘門 2 秒逾時與通過後另計 8 秒（Opus 審 P2-2）。
 describe('有線索：從進頁起算的單一上限', () => {
+  // 顧問 11-20 上限裁定：12 秒，不與外部清單的 8 秒共用。
+  it('上限是 12 秒，與外部清單的 8 秒是不同常數', () => {
+    expect(COMPETITIONS_PREFER_IN_CAP_MS).toBe(12_000);
+    expect(COMPETITIONS_PREFER_IN_CAP_MS).not.toBe(TOURNAMENTS_LOAD_TIMEOUT_MS);
+  });
+
+  it('冷開閘門 10 秒才通過（超過外部清單的 8 秒）：仍直接落在站內，外部清單不出現', async () => {
+    seed();
+    draw();
+    await tick(TOURNAMENTS_LOAD_TIMEOUT_MS + 500);
+    expect(pendingSkeleton()).toBeTruthy();
+    expect(extCard()).toBeNull();
+    await tick(1_500);
+    await report(true);
+    expect(inApp()).toBeTruthy();
+    expect(extCard()).toBeNull();
+  });
+
   it('外部清單不回應：閘門照樣進頁就開始，骨架留到上限前都在，外部只讀一次', async () => {
     seed();
     sdk.getDocs.mockReturnValue(new Promise(() => undefined));
