@@ -313,7 +313,17 @@
 .cps-root .ui-textarea [data-field-error],
 .d2-panel .ui-input [data-field-error],
 .d2-panel .ui-select [data-field-error],
-.d2-panel .ui-textarea [data-field-error] { color: var(--d2-danger); }
+.d2-panel .ui-textarea [data-field-error] { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-danger); }
+/* 錯誤訊息前的紅底驚嘆號圓點（第 4 批 3.10；偽元素畫，報讀與 textContent 不含它） */
+.cps-root .ui-input [data-field-error]::before,
+.cps-root .ui-select [data-field-error]::before,
+.cps-root .ui-textarea [data-field-error]::before,
+.d2-panel .ui-input [data-field-error]::before,
+.d2-panel .ui-select [data-field-error]::before,
+.d2-panel .ui-textarea [data-field-error]::before {
+  content: '!'; content: '!' / ''; flex: 0 0 auto; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%;
+  background: var(--d2-danger); color: var(--d2-field-bg); font-size: 12px; line-height: 16px; font-weight: 700; text-align: center;
+}
 .cps-root .ui-radio-group__options,
 .d2-panel .ui-radio-group__options { flex-direction: row; flex-wrap: wrap; gap: 0 8px; }
 .cps-root .ui-radio__label,
@@ -553,11 +563,11 @@
 .cps-row dd { margin: 0; min-width: 0; font-size: var(--font-size-body-sm); line-height: var(--line-height-body); }
 .cps-row dd .cps-line { display: block; white-space: nowrap; }
 
-.cps-steps { display: flex; gap: 6px; margin: 0 0 var(--space-2); }
-.cps-steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--color-border); }
-.cps-steps i.on { background: var(--color-brand); }
-.cps-stepname { display: flex; justify-content: space-between; margin-bottom: var(--space-3); font-size: var(--font-size-body-sm); color: var(--color-text-secondary); white-space: nowrap; }
-.cps-stepname b { color: var(--color-text-primary); font-weight: 600; }
+/* 建立賽事兩層頁首的第二層（卡 4-E）：這一步的名稱當大標，下面三段進度條（到過的青綠）；「步驟 N／3」在頁首右側槽 .cph-stepno */
+.cps-steps { display: flex; gap: 4px; margin-top: 6px; }
+.cps-steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--d2-line-strong); }
+.cps-steps i.on { background: var(--d2-accent); }
+.cps-stepname b { display: block; font-size: 19px; line-height: 28px; font-weight: 700; color: var(--d2-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .cps-list { list-style: none; margin: 0; padding: 0; }
 .cps-li { display: flex; align-items: center; gap: var(--space-3); padding: 10px 0; border-top: 1px solid var(--color-border-subtle); min-width: 0; }
@@ -567,7 +577,7 @@
 .cps-li > .cps-li__tag { flex: 0 0 auto; white-space: nowrap; } /* 顧問 §3.463：詳情頁隊伍清單標籤不縮不換行，隊名（.cps-li__main min-width:0）讓位省略 */
 .cps-li__name { display: block; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cps-li__meta { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin-top: 2px; }
-.cps-li__meta .cps-cap { white-space: nowrap; }
+.cps-li__meta .cps-cap { font-size: 13px; line-height: 20px; color: var(--d2-text-2); white-space: nowrap; }
 .cps-num {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%;
   background: var(--color-brand-soft-bg); color: var(--color-brand-soft-fg); font-size: var(--font-size-body); font-weight: 700;
@@ -604,7 +614,9 @@
   font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm);
 }
 .cps-success { text-align: center; padding: var(--space-6) var(--space-4); }
-.cps-success svg { width: 44px; height: 44px; fill: none; stroke: var(--color-success); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cps-success svg { width: 44px; height: 44px; fill: none; stroke: var(--d2-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* 完成頁的賽事名稱（使用者取的）：最多兩行、超過才省略 */
+.cps-success__name { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .cps-pre { white-space: pre-line; }
 .cps-link { color: inherit; font-weight: 600; white-space: nowrap; }
 .cps-inapp { margin: 0 0 var(--space-4); }
@@ -655,6 +667,7 @@
 /* 細線分列（詳情線定名 .d2-lines／.d2-lines--48，1b-3 落地）：這裡只為截圖先給樣子，1b-3 合併時刪這兩條。 */
 .d2-lines > * { min-height: 44px; }
 .d2-lines > * + * { border-top: 1px solid var(--d2-line); }
+.d2-lines--48 > * { min-height: 48px; }
 
 /* 矮板（第 4 批；記分板共用元件的一個尺寸）：一列數字格、板高 44（內距 10＋列高 24＋10）；外框交給 .d2-hero、不亮燈 */
 .d2-sb--row { --sb-pad: 10px 14px; --sb-radius: 11px; }
@@ -691,6 +704,9 @@
 .cph-switch .ui-switch__button { display: flex; flex-wrap: nowrap; justify-content: space-between; width: 100%; }
 .cph-switch .ui-switch__label { font-size: 13px; line-height: 20px; color: var(--d2-text-2); white-space: nowrap; }
 .cph-switch .ui-switch__state { display: none; }
+.cph-switch { display: flex; align-items: center; }
+/* 兩顆並排裡窄的那一顆（建立賽事「上一步」） */
+.cph-split > .cph-narrow { flex: 0 0 auto; min-inline-size: 104px; }
 
 /* 報隊管理（卡 4-A）：頁首那一片下半的三個文字入口；放不下整顆掉到下一列 */
 .cph-doors { display: flex; flex-wrap: wrap; align-items: center; gap: 0 20px; min-height: 44px; padding: 0 14px; }
@@ -715,6 +731,26 @@
 .cph-decide { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0 6px; border-top: 1px solid var(--d2-line); }
 .cph-decide .ui-button { flex: 0 0 auto; min-inline-size: 88px; }
 .cph-decide .ui-button--primary { min-inline-size: 168px; }
+
+/* 建立賽事（卡 4-E） */
+.cph-stepno { flex: 0 0 auto; margin-left: auto; font-size: 13px; line-height: 20px; font-weight: 400; color: var(--d2-text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cps-head-row > .cp3-sec-h { margin: 0; }
+/* 欄位下的說明小字緊貼上面那一格（約 2px） */
+.cph-hint { margin: 2px 0 0; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
+.cps-fields > .cph-hint { margin-top: calc(2px - var(--space-4)); }
+/* 場地名稱那一格撐滿、垃圾桶在右；垃圾桶 44×44，圖示右緣對齊卡片內容 */
+.cph-venue { align-items: flex-end; }
+.cph-venue > .ui-input { flex: 1 1 auto; min-width: 0; }
+.cph-trash { width: 44px; height: 44px; margin: -10px -13px -10px 0; }
+.cph-venue > .cph-trash { margin-top: 0; margin-bottom: 0; }
+/* 場上人數：五格等寬一列 */
+.cph-five { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.cph-five .ui-chip__select { flex: 1 1 auto; justify-content: center; padding-inline: 0; }
+.cph-five .ui-chip__label { white-space: nowrap; }
+/* 步驟 2 的等高列：左標籤 15／24、右邊加減器或開關 */
+.cph-ctl .ui-stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cph-ctl .ui-stepper > div:not(.ui-stepper__controls) { font-size: 15px; line-height: 24px; font-weight: 400; color: var(--d2-text); white-space: nowrap; }
+.cph-ctl .cph-switch .ui-switch__label { font-size: 15px; line-height: 24px; color: var(--d2-text); }
 
 /* 第 3 步詳情：class 對照預覽 harness 的 cp3-*。字級只用字級 token。
  * 隊徽底色與分類漸層用 category-tokens，不在這裡重抄色值。 */
