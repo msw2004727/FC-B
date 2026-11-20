@@ -21,7 +21,6 @@ const COV = [
   ['cp-k1112', 'detail-admin-reports-loading', '', '.cpa-panel'],
   ['cp-k1112', 'detail-admin-reports-empty', '', '.cpa-panel'],
   ['cp-k1112', 'detail-admin-reports-error', '', '.cpa-panel'],
-  ['cp-step4a', 'score-timeout-over', '&frame=shell', null],
   ['cp-step4-u2', 'u2-timeout-done', '&frame=shell', null],
   ['cp-step4-u2', 'u2-menu-disabled', '&frame=shell', null],
   ['cp-step4-u2', 'u2-pre-disabled', '&frame=shell', null],

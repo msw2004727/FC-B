@@ -180,7 +180,7 @@ export function timeoutClock(leftSec: number): string {
 
 /** 選隊鈕，例「雷霆隊 剩 1 次」。 */
 export function timeoutTeamChoice(team: string, left: number): string {
-  return `${team} 剩 ${left} 次`;
+  return `${team} ${timeoutLeftText(left)}`;
 }
 
 export function pkScoreLabel(home: number, away: number): string {
@@ -203,4 +203,9 @@ export function restedFor(clock: string): string {
 /** 復原、重新套用、捨棄的無障礙名稱，帶上那一筆的內容。 */
 export function withEvent(action: string, detail: string): string {
   return `${action} ${detail}`;
+}
+
+/** 球隊暫停選隊鈕的第二行「剩 1 次」（選隊鈕一律兩行：隊名、剩幾次）。 */
+export function timeoutLeftText(left: number): string {
+  return `剩 ${left} 次`;
 }

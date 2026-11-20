@@ -144,8 +144,9 @@ describe('第 4 步預覽假資料一致性', () => {
   // 新外觀卡 3-5（顧問 §3.466）：LiveDetailList 與它的示範畫面 live-detail、假資料 S4_DETAIL_ROWS 已刪，畫面清單 23→22
   it('U0a 畫面清單不重複', () => {
     expect(new Set(S4A_SCREENS).size).toBe(S4A_SCREENS.length);
-    // 設計總監 04:20 補 score-timeout-over：23 → 24；公開內頁線刪 LiveDetailList 拿掉 live-detail：24 → 23。
-    expect(S4A_SCREENS).toHaveLength(23);
+    // 設計總監 04:20 補 score-timeout-over：23 → 24；公開內頁線刪 LiveDetailList 拿掉 live-detail：24 → 23；
+    // 顧問 §3.498 刪暫停條「已超過規則次數」與示範狀態 score-timeout-over：23 → 22。
+    expect(S4A_SCREENS).toHaveLength(22);
     expect(S4A_SCREENS).toEqual(expect.arrayContaining([
       'score-paused',
       'score-amend',

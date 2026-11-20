@@ -880,7 +880,8 @@ describe('第 4 步預覽元件', () => {
     expect(button('雷霆隊 剩 0 次').disabled).toBe(false);
     fireEvent.click(button('雷霆隊 剩 0 次'));
     expect(screen.getByText('雷霆隊暫停 1:00')).toBeTruthy();
-    expect(screen.getByText('已超過規則次數（由主辦現場判斷）')).toBeTruthy();
+    // 顧問 §3.498：暫停條不再多「已超過規則次數」那一行（選隊面板裡那一句照舊，見上面）
+    expect(screen.queryByText('已超過規則次數（由主辦現場判斷）')).toBeNull();
     cleanup();
 
     const again = pad(S4_SCENE_LIVE);
