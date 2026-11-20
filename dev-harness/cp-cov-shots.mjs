@@ -40,10 +40,16 @@ const FIX = [
   ['cp-step3-real', 'real-notice-long', '&frame=shell', '.cpm-ann'],
   ['cp-step3-real', 'real-crest-live', '&frame=shell', '.cp3-ml'],
 ];
-const SHOTS = FLAGS.set === 'fix' ? FIX : COV;
+// 設計總監 05:08：客隊喊暫停（展開、收合），對照主隊 u2-timeout-stop；360 用 360×640（記分頁量測尺寸）。
+const AWAY = [
+  ['cp-step4-u2', 'u2-timeout-away', '&frame=shell', null],
+  ['cp-step4-u2', 'u2-timeout-away-collapsed', '&frame=shell', null],
+  ['cp-step4-u2', 'u2-timeout-stop', '&frame=shell', null],
+];
+const SHOTS = FLAGS.set === 'fix' ? FIX : FLAGS.set === 'away' ? AWAY : COV;
 // 長文字：介面標籤不該被動斷行；隊名、組別名等單行省略要有省略號；使用者長文（原因、公告）可以換行但不能撐破。
 const TEXT_SEL = '.cp3-m__when, .cp3-m__vs span, .cp3-m__top, .cp3-tn em, .cps-h, .d2-div .cps-sub, .cpm-reason, .cpm-ended, .cpm-ann__txt, .cpm-ann__time, .cpm-public, .cp3-day, .cps-top h1';
-const SIZES = [{ w: 360, h: 800, frame: false }, { w: 1280, h: 800, frame: true }];
+const SIZES = [{ w: 360, h: FLAGS.set === 'away' ? 640 : 800, frame: false }, { w: 1280, h: 800, frame: true }];
 const THEMES = ['light', 'dark'];
 
 /** 比較表量測：容器與每一列是否溢出、右緣是否超出卡片內容區／視窗、格子有無被動斷行。 */
@@ -124,6 +130,8 @@ function measureGeneric() {
   const top = document.getElementById('top-bar');
   const tabs = document.getElementById('bottom-tabs');
   const root = document.querySelector('.s4-root');
+  const bar = document.querySelector('.s4-timeout');
+  const sideVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const btns = [...document.querySelectorAll('.cps-gate__btns button, .cpm-ann__btns button')].map((el) => {
     const r = el.getBoundingClientRect();
     return { text: (el.textContent || '').trim(), left: Math.round(r.left), width: Math.round(r.width), top: Math.round(r.top) };
@@ -137,6 +145,15 @@ function measureGeneric() {
     bottomTabsDisplay: tabs ? getComputedStyle(tabs).display : null,
     s4RootHeight: root ? Math.round(root.getBoundingClientRect().height) : null,
     viewportHeight: window.innerHeight,
+    timeoutBar: bar ? {
+      cls: bar.className,
+      side: getComputedStyle(bar).getPropertyValue('--s4-side').trim(),
+      borderLeftColor: getComputedStyle(bar).borderLeftColor,
+      borderLeftWidth: getComputedStyle(bar).borderLeftWidth,
+      boxShadow: getComputedStyle(bar).boxShadow.slice(0, 80),
+      homeVar: sideVar('--d2-home'),
+      awayVar: sideVar('--d2-away'),
+    } : null,
   };
 }
 
