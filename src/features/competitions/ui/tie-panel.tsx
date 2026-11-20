@@ -13,6 +13,7 @@ import {
   criterionKey,
   explainTieFromRaw,
   isDiffCriterion,
+  isNegatedCriterion,
   pendingGroupIds,
   samePointTeamIds,
   tieStepViews,
@@ -27,6 +28,7 @@ import { CpCard } from './shell';
 
 function formatValue(criterion: string, value: number | null): string {
   if (value == null) return '—';
+  if (isNegatedCriterion(criterion)) return String(Math.abs(value));
   if (isDiffCriterion(criterion) && value > 0) return `+${value}`;
   return String(value);
 }
