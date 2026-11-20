@@ -28,7 +28,7 @@ const ANCHORS = {
   'real-tie-panel': '名次排列', 'real-end-dialog': '還有同分尚未裁定', 'real-cancel-sheet': '取消原因會公開',
   'real-recruit': '報名期間', 'real-done': '18:00', 'real-ended-host': '剩餘場次不再進行', 'real-postponed': '場地整修',
   'real-cancelled-comp': '報名隊伍不足', 'real-notices': '領隊會議', 'real-contact-club': '聯絡主辦',
-  'real-contact-personal': '聯絡主辦', 'real-host-schedule': '每場分鐘數', 'real-shift-day': '順延', 'real-wizard-personal': '賽事名稱',
+  'real-contact-personal': '賽前到集合點找王示範', 'real-contact-personal-empty': '個人主辦（未留聯絡）', 'real-host-schedule': '每場分鐘數', 'real-shift-day': '順延', 'real-wizard-personal': '賽事名稱',
   // 卡 2-0（施工-第2批 3.25、3.27）
   'real-forfeit-sheet': '確認棄權', 'real-reset-dialog': '重置後比分歸零', 'real-clear-schedule': '確定要清除',
   'real-tie-exists': '已有裁定，請先撤銷原本的裁定', 'real-tie-decision': '撤銷裁定',
@@ -65,6 +65,7 @@ const SCREENS = [
   ['real:real-notices', ONE, THEMES, true],
   ['real:real-contact-club', ONE, THEMES, true],
   ['real:real-contact-personal', ONE, THEMES, true],
+  ['real:real-contact-personal-empty', NEW, THEMES, true],
   ['real:real-host-schedule', ONE, THEMES, true],
   ['real:real-shift-day', ONE, THEMES, true],
   ['real:real-wizard-personal', ONE, THEMES, true],
