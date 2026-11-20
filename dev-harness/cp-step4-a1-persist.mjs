@@ -25,7 +25,8 @@ const MT = 'mt-u1';
 const UID = 'scorer-u1';
 const SID = 'emu-local-sid-0000000001';
 const RULES_TARGET = 'emulator/firestore.rules';
-const VITE_PORT = 5199;
+// 預設 5199；與其他工作階段並行時用 FCB_VITE_PORT 換埠（strictPort，被佔用就失敗不換號）。
+const VITE_PORT = Number(process.env.FCB_VITE_PORT ?? 5199);
 
 const root = (path) => `http://${HOST}:${PORT}/v1/projects/${PROJECT}/databases/${DB}/documents/${path}`;
 function enc(v) {
@@ -235,12 +236,30 @@ try {
     }));
     step('伺服器與畫面', { score: match?.score, rev: match?.rev, timeline: timeline.length, ui });
     await page.screenshot({ path: join(OUT, 'p3-rejected.png') });
+    // 卡 2-3(a) 之後：有紅色列（.s4-banner--held）時，紀錄區那顆「未套用的動作」不畫，改點紅色列裡的 .s4-banner__tap 開同一個面板；
+    // 沒有紅色列才用原本那顆鈕。兩個都找不到就報錯（取代原本「找不到就靜默跳過 p4 截圖」，因為卡 2-3(a) 後那段永遠被跳過）。
+    const heldTap = page.locator('.s4-banner--held .s4-banner__tap').first();
     const sheetBtn = page.getByRole('button', { name: '未套用的動作' });
-    // 被接手時記分區整個停用（含這顆），所以只在可按時打開。
-    if (await sheetBtn.isVisible().catch(() => false) && await sheetBtn.isEnabled().catch(() => false)) {
-      await sheetBtn.click();
+    let opener = null;
+    if (await heldTap.isVisible().catch(() => false)) {
+      opener = heldTap;
+      report.sheetOpenedVia = 'held-row';
+    } else if (await sheetBtn.isVisible().catch(() => false)) {
+      opener = sheetBtn;
+      report.sheetOpenedVia = 'unapplied-button';
+    } else {
+      throw new Error('找不到開「未套用的動作」面板的入口：紅色列（.s4-banner--held .s4-banner__tap）與「未套用的動作」鈕都不在畫面上');
+    }
+    step('開「未套用的動作」面板', { via: report.sheetOpenedVia, enabled: await opener.isEnabled().catch(() => false) });
+    // 被接手時記分區整個停用（含紅色列與這顆），所以只在可按時打開；停用時寫進步驟與報告，不再無聲跳過。
+    if (await opener.isEnabled().catch(() => false)) {
+      await opener.click();
       await pause(600);
       await page.screenshot({ path: join(OUT, 'p4-rejected-sheet.png') });
+      report.sheetShot = 'p4-rejected-sheet.png';
+    } else {
+      report.sheetShot = null;
+      step('入口停用中（記分區停用），未開面板、無 p4 截圖');
     }
     // 要的是「出現被拒、不默默當成已送出」。原因多半是 takenOver；恢復連線瞬間讀到的 control 還是舊快取時會重送一次、分類成 rules，一樣是被拒紅列。
     report.ok = finalRow?.state === 'rejected' && uiScores.at(-1) === '0:0'
