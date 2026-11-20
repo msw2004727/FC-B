@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { openHttpAnchor } from '@/core/open-external';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
-import { appConfirm } from '@/ui/AppConfirm';
+import { dangerConfirm } from '../ui/danger-confirm';
 import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
@@ -652,7 +652,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     try {
       // 系統公告後端也允許刪。確認文字要讓主辦知道這則是系統發的。
       const kind = competition?.notices.find((notice) => notice.id === noticeId)?.kind;
-      const ok = await appConfirm(
+      const ok = await dangerConfirm(
         kind === 'system' ? ct('noticeDeleteSystem') : ct('noticeDeleteConfirm'),
         { okText: ct('noticeDelete'), danger: true },
       );

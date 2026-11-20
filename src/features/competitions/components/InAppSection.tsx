@@ -6,6 +6,7 @@
 // 進行中、而且此刻畫在畫面上的卡，各讀一次當日摘要片（getSummaryShard，不監聽）。
 // 同 cid 同日的成功結果留在這頁的記憶體；失敗不留，卡片再出現才重讀。
 // 不讀積分榜、隊徽、摘要全集。已結束卡不顯示冠軍。
+// 卡板等畫面上真的在進行中的卡，當日摘要都有結果（讀到、空片、失敗）才判定；只記結果，不多讀。
 // ASSUMPTION: 沒有名稱的項目不顯示 id。單筆讀取失敗略過，不讓整區消失。
 // ASSUMPTION: 有名稱的 cpMine 不再讀賽事文件。
 // ASSUMPTION: 同一場賽事公開清單與我的清單都有時，以公開文件為準
@@ -26,6 +27,7 @@ import { summaryShardIdOf } from '../data/schedule-load';
 import {
   assembleInAppCards,
   filterInAppCards,
+  pickInAppBoard,
   todayFromShard,
   type InAppStatusFilter,
   type InAppTab,
@@ -112,6 +114,8 @@ function SectionBody({
   const [status, setStatus] = useState<InAppStatusFilter>('open');
   const [onlyMine, setOnlyMine] = useState(false);
   const [todayByCid, setTodayByCid] = useState<ReadonlyMap<string, TodayMatches>>(() => new Map());
+  // 當日摘要已有結果的 cid（成功、空片、失敗都記）。卡板判定用，不影響讀取時機與次數。
+  const [todaySettled, setTodaySettled] = useState<ReadonlySet<string>>(() => new Set());
   // null＝閘門還沒通過，不要為了俱樂部主辦去讀。
   const [hostQuery, setHostQuery] = useState<{ publicOnly: boolean } | null>(null);
   // 同 cid 同日只讀一次。失敗的 promise 會從這裡拿掉。不監聽。
@@ -137,6 +141,7 @@ function SectionBody({
       setStatus('open');
       setOnlyMine(false);
       setTodayByCid(new Map());
+      setTodaySettled(new Set());
       shardCache.current.clear();
     }
     void (async () => {
@@ -217,6 +222,8 @@ function SectionBody({
     () => filterInAppCards(cards, tab, status, onlyMine),
     [cards, tab, status, onlyMine],
   );
+  // 卡板那一張移到第一張。boardCid 由第 1a 批卡 1a-5 傳給 InAppCardList 換成卡板長相。
+  const board = useMemo(() => pickInAppBoard(visible, todaySettled), [visible, todaySettled]);
   // 空字串＝現在沒有畫在畫面上的進行中卡（含來源切到外部、字典未到）。
   const liveKey = !uidStale && phase === 'ready' && active && cpDict.ct
     ? visible.filter((card) => card.phase === 'live').map((card) => card.cid).join('\n')
@@ -227,6 +234,9 @@ function SectionBody({
     const shardId = summaryShardIdOf(now);
     const cids = liveKey.split('\n');
     let alive = true;
+    const settle = (cid: string): void => {
+      setTodaySettled((prev) => (prev.has(cid) ? prev : new Set(prev).add(cid)));
+    };
     for (const cid of cids) {
       const key = `${cid}\n${shardId}`;
       let pending = shardCache.current.get(key);
@@ -256,8 +266,10 @@ function SectionBody({
           next.set(cid, today);
           return next;
         });
+        settle(cid);
       }).catch(() => {
-        // 失敗留空。快取已清，這張卡再出現時才重讀。
+        // 失敗留空。快取已清，這張卡再出現時才重讀。失敗也算有結果，卡板不再等它。
+        if (alive) settle(cid);
       });
     }
     return () => {
@@ -272,7 +284,7 @@ function SectionBody({
 
   return (
     <InAppCardList
-      cards={visible}
+      cards={board.cards}
       ct={ct}
       status={status}
       onlyMine={onlyMine}
