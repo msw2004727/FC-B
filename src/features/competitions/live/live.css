@@ -1366,16 +1366,29 @@ button.s4-ev__main:active { opacity: 0.7; }
   }
 }
 /* 選球員面板上緣一條 4px 隊色（標題維持純文字，顧問裁定不動 Modal.tsx） */
-.s4-sheet--home.d2-panel .ui-modal__panel { box-shadow: inset 0 4px 0 var(--d2-home), var(--d2-panel-sh); }
-.s4-sheet--away.d2-panel .ui-modal__panel { box-shadow: inset 0 4px 0 var(--d2-away), var(--d2-panel-sh); }
+/* 標題列自己有底色，隊色條畫在標題列上緣（面板圓角會把它裁成弧形） */
+.s4-sheet--home.d2-panel .ui-modal__header { box-shadow: inset 0 4px 0 var(--d2-home); }
+.s4-sheet--away.d2-panel .ui-modal__header { box-shadow: inset 0 4px 0 var(--d2-away); }
 .s4-unspecified { width: 100%; min-height: 56px; margin-top: 0; }
-.s4-sheet .ui-button.s4-unspecified { border-radius: 12px; font-size: 17px; line-height: 24px; }
+/* 56 高：button.css 的 min-block-size 44 與 .s4-unspecified 同權重、靠載入順序會蓋掉 56（實量 44），這裡多一層 class */
+.s4-sheet .ui-button.s4-unspecified { min-block-size: 56px; border-radius: 12px; font-size: 17px; line-height: 24px; }
 /* 選球員的「不指定球員」釘在面板底，下面墊面板底色與一條上緣細線，名單從它後面捲過去 */
 .s4-sheet .s4-unspecified--pin {
   position: sticky;
   bottom: 0;
   z-index: 1;
-  box-shadow: 0 0 0 12px var(--d2-frame), 0 -1px 0 12px var(--d2-line);
+}
+/* 墊底是方的：左右撐到面板內距外、上緣一條細線（按鈕本身的 ::before 在它上面） */
+.s4-sheet .s4-unspecified--pin::after {
+  content: '';
+  position: absolute;
+  z-index: -2;
+  top: -12px;
+  right: -16px;
+  bottom: -16px;
+  left: -16px;
+  background: var(--d2-frame);
+  box-shadow: inset 0 1px 0 var(--d2-line);
 }
 /* 改判面板裡的「不指定球員」是選項：選中時多 2px 深色內框 */
 .s4-sheet .ui-button.s4-unspecified[aria-pressed="true"]::before { box-shadow: var(--d2-glass-sh), inset 0 0 0 2px var(--d2-text); }
