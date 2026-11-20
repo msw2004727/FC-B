@@ -184,7 +184,7 @@
 .cps-root .ui-tabs .ui-tabs__tab,
 .s4-page .ui-tabs .ui-tabs__tab,
 .d2-panel .ui-tabs .ui-tabs__tab {
-  position: relative; z-index: 0; flex: 1 1 0; min-width: 0; height: 44px; margin: -2px 0; padding: 0;
+  position: relative; z-index: 0; flex: 1 1 0; min-width: 0; max-inline-size: none; height: 44px; margin: -2px 0; padding: 0;
   border: 0; border-radius: 0; background: none; color: var(--d2-text-2);
 }
 .cps-root .ui-tabs .ui-tabs__tab:not(:disabled):hover,
@@ -261,6 +261,8 @@
 .d2-panel .ui-textarea textarea {
   min-height: 44px; padding: 8px 12px; border: 0; border-radius: 12px; background: var(--d2-field-bg);
   box-shadow: inset 0 0 0 1px var(--d2-switch-edge); color: var(--d2-text); line-height: 24px; color-scheme: var(--d2-scheme);
+  /* 全站欄位的滑過、按下底色規則權重較高；在欄位本身把那兩個色值換成欄位底，設計是平的不變色 */
+  --color-bg-hover: var(--d2-field-bg); --color-bg-active: var(--d2-field-bg);
 }
 .cps-root .ui-input [aria-invalid="true"],
 .cps-root .ui-select [aria-invalid="true"],
@@ -283,11 +285,13 @@
 .cps-root .ui-textarea label,
 .cps-root .ui-radio-group__label,
 .cps-root .cps-label,
+.cps-root .ui-stepper > div:not(.ui-stepper__controls),
 .d2-panel .ui-input label,
 .d2-panel .ui-select label,
 .d2-panel .ui-textarea label,
 .d2-panel .ui-radio-group__label,
-.d2-panel .cps-label { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-text-2); }
+.d2-panel .cps-label,
+.d2-panel .ui-stepper > div:not(.ui-stepper__controls) { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-text-2); }
 .cps-root .ui-input label > small,
 .cps-root .ui-select label > small,
 .cps-root .ui-textarea label > small,
@@ -502,9 +506,8 @@
 .cps-note { margin: 0; font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--color-text-secondary); }
 .cps-cap { font-size: var(--font-size-caption); line-height: var(--line-height-caption); color: var(--color-text-muted); }
 .cps-warn { color: var(--d2-text-2); }
-/* 錯誤訊息是紅字；刪除確認框的警告句是危險（長相屬第 1b 批），先保留原色 */
+/* 錯誤訊息是紅字（刪除確認框的警告句卡 1b-7 已改用 .cps-del-warn 自己的紅字，見下方刪除確認框） */
 .cps-warn[role="alert"] { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-danger); }
-.cps-warn.cps-del-warn { color: var(--color-warning-fg); }
 .cps-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cps-badges .ui-badge { white-space: nowrap; }
 .cps-fields { display: flex; flex-direction: column; gap: var(--space-4); }
@@ -583,8 +586,14 @@
 .cps-inapp { margin: 0 0 var(--space-4); }
 .cps-head-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .cps-head-row .cps-h { margin: 0; }
-/* 刪除確認框（顧問 §3.459）：賽事名稱是使用者內容，允許換行、最多兩行、超過才省略號；只套這個框。 */
+/* 刪除確認框（顧問 §3.459）：賽事名稱是使用者內容，允許換行、最多兩行、超過才省略號；只套這個框。
+ * 卡 1b-7：名稱 15／24／700，「已有 N 隊報名」緊接在下面 4px、次要字色。 */
 .cps-sheet-body .cps-h.cps-del-name {
+  margin: 0 0 4px;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 700;
+  color: var(--d2-text);
   white-space: normal;
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -593,8 +602,25 @@
   line-clamp: 2;
   overflow: hidden;
 }
-/* 刪除確認框的警告句：可以換行（中文在標點處斷）。 */
-.cps-sheet-body .cps-del-warn { white-space: normal; line-break: strict; }
+.cps-sheet-body .cps-del-name + .cps-note { color: var(--d2-text-2); }
+/* 刪除確認框的警告句：危險紅字＋三角驚嘆號，可以換行（中文在標點處斷）。 */
+.cps-sheet-body .cps-del-warn {
+  display: flex; align-items: flex-start; gap: 6px;
+  font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-danger); white-space: normal; line-break: strict;
+}
+/* 頁面上的刪除賽事鈕：置中、不佔整列寬、上面一條細線；在 .cps-stack 裡（間距 12），再加 20 與上面的內容共距 32。 */
+.cps-del-zone { display: flex; justify-content: center; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--d2-line); }
+
+/* 行內小圖示（shell.tsx 的 LockIcon、InfoIcon、AlertIcon）：線條畫，顏色跟字 */
+.cps-ico { flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cpa-hidden .cps-ico,
+.cps-del-warn .cps-ico { width: 16px; height: 16px; margin-top: 2px; }
+/* 「一句話＋回去的鈕」（CpGate）：頁首正下方一張玻璃卡，內容靠左；一顆鈕不佔整列，兩顆等寬 */
+.cps-gate .cps-ico { display: block; width: 28px; height: 28px; margin-bottom: 8px; color: var(--d2-text-2); }
+.cps-gate__text { margin: 0; font-size: 17px; line-height: 24px; font-weight: 700; color: var(--d2-text); }
+.cps-gate__btns { display: flex; gap: 8px; margin-top: 16px; }
+.cps-gate__btns > :first-child:nth-last-child(2),
+.cps-gate__btns > :last-child:nth-child(2) { flex: 1 1 0; min-inline-size: 0; }
 
 /* 第 3 步詳情：class 對照預覽 harness 的 cp3-*。字級只用字級 token。
  * 隊徽底色與分類漸層用 category-tokens，不在這裡重抄色值。 */
@@ -1037,6 +1063,10 @@
 
 /* 第 4 步 K12：管理員區（後台一般風格，不用液態玻璃）與下架提示。 */
 .cpa-hidden {
+  /* 卡 1b-7：前面一顆 16px 三角驚嘆號（.cps-ico），文字照原文換行 */
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin: 0;
   padding: 10px 12px;
   border-radius: 12px;

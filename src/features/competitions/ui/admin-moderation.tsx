@@ -17,6 +17,7 @@ import type { ReportDoc, ReportReason, ReportReviewStatus } from '../data/types'
 import { formatTaipeiShort } from '../format';
 import type { CompetitionsT } from '../i18n';
 import { errorOf, reasonText } from './feedback';
+import { AlertIcon } from './shell';
 
 export const MODERATE_REASON_MIN = 2;
 export const MODERATE_REASON_MAX = 200;
@@ -26,7 +27,8 @@ export function HiddenNotice({ ct, reason }: { ct: CompetitionsT; reason: string
   const text = reason && reason.trim()
     ? ct('hiddenByAdmin', { reason: reason.trim() })
     : ct('hiddenByAdminNoReason');
-  return <p class="cpa-hidden" role="status">{text}</p>;
+  // 圖示不帶文字節點；那一句維持是一個完整的文字節點（測試用 findByText 找）。
+  return <p class="cpa-hidden" role="status"><AlertIcon /><span>{text}</span></p>;
 }
 
 export function reportReasonLabel(ct: CompetitionsT, reason: ReportReason): string {

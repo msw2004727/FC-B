@@ -1,10 +1,10 @@
-import type { JSX } from 'preact';
+import { toChildArray, type ComponentChildren, type JSX } from 'preact';
 import { useLocation } from 'preact-iso';
 import { Button } from '@/ui/Button';
 import { ctOrKey, useCompetitionsT } from '../i18n';
 import { CP_REASON_FALLBACK_KEY, cpReasonKey } from '../data/reasons';
 import { toCpCallError } from '../data/cp-callables';
-import { CpCard, CpFrame, CpI18nPending } from './shell';
+import { CpCard, CpFrame, CpI18nPending, InfoIcon, LockIcon } from './shell';
 
 export function reasonParams(params: Record<string, unknown> | undefined): Record<string, string | number> {
   const out: Record<string, string | number> = {};
@@ -63,16 +63,45 @@ export function CpLoadFailed({
   if (fail === 'hidden') {
     return (
       <CpFrame title={title}>
-        <p class="cps-note" role="alert" data-cp-load="private">{ct('reason.COMPETITION_HIDDEN')}</p>
-        <Button variant="secondary" onClick={() => route('/tournaments', true)}>{ct('backToTournaments')}</Button>
+        <CpGate icon={<LockIcon />} text={ct('reason.COMPETITION_HIDDEN')} load="private">
+          <Button variant="primary" onClick={() => route('/tournaments', true)}>{ct('backToTournaments')}</Button>
+        </CpGate>
       </CpFrame>
     );
   }
   return (
     <CpFrame title={title}>
-      <p class="cps-note" role="alert">{ct('loadFailed')}</p>
-      {onRetry ? <Button variant="secondary" onClick={onRetry}>{ct('retry')}</Button> : null}
+      <CpGate icon={<InfoIcon />} text={ct('loadFailed')}>
+        {onRetry ? <Button variant="primary" onClick={onRetry}>{ct('retry')}</Button> : null}
+      </CpGate>
     </CpFrame>
+  );
+}
+
+/**
+ * 「一句話＋回去的鈕」版面（新外觀第 1b 批卡 1b-7）：頁首正下方一張玻璃卡，內容靠左；圖示＋一句話＋按鈕列。
+ * 按鈕列一顆時不佔整列寬、靠左；兩顆時等寬並排（取消性質放左邊，由呼叫端排）。沒有按鈕就不畫按鈕列。
+ * 只管版面，不管流程；別頁（記分頁、建立賽事守門、接受邀請）之後也用它。
+ */
+export function CpGate({
+  icon,
+  text,
+  load,
+  children,
+}: {
+  icon: JSX.Element;
+  text: string;
+  /** 寫在那一句上的 data-cp-load（測試與示範頁靠它找）。 */
+  load?: string;
+  children?: ComponentChildren;
+}): JSX.Element {
+  const hasButtons = toChildArray(children).length > 0;
+  return (
+    <CpCard class="cps-gate">
+      {icon}
+      <p class="cps-gate__text" role="alert" data-cp-load={load}>{text}</p>
+      {hasButtons ? <div class="cps-gate__btns">{children}</div> : null}
+    </CpCard>
   );
 }
 
