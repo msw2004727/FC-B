@@ -325,10 +325,28 @@ function sideOf(value: unknown): AudienceSide | null {
   return { teamId, name, logo: text(value.logo) ?? text(value.l) };
 }
 
+/**
+ * clockBase.startedAt 在 Firestore 是 Timestamp（有 toMillis），也接受 {seconds,nanoseconds} 與毫秒數字。
+ * 11-20 走查：原本用 finite() 只收數字，Timestamp 讀成 null，觀眾頁時鐘停在暫停累計秒數（取代 finite(raw.startedAt)）。
+ */
+function startedAtMillis(value: unknown): number | null {
+  const n = finite(value);
+  if (n != null) return n;
+  if (!isRecord(value)) return null;
+  const toMillis = (value as { toMillis?: unknown }).toMillis;
+  if (typeof toMillis === 'function') {
+    const ms = (toMillis as () => unknown).call(value);
+    return typeof ms === 'number' && Number.isFinite(ms) ? ms : null;
+  }
+  const seconds = finite(value.seconds);
+  if (seconds == null) return null;
+  return seconds * 1000 + Math.floor((finite(value.nanoseconds) ?? 0) / 1e6);
+}
+
 function clockOf(value: unknown): MatchClock {
   const raw = isRecord(value) ? value : {};
   return {
-    startedAt: finite(raw.startedAt),
+    startedAt: startedAtMillis(raw.startedAt),
     pausedSec: finite(raw.pausedSec) ?? 0,
     running: raw.running === true,
     period: typeof raw.period === 'string' ? raw.period : 'pre',

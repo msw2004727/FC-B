@@ -521,6 +521,25 @@ describe('單場頁', () => {
     expect(screen.getByText('2:1')).toBeTruthy();
   });
 
+  it('已終場顯示「終場」，不是「上半場」（11-20 走查回歸）', async () => {
+    drawMatch({
+      ...liveEnv(),
+      audience: quietPorts({
+        watchMatch: (_input, onMatch) => {
+          onMatch({ kind: 'ok', match: audienceMatch({
+            status: 'finished',
+            score: { home: 0, away: 1 },
+            clockBase: { startedAt: null, pausedSec: 105, running: false, period: 'h1' },
+          }) });
+          return () => {};
+        },
+      }),
+    });
+    expect(await screen.findByText('雷霆隊')).toBeTruthy();
+    expect(document.querySelector('.s4-stage')?.textContent).toBe('終場');
+    expect(screen.queryByText('上半場')).toBeNull();
+  });
+
   it('收合不讀；展開從 resetRev 讀；rev 變大只補讀；收合後不再讀', async () => {
     const calls: {
       afterEvents: number;

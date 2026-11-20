@@ -1,4 +1,6 @@
+import { Timestamp } from 'firebase/firestore';
 import { afterEach, describe, expect, it } from 'vitest';
+import { clockFromBase } from '../live/clock';
 import { taipeiMs } from '../format';
 import type { EntryDoc, SummaryEntry } from './types';
 import {
@@ -280,5 +282,23 @@ describe('可見才監聽', () => {
     expect(live).toBe(1);
     stop();
     expect(live).toBe(0);
+  });
+});
+
+describe('觀眾頁時鐘讀真實 Firestore Timestamp（11-20 走查回歸）', () => {
+  it('clockBase.startedAt 是 Timestamp 時時鐘會走，不停在暫停累計秒數', () => {
+    const startMs = taipeiMs(2026, 11, 20, 13, 0);
+    const match = audienceMatchFromDoc('mt1', {
+      status: 'live',
+      home: { teamId: 'en_h', name: '雷霆隊' },
+      away: { teamId: 'en_a', name: '海風隊' },
+      score: { home: 0, away: 1 },
+      clockBase: { startedAt: Timestamp.fromMillis(startMs), pausedSec: 30, running: true, period: 'h1' },
+      rev: 2,
+      resetRev: 0,
+    });
+    expect(match?.clockBase.startedAt).toBe(startMs);
+    expect(clockFromBase(match!.clockBase, startMs + 90_000).elapsedSec).toBe(120);
+    expect(clockFromBase(match!.clockBase, startMs + 91_000).elapsedSec).toBe(121);
   });
 });
