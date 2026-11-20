@@ -28,6 +28,14 @@ export function UnappliedSheet({
             <span class="s4-log__st">{entry.state === 'pending' ? LIVE_COPY.pending : rejectText(entry.rejectReason)}</span>
             {entry.state === 'rejected' ? (
               <span class="s4-log__act">
+                {/* 卡 2-7（設計總監 05:38）：捨棄在左、重新套用在右，與確認框「取消在左、確認在右」同一個方向。 */}
+                <Button
+                  variant="secondary"
+                  aria-label={withEvent(LIVE_COPY.discard, entry.intent)}
+                  onClick={() => onDiscard(entry.id)}
+                >
+                  {LIVE_COPY.discard}
+                </Button>
                 {canReapply(entry) ? (
                   <Button
                     aria-label={withEvent(LIVE_COPY.reapply, entry.intent)}
@@ -36,13 +44,6 @@ export function UnappliedSheet({
                     {LIVE_COPY.reapply}
                   </Button>
                 ) : null}
-                <Button
-                  variant="secondary"
-                  aria-label={withEvent(LIVE_COPY.discard, entry.intent)}
-                  onClick={() => onDiscard(entry.id)}
-                >
-                  {LIVE_COPY.discard}
-                </Button>
               </span>
             ) : null}
           </li>
