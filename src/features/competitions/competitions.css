@@ -602,7 +602,7 @@
 .cps-sub { margin: 0; font-size: 13px; line-height: 20px; color: var(--d2-text-2); }
 /* 未登入檢舉面板的那一句（卡 1b-5）：一般內文、一行 */
 .cps-lead { margin: 0; font-size: 15px; line-height: 24px; color: var(--d2-text); white-space: nowrap; }
-.cps-note { margin: 0; font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--color-text-secondary); }
+.cps-note { margin: 0; font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--d2-text-2); }
 .cps-cap { font-size: var(--font-size-caption); line-height: var(--line-height-caption); color: var(--color-text-muted); }
 .cps-warn { color: var(--d2-text-2); }
 /* 錯誤訊息是紅字（刪除確認框的警告句卡 1b-7 已改用 .cps-del-warn 自己的紅字，見下方刪除確認框） */
@@ -727,7 +727,6 @@
   line-clamp: 2;
   overflow: hidden;
 }
-.cps-sheet-body .cps-del-name + .cps-note { color: var(--d2-text-2); }
 /* 刪除確認框的警告句：危險紅字＋三角驚嘆號，可以換行（中文在標點處斷）。 */
 .cps-sheet-body .cps-del-warn {
   display: flex; align-items: flex-start; gap: 6px;

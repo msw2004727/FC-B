@@ -285,6 +285,16 @@ describe('詳情四狀態', () => {
     expect(view.container.querySelectorAll('.d2-tag--next')).toHaveLength(2);
   });
 
+  it('主辦專用卡在頂部正下方：小字「主辦專用」、草稿的「發布」在第一行右邊，入口一列一個（新外觀卡 1b-5）', () => {
+    const view = draw(screenEnv('real-draft-host'), CompetitionDetailPage);
+    const card = view.container.querySelector('nav.d2-manage');
+    expect(card?.previousElementSibling?.classList.contains('d2-hero')).toBe(true);
+    expect(card?.querySelector('.d2-manage__k span')?.textContent).toBe('主辦專用');
+    expect(card?.querySelector('.d2-manage__k .ui-button')?.textContent).toBe('發布');
+    expect([...(card?.querySelectorAll(':scope > .ui-button') ?? [])].map((node) => node.textContent)).toEqual(['報隊管理', '排賽程', '賽程管理']);
+    expect(screen.queryByRole('button', { name: '以俱樂部報隊' })).toBeNull();
+  });
+
   it('五個組別的冠軍最多列三行，超過寫「等 5 組」（新外觀卡 1b-3）', () => {
     const view = draw(screenEnv('real-done-five'), CompetitionDetailPage);
     expect(view.container.querySelectorAll('.d2-plain__champs dd')).toHaveLength(3);
