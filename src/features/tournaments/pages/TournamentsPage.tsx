@@ -1,9 +1,9 @@
+// 新增／編輯表單的樣式。
 import '../tournaments.css';
-// 液態光澤（2026-11-13，與活動頁同一風格；只套 #page-tournaments）
+// 頁面底色與返回鈕（2026-11-13，與活動頁同一風格；只套 #page-tournaments）
 import '../legacy/tournaments-glass.css';
-// 分類色與隊徽底色。只在賽事頁這個 chunk，不進首頁入口。
-import '@/styles/category-tokens.css';
-// 列表 v2（來源切換、封面、分類色小標）。開關關閉時沒有這些 class，既有卡片不受影響。
+// 清單頁新外觀「記分板」（清-3）：色票子集、標題列、分類分段、篩選列、外部清單、骨架。不依賴站內區塊的樣式先載到。
+// （清-3 拿掉 category-tokens.css 的匯入：清單頁已經沒有任何規則用分類色。）
 import '../list-v2.css';
 import '@/styles/legacy/reg-loading.css';
 import type { ComponentType, JSX } from 'preact';
@@ -16,7 +16,6 @@ import { lt, useT } from '@/i18n/i18n';
 import { getLastKnownAuthUid } from '@/data/auth';
 import { readAuthHint } from '@/data/auth-hint';
 import { useViewer } from '@/features/profile/data/viewer';
-import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 import { TournamentCardForm } from '../components/TournamentCardForm';
 import {
@@ -48,6 +47,7 @@ import {
   type CompetitionSource,
 } from '../source';
 import { readInAppHint, writeInAppHint } from '../inapp-hint';
+import { dangerConfirm } from '../danger-confirm';
 
 /** 讀取超過這麼久沒回來就走既有的錯誤＋重試；晚到的結果照常收尾。 */
 export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
@@ -64,22 +64,6 @@ export const COMPETITIONS_GATE_TIMEOUT_MS = 2_000;
  * 取代前一版「與 TOURNAMENTS_LOAD_TIMEOUT_MS 同值」）。
  */
 export const COMPETITIONS_PREFER_IN_CAP_MS = 12_000;
-
-const EXTERNAL_CHIP = {
-  league: 'cpl-chip--league',
-  cup: 'cpl-chip--cup',
-  friendly: 'cpl-chip--friendly',
-} as const;
-
-/**
- * 外部卡分類 class。只接受 league／cup／friendly。
- * 其他類型不加分類 class，原字串不進 class。
- */
-export function externalChipClass(type: unknown, themed: boolean): string {
-  if (!themed) return 'tc-chip';
-  if (type !== 'league' && type !== 'cup' && type !== 'friendly') return 'tc-chip cpl-chip';
-  return `tc-chip cpl-chip ${EXTERNAL_CHIP[type]}`;
-}
 
 interface InAppSlotProps {
   tab: TournamentCardTab;
@@ -333,7 +317,8 @@ export default function TournamentsPage(): JSX.Element {
       toast.show({ message: t('tournaments.toast.denied'), tone: 'error' });
       return;
     }
-    if (!(await appConfirm(t('tournaments.confirmDelete', { name: card.name })))) return;
+    // 危險確認框（清-5）：確定鈕畫成紅框；訊息、流程照舊。
+    if (!(await dangerConfirm(t('tournaments.confirmDelete', { name: card.name })))) return;
     busyRef.current = true;
     setBusy(true);
     try {
@@ -376,10 +361,23 @@ export default function TournamentsPage(): JSX.Element {
     queueMicrotask(() => document.getElementById(nextId)?.focus());
   };
 
+  // 新外觀對所有人一次到位（清-3）：最外層一律 data-d2；有切換而且正在看外部時 #page-tournaments 加 d2-ext（只換顏色）。
+  // 沒有切換時（功能開關關閉、閘門沒過、判定中又沒有線索）標題「賽事」看得見，其餘版面與有切換時相同。
+  const extTinted = showSourceTabs && source === 'ext';
+  const editIcon = (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
+    </svg>
+  );
+  const leaveIcon = (
+    <svg class="cpl-xrow__go" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 17L17 7M9 7h8v8" /></svg>
+  );
+
   return (
-    <div class="legacy-ui tournaments-root" data-v2={inAppOpen ? '1' : undefined} data-cp-gate={COMPETITIONS_ENABLED ? gate : undefined}>
-      <section class="page active tc-page" id="page-tournaments">
-        <div class="page-header">
+    <div class="legacy-ui tournaments-root" data-d2="1" data-cp-gate={COMPETITIONS_ENABLED ? gate : undefined}>
+      <section class={`page active tc-page${extTinted ? ' d2-ext' : ''}`} id="page-tournaments">
+        <div class="page-header cpl-head">
           <button
             class="back-btn"
             type="button"
@@ -398,45 +396,44 @@ export default function TournamentsPage(): JSX.Element {
               />
             </svg>
           </button>
-          <h2 class="page-header-title">{t('tournaments.heading')}</h2>
+          <h2 class={`page-header-title${showSourceTabs ? ' cpl-vh' : ''}`}>{t('tournaments.heading')}</h2>
+          {showSourceTabs ? (
+            <div class="cpl-src" role="tablist" aria-label={t('tournaments.sourceLabel')}>
+              <button
+                id="tournaments-source-in"
+                type="button"
+                role="tab"
+                aria-selected={source === 'in'}
+                aria-controls="tournaments-source-panel"
+                class={source === 'in' ? 'on' : ''}
+                onClick={() => chooseSource('in')}
+                onKeyDown={onSourceKey}
+              >
+                {t('tournaments.sourceIn')}
+              </button>
+              <button
+                id="tournaments-source-ext"
+                type="button"
+                role="tab"
+                aria-selected={source === 'ext'}
+                aria-controls="tournaments-source-panel"
+                class={source === 'ext' ? 'on' : ''}
+                onClick={() => chooseSource('ext')}
+                onKeyDown={onSourceKey}
+              >
+                {t('tournaments.sourceOut')}
+              </button>
+            </div>
+          ) : null}
         </div>
 
-        {showSourceTabs ? (
-          <div class="cpl-src" role="tablist" aria-label={t('tournaments.sourceLabel')}>
-            <button
-              id="tournaments-source-in"
-              type="button"
-              role="tab"
-              aria-selected={source === 'in'}
-              aria-controls="tournaments-source-panel"
-              class={source === 'in' ? 'on' : ''}
-              onClick={() => chooseSource('in')}
-              onKeyDown={onSourceKey}
-            >
-              {t('tournaments.sourceIn')}
-            </button>
-            <button
-              id="tournaments-source-ext"
-              type="button"
-              role="tab"
-              aria-selected={source === 'ext'}
-              aria-controls="tournaments-source-panel"
-              class={source === 'ext' ? 'on' : ''}
-              onClick={() => chooseSource('ext')}
-              onKeyDown={onSourceKey}
-            >
-              {t('tournaments.sourceOut')}
-            </button>
-          </div>
-        ) : null}
-
-        <div class="tc-tabs" role="tablist">
+        <div class="cpl-seg" role="tablist">
           {TOURNAMENT_CARD_TABS.map((value) => (
             <button
               key={value}
               type="button"
               role="tab"
-              class={`tc-tab${tab === value ? ' active' : ''}`}
+              class={`cpl-seg__tab${tab === value ? ' on' : ''}`}
               aria-selected={tab === value}
               onClick={() => setTab(value)}
             >
@@ -444,103 +441,98 @@ export default function TournamentsPage(): JSX.Element {
             </button>
           ))}
         </div>
-        <div class="tc-panel" role="tabpanel" id={showSourceTabs ? 'tournaments-source-panel' : undefined}>
+        <div class="cpl-panel" role="tabpanel" id={showSourceTabs ? 'tournaments-source-panel' : undefined}>
           {gateArmed ? <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} onReady={onInAppReady} /> : null}
           {pendingIn ? (
-            <div aria-busy="true" data-cp-pending-in="1">
+            <div class="cpl-skel" aria-busy="true" data-cp-pending-in="1">
               <div class="reg-loading" role="status" style="white-space:nowrap">{t('tournaments.loading')}</div>
-              <div class="reg-loading-skeleton" aria-hidden="true">
-                <div class="reg-loading-skeleton-row" />
-                <div class="reg-loading-skeleton-row" />
-                <div class="reg-loading-skeleton-row" />
+              <div aria-hidden="true">
+                <div class="cpl-skel__card" />
+                <div class="cpl-skel__card" />
+                <div class="cpl-skel__card" />
               </div>
             </div>
           ) : null}
           {showInApp || pendingIn ? null : (
-          <>
-          {/* 「＋ 新增賽事」搬進外部清單框內，位置與樣式比照站內「建立賽事」（.cpl-create），切換分頁不跳動
-              （站長 11-20：取代原本放在分類分頁列、與「建立賽事」同時出現兩顆新增鈕）。 */}
-          {canManage ? (
-            <div class="cpl-create">
-              <Button variant="primary" size="sm" id="tc-add-btn" onClick={() => openEditor(null)}>{t('tournaments.add')}</Button>
+          <div class="cpl-xlist">
+            {/* 「＋ 新增賽事」在外部清單框內篩選列最右邊，與站內「建立賽事」同一個位置，切換分頁不跳動
+                （站長 11-20：取代原本放在分類分頁列、與「建立賽事」同時出現兩顆新增鈕）。 */}
+            <div class="cpl-bar">
+              <label class="cpl-sw">
+                <span>{t('tournaments.showEnded')}</span>
+                <span class="toggle-switch">
+                  <input
+                    type="checkbox"
+                    id="tc-show-ended"
+                    checked={showEnded}
+                    onChange={(event) => setShowEnded(event.currentTarget.checked)}
+                  />
+                  <span class="toggle-slider" />
+                </span>
+              </label>
+              {canManage ? (
+                <Button variant="primary" size="sm" id="tc-add-btn" onClick={() => openEditor(null)}>{t('tournaments.add')}</Button>
+              ) : null}
             </div>
-          ) : null}
-          <div class="tc-toolbar">
-            <label>
-              <span>{t('tournaments.showEnded')}</span>
-              <span class="toggle-switch">
-                <input
-                  type="checkbox"
-                  id="tc-show-ended"
-                  checked={showEnded}
-                  onChange={(event) => setShowEnded(event.currentTarget.checked)}
-                />
-                <span class="toggle-slider" />
-              </span>
-            </label>
-          </div>
 
-          {state === 'loading' && cards.length === 0 ? (
-            <div aria-busy="true">
-              <div class="reg-loading" role="status" style="white-space:nowrap">{t('tournaments.loading')}</div>
-              <div class="reg-loading-skeleton" aria-hidden="true">
-                <div class="reg-loading-skeleton-row" />
-                <div class="reg-loading-skeleton-row" />
-                <div class="reg-loading-skeleton-row" />
+            {state === 'loading' && cards.length === 0 ? (
+              <div class="cpl-xskel" aria-busy="true">
+                <div class="reg-loading cpl-vh" role="status">{t('tournaments.loading')}</div>
+                <div class="cpl-xskel__row" aria-hidden="true" />
+                <div class="cpl-xskel__row" aria-hidden="true" />
+                <div class="cpl-xskel__row" aria-hidden="true" />
               </div>
-            </div>
-          ) : null}
-          {state === 'error' ? (
-            <div class="tc-status" role="alert">
-              <p>{t('tournaments.loadError')}</p>
-              <button type="button" class="outline-btn" onClick={() => void load()}>
-                {t('tournaments.retry')}
-              </button>
-            </div>
-          ) : null}
-          {state === 'ready' && visible.length === 0 ? (
-            <p class="tc-status">{t('tournaments.empty')}</p>
-          ) : null}
+            ) : null}
+            {state === 'error' ? (
+              <div class="cpl-xmsg" role="alert">
+                <p>{t('tournaments.loadError')}</p>
+                <Button variant="secondary" size="sm" onClick={() => void load()}>
+                  {t('tournaments.retry')}
+                </Button>
+              </div>
+            ) : null}
+            {state === 'ready' && visible.length === 0 ? (
+              <p class="cpl-xmsg">{t('tournaments.empty')}</p>
+            ) : null}
 
-          {visible.map((card) => {
-            const ended = isTournamentCardEnded(card, todayKey);
-            return (
-              <div key={card.id} class={`tc-card${ended ? ' ended' : ''}`} data-card-id={card.id}>
-                <a
-                  class="tc-card-link"
-                  href={card.url}
-                  onClick={(event) => handleCardClick(event, card.url)}
-                >
-                  {card.image ? (
-                    <img class="tc-card-img" src={card.image} alt="" loading="lazy" />
-                  ) : (
-                    <div class="tc-card-img" aria-hidden="true" />
-                  )}
-                  <div class="tc-card-body">
-                    <div class="tc-card-text">
-                      <div class="tc-card-name">{card.name}</div>
-                      <div class="tc-card-dates">{formatCardDates(card)}</div>
-                    </div>
-                    <span class={externalChipClass(card.type, inAppOpen)}>{t(`tournaments.tab.${card.type}`)}</span>
-                  </div>
-                </a>
-                {canManage ? (
-                  <button
-                    type="button"
-                    class="tc-edit"
-                    aria-label={t('tournaments.edit')}
-                    onClick={() => openEditor(card)}
+            {visible.map((card) => {
+              const ended = isTournamentCardEnded(card, todayKey);
+              // 分類只放文字；card.type 不進任何 class（外部資料，不認得的字串也不會變成 class）。
+              const catLabel = t(`tournaments.tab.${card.type}`);
+              return (
+                <div key={card.id} class={`cpl-xrow${ended ? ' ended' : ''}${canManage ? ' cpl-xrow--edit' : ''}`} data-card-id={card.id}>
+                  <a
+                    class="cpl-xrow__link"
+                    href={card.url}
+                    onClick={(event) => handleCardClick(event, card.url)}
                   >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
-                    </svg>
-                  </button>
-                ) : null}
-              </div>
-            );
-          })}
-          </>
+                    {/* 沒有照片時放同尺寸的預設縮圖（分類名第一個字），每列名稱左緣對齊（顧問 §3.494 補記） */}
+                    {card.image
+                      ? <img class="cpl-xrow__img" src={card.image} alt="" loading="lazy" />
+                      : <div class="cpl-xrow__img cpl-xrow__ph" aria-hidden="true">{Array.from(catLabel)[0] ?? ''}</div>}
+                    <div class="cpl-xrow__body">
+                      <div class="cpl-xrow__name">{card.name}{canManage ? leaveIcon : null}</div>
+                      <div class="cpl-xrow__meta">
+                        <span class="cpl-xrow__cat">{catLabel}</span>
+                        <span class="cpl-xrow__date">{formatCardDates(card)}</span>
+                      </div>
+                    </div>
+                    {canManage ? null : leaveIcon}
+                  </a>
+                  {canManage ? (
+                    <button
+                      type="button"
+                      class="cps-iconbtn cpl-xrow__edit"
+                      aria-label={t('tournaments.edit')}
+                      onClick={() => openEditor(card)}
+                    >
+                      {editIcon}
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
           )}
         </div>
 

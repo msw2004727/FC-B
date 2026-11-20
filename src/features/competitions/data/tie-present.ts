@@ -117,8 +117,12 @@ const CRITERION_KEY: Readonly<Record<string, string>> = {
   headToHeadGoalDiff: 'critH2hGd',
   headToHeadGd: 'critH2hGd',
   h2hGoalDiff: 'critH2hGd',
+  headToHeadGoalsFor: 'critH2hGf',
   goalDiff: 'critGd',
   goalsFor: 'critGf',
+  // 引擎 RR_FEDA_DEFAULT（h2hFirst）比到最後還有這兩項；值是 -失球數（越大越前），畫面上轉回失球數。
+  goalsAgainstAsc: 'critGa',
+  fairPlay: 'critFp',
   manual: 'hostRuling',
   drawLots: 'drawLog',
   exhausted: 'tieAllSame',
@@ -127,6 +131,11 @@ const CRITERION_KEY: Readonly<Record<string, string>> = {
 /** 已知條件回文案鍵。不認得就回 null，呼叫端顯示原代碼以外的通用字。 */
 export function criterionKey(criterion: string): string | null {
   return CRITERION_KEY[criterion] ?? null;
+}
+
+/** 引擎存的是負數、越大越前的條件（goalsAgainstAsc＝-失球數）。顯示時轉回原本的數。 */
+export function isNegatedCriterion(criterion: string): boolean {
+  return criterion === 'goalsAgainstAsc';
 }
 
 export function isDiffCriterion(criterion: string): boolean {

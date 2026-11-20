@@ -548,6 +548,152 @@ describe('同分查詢、裁定與恢復', () => {
   });
 });
 
+// 顧問 §3.492：h2hFirst（RR_FEDA_DEFAULT）比到「直接對戰進球」「失球少」「公平競賽（行為分）」時，比較表原本沒有文字、落到「時間」。
+// 下面三組 explainTie 回傳不是手寫的：把註解裡的場次餵給 functions-cp 真引擎（computeRows → explainTie，規則 RR_FEDA_DEFAULT），照輸出原樣抄進來。
+describe('同分比較表：引擎比到後段三項時的文字', () => {
+  const pts = (ids: string[], vals: number[]) => ids.map((teamId, i) => ({ teamId, value: vals[i]! }));
+  const BC = ['en_b', 'en_c'];
+  const BCD = ['en_b', 'en_c', 'en_d'];
+  const step = (teamIds: string[], criterion: string, vals: number[], split = false) => ({ teamIds, criterion, values: pts(teamIds, vals), split });
+  // 場次：b 2：1 c、c 3：2 d、d 1：0 b（三隊各 3 分、對戰淨勝都是 0）
+  const h2hGoalsFor = {
+    naturalOrder: ['en_c', 'en_d', 'en_b'],
+    steps: [
+      step(BCD, 'points', [3, 3, 3]),
+      step(BCD, 'headToHeadPoints', [3, 3, 3]),
+      step(BCD, 'headToHeadGoalDiff', [0, 0, 0]),
+      step(BCD, 'headToHeadGoalsFor', [2, 4, 3], true),
+    ],
+    splits: [
+      { criterion: 'headToHeadGoalsFor', aboveTeamIds: ['en_c'], belowTeamIds: ['en_d'] },
+      { criterion: 'headToHeadGoalsFor', aboveTeamIds: ['en_d'], belowTeamIds: ['en_b'] },
+    ],
+    decidedCriterion: 'headToHeadGoalsFor', pending: false, pendingCriterion: null, matchIds: ['mt_1', 'mt_2', 'mt_3'],
+  };
+  // 場次：b 0：0 c、b 10：0 x、c 10：3 y、x 1：1 y，大比分上限 7（淨勝都 7、進球都 10，失球 0 對 3）
+  const goalsAgainst = {
+    naturalOrder: ['en_b', 'en_c'],
+    steps: [
+      step(BC, 'points', [4, 4]),
+      step(BC, 'headToHeadPoints', [1, 1]),
+      step(BC, 'headToHeadGoalDiff', [0, 0]),
+      step(BC, 'headToHeadGoalsFor', [0, 0]),
+      step(BC, 'goalDiff', [7, 7]),
+      step(BC, 'goalsFor', [10, 10]),
+      step(BC, 'goalsAgainstAsc', [0, -3], true),
+    ],
+    splits: [{ criterion: 'goalsAgainstAsc', aboveTeamIds: ['en_b'], belowTeamIds: ['en_c'] }],
+    decidedCriterion: 'goalsAgainstAsc', pending: false, pendingCriterion: null, matchIds: ['mt_1'],
+  };
+  // 場次：b 1：1 c、b 1：0 x、c 1：0 y、x 0：0 y，b 在 b 對 x 那場一張黃牌
+  const fairPlay = {
+    naturalOrder: ['en_c', 'en_b'],
+    steps: [
+      step(BC, 'points', [4, 4]),
+      step(BC, 'headToHeadPoints', [1, 1]),
+      step(BC, 'headToHeadGoalDiff', [0, 0]),
+      step(BC, 'headToHeadGoalsFor', [1, 1]),
+      step(BC, 'goalDiff', [1, 1]),
+      step(BC, 'goalsFor', [2, 2]),
+      step(BC, 'goalsAgainstAsc', [-1, -1]),
+      step(BC, 'fairPlay', [-1, 0], true),
+    ],
+    splits: [{ criterion: 'fairPlay', aboveTeamIds: ['en_c'], belowTeamIds: ['en_b'] }],
+    decidedCriterion: 'fairPlay', pending: false, pendingCriterion: null, matchIds: ['mt_1'],
+  };
+
+  async function openCompare(explained: object): Promise<HTMLElement> {
+    const explainTie = vi.fn(async () => ({ dvId: 'dv_adult', groupId: 'A', ...explained }));
+    draw(detailEnv({
+      actor: hostActor,
+      staff: { uid: 'uid_host', roles: ['host'] },
+      actions: { ...idleActions(), explainTie },
+    }), CompetitionDetailPage);
+    fireEvent.click(screen.getAllByRole('button', { name: '同分' })[0]!);
+    await screen.findByText('在這一項分出高下');
+    const table = document.querySelector('.cpm-cmp');
+    if (!(table instanceof HTMLElement)) throw new Error('找不到比較表');
+    // 不認得的條件會落到「時間」：三種情況都不可以再出現
+    expect(within(table).queryByText('時間')).toBeNull();
+    return table;
+  }
+
+  function hitRow(table: HTMLElement): HTMLElement {
+    const row = table.querySelector('.cpm-cmp__r--hit');
+    if (!(row instanceof HTMLElement)) throw new Error('找不到分出高下的那一列');
+    return row;
+  }
+
+  it('比到直接對戰進球', async () => {
+    const table = await openCompare(h2hGoalsFor);
+    expect(hitRow(table).textContent).toBe('直接對戰進球243');
+  });
+
+  it('比到失球少：顯示失球數（引擎存的是負數）', async () => {
+    const table = await openCompare(goalsAgainst);
+    expect(within(table).getByText('全組淨勝')).toBeTruthy();
+    expect(hitRow(table).textContent).toBe('失球少03');
+  });
+
+  it('比到公平競賽（行為分）', async () => {
+    const table = await openCompare(fairPlay);
+    expect(within(table).getByText('失球少')).toBeTruthy();
+    expect(hitRow(table).textContent).toBe('公平競賽（行為分）-10');
+  });
+});
+
+// 設計總監 04:20：三隊以上比較表改直排（項目名自己一行、數字平均分欄），兩隊維持原本的欄寬字串。
+describe('同分比較表：兩隊橫排、三隊以上直排', () => {
+  function explainedFor(n: number) {
+    const teamIds = ['en_b', 'en_c', 'en_d', 'en_e', 'en_f', 'en_g'].slice(0, n);
+    return {
+      dvId: 'dv_adult',
+      groupId: 'A',
+      naturalOrder: teamIds,
+      steps: [
+        { teamIds, criterion: 'points', values: teamIds.map((teamId) => ({ teamId, value: 4 })), split: false },
+        { teamIds, criterion: 'fairPlay', values: teamIds.map((teamId, i) => ({ teamId, value: -i })), split: true },
+      ],
+      pending: false,
+      matchIds: [],
+    };
+  }
+
+  async function tableFor(n: number): Promise<HTMLElement> {
+    draw(detailEnv({
+      actor: hostActor,
+      staff: { uid: 'uid_host', roles: ['host'] },
+      actions: { ...idleActions(), explainTie: vi.fn(async () => explainedFor(n)) },
+    }), CompetitionDetailPage);
+    fireEvent.click(screen.getAllByRole('button', { name: '同分' })[0]!);
+    await screen.findByText('在這一項分出高下');
+    const table = document.querySelector('.cpm-cmp');
+    if (!(table instanceof HTMLElement)) throw new Error('找不到比較表');
+    return table;
+  }
+
+  function columnsOf(table: HTMLElement): string[] {
+    return [...table.querySelectorAll<HTMLElement>('.cpm-cmp__r')].map((row) => row.style.gridTemplateColumns);
+  }
+
+  it('兩隊不帶 --stack，欄寬維持「項目名＋每隊 4.5em」', async () => {
+    const table = await tableFor(2);
+    expect(table.className).toBe('cpm-cmp');
+    expect(new Set(columnsOf(table))).toEqual(new Set(['minmax(0,1fr) repeat(2,4.5em)']));
+  });
+
+  it.each([3, 4, 6])('%i 隊帶 --stack，表頭與每列的欄數等於隊數、平均分', async (n) => {
+    const table = await tableFor(n);
+    expect(table.classList.contains('cpm-cmp--stack')).toBe(true);
+    const cols = columnsOf(table);
+    expect(cols.length).toBe(3);
+    expect(new Set(cols)).toEqual(new Set([`repeat(${n},minmax(34px,1fr))`]));
+    // 項目名照樣在每列第一格（直排靠樣式把它放成一整行）
+    expect(within(table).getByText('公平競賽（行為分）')).toBeTruthy();
+    expect(table.querySelectorAll('.cpm-cmp__r--h > span').length).toBe(n + 1);
+  });
+});
+
 describe('整場延期與取消', () => {
   it('詳情頂部寫原因，賽程改成待定或已取消', () => {
     const rows = [summary({ id: 'mt_1', h: { id: 'en_h', n: '海風隊' }, a: { id: 'en_a', n: '山貓隊' }, st: 'scheduled', k: taipeiMs(2027, 1, 9, 9, 0) })];

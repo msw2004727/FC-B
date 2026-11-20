@@ -143,10 +143,11 @@ describe('分類色不進首頁入口', () => {
     }
   });
 
-  it('賽事頁與站內賽事樣式有匯入，開關字面與建置期常數一致', () => {
+  // 清-3（第 5 批終審第 3 點）：清單頁已經沒有規則用分類色，拿掉賽事頁的匯入；站內賽事樣式那一邊照舊。
+  it('賽事頁不再匯入、站內賽事樣式有匯入，開關字面與建置期常數一致', () => {
     const page = css('src/features/tournaments/pages/TournamentsPage.tsx');
     const sheet = css('src/features/competitions/competitions.css');
-    expect(page).toContain("import '@/styles/category-tokens.css';");
+    expect(page).not.toContain("import '@/styles/category-tokens.css';");
     expect(sheet.startsWith("@import '../../styles/category-tokens.css';")).toBe(true);
     const flag = css('src/feature-overrides.ts');
     if (COMPETITIONS_ENABLED) {

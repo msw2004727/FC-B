@@ -35,8 +35,6 @@ export interface InAppListCard {
   name: string;
   category: CompetitionCategory;
   phase: CompetitionPhase | null;
-  /** 日期＋全形空白＋場地。卡片改用 date／venue 之前的過渡欄位（第 1a 批卡 1a-5 拿掉）。 */
-  dates: string;
   /** `2027/01/09 – 01/10`。只有名稱的舊「我的賽事」是空字串。 */
   date: string;
   /** 第一個有名稱的場地；沒有是空字串。 */
@@ -101,15 +99,6 @@ export function firstVenueName(doc: Pick<CompetitionDoc, 'venues'>): string {
   return doc.venues.find((item) => item.name.trim())?.name.trim() ?? '';
 }
 
-/** `2027/01/09 – 01/10　示範運動公園`。沒有場地就只有日期。 */
-export function formatInAppWhenWhere(
-  doc: Pick<CompetitionDoc, 'firstMatchAt' | 'lastMatchAt' | 'venues'>,
-): string {
-  const when = formatInAppDates(doc);
-  const venue = firstVenueName(doc);
-  return venue ? `${when}　${venue}` : when;
-}
-
 /** 台北 HH:MM。 */
 function taipeiClock(ms: number): string {
   const p = taipeiParts(ms);
@@ -166,7 +155,6 @@ function cardFromDoc(
     name: doc.name,
     category: categoryOf(doc),
     phase,
-    dates: formatInAppWhenWhere(doc),
     date: formatInAppDates(doc),
     venue: firstVenueName(doc),
     firstMatchAt: doc.firstMatchAt,
@@ -236,7 +224,6 @@ export function assembleInAppCards(input: {
       name,
       category: categoryOf(row),
       phase: null,
-      dates: '',
       date: '',
       venue: '',
       firstMatchAt: null,

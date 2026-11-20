@@ -315,15 +315,21 @@ describe('詳情頁即時', () => {
     expect(pk.parentElement?.className).toBe('cp3-m__vs');
     const score = pk.parentElement?.querySelector('.s');
     expect(score?.className).toBe('s');
-    expect(score?.textContent).toBe('2：1');
+    // 新外觀卡 1b-4：比分拆成「2 : 1」三格（對報讀隱藏），完整比分「2：1」留在視覺隱藏的那一段
+    expect(score?.querySelector('.cps-vh')?.textContent).toBe('2：1');
+    expect([...(score?.querySelectorAll('b.d2-num') ?? [])].map((node) => node.textContent)).toEqual(['2', '1']);
     const pkRow = pk.closest('.cp3-m');
     expect(view.container.querySelectorAll('.cp3-m__pk')).toHaveLength(1);
     for (const row of view.container.querySelectorAll('.cp3-m')) {
       if (row !== pkRow) expect(row.querySelector('.cp3-m__pk')).toBeNull();
     }
     expect(view.container.textContent ?? '').toContain('隔日 01:30');
-    expect(view.container.textContent ?? '').toContain('09:00　示範球場');
-    expect(view.container.textContent ?? '').toContain('14:30　確認場');
+    // 時間與場地分成兩個節點（中間不再有全形空白）；「隔日 01:30」不是純時間，不套窄體數字
+    const when = (time: string): Element | undefined => [...view.container.querySelectorAll('.cp3-m__when')].find((node) => node.querySelector('b')?.textContent === time);
+    expect(when('09:00')?.querySelector('.cp3-m__court')?.textContent).toBe('示範球場');
+    expect(when('14:30')?.querySelector('.cp3-m__court')?.textContent).toBe('確認場');
+    expect(when('09:00')?.querySelector('b')?.className).toBe('d2-num');
+    expect(when('隔日 01:30')?.querySelector('b')?.className).toBe('');
     expect(view.container.textContent ?? '').not.toContain('舊名');
     const reset = [...view.container.querySelectorAll('.cp3-m')].find((node) => node.textContent?.includes('16:00'));
     expect(reset?.textContent ?? '').not.toContain('比分已更正');

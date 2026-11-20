@@ -63,6 +63,7 @@ const PAGES: Record<string, ComponentType> = {
   // 卡 2-5 補（設計總監 03:38）：分得出高下（淡青綠列）、四隊同分（360 寬放不放得下）。
   'real-tie-ranked': CompetitionDetailPage,
   'real-tie-four': CompetitionDetailPage,
+  'real-tie-three': CompetitionDetailPage,
   // 新外觀第 1b 批第 7 節「要補示範狀態」（截圖拍正式版現況；面板類由下方 OPEN 點正式按鈕打開）。
   'real-live-twin-next': CompetitionDetailPage,
   'real-live-no-today': CompetitionDetailPage,
@@ -308,6 +309,7 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('裁定卡', () => buttonsNamed('撤銷裁定').length > 0);
   },
   'real-tie-ranked': () => openTie('銀河隊', () => !!document.querySelector('.cpm-cmp__r--hit') && hasText('對戰積分')),
+  'real-tie-three': () => openTie('銀河隊', () => hasText('公平競賽（行為分）') && !!document.querySelector('.cpm-cmp--stack .cpm-cmp__r--hit')),
   'real-tie-four': () => openTie('銀河隊', () => document.querySelectorAll('.cpm-cmp__r--h > span').length === 5 && !!document.querySelector('.cpm-cmp__r--hit')),
   'real-ctx-short': () => until('頁首賽事名', () => !!document.querySelector('.cps-top__ctx')),
   'real-ctx-long': () => until('頁首賽事名', () => !!document.querySelector('.cps-top__ctx')),

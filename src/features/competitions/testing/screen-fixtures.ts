@@ -868,6 +868,61 @@ const TIE_FOUR_EXPLAINED = {
   marks: FOUR_IDS.map((teamId, index) => ({ teamId, rank: index + 2, decidedBy: null })),
 };
 
+/**
+ * 三隊同分（設計總監 04:20 比較表三隊以上改直排）：海風全勝；銀河、雷霆、青鳥互和 1：1，各輸海風 0：1，
+ * 積分、對戰、淨勝、進球、失球全同，只差牌（雷霆一黃、青鳥兩黃），比到最後一項「公平競賽（行為分）」才分開。
+ * 同樣照 functions-cp 引擎（computeRows → rankRows、explainTie，RR_FEDA_DEFAULT）實跑輸出抄入。
+ */
+const TIE_THREE_GAMES: readonly TieGame[] = [
+  ['mt_t1', 'en_b', 'en_c', 1, 1, 9, 9],
+  ['mt_t2', 'en_c', 'en_d', 1, 1, 9, 11],
+  ['mt_t3', 'en_d', 'en_b', 1, 1, 9, 13],
+  ['mt_t4', 'en_h', 'en_b', 1, 0, 10, 9],
+  ['mt_t5', 'en_h', 'en_c', 1, 0, 10, 11],
+  ['mt_t6', 'en_h', 'en_d', 1, 0, 10, 13],
+];
+
+function tieThreeStandings(): StandingDoc {
+  const three = { points: 2, played: 3, win: 0, draw: 2, loss: 1, goalsFor: 2, goalsAgainst: 3, goalDiff: -1 };
+  return standingDoc({
+    rows: [
+      standingRow({ teamId: 'en_h', name: '海風隊', rank: 1, points: 9, played: 3, win: 3, draw: 0, loss: 0, goalsFor: 3, goalsAgainst: 0, goalDiff: 3 }),
+      standingRow({ teamId: 'en_b', name: '銀河隊', rank: 2, ...three }),
+      standingRow({ teamId: 'en_c', name: '雷霆隊', rank: 3, ...three }),
+      standingRow({ teamId: 'en_d', name: '青鳥隊', rank: 4, ...three }),
+    ],
+  });
+}
+
+const THREE_IDS = ['en_b', 'en_c', 'en_d'];
+const threeValues = (values: readonly number[]) => THREE_IDS.map((teamId, index) => ({ teamId, value: values[index] ?? null }));
+
+const TIE_THREE_EXPLAINED = {
+  dvId: 'dv_adult',
+  groupId: 'A',
+  naturalOrder: [...THREE_IDS],
+  steps: [
+    { teamIds: [...THREE_IDS], criterion: 'points', values: threeValues([2, 2, 2]), split: false },
+    { teamIds: [...THREE_IDS], criterion: 'headToHeadPoints', values: threeValues([2, 2, 2]), split: false },
+    { teamIds: [...THREE_IDS], criterion: 'headToHeadGoalDiff', values: threeValues([0, 0, 0]), split: false },
+    { teamIds: [...THREE_IDS], criterion: 'headToHeadGoalsFor', values: threeValues([2, 2, 2]), split: false },
+    { teamIds: [...THREE_IDS], criterion: 'goalDiff', values: threeValues([-1, -1, -1]), split: false },
+    { teamIds: [...THREE_IDS], criterion: 'goalsFor', values: threeValues([2, 2, 2]), split: false },
+    { teamIds: [...THREE_IDS], criterion: 'goalsAgainstAsc', values: threeValues([-3, -3, -3]), split: false },
+    { teamIds: [...THREE_IDS], criterion: 'fairPlay', values: threeValues([0, -1, -2]), split: true },
+  ],
+  splits: [
+    { criterion: 'fairPlay', aboveTeamIds: ['en_b'], belowTeamIds: ['en_c'] },
+    { criterion: 'fairPlay', aboveTeamIds: ['en_c'], belowTeamIds: ['en_d'] },
+  ],
+  decidedCriterion: 'fairPlay',
+  pending: false,
+  pendingCriterion: null,
+  matchIds: ['mt_t1', 'mt_t2', 'mt_t3'],
+  decision: null,
+  marks: THREE_IDS.map((teamId, index) => ({ teamId, rank: index + 2, decidedBy: null })),
+};
+
 /** explainTie 假回傳：送來的隊伍與引擎跑的那一組不同就丟錯，避免畫面拿到對不上的數字。 */
 function tieExplainOf(expected: readonly string[], result: unknown) {
   return async (input: { teamIds: string[] }) => {
@@ -1381,6 +1436,16 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
         { summary: tieGames(TIE_RANKED_GAMES), standings: [tieRankedStandings()] },
         HOST_STAFF,
         { ...actions, explainTie: tieExplainOf(['en_b', 'en_c'], TIE_RANKED_EXPLAINED) },
+      );
+    case 'real-tie-three':
+      // 三隊同分（設計總監 04:20）：比較表三隊以上直排，最長的項目名「公平競賽（行為分）」。
+      return detailEnv(
+        hostActor,
+        DONE_NOW,
+        {},
+        { summary: tieGames(TIE_THREE_GAMES), standings: [tieThreeStandings()] },
+        HOST_STAFF,
+        { ...actions, explainTie: tieExplainOf(THREE_IDS, TIE_THREE_EXPLAINED) },
       );
     case 'real-tie-four':
       // 卡 2-5 補（設計總監 03:38）：四隊同分，比較表四欄，量 360 寬放不放得下。

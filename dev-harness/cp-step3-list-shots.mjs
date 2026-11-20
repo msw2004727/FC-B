@@ -1,91 +1,159 @@
 #!/usr/bin/env node
-// 賽事第 3 步預覽截圖：對已打包的 harness（vite preview）逐畫面、逐寬度、逐主題截圖（固定視窗高度，不截整頁；
-// 內容超過一個視窗時再往下捲、補截後續分段），並檢查 console 錯誤、橫向溢出與介面文字被動斷行。
-// 用法：node dev-harness/cp-step3-shots.mjs <輸出資料夾> [base url，預設 http://localhost:5194]
+// 賽事清單頁新外觀截圖（清-6，第 1a 批第 7 節、第 5 批第 7 節）：對清單示範頁（vite.cp-list.config.ts 的開發伺服器）
+// 逐畫面、360／1280、淺色／深色截整頁圖（2 倍像素比），並檢查 console 錯誤、整頁橫向溢出、介面文字被動斷行，
+// 量幾個尺寸（卡高、篩選列寬、選單有沒有被裁、左右留白）寫進 report.json。非本機請求一律擋下記在 report.blocked。
+// 用法：node dev-harness/cp-step3-list-shots.mjs <輸出資料夾> <base url，例 http://127.0.0.1:5281> [--screens=a,b] [--sizes=360,1280]
+// （取代舊版：舊版拍的是手寫標記的預覽、390／360 寬、1.5 倍。）
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 
-const OUT = resolve(process.argv[2] || 'cp-step3-shots');
-const BASE = process.argv[3] || 'http://localhost:5194';
-const ALL = [[390, 844], [360, 780]];
-const ONE = [[390, 844]];
+const ARGS = process.argv.slice(2);
+const FLAGS = Object.fromEntries(ARGS.filter((a) => a.startsWith('--')).map((a) => { const [k, v] = a.slice(2).split('='); return [k, v ?? '']; }));
+const POS = ARGS.filter((a) => !a.startsWith('--'));
+const OUT = resolve(POS[0] || 'cp-list-shots');
+const BASE = POS[1] || 'http://127.0.0.1:5281';
+const ONLY = FLAGS.screens ? new Set(FLAGS.screens.split(',')) : null;
+const SIZES = [[360, 780], [1280, 800]].filter(([w]) => !FLAGS.sizes || FLAGS.sizes.split(',').map(Number).includes(w));
 const THEMES = ['light', 'dark'];
-// [畫面, 寬度組, 主題組, 是否可往下補截（面板／對話框不補）]
+
+const pickStatus = (label) => async (page) => {
+  await page.locator('.d2-dd__btn').click();
+  await page.getByRole('option', { name: label }).click();
+};
+const openMenu = async (page) => { await page.locator('.d2-dd__btn').click(); };
+// [畫面, 站內?, 等到出現的選擇器, 動作, 只拍 360]
 const SCREENS = [
-  ['list:in', ALL, THEMES, true],
-  ['list:in-cup', ONE, THEMES, true],
-  ['list:in-mine', ONE, ['light'], true],
-  ['list:in-done', ONE, THEMES, false],
-  ['list:ext', ALL, THEMES, true],
-  ['list:gate-off', ONE, ['light'], false],
-  ['main:cover-live', ALL, THEMES, true],
-  ['main:cover-default', ALL, THEMES, true],
-  ['main:cover-cup', ALL, THEMES, true],
-  ['main:cover-friendly', ONE, THEMES, true],
-  ['main:crest-sheet', ONE, THEMES, true],
+  ['in', true, '.cpl-card--board'],
+  ['in-cup', true, '.cpl-card', async (p) => { await p.getByRole('tab', { name: '盃賽' }).click(); }],
+  ['in-mine', true, '.cpl-card', async (p) => { await p.locator('[data-inapp] .cpl-sw').click(); }],
+  ['in-done', true, '.cpl-card', pickStatus('已結束')],
+  ['in-nolive', true, '.cpl-card--board'],
+  ['in-twolive', true, '.cpl-card--board'],
+  ['in-live-noline', true, '.cpl-card--board'],
+  ['in-recruit-board', true, '.cpl-card--board'],
+  ['in-marks', true, '.cpl-card--board'],
+  ['in-noboard', true, '.cpl-card'],
+  ['in-long', true, '.cpl-card--board'],
+  ['in-guest', true, '.cpl-card--board'],
+  ['in-menu', true, '.cpl-card--board', openMenu],
+  ['in-menu-empty', true, '.cpl-card--board', async (p) => { await pickStatus('已結束')(p); await openMenu(p); }],
+  ['in-menu-two', true, '.cpl-card--board', async (p) => { await pickStatus('已結束')(p); await openMenu(p); }],
+  ['in-loading', true, '[data-cp-pending-in]'],
+  ['ext', false, '.cpl-src'],
+  ['ext-admin', false, '.cpl-xrow__edit'],
+  ['ext-long', false, '.cpl-xrow__edit'],
+  ['ext-loading', false, '.cpl-xskel'],
+  ['ext-empty', false, '.cpl-xmsg'],
+  ['ext-error', false, '.cpl-xmsg'],
+  ['ext-delete', false, '.cpl-xrow__edit', async (p) => {
+    await p.locator('.cpl-xrow__edit').first().click();
+    await p.locator('#tc-delete').click();
+    await p.locator('#app-confirm-modal .app-confirm-ok').waitFor();
+  }, true],
+  ['gate-off', false, '.cpl-xrow'],
+  ['gate-off-admin', false, '.cpl-xrow__edit'],
+  ['gate-off-long', false, '.cpl-xrow'],
+  ['gate-off-loading', false, '.cpl-xskel'],
+  ['gate-off-empty', false, '.cpl-xmsg'],
+  ['gate-off-error', false, '.cpl-xmsg'],
 ];
 
-const SELECTORS = '.cpl-src button, .cpl-select, .cpl-st, .tc-chip, .tc-tab, .cpl-line, .tc-card-name, .tc-card-dates, button, .ui-badge, .ui-chip, dt, .cp3-name, .cp3-meta, .cp3-strip__txt, .cp3-day, .cp3-m__when, .cp3-m__vs span, .cp3-st__r > *, .cp3-champ span, .cp3-fold span, .cp3-result, .cp3-result--bad, .cp3-judge, .cp3-sec-h, .cp3-ctx, .cp3-score__name, .cp3-modal-p, .ui-input label, .ui-checkbox label, .ui-radio label, h1, h2, h3, .cps-sub';
+// 介面文字不該被動斷行的元素（外部賽事名稱是設計接受的換行，不在這裡）
+const NOWRAP = '.cpl-src button, .cpl-head h2:not(.cpl-vh), .cpl-seg__tab, .cpl-sw > span:first-child, .ui-button__label, .d2-menu__opt, .cpl-st, .cpl-line, .cpl-card__name, .cpl-meta, .d2-sb__st, .cpl-sb__cat, .d2-cell, .cpl-xrow__cat, .cpl-xrow__date, .cpl-xmsg p, .cpl-xrow--edit .cpl-xrow__name, .cpl-xrow--edit .cpl-xrow__meta';
+
+function measure(nowrap) {
+  const r = (el) => (el ? el.getBoundingClientRect() : null);
+  const page = document.getElementById('page-tournaments');
+  const doc = document.scrollingElement;
+  const wraps = [];
+  for (const el of document.querySelectorAll(nowrap)) {
+    if (el.offsetParent === null || el.closest('[hidden]')) continue;
+    // 用文字範圍的行框數判斷（元素本身可能因點擊區比字高）
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rects = [...range.getClientRects()].filter((x) => x.width > 0 && x.height > 0);
+    if (rects.length < 2) continue;
+    const firstBottom = Math.min(...rects.map((x) => x.bottom));
+    if (rects.some((x) => x.top >= firstBottom - 1)) wraps.push({ cls: String(el.className), text: (el.textContent || '').trim().slice(0, 30) });
+  }
+  // 管理者列的 ↗ 必須和名稱同一行（顧問 §3.494）
+  for (const name of document.querySelectorAll('.cpl-xrow--edit .cpl-xrow__name')) {
+    const go = name.querySelector('.cpl-xrow__go');
+    if (go && go.getBoundingClientRect().top >= name.getBoundingClientRect().top + 22) wraps.push({ cls: 'arrow-dropped', text: (name.textContent || '').trim().slice(0, 30) });
+  }
+  const truncated = [...document.querySelectorAll('.cpl-card__name, .cpl-meta__venue, .cpl-line, .cpl-xrow--edit .cpl-xrow__name, .cpl-xrow--edit .cpl-xrow__date')]
+    .filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => (el.textContent || '').trim().slice(0, 30));
+  const menu = document.querySelector('.d2-menu:not([hidden])');
+  const inapp = document.querySelector('[data-inapp]');
+  const toolbar = document.querySelector('.cpl-toolbar') || document.querySelector('.cpl-bar');
+  const seg = r(document.querySelector('.cpl-seg'));
+  return {
+    hOverflow: doc.scrollWidth - doc.clientWidth,
+    pageInnerScroll: page ? page.scrollHeight - page.clientHeight : null,
+    contentLeft: seg ? Math.round(seg.left) : null,
+    contentRight: seg ? Math.round(document.documentElement.clientWidth - seg.right) : null,
+    headW: Math.round(r(document.querySelector('.cpl-head'))?.width ?? 0),
+    segH: seg ? Math.round(seg.height) : null,
+    toolbar: toolbar ? { scrollW: toolbar.scrollWidth, clientW: toolbar.clientWidth, h: Math.round(r(toolbar).height) } : null,
+    cards: [...document.querySelectorAll('.cpl-card')].map((el) => ({ cid: el.getAttribute('data-cid'), board: el.classList.contains('cpl-card--board'), h: Math.round(r(el).height) })),
+    xrows: [...document.querySelectorAll('.cpl-xrow')].map((el) => Math.round(r(el).height)),
+    // 外部列名稱左緣（有圖、沒圖都要相同；沒圖放預設縮圖）
+    nameLefts: [...new Set([...document.querySelectorAll('.cpl-xrow__name')].map((el) => Math.round(r(el).left)))],
+    skel: [...document.querySelectorAll('.cpl-skel__card, .cpl-xskel__row')].map((el) => Math.round(r(el).height)),
+    menu: menu ? {
+      rows: menu.querySelectorAll('[role="option"]').length,
+      clippedPx: inapp ? Math.max(0, Math.round(r(menu).bottom - r(inapp).bottom)) : null,
+      focus: document.activeElement?.textContent ?? null,
+    } : null,
+    wraps,
+    truncated,
+  };
+}
 
 const browser = await chromium.launch({ args: ['--noerrdialogs'] });
 await mkdir(OUT, { recursive: true });
-const report = { shots: [], consoleErrors: [], overflows: [], wraps: [] };
-const copyMap = new Map();
-for (const [full, sizes, themes, scrollMore] of SCREENS) {
-  const [kind, name] = full.split(':');
-  for (const [w, h] of sizes) {
-    for (const theme of themes) {
-      const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 });
+const report = { base: BASE, dpr: 2, shots: [], consoleErrors: [], blocked: [], overflows: [], wraps: [], failures: [] };
+for (const [name, inApp, ready, act, only360] of SCREENS) {
+  if (ONLY && !ONLY.has(name)) continue;
+  for (const [w, h] of SIZES) {
+    if (only360 && w !== 360) continue;
+    for (const theme of THEMES) {
+      const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2 });
       const page = await ctx.newPage();
-      const tag = `${kind === 'list' ? 'list-' : ''}${name}-${w}-${theme}`;
-      page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });
-      page.on('pageerror', (e) => report.consoleErrors.push(`${tag}: pageerror ${e.message}`));
-      await page.goto(`${BASE}/dev-harness/${kind === 'list' ? 'cp-step3-list' : 'cp-step3'}.html?screen=${name}&theme=${theme}`);
-      await page.waitForFunction(() => window.__CPS_READY === true);
-      await page.evaluate(() => document.fonts.ready);
-      await page.waitForTimeout(500);
-      for (const c of await page.evaluate(() => window.__CPS_COPY)) copyMap.set(c.key, c);
-      const wide = await page.evaluate(() => Math.max(document.documentElement.scrollWidth - document.documentElement.clientWidth, document.body.scrollWidth - document.body.clientWidth));
-      if (wide > 0) report.overflows.push(`${tag}: 橫向溢出 ${wide}px`);
-      // 區塊內部溢出（被 overflow:hidden 吃掉的內容）也要抓
-      const clipped = await page.evaluate(() => {
-        const out = [];
-        for (const el of document.querySelectorAll('.cp3-st__r, .cp3-m__vs, .cp3-score, .cp3-m__act, .cps-footer, .cp3-stack-btns, .cp3-strip, .cp3-row, .cps-grid2')) {
-          if (el.scrollWidth - el.clientWidth > 1) out.push(`${el.className} ${el.scrollWidth}>${el.clientWidth}`);
-        }
-        return out;
+      await page.route('**/*', (route) => {
+        const url = route.request().url();
+        if (/^(https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/|data:|blob:)/.test(url)) return route.continue();
+        report.blocked.push(url);
+        return route.abort();
       });
-      for (const t of clipped) report.overflows.push(`${tag}: 容器內溢出 ${t}`);
-      const wraps = await page.evaluate((sel) => {
-        const out = [];
-        for (const el of document.querySelectorAll(sel)) {
-          const r = document.createRange();
-          r.selectNodeContents(el);
-          const tops = new Set([...r.getClientRects()].filter((q) => q.width > 0 && q.height > 0 && q.height < 40).map((q) => Math.round(q.top / 4)));
-          if (tops.size > 1) out.push((el.textContent || '').trim().slice(0, 40));
-        }
-        return out;
-      }, SELECTORS);
-      for (const t of wraps) report.wraps.push(`${tag}: ${t}`);
-      // 被省略號截掉的文字（預期只有長隊名）
-      const ell = await page.evaluate(() => [...document.querySelectorAll('*')].filter((el) => el.children.length === 0 && el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).textOverflow === 'ellipsis').map((el) => (el.textContent || '').trim().slice(0, 30)));
-      for (const t of ell) report.wraps.push(`${tag}: （省略號）${t}`);
-      const total = await page.evaluate(() => document.documentElement.scrollHeight);
-      const parts = scrollMore ? Math.min(3, Math.max(1, Math.ceil((total - 40) / h))) : 1;
-      for (let i = 0; i < parts; i++) {
-        await page.evaluate((y) => window.scrollTo(0, y), i === parts - 1 && i > 0 ? total : i * (h - 80));
-        await page.waitForTimeout(150);
-        const file = `${tag}${i ? `-p${i + 1}` : ''}.png`;
-        await page.screenshot({ path: join(OUT, file), fullPage: false });
-        report.shots.push(file);
+      page.on('console', (msg) => { if (msg.type() === 'error') report.consoleErrors.push({ name, w, theme, text: msg.text() }); });
+      page.on('pageerror', (err) => report.consoleErrors.push({ name, w, theme, text: String(err) }));
+      const file = `${name}-${w}-${theme}.png`;
+      try {
+        await page.goto(`${BASE}/dev-harness/cp-step3-list.html?screen=${name}&theme=${theme}${inApp ? '&src=in' : ''}`);
+        await page.waitForFunction(() => window.__CPL_READY === true);
+        await page.locator(ready).first().waitFor({ timeout: 15000 });
+        await page.waitForTimeout(400);
+        if (act) { await act(page); await page.waitForTimeout(300); }
+        // 縮圖是 loading="lazy"：截整頁前改成立即載入並等它們畫好。舊站樣式把 img 預設成透明，
+        // 正式站由 index.html 的開頁腳本在 decode 後加 img-loaded；示範頁沒有那支腳本，這裡照做。
+        await page.evaluate(() => { for (const img of document.images) img.loading = 'eager'; });
+        await page.waitForFunction(() => [...document.images].every((img) => img.complete));
+        await page.evaluate(() => { for (const img of document.images) img.classList.add('img-loaded'); });
+        await page.waitForTimeout(350);
+        const m = await page.evaluate(measure, NOWRAP);
+        await page.screenshot({ path: join(OUT, file), fullPage: true });
+        report.shots.push({ file, name, w, theme, ...m });
+        if (m.hOverflow > 0) report.overflows.push({ file, px: m.hOverflow });
+        for (const x of m.wraps) report.wraps.push({ file, ...x });
+      } catch (err) {
+        report.failures.push({ file, error: String(err).slice(0, 300) });
       }
       await ctx.close();
     }
   }
 }
 await browser.close();
-await writeFile(join(OUT, 'copy.json'), JSON.stringify([...copyMap.values()], null, 2), 'utf8');
-await writeFile(join(OUT, 'report.json'), JSON.stringify(report, null, 2), 'utf8');
-console.log(`截圖 ${report.shots.length} 張；console 錯誤 ${report.consoleErrors.length}；溢出 ${report.overflows.length}；斷行／省略 ${report.wraps.length}`);
-for (const k of ['consoleErrors', 'overflows', 'wraps']) for (const l of report[k]) console.log(k, l);
+await writeFile(join(OUT, 'report.json'), JSON.stringify(report, null, 2));
+console.log(`shots ${report.shots.length}、失敗 ${report.failures.length}、console 錯誤 ${report.consoleErrors.length}、橫向溢出 ${report.overflows.length}、被動斷行 ${report.wraps.length}、擋下 ${report.blocked.length}`);
