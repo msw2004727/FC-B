@@ -167,6 +167,10 @@ export function RosterBlocked({
         <p class="cps-note" role="alert">{text}</p>
         <div class="cps-actions">
           <Button variant="secondary" onClick={() => route(`/competitions/${cid}/entries/${enId}`)}>{ct('backToRoster')}</Button>
+          {/* 沒填生日被擋：留一條去補的路（409c4d77 走 CpError 會附「前往個人資料」，新外觀改版時漏掉；獨立審 B P1） */}
+          {reason === 'BIRTHDAY_REQUIRED'
+            ? <Button variant="primary" onClick={() => route('/profile')}>{ct('goBirthday')}</Button>
+            : null}
         </div>
       </CpCard>
     </CpFrame>

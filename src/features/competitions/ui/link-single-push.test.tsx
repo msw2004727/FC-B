@@ -32,4 +32,31 @@ describe('賽事連結只推一筆歷史', () => {
     expect(location.pathname).toBe('/competitions/cp_1/entries/en_1');
     expect(history.length).toBe(before + 1);
   });
+
+  // 獨立審 B P1：沒填生日被擋時要有去補生日的路（新外觀改版時漏掉了 409c4d77 的「前往個人資料」）
+  it('沒填生日被擋：有「前往個人資料」主要鈕，點了到 /profile 只推一筆歷史', () => {
+    history.replaceState(null, '', '/competitions/cp_1/entries/en_1/join');
+    render(
+      <LocationProvider>
+        <RosterBlocked reason="BIRTHDAY_REQUIRED" cid="cp_1" enId="en_1" />
+      </LocationProvider>,
+    );
+    expect(screen.getByRole('alert').textContent).toContain('請先補上生日');
+    expect(screen.getByRole('button', { name: '返回名單' })).toBeTruthy();
+    const before = history.length;
+    const go = screen.getByRole('button', { name: '前往個人資料' });
+    expect(go.className).toContain('ui-button--primary');
+    fireEvent.click(go);
+    expect(location.pathname).toBe('/profile');
+    expect(history.length).toBe(before + 1);
+  });
+
+  it('其他原因不出現「前往個人資料」', () => {
+    render(
+      <LocationProvider>
+        <RosterBlocked reason="ENTRY_STATUS" cid="cp_1" enId="en_1" />
+      </LocationProvider>,
+    );
+    expect(screen.queryByRole('button', { name: '前往個人資料' })).toBeNull();
+  });
 });
