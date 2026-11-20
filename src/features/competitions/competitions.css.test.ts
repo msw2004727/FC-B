@@ -37,3 +37,11 @@ describe('使用者取的賽事名稱標題（顧問 §3.460）', () => {
     expect(css).toMatch(/\.cps-top h1\.cps-top__user \{[^}]*white-space: normal;[^}]*-webkit-line-clamp: 2;/);
   });
 });
+
+describe('詳情頁隊伍清單標籤（顧問 §3.463）', () => {
+  it('「已核准」標籤不縮、不換行，隊名區可縮', () => {
+    const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');
+    expect(css).toMatch(/\.cps-li > \.cps-li__tag \{[^}]*flex: 0 0 auto;[^}]*white-space: nowrap;/);
+    expect(css).toMatch(/\.cps-li__main \{[^}]*min-width: 0;/);
+  });
+});

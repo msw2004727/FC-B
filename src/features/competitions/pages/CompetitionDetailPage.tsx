@@ -1137,7 +1137,8 @@ function DivisionBlock({
                 </span>
               </a>
             </div>
-            <Badge tone="success" label={ct('approved')} size="sm" />
+            {/* 顧問 §3.463：長隊名時「已核准」被擠成兩行。只在這一列讓標籤不縮、不換行，隊名讓位省略；不動共用 Badge。 */}
+            <Badge tone="success" label={ct('approved')} size="sm" class="cps-li__tag" />
           </li>
         ))}
       </ul>

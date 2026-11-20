@@ -127,6 +127,7 @@
 .cps-li:first-child { border-top: 0; padding-top: 0; }
 .cps-li:last-child { padding-bottom: 0; }
 .cps-li__main { flex: 1 1 auto; min-width: 0; }
+.cps-li > .cps-li__tag { flex: 0 0 auto; white-space: nowrap; } /* 顧問 §3.463：詳情頁隊伍清單標籤不縮不換行，隊名（.cps-li__main min-width:0）讓位省略 */
 .cps-li__name { display: block; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cps-li__meta { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin-top: 2px; }
 .cps-li__meta .cps-cap { white-space: nowrap; }
