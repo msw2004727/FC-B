@@ -976,7 +976,7 @@ function DivisionBlock({
         {approved.map((entry) => (
           <li class="cps-li" key={entry.id}>
             <div class="cps-li__main">
-              <a class="cps-li__name cps-link" href={`/competitions/${cid}/entries/${entry.id}`} onClick={(event) => { event.preventDefault(); route(`/competitions/${cid}/entries/${entry.id}`); }}>
+              <a class="cps-li__name cps-link" href={`/competitions/${cid}/entries/${entry.id}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); route(`/competitions/${cid}/entries/${entry.id}`); }}>
                 <span class="cp3-tn">
                   <TeamCrest teamId={entry.teamId} name={entry.name} teamLogo={entry.teamLogo} size={48} />
                   <em>{entry.name}</em>

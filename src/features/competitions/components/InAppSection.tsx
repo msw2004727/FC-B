@@ -268,6 +268,7 @@ function SectionBody({
       onCreate={() => route('/competitions/new')}
       onOpen={(cid, event) => {
         event.preventDefault();
+        event.stopPropagation(); // 不讓 preact-iso LocationProvider 的全域連結攔截再推一筆歷史（11-20 預演：返回要按兩次）。
         route(`/competitions/${cid}`);
       }}
     />
