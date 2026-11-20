@@ -50,9 +50,17 @@ export function TrashIcon(): JSX.Element {
   );
 }
 
+/**
+ * 站內賽事頁共用的頁框與頁首（新外觀第 1b 批卡 1b-2；第 3、4 批引用，不另寫一份）。
+ * 頁首＝返回鈕＋頁名 h1＋（選用）賽事名小字＋（選用）右上 menu。
+ * - crumb：返回鈕旁的小字（詳情頁傳「賽事」）。有值時頁首不畫 h1，該頁內容必須自己畫一個 h1。
+ * - context：頁名右邊的賽事名小字（單行省略，接在 h1 後面、不在 h1 裡面）。讀取失敗、不公開等畫面不要傳。
+ */
 export function CpFrame({
   title,
   userTitle = false,
+  crumb,
+  context,
   onBack,
   menu,
   children,
@@ -60,6 +68,8 @@ export function CpFrame({
   title: string;
   /** 標題是使用者取的名稱（賽事名稱）：最多兩行、超過才省略。 */
   userTitle?: boolean;
+  crumb?: string;
+  context?: string;
   onBack?: () => void;
   menu?: ComponentChildren;
   children: ComponentChildren;
@@ -74,7 +84,8 @@ export function CpFrame({
         <button type="button" class="cps-iconbtn" aria-label={ct('back')} onClick={onBack ?? goBack}>
           <BackIcon />
         </button>
-        <h1 class={userTitle ? 'cps-top__user' : undefined}>{title}</h1>
+        {crumb ? <span class="cps-top__crumb">{crumb}</span> : <h1 class={userTitle ? 'cps-top__user' : undefined}>{title}</h1>}
+        {context ? <span class="cps-top__ctx">{context}</span> : null}
         {menu}
       </header>
       <div class="cps-stack">{children}</div>

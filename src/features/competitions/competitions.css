@@ -42,6 +42,7 @@
   --d2-alert-fg: #ffffff;
   --d2-menu-bg: #ffffff;
   --d2-menu-sh: 0 12px 32px rgba(15,23,42,.18), inset 0 0 0 1px #dfe3ea;
+  --d2-page-bg: linear-gradient(180deg, #eef1f6 0%, #e5eaf2 100%);
   --d2-sb-bg: #0d1816;
   --d2-sb-bg-off: #0d1816;
   --d2-sb-fg: #f2f6f4;
@@ -90,6 +91,7 @@
   --d2-alert-bg: #8f1d1d;
   --d2-menu-bg: #1c2230;
   --d2-menu-sh: 0 12px 32px rgba(0,0,0,.55), inset 0 0 0 1px #323a4e;
+  --d2-page-bg: linear-gradient(180deg, #0b0f16 0%, #10151f 100%);
   --d2-sb-bg: #0b241f;
   --d2-sb-bg-off: #080b10;
   --d2-sb-fg2: #a9bab4;
@@ -424,26 +426,47 @@
 .d2-sb .ui-badge { background: none; box-shadow: inset 0 0 0 1px var(--d2-sb-line); color: var(--d2-sb-fg2); }
 .d2-sb .cp3-crest.cp3-crest--txt { background: rgba(255,255,255,.1); color: var(--d2-sb-fg); box-shadow: inset 0 0 0 1px rgba(255,255,255,.22); }
 
+/* 頁框（卡 1b-2）：左右 8px，加外框 .app-main 的 8px 合計 16px，與清單頁相同。
+ * 底色鋪滿視窗：根節點自己不鋪底，同一組漸層鋪在固定在視窗上的 ::before（清單頁 .tournaments-root::before 同做法），
+ * 短頁面底色不會中途斷掉。根節點自成一層（z-index 0），底色層在它裡面排最後（-1）；外框上方列與底部導覽不受影響。 */
 .cps-root {
+  position: relative;
+  z-index: 0;
   box-sizing: border-box;
   min-height: 100%;
-  padding: 0 16px 96px;
-  background: linear-gradient(180deg, #eef1f6 0%, #e5eaf2 100%);
+  padding: 0 8px 96px;
   color: var(--color-text-primary);
   font-family: var(--font-sans);
   font-size: var(--font-size-body);
   line-height: var(--line-height-body);
 }
-[data-theme="dark"] .cps-root { background: linear-gradient(180deg, #0b0f16 0%, #10151f 100%); }
+.cps-root::before {
+  content: ''; position: fixed; z-index: -1; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
+  background: var(--d2-page-bg);
+}
 .cps-root * { box-sizing: border-box; }
 .cps-root :is(input, select, textarea) { font-size: max(16px, 1rem); }
 .cps-nowrap { white-space: nowrap; }
 
-.cps-top { position: relative; display: flex; align-items: center; gap: var(--space-2); height: 60px; }
+/* 頁首（卡 1b-2）：高 48、靠左排。頁名不搶寬（有賽事名小字時小字吃剩下的寬度），右上鈕靠 margin-left: auto 推到右邊。 */
+.cps-top { position: relative; display: flex; align-items: center; gap: var(--space-1); height: 48px; }
 .cps-top h1 {
-  flex: 1 1 auto; min-width: 0; margin: 0; font-size: var(--font-size-body-lg);
+  flex: 0 1 auto; min-width: 0; margin: 0; font-size: var(--font-size-body-lg); color: var(--d2-text);
   line-height: var(--line-height-body-lg); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* 返回鈕旁的小字（詳情頁「賽事」，CpFrame 的 crumb）：不是標題、不折行 */
+.cps-top__crumb {
+  flex: 0 0 auto; margin-right: auto; font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm);
+  font-weight: 600; color: var(--d2-text-2); white-space: nowrap;
+}
+/* 頁名右邊的賽事名小字（CpFrame 的 context，第 3、4 批各頁傳值）：單行省略，頁名永遠完整 */
+.cps-top__ctx {
+  flex: 1 1 0; min-width: 0; margin-left: 6px; padding-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-weight: 400; color: var(--d2-text-2);
+}
+/* 頁首裡的圓形鈕：外觀 36px 貼齊內容邊緣（點擊區 44 往外多出 4px） */
+.cps-top > .cps-iconbtn:first-child { margin-left: -4px; }
+.cps-top > .cps-iconbtn ~ .cps-iconbtn { margin-left: auto; margin-right: -4px; }
 .cps-top h1.cps-top__user {
   /* 顧問 §3.460：頂列標題是賽事名稱時（進行中、已結束的詳情頁）最多兩行、超過才省略；固定文字標題維持一行。 */
   white-space: normal;
@@ -467,14 +490,17 @@
 .cps-iconbtn--flat::before { content: none; }
 .cps-iconbtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
+/* 右上選單（卡 1b-2）：貼在 48px 頁首下緣；沒有邊框，外框線在 --d2-menu-sh 裡 */
 .cps-menu {
-  position: absolute; top: 52px; right: 0; z-index: 5; min-width: 148px; padding: 6px; border-radius: var(--radius-md);
-  background: var(--color-bg-surface); border: 1px solid var(--color-border); box-shadow: var(--shadow-md);
+  position: absolute; top: 48px; right: 0; z-index: 5; min-width: 148px; padding: 6px; border-radius: 14px;
+  background: var(--d2-menu-bg); box-shadow: var(--d2-menu-sh);
 }
 .cps-menu button {
-  display: block; width: 100%; min-height: 44px; padding: 0 var(--space-3); border: 0; border-radius: var(--radius-sm);
-  background: none; color: var(--color-text-primary); font: inherit; font-size: var(--font-size-body); text-align: left; white-space: nowrap;
+  display: block; width: 100%; min-height: 44px; padding: 0 var(--space-3); border: 0; border-radius: 10px;
+  background: none; color: var(--d2-text); font: inherit; font-size: var(--font-size-body); text-align: left; white-space: nowrap;
 }
+/* 管理員的「下架」：選單最後一列，上面一條細線、紅字 */
+.cps-menu .cps-menu__danger { border-top: 1px solid var(--d2-line); border-radius: 0 0 10px 10px; color: var(--d2-danger); font-weight: 600; }
 
 .cps-stack { display: flex; flex-direction: column; gap: var(--space-3); }
 
