@@ -1,0 +1,112 @@
+/* 第 4 步示範畫面專用（links／other／rules 三支示範元件），只由 step4b/index.tsx 匯入，不隨正式頁下載。
+ * 規則自 step4b.css 原樣搬來（卡 0-7），內容未改。 */
+
+.s4b-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.s4b-warn {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.s4b-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--font-size-body-lg);
+  line-height: var(--line-height-body-lg);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.s4b-fold svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.s4b-fold--open svg { transform: rotate(180deg); }
+.s4b-sub {
+  min-width: 0;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.s4b-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.s4b-bday { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; min-width: 0; }
+.s4b-bday select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: max(16px, 1rem);
+}
+
+.s4b-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.s4b-table th, .s4b-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--color-text-primary);
+}
+.s4b-table th { color: var(--color-text-secondary); font-weight: 600; }
+.s4b-sign {
+  display: block;
+  height: 28px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 2px;
+}
+
+.s4b-num {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-brand-soft-bg);
+  color: var(--color-brand-soft-fg);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media print {
+  .s4b-sign { border-color: #000 !important; }
+}

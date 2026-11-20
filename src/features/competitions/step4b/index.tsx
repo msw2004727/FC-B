@@ -6,6 +6,8 @@ import { AdditionRequestScreen, AdditionReviewScreen, ClaimScreen, LinkJoinScree
 import { AuditLogScreen, CheckinPrintScreen, ScheduleMidnightScreen } from './other';
 import { RulesAdvancedScreen, RulesPublicScreen, RulesTemplateScreen } from './rules';
 import { InviteAcceptScreen, ScorerMatchesScreen, StaffAssignScreen, StaffInviteScreen, StaffListScreen } from './staff';
+// 示範畫面專用樣式：排在元件匯入之後，才會接在 step4b.css 後面載入。
+import './step4b-demo.css';
 
 export {
   AdditionRequestScreen,
