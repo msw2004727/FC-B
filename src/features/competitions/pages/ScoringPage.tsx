@@ -13,6 +13,20 @@ import { useScoring, type ScoringDeps } from '../live/useScoring';
 import { LiveBoundary } from '../live';
 import { useCompetitionsT } from '../i18n';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
+import '../live/score-fullscreen.css';
+
+/** 記分頁全幅：掛載時 <html> 加 cp-score-full 隱藏 App 頂欄、底部導覽、角標（見 score-fullscreen.css），卸載時恢復。 */
+export const SCORE_FULLSCREEN_CLASS = 'cp-score-full';
+
+export function useScoreFullscreen(): void {
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add(SCORE_FULLSCREEN_CLASS);
+    return () => {
+      root.classList.remove(SCORE_FULLSCREEN_CLASS);
+    };
+  }, []);
+}
 
 /** 畫面上拿掉標題列之後，分頁標題仍是「記分」。 */
 function useScoreDocumentTitle(title: string | null): void {
@@ -94,6 +108,7 @@ function SignedOut({ cid }: { cid: string }): JSX.Element {
 }
 
 export default function ScoringPage(): JSX.Element {
+  useScoreFullscreen();
   const routed = useRoute();
   const cid = routed.params?.cid ?? '';
   const mtId = routed.params?.mtId ?? '';
