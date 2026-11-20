@@ -8,7 +8,7 @@ import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import zhTw from '../locales/zh-TW.json';
-import TournamentsPage, { COMPETITIONS_GATE_TIMEOUT_MS, TOURNAMENTS_LOAD_TIMEOUT_MS } from './TournamentsPage';
+import TournamentsPage, { COMPETITIONS_GATE_TIMEOUT_MS, COMPETITIONS_PREFER_IN_CAP_MS } from './TournamentsPage';
 import { resetCardsCacheForTest } from '../data/cards-cache';
 import { CP_INAPP_HINT_KEY } from '../inapp-hint';
 
@@ -311,17 +311,45 @@ describe('有線索：先畫站內', () => {
     expect(inApp()).toBeTruthy();
   });
 
-  it('閘門 2 秒逾時：這一次退回外部、線索不清；晚到的通過只補切換、停在外部（條件 2）', async () => {
+  // 改寫：顧問 11-20 退修取代「有線索時閘門 2 秒逾時就退回外部」——staging 冷開閘門要 7～8 秒，
+  // 有線索的路徑不再用 2 秒逾時，骨架與切換列留到閘門定案。
+  it('冷開閘門慢（6 秒才通過）：2 秒、5 秒時仍是骨架＋切換列、沒有外部卡；通過且讀好後直接站內（條件 2）', async () => {
     seed();
     draw();
     await tick(COMPETITIONS_GATE_TIMEOUT_MS + 1);
-    expect(pendingSkeleton()).toBeNull();
-    expect(srcTab('站內賽事')).toBeNull();
-    expect(extCard()).toBeTruthy();
-    expect(hint()).toBe('1');
+    expect(pendingSkeleton()).toBeTruthy();
+    expect(srcTab('站內賽事')?.getAttribute('aria-selected')).toBe('true');
+    expect(extCard()).toBeNull();
+    await tick(3_000);
+    expect(pendingSkeleton()).toBeTruthy();
+    expect(extCard()).toBeNull();
+    await tick(1_000);
     await report(true);
-    expect(srcTab('外部賽事')?.getAttribute('aria-selected')).toBe('true');
+    expect(pendingSkeleton()).toBeNull();
+    expect(inApp()).toBeTruthy();
+    expect(extCard()).toBeNull();
+    // 上限時間過了也不會再改看外部。
+    await tick(COMPETITIONS_PREFER_IN_CAP_MS);
+    expect(inApp()).toBeTruthy();
+    expect(extCard()).toBeNull();
+    expect(hint()).toBe('1');
+  });
+
+  it('等待中切換列可用：點外部立刻看外部清單、切換列留著；再點站內回到骨架', async () => {
+    seed();
+    draw();
+    await tick();
+    fireEvent.click(srcTab('外部賽事')!);
+    await tick();
+    expect(location.search).toBe('?src=ext');
+    expect(pendingSkeleton()).toBeNull();
     expect(extCard()).toBeTruthy();
+    expect(srcTab('外部賽事')?.getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(srcTab('站內賽事')!);
+    await tick();
+    expect(location.search).toBe('?src=in');
+    expect(pendingSkeleton()).toBeTruthy();
+    expect(extCard()).toBeNull();
   });
 
   it('讀取失敗（沒有 denied）：退回外部、線索不清（條件 2）', async () => {
@@ -362,38 +390,46 @@ describe('有線索：先畫站內', () => {
   });
 });
 
-// 11-20 Opus 審：外部清單讀取不回應時才分得出「閘門進頁就開始、2 秒從進頁算」；另補通過後骨架上限（P2-2）。
-describe('有線索：外部清單不回應時', () => {
-  it('閘門照樣進頁就開始；2 秒逾時從進頁算，退回外部（外部仍在載入）', async () => {
+// 單一上限（顧問 11-20 退修）：從進頁起算，涵蓋「閘門定案＋站內清單讀好」；取代閘門 2 秒逾時與通過後另計 8 秒（Opus 審 P2-2）。
+describe('有線索：從進頁起算的單一上限', () => {
+  it('外部清單不回應：閘門照樣進頁就開始，骨架留到上限前都在，外部只讀一次', async () => {
     seed();
     sdk.getDocs.mockReturnValue(new Promise(() => undefined));
     draw();
     await tick();
     expect(gateCtl.mounts).toBe(1);
+    await tick(COMPETITIONS_PREFER_IN_CAP_MS - 100);
     expect(pendingSkeleton()).toBeTruthy();
-    await tick(COMPETITIONS_GATE_TIMEOUT_MS + 1);
-    expect(pendingSkeleton()).toBeNull();
-    expect(srcTab('站內賽事')).toBeNull();
-    expect(hint()).toBe('1');
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
   });
-});
 
-describe('有線索：閘門通過但站內清單一直沒好（P2-2）', () => {
-  it('8 秒後這一次改看外部，切換列留著，線索不清', async () => {
+  it('閘門到上限都沒定案：這一次改看外部、切換列留著、線索不清；晚到的通過不搶回站內', async () => {
     seed();
     draw();
-    await tick();
-    await reportOpenOnly();
+    await tick(COMPETITIONS_PREFER_IN_CAP_MS - 100);
     expect(pendingSkeleton()).toBeTruthy();
-    await tick(TOURNAMENTS_LOAD_TIMEOUT_MS - 100);
-    expect(pendingSkeleton()).toBeTruthy();
+    expect(extCard()).toBeNull();
     await tick(200);
     expect(pendingSkeleton()).toBeNull();
     expect(extCard()).toBeTruthy();
     expect(srcTab('外部賽事')?.getAttribute('aria-selected')).toBe('true');
     expect(hint()).toBe('1');
-    // 之後清單才好：不把人搶回站內。
+    await report(true);
+    expect(srcTab('外部賽事')?.getAttribute('aria-selected')).toBe('true');
+    expect(inApp()).toBeNull();
+  });
+
+  it('閘門通過但站內清單一直沒好：上限從進頁算（不是從通過算），之後讀好也不搶回站內', async () => {
+    seed();
+    draw();
+    await tick(5_000);
+    await reportOpenOnly();
+    expect(pendingSkeleton()).toBeTruthy();
+    await tick(COMPETITIONS_PREFER_IN_CAP_MS - 5_000 + 100);
+    expect(pendingSkeleton()).toBeNull();
+    expect(extCard()).toBeTruthy();
+    expect(srcTab('外部賽事')?.getAttribute('aria-selected')).toBe('true');
+    expect(hint()).toBe('1');
     await act(async () => {
       gateCtl.ready?.();
     });
@@ -401,13 +437,13 @@ describe('有線索：閘門通過但站內清單一直沒好（P2-2）', () => 
     expect(srcTab('外部賽事')?.getAttribute('aria-selected')).toBe('true');
   });
 
-  it('網址明確 ?src=in（自己選的）：不改成外部', async () => {
+  it('網址明確 ?src=in（自己選的）：到上限也不改成外部', async () => {
     seed();
     history.replaceState(null, '', '/tournaments?src=in');
     draw();
     await tick();
     await reportOpenOnly();
-    await tick(TOURNAMENTS_LOAD_TIMEOUT_MS + 100);
+    await tick(COMPETITIONS_PREFER_IN_CAP_MS + 100);
     expect(srcTab('站內賽事')?.getAttribute('aria-selected')).toBe('true');
     expect(extCard()).toBeNull();
   });
