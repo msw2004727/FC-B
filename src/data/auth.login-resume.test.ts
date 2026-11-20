@@ -347,12 +347,6 @@ describe('signOutAndReload（照 A LineAuth.logout）', () => {
     });
   }
 
-  it('登出清掉 login handoff pending', async () => {
-    localStorage.setItem('fcb:login-handoff', '{"secret":"ab","createdAt":1}');
-    await auth.signOutAndReload(vi.fn());
-    expect(localStorage.getItem('fcb:login-handoff')).toBeNull();
-  });
-
   it('依序：Firebase 登出 → LIFF 登出 → 清本機帳號資料與登入旗標 → 重新整理（Grok 交叉審查 P2）', async () => {
     seedAccountState();
     liffFollowsStorage();

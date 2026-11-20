@@ -5,7 +5,6 @@ import { useEffect } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
 import { lt, useT } from '@/i18n/i18n';
 import { getMiniAppShareUrl } from '@/ui/mini-app-share-url';
-import { isIosStandalone, LOGIN_HANDOFF_ENABLED } from '@/data/login-redirect';
 import { isStandalonePwa } from '@/features/pwa/pwa-install';
 import './MobileLineLoginHintModal.css';
 
@@ -13,6 +12,17 @@ export interface MobileLineLoginHintModalProps {
   open: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+}
+
+/** iOS 主畫面 PWA 模式不顯示瀏覽器登入，避免登入結果回不到 App。 */
+export function shouldHideBrowserLogin(
+  ua: string,
+  standalone: boolean,
+  maxTouchPoints: number,
+): boolean {
+  const isIOS = /iPhone|iPad|iPod/.test(ua)
+    || (/Macintosh/.test(ua) && maxTouchPoints > 1);
+  return isIOS && standalone;
 }
 
 function hintLabel(
@@ -45,16 +55,13 @@ export function MobileLineLoginHintModal({
   const openInLine = hintLabel(translate, 'lineLoginHint.openInLine', '在 LINE App 中登入');
   const openInLineNote = hintLabel(translate, 'lineLoginHint.openInLineNote', '之後都在 LINE 裡使用');
   const browserLogin = hintLabel(translate, 'lineLoginHint.browserLogin', '用目前瀏覽器登入');
-  const iosApp = isIosStandalone(
+  const browserLoginNote = hintLabel(translate, 'lineLoginHint.browserLoginNote', 'LINE 確認後回到這個瀏覽器');
+
+  const hideBrowserLogin = shouldHideBrowserLogin(
     typeof navigator === 'undefined' ? '' : navigator.userAgent,
     isStandalonePwa(),
     typeof navigator === 'undefined' ? 0 : (navigator.maxTouchPoints ?? 0),
   );
-  const hideBrowserLogin = !LOGIN_HANDOFF_ENABLED && iosApp;
-  // 主畫面 App 的瀏覽器登入會轉交回 App，小字不能寫「回到這個瀏覽器」（顧問 §3.339，文案待站長定）。
-  const browserLoginNote = iosApp
-    ? hintLabel(translate, 'lineLoginHint.browserLoginNoteApp', '在瀏覽器確認後回到 App')
-    : hintLabel(translate, 'lineLoginHint.browserLoginNote', 'LINE 確認後回到這個瀏覽器');
 
   // A 的 data-no-backdrop-close="1"：點背景不關閉。
   return (
@@ -131,7 +138,7 @@ export function MobileLineLoginHintModal({
               </button>
               <p
                 class="line-login-hint-note line-login-hint-browser-note"
-                data-i18n={iosApp ? 'lineLoginHint.browserLoginNoteApp' : 'lineLoginHint.browserLoginNote'}
+                data-i18n="lineLoginHint.browserLoginNote"
               >
                 {browserLoginNote}
               </p>
