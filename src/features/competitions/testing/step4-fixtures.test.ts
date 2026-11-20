@@ -146,7 +146,8 @@ describe('第 4 步預覽假資料一致性', () => {
     expect(S4_DETAIL_ROWS.filter((row) => row.live)).toHaveLength(2);
     expect(S4_DETAIL_ROWS.filter((row) => row.corrected)).toHaveLength(1);
     expect(new Set(S4A_SCREENS).size).toBe(S4A_SCREENS.length);
-    expect(S4A_SCREENS).toHaveLength(23);
+    // 設計總監 04:20 補 score-timeout-over：23 → 24。
+    expect(S4A_SCREENS).toHaveLength(24);
     expect(S4A_SCREENS).toEqual(expect.arrayContaining([
       'score-paused',
       'score-amend',

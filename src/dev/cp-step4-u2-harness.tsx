@@ -27,6 +27,9 @@ const params = new URLSearchParams(location.search);
 const screenName = params.get('screen') || 'u2-live';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 document.documentElement.setAttribute('data-theme', theme);
+// ?frame=shell：外面包正式 App 的內容容器與頂欄／底部導覽的替身（同 id），1280 截圖用；u2-fullscreen 一律包。
+// 記分板出現時 ScoringPage 在 <html> 加 cp-score-full，score-fullscreen.css 把 #top-bar／#bottom-tabs 藏起來。
+const framed = params.get('frame') === 'shell' || screenName === 'u2-fullscreen';
 
 export const U2_SCREENS = [
   'u2-pre',
@@ -79,6 +82,11 @@ export const U2_SCREENS = [
   'u2-long-11',
   'u2-long-13',
   'u2-long-similar',
+  // 設計總監 04:20（總收尾覆蓋率）：暫停倒數走完、選單含停用的列、開賽鈕停用、全螢幕記分（App 外框下）。
+  'u2-timeout-done',
+  'u2-menu-disabled',
+  'u2-pre-disabled',
+  'u2-fullscreen',
 ] as const;
 
 /** 長隊名示範：字數（主隊、客隊同字數）與兩隊名稱。卡 2-0：施工-第2批 3.5 的門檻。 */
@@ -136,6 +144,10 @@ const ANCHORS: Record<string, string> = {
   'u2-load-failed-error': '讀取失敗',
   // 開賽前螢幕喚醒還沒要求（data/wake-lock.ts 只在 play/ht 要求），所以正式頁開賽前不會出現「請關閉手機自動鎖定」；錨點只等開賽鈕。
   'u2-pre-wake-off': '開賽',
+  'u2-timeout-done': '繼續計時',
+  'u2-menu-disabled': '球隊暫停',
+  'u2-pre-disabled': '開賽',
+  'u2-fullscreen': '34:00',
   'u2-long-6': '34:00',
   'u2-long-7': '34:00',
   'u2-long-10': '34:00',
@@ -574,7 +586,20 @@ function seedOf(name: string): Seed {
       reader: true,
     };
   }
-  if (name === 'u2-menu' || name === 'u2-timeout-sheet') return seedOf('u2-live');
+  if (name === 'u2-menu' || name === 'u2-timeout-sheet' || name === 'u2-fullscreen') return seedOf('u2-live');
+  if (name === 'u2-timeout-done') {
+    // 暫停在 60 秒前開始（規則預設 60 秒）：倒數剛好走完，橫幅留著，主鈕變「繼續計時」。
+    return {
+      match: match({ status: 'live', rev: 2, score: { home: 1, away: 0 }, clockBase: clock(10 * 60, 'h2', false, NOW - 55_000) }),
+      events: [
+        goalAt(1, 'home', 8),
+        { seq: 2, type: 'timeout', op: 'timeout-op-00000009', sid: SID, side: 'home', matchSecond: 600, createdAt: NOW - 60_000 },
+      ],
+    };
+  }
+  // 另一個分頁在記這場（reader）：流程鈕全停用。進行中打開選單→「球隊暫停」停用；開賽前→開賽鈕停用。
+  if (name === 'u2-menu-disabled') return { ...seedOf('u2-live'), reader: true };
+  if (name === 'u2-pre-disabled') return { ...seedOf('u2-pre'), reader: true };
   if (name === 'u2-amend-card') return seedOf('a1-showcard');
   if (name === 'a1-amend-confirm') return seedOf('a1-undo-confirm');
   const long = U2_LONG_NAMES[name];
@@ -832,6 +857,13 @@ const OPEN: Record<string, () => Promise<void>> = {
     document.querySelector<HTMLButtonElement>('.s4-menu-btn')?.click();
     await until('選單項目', () => document.querySelector('.s4-menu') != null);
   },
+  'u2-menu-disabled': async () => {
+    await until('選單', () => document.querySelector('.s4-menu-btn') != null);
+    document.querySelector<HTMLButtonElement>('.s4-menu-btn')?.click();
+    await until('選單項目', () => [...document.querySelectorAll<HTMLButtonElement>('.s4-menu button')].some((el) => el.disabled));
+  },
+  'u2-pre-disabled': () => until('開賽鈕停用', () => document.querySelector<HTMLButtonElement>('.s4-kickoff')?.disabled === true),
+  'u2-fullscreen': () => until('全幅', () => document.documentElement.classList.contains('cp-score-full')),
   'u2-timeout-sheet': async () => {
     await until('選單', () => document.querySelector('.s4-menu-btn') != null);
     document.querySelector<HTMLButtonElement>('.s4-menu-btn')?.click();
@@ -884,9 +916,18 @@ async function start(): Promise<void> {
       throw new Error(`沒有這個 screen：${screenName}`);
     }
     const screenDeps = await makeDeps(screenName);
+    if (framed) await import('@/ui/app-shell.css');
+    const pad = <ScoringScreen cid={CID} mtId={MT} deps={screenDeps} nowMs={NOW} />;
     render(
       <LocationProvider>
-        <ScoringScreen cid={CID} mtId={MT} deps={screenDeps} nowMs={NOW} />
+        {framed ? (
+          <div class="app-shell ui-app-shell">
+            {/* 頂欄與底部導覽的替身：只為驗證全幅時被藏起來（正式元件要登入與路由，不在這裡畫）。 */}
+            <header id="top-bar" style="position:fixed;top:0;left:0;right:0;height:56px;display:flex;align-items:center;justify-content:center;background:#334155;color:#fff;z-index:50">App 頂欄（全幅時應隱藏）</header>
+            <main class="app-main">{pad}</main>
+            <nav id="bottom-tabs" style="position:fixed;bottom:0;left:0;right:0;height:64px;display:flex;align-items:center;justify-content:center;background:#334155;color:#fff;z-index:50">App 底部導覽（全幅時應隱藏）</nav>
+          </div>
+        ) : pad}
       </LocationProvider>,
       root,
     );

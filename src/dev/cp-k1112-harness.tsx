@@ -66,6 +66,10 @@ export const K1112_SCREENS = [
   'accept-net-error',
   'accept-sending',
   'accept-long-name',
+  // 設計總監 04:20（總收尾覆蓋率）：管理員區檢舉紀錄的讀取中、沒有檢舉、讀取失敗。
+  'detail-admin-reports-loading',
+  'detail-admin-reports-empty',
+  'detail-admin-reports-error',
 ] as const;
 
 const CODE = 'AbCdEfGhIjKlMnOpQrStUv';
@@ -144,6 +148,15 @@ function staffEnv(screen = 'staff-list'): CpInjectedEnv {
   return { actor: hostActor, repo: repo(), actions: actions(), route: { cid: 'cup' } };
 }
 
+/** 檢舉紀錄三種狀態：讀取中（永遠不回）、沒有檢舉（空陣列）、讀取失敗（丟錯，出現重試）。其他畫面照常。 */
+function reportsRepo(screen: string) {
+  const base = repo();
+  if (screen === 'detail-admin-reports-loading') return { ...base, listReports: () => new Promise<ReportDoc[]>(() => {}) };
+  if (screen === 'detail-admin-reports-empty') return { ...base, listReports: async () => [] as ReportDoc[] };
+  if (screen === 'detail-admin-reports-error') return { ...base, listReports: async (): Promise<ReportDoc[]> => { throw new Error('offline'); } };
+  return base;
+}
+
 function detailEnv(screen: string): CpInjectedEnv {
   const base = screenEnv('real-recruit');
   const bundle = base.bundle;
@@ -154,10 +167,10 @@ function detailEnv(screen: string): CpInjectedEnv {
   return {
     ...base,
     actor: admin ? adminActor : hostActor,
-    repo: repo(),
+    repo: reportsRepo(screen),
     actions: actions(),
     preview: {
-      ...(screen === 'detail-admin-reports' ? { reportsOpen: true } : {}),
+      ...(screen.startsWith('detail-admin-reports') ? { reportsOpen: true } : {}),
       ...(screen === 'detail-admin-hide' ? { moderateOpen: true } : {}),
     },
     bundle: bundle && comp ? {
@@ -302,6 +315,9 @@ const OPEN: Record<string, () => Promise<void>> = {
     buttonsNamed('接受邀請')[0]?.click();
     await until('送出中', () => [...document.querySelectorAll('button')].some((node) => node.getAttribute('aria-busy') === 'true' || node.disabled));
   },
+  'detail-admin-reports-loading': () => until('檢舉紀錄讀取中', () => !!document.querySelector('.cps-note.cps-nowrap') && hasText('讀取中')),
+  'detail-admin-reports-empty': () => until('沒有檢舉', () => hasText('目前沒有檢舉')),
+  'detail-admin-reports-error': () => until('檢舉紀錄讀取失敗', () => hasText('讀取失敗') && buttonsNamed('重試').length > 0),
   'accept-long-name': () => until('長賽事名', () => hasText(LONG_COMP_NAME)),
 };
 

@@ -34,6 +34,7 @@ function shotCrests(crests: readonly EntryDoc[]): EntryDoc[] {
 }
 
 const params = new URLSearchParams(location.search);
+const framed = params.get('frame') === 'shell';
 const screenName = params.get('screen') || 'score-live';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 document.documentElement.setAttribute('data-theme', theme);
@@ -57,6 +58,7 @@ const ANCHORS: Record<string, string> = {
   'score-undo-half': '第二張黃牌已復原，第一張黃牌仍在',
   'score-timeout': '雷霆隊暫停 0:47',
   'score-timeout-collapsed': '雷霆隊暫停 0:47',
+  'score-timeout-over': '已超過規則次數（由主辦現場判斷）',
   'score-pk-start': 'PK 大戰',
   'score-pk': 'PK3:2', // 卡 2-2：PK 比分搬到板子下排、小標與數字分開節點
   'live-detail': '比分已更正',
@@ -196,7 +198,9 @@ async function start(): Promise<void> {
     if (!(S4A_SCREENS as readonly string[]).includes(screenName)) {
       throw new Error(`沒有這個 screen：${screenName}`);
     }
-    render(<Screen />, root);
+    // ?frame=shell：外面包正式 App 的內容容器（1280 截圖用，沿用 cp-p3-public 包法）。
+    if (framed) await import('@/ui/app-shell.css');
+    render(framed ? <div class="app-shell ui-app-shell"><main class="app-main"><Screen /></main></div> : <Screen />, root);
     await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
     await OPEN[screenName]?.();
     const anchor = ANCHORS[screenName];

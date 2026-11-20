@@ -42,15 +42,20 @@ describe('list-v2.css：清單頁新外觀（清-3）', () => {
   const rules = flat(REL);
   const raw = withoutComments(readFileSync(resolve(process.cwd(), REL), 'utf8'));
 
-  // 意圖沿用改寫前那一條：外部賽事名稱是外面來的內容，可以換行、不截斷（先前刻意定的）。
-  it('外部列名稱不在任何省略或不換行規則裡', () => {
-    const names = rules.filter((rule) => rule.selector.includes('.cpl-xrow__name'));
+  // 意圖沿用改寫前那一條：外部賽事名稱是外面來的內容，訪客列可以換行、不截斷（先前刻意定的）。
+  // 管理者列（cpl-xrow--edit，多一顆編輯鈕）例外：名稱單行省略、↗ 不掉行（顧問 §3.494）。
+  it('訪客外部列名稱不在任何省略或不換行規則裡；管理者列名稱單行省略', () => {
+    const names = rules.filter((rule) => rule.selector.includes('.cpl-xrow__name') && !rule.selector.includes('cpl-xrow--edit'));
     expect(names.length).toBeGreaterThan(0);
     for (const rule of names) {
       expect(rule.decls['text-overflow'], rule.selector).not.toBe('ellipsis');
       expect(rule.decls['white-space'], rule.selector).not.toBe('nowrap');
     }
     expect(names.some((rule) => rule.decls['overflow-wrap'] === 'break-word')).toBe(true);
+    const admin = rules.find((rule) => rule.selector === '#page-tournaments .cpl-xrow--edit .cpl-xrow__name');
+    expect(admin?.decls).toMatchObject({ 'white-space': 'nowrap', overflow: 'hidden', 'text-overflow': 'ellipsis' });
+    const meta = rules.find((rule) => rule.selector === '#page-tournaments .cpl-xrow--edit .cpl-xrow__meta');
+    expect(meta?.decls['flex-wrap']).toBe('nowrap');
   });
 
   it('色票子集：同名變數與 competitions.css 淺色、深色逐字同值；兩個主題的變數名稱一致', () => {

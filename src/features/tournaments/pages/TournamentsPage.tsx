@@ -498,18 +498,22 @@ export default function TournamentsPage(): JSX.Element {
             {visible.map((card) => {
               const ended = isTournamentCardEnded(card, todayKey);
               // 分類只放文字；card.type 不進任何 class（外部資料，不認得的字串也不會變成 class）。
+              const catLabel = t(`tournaments.tab.${card.type}`);
               return (
-                <div key={card.id} class={`cpl-xrow${ended ? ' ended' : ''}`} data-card-id={card.id}>
+                <div key={card.id} class={`cpl-xrow${ended ? ' ended' : ''}${canManage ? ' cpl-xrow--edit' : ''}`} data-card-id={card.id}>
                   <a
                     class="cpl-xrow__link"
                     href={card.url}
                     onClick={(event) => handleCardClick(event, card.url)}
                   >
-                    {card.image ? <img class="cpl-xrow__img" src={card.image} alt="" loading="lazy" /> : null}
+                    {/* 沒有照片時放同尺寸的預設縮圖（分類名第一個字），每列名稱左緣對齊（顧問 §3.494 補記） */}
+                    {card.image
+                      ? <img class="cpl-xrow__img" src={card.image} alt="" loading="lazy" />
+                      : <div class="cpl-xrow__img cpl-xrow__ph" aria-hidden="true">{Array.from(catLabel)[0] ?? ''}</div>}
                     <div class="cpl-xrow__body">
                       <div class="cpl-xrow__name">{card.name}{canManage ? leaveIcon : null}</div>
                       <div class="cpl-xrow__meta">
-                        <span class="cpl-xrow__cat">{t(`tournaments.tab.${card.type}`)}</span>
+                        <span class="cpl-xrow__cat">{catLabel}</span>
                         <span class="cpl-xrow__date">{formatCardDates(card)}</span>
                       </div>
                     </div>

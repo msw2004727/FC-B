@@ -138,13 +138,18 @@ function CompareCard({
   const names = teamIds.map((id) => nameOf(doc, id));
   const rels = relatedOf(result.matchIds, summary);
   const hit = views.some((view) => view.hit);
+  // 設計總監 04:20：三隊以上項目名自己一行、數字在下一行平均分欄（360 寬放不下「公平競賽（行為分）」加三欄）；兩隊照舊。
+  const stack = teamIds.length >= 3;
+  const cols = (n: number) => (stack
+    ? `grid-template-columns:repeat(${n},minmax(34px,1fr))`
+    : `grid-template-columns:minmax(0,1fr) repeat(${Math.max(n, 1)},4.5em)`);
   return (
     <CpCard>
       <h3 class="cpm-h">{names.join('、')}</h3>
-      <div class="cpm-cmp">
+      <div class={stack ? 'cpm-cmp cpm-cmp--stack' : 'cpm-cmp'}>
         <div
           class="cpm-cmp__r cpm-cmp__r--h"
-          style={`grid-template-columns:minmax(0,1fr) repeat(${Math.max(names.length, 1)},4.5em)`}
+          style={cols(names.length)}
         >
           <span />
           {names.map((name) => <span key={name}>{name}</span>)}
@@ -153,7 +158,7 @@ function CompareCard({
           <div
             key={view.criterion}
             class={`cpm-cmp__r${view.hit ? ' cpm-cmp__r--hit' : ''}${view.skip ? ' cpm-cmp__r--skip' : ''}`}
-            style={`grid-template-columns:minmax(0,1fr) repeat(${Math.max(teamIds.length, 1)},4.5em)`}
+            style={cols(teamIds.length)}
           >
             <span class="cpm-cmp__k">{criterionLabel(ct, view.criterion)}</span>
             {teamIds.map((id) => {
