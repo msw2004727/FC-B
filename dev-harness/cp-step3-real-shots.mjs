@@ -44,7 +44,7 @@ const ANCHORS = {
   'real-schedule-preview': '共 12 場、需 2 天、每隊 3 場', 'real-schedule-unplaced': '還有 4 場排不下', 'real-schedule-too-many': '場次太多，請調整賽制',
   'real-schedule-replace': '清除賽程',
   // 卡 2-5 補、頁首賽事名小字（設計總監 03:38／03:52）
-  'real-tie-ranked': '對戰積分', 'real-tie-four': '赤焰隊', 'real-ctx-short': '三重春季盃', 'real-ctx-long': '賽程管理',
+  'real-tie-ranked': '對戰積分', 'real-tie-four': '赤焰隊', 'real-tie-three': '公平競賽', 'real-tie-three-h2h': '青鳥隊', 'real-notice-compose': '取消', 'real-gate-two': '登入後才能記分', 'real-ctx-short': '三重春季盃', 'real-ctx-long': '賽程管理',
 };
 const SCREENS = [
   ['real:list-in', ALL, THEMES, true],
@@ -108,6 +108,10 @@ const SCREENS = [
   // 卡 2-5 補、頁首賽事名小字（設計總監 03:38／03:52）；1280 加外框另見 cp-tie-ctx-shots.mjs
   ['real:real-tie-ranked', NEW, THEMES, true],
   ['real:real-tie-four', NEW, THEMES, true],
+  ['real:real-tie-three', NEW, THEMES, true],
+  ['real:real-tie-three-h2h', NEW, THEMES, true],
+  ['real:real-notice-compose', NEW, THEMES, true],
+  ['real:real-gate-two', NEW, THEMES, false],
   ['real:real-ctx-short', NEW, THEMES, false],
   ['real:real-ctx-long', NEW, THEMES, false],
 ];

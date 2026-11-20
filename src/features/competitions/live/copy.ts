@@ -188,7 +188,12 @@ export function pkScoreLabel(home: number, away: number): string {
 }
 
 export function pkKickLine(round: number, team: string, who: string, scored: boolean): string {
-  return `第${round}輪 ${team} ${who} ${scored ? LIVE_COPY.pkIn : LIVE_COPY.pkMiss}`;
+  return `${pkRoundText(round)} ${team} ${who} ${scored ? LIVE_COPY.pkIn : LIVE_COPY.pkMiss}`;
+}
+
+/** 「第3輪」：事件列與記分板 PK 期間的輪次共用同一個寫法。 */
+export function pkRoundText(round: number): string {
+  return `第${round}輪`;
 }
 
 export function restedFor(clock: string): string {

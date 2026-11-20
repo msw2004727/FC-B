@@ -8,7 +8,6 @@ import {
   S4_ACTION_LOG,
   S4_CONFIRMED,
   S4_CREST_URL,
-  S4_DETAIL_ROWS,
   S4_NOW,
   S4_PEOPLE,
   S4_SCENE_FT,
@@ -28,7 +27,6 @@ import {
 } from '../testing/step4-fixtures';
 import { CardFlash } from './CardFlash';
 import { stageLabel } from './clock';
-import { LiveDetailList } from './LiveDetailList';
 import { LiveMatchView } from './LiveMatchView';
 import { LiveScoreBadge } from './LiveScoreBadge';
 import { EVENT_MAX, EVENT_RESERVE, EVENT_WARN, PAUSE_MAX, SCORING_RESERVE, TEAM_TIMEOUT_PER_HALF, TEAM_TIMEOUT_SEC, eventLines, linesIfOpen, pauseHeldForScoring, rejectText, shootoutOffered } from './present';
@@ -90,11 +88,6 @@ describe('第 4 步預覽元件', () => {
       </>,
     );
     expect(screen.getByText('即時')).toBeTruthy();
-    expect(screen.getByText('比分已更正')).toBeTruthy();
-    cleanup();
-
-    render(<LiveDetailList rows={S4_DETAIL_ROWS} />);
-    expect(screen.getAllByText('即時')).toHaveLength(2);
     expect(screen.getByText('比分已更正')).toBeTruthy();
     cleanup();
 
@@ -790,7 +783,8 @@ describe('第 4 步預覽元件', () => {
     );
     expect(screen.queryByText(/蔡明哲/)).toBeNull();
     fireEvent.click(button('比賽紀錄'));
-    const rows = [...view.container.querySelectorAll('.s4-ev__main')].map((node) => node.textContent);
+    // 新外觀卡 3-5：事件列換成觀眾頁自己的 .cp-ev（原本 .s4-ev__main）
+    const rows = [...view.container.querySelectorAll('.cp-ev')].map((node) => node.textContent);
     expect(rows.map((text) => text?.includes('蔡明哲'))).toEqual([true, false, false]);
     expect(rows.map((text) => text?.includes('劉冠廷'))).toEqual([false, true, false]);
     expect(rows.map((text) => text?.includes('謝東霖'))).toEqual([false, false, true]);
@@ -958,10 +952,13 @@ describe('第 4 步預覽元件', () => {
     const onRecord = vi.fn();
     const onUndo = vi.fn();
     const view = pad(S4_SCENE_PK, { onRecord, onUndo });
-    expect(screen.getByText('PK 3:2')).toBeTruthy();
-    expect(screen.getByText('2:2')).toBeTruthy();
-    expect(screen.getByText('40:00')).toBeTruthy();
+    // 施工-第2批 3.2（顧問已裁定 PK 不放時鐘）：上排正規比分拆三格、下排是 PK 比分加小標，右邊是第幾輪。
+    expect(view.container.querySelector('.s4-top .s4-score')?.textContent).toBe('2:2');
+    expect(view.container.querySelector('.s4-clockrow > .s4-pk')?.textContent).toBe('PK3:2');
+    expect(view.container.querySelector('.s4-top .s4-clock')).toBeNull();
+    expect(screen.queryByText('40:00')).toBeNull();
     expect(screen.getByText('PK')).toBeTruthy();
+    expect(view.container.querySelector('.s4-clockrow > .s4-round')?.textContent).toBe('第4輪');
     expect(screen.queryByRole('button', { name: '雷霆隊 進球' })).toBeNull();
     expect(screen.queryByRole('button', { name: '海風隊 進球' })).toBeNull();
     expect(button('雷霆隊 進')).toBeTruthy();
