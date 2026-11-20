@@ -31,7 +31,9 @@ const repoBox = vi.hoisted(() => ({
   listByHostTeam: vi.fn(async (_teamId: string, _publicOnly: boolean) => []),
 }));
 
-vi.mock('@/features/profile/data/viewer', () => ({
+// createMinimalViewer 保留真的：live.tsx 用它辨認「角色還沒讀到」的最小 viewer。
+vi.mock('@/features/profile/data/viewer', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/profile/data/viewer')>()),
   useViewer: () => viewerBox.current,
 }));
 
@@ -161,5 +163,39 @@ describe('閘門結果帶原因、清單讀好才 onReady', () => {
     await waitFor(() => expect(onGate).toHaveBeenCalled());
     expect(onGate).toHaveBeenCalledWith(false, undefined);
     expect(onGate).not.toHaveBeenCalledWith(false, 'denied');
+  });
+});
+
+// 11-20 Opus 審 P2-1：登入後先拿到最小 viewer（role 暫為 'user'），真正角色晚到。
+// 這段空檔不得判成看不到（否則賽事頁清掉線索又跳回外部），等角色讀到再判。
+describe('角色還沒讀到不判定閘門', () => {
+  it('最小 viewer 期間不送 onGate；角色讀到是管理員才判定通過', async () => {
+    const { createMinimalViewer } = await import('@/features/profile/data/viewer');
+    const minimalSources = createMinimalViewer('uid_user').permissionSources;
+    const saved = viewerBox.current;
+    viewerBox.current = { ...saved, role: 'user', permissionSources: minimalSources } as typeof saved;
+    const onGate = vi.fn();
+    try {
+      const view = render(
+        <LocationProvider>
+          <InAppSection onGate={onGate} />
+        </LocationProvider>,
+      );
+      await waitFor(() => expect(repoBox.getLaunch).toHaveBeenCalled());
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(onGate).not.toHaveBeenCalled();
+      expect(repoBox.getLaunchTester).not.toHaveBeenCalled();
+
+      viewerBox.current = { ...saved, role: 'admin', permissionSources: { rolePermissions: null, userGrants: [], customRoles: [] } } as typeof saved;
+      view.rerender(
+        <LocationProvider>
+          <InAppSection onGate={onGate} />
+        </LocationProvider>,
+      );
+      await waitFor(() => expect(onGate).toHaveBeenCalledWith(true, undefined));
+      expect(onGate).not.toHaveBeenCalledWith(false, 'denied');
+    } finally {
+      viewerBox.current = saved;
+    }
   });
 });

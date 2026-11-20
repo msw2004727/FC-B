@@ -8,7 +8,7 @@ import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import zhTw from '../locales/zh-TW.json';
-import TournamentsPage, { COMPETITIONS_GATE_TIMEOUT_MS } from './TournamentsPage';
+import TournamentsPage, { COMPETITIONS_GATE_TIMEOUT_MS, TOURNAMENTS_LOAD_TIMEOUT_MS } from './TournamentsPage';
 import { resetCardsCacheForTest } from '../data/cards-cache';
 import { CP_INAPP_HINT_KEY } from '../inapp-hint';
 
@@ -359,5 +359,56 @@ describe('有線索：先畫站內', () => {
     draw();
     expect(pendingSkeleton()).toBeNull();
     expect(gateCtl.mounts).toBe(0);
+  });
+});
+
+// 11-20 Opus 審：外部清單讀取不回應時才分得出「閘門進頁就開始、2 秒從進頁算」；另補通過後骨架上限（P2-2）。
+describe('有線索：外部清單不回應時', () => {
+  it('閘門照樣進頁就開始；2 秒逾時從進頁算，退回外部（外部仍在載入）', async () => {
+    seed();
+    sdk.getDocs.mockReturnValue(new Promise(() => undefined));
+    draw();
+    await tick();
+    expect(gateCtl.mounts).toBe(1);
+    expect(pendingSkeleton()).toBeTruthy();
+    await tick(COMPETITIONS_GATE_TIMEOUT_MS + 1);
+    expect(pendingSkeleton()).toBeNull();
+    expect(srcTab('站內賽事')).toBeNull();
+    expect(hint()).toBe('1');
+    expect(sdk.getDocs).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('有線索：閘門通過但站內清單一直沒好（P2-2）', () => {
+  it('8 秒後這一次改看外部，切換列留著，線索不清', async () => {
+    seed();
+    draw();
+    await tick();
+    await reportOpenOnly();
+    expect(pendingSkeleton()).toBeTruthy();
+    await tick(TOURNAMENTS_LOAD_TIMEOUT_MS - 100);
+    expect(pendingSkeleton()).toBeTruthy();
+    await tick(200);
+    expect(pendingSkeleton()).toBeNull();
+    expect(extCard()).toBeTruthy();
+    expect(srcTab('外部賽事')?.getAttribute('aria-selected')).toBe('true');
+    expect(hint()).toBe('1');
+    // 之後清單才好：不把人搶回站內。
+    await act(async () => {
+      gateCtl.ready?.();
+    });
+    await tick();
+    expect(srcTab('外部賽事')?.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('網址明確 ?src=in（自己選的）：不改成外部', async () => {
+    seed();
+    history.replaceState(null, '', '/tournaments?src=in');
+    draw();
+    await tick();
+    await reportOpenOnly();
+    await tick(TOURNAMENTS_LOAD_TIMEOUT_MS + 100);
+    expect(srcTab('站內賽事')?.getAttribute('aria-selected')).toBe('true');
+    expect(extCard()).toBeNull();
   });
 });

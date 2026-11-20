@@ -4,6 +4,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useViewer } from '@/features/profile/data/viewer';
+import { isViewerPermissionsLoaded } from '@/features/admin-users/data/viewer-ready';
 import type { CpClub } from './access';
 import { getCompetitionsRepo } from './data/cp-repo';
 import type { CpActor } from './env';
@@ -54,6 +55,7 @@ export function LiveBoundary({
   const actor: CpActor = {
     uid: viewer.uid,
     authPending: viewer.authPending === true,
+    rolePending: !!viewer.uid && !isViewerPermissionsLoaded(viewer),
     role: viewer.role,
     displayName: viewer.displayName,
     repClubs,

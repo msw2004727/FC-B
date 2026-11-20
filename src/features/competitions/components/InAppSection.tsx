@@ -143,8 +143,10 @@ function SectionBody({
       const launch = await repo.getLaunch();
       const isPublic = launch ? launch.isPublic : null;
       const isAdmin = isCpAdmin(actor.role);
-      // 登入者尚未定案、又不是已公開：先不要判成「看不到」，也不要開始查俱樂部。
-      if (actor.authPending && !isAdmin && isPublic !== true) return;
+      // 登入者尚未定案、或已登入但角色還沒讀到（暫用最小 viewer 的 'user'），又不是已公開：
+      // 先不要判成「看不到」，也不要開始查俱樂部。角色讀到後 effect 依 role／rolePending 重跑
+      // （11-20 Opus 審 P2-1：管理員角色晚到時先被判 denied，清掉賽事頁線索又跳回外部）。
+      if ((actor.authPending || actor.rolePending) && !isAdmin && isPublic !== true) return;
       let isTester = false;
       if (isPublic === false && actor.uid && !isAdmin) {
         isTester = await repo.getLaunchTester(actor.uid);
@@ -182,7 +184,7 @@ function SectionBody({
     };
     // onGate 走 ref。repKey 不在這裡，避免俱樂部到了就重讀。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actor.authPending, actor.role, actor.uid, repo]);
+  }, [actor.authPending, actor.rolePending, actor.role, actor.uid, repo]);
 
   useEffect(() => {
     if (!hostQuery) return;

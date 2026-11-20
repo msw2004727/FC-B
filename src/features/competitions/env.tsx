@@ -25,6 +25,11 @@ import type { DivisionDraft, VenueDraft } from './payload';
 export interface CpActor {
   uid: string | null;
   authPending: boolean;
+  /**
+   * true＝已登入但完整 viewer（真正的角色）還沒讀到，role 暫時是最小 viewer 的 'user'。
+   * 省略＝已定案（測試與 harness）。
+   */
+  rolePending?: boolean;
   role: string;
   displayName: string | null;
   repClubs: readonly CpClub[];
