@@ -819,6 +819,30 @@ describe('第 4 步預覽元件', () => {
     )).not.toThrow();
   });
 
+  it('§3.506 觀眾頁拿不到球員：一般事件只顯示分鐘與隊名，不出現「不指定球員」；PK 照 8bbf5cea 仍寫「不指定球員」', () => {
+    const { match, clock } = S4_SCENE_LIVE;
+    // 真實時間軸只有 side、plId；觀眾頁沒有名單可對，所以球員一律拿不到。
+    const events: TimelineEvent[] = [
+      { seq: 1, type: 'goal', side: 'home', plId: 'pl_x1', goalKind: 'normal', matchSecond: 5 * 60, createdAt: 1 },
+      { seq: 2, type: 'card', side: 'away', plId: 'pl_x2', cardType: 'yellow', matchSecond: 12 * 60, createdAt: 2 },
+      { seq: 3, type: 'pk', side: 'home', plId: 'pl_x1', scored: false, round: 1, matchSecond: 100 * 60, createdAt: 3 },
+    ];
+    const view = render(
+      <LiveMatchView match={match} clock={clock} events={events} voids={[]} homeRoster={[]} awayRoster={[]} startOpen />,
+    );
+    const rows = [...view.container.querySelectorAll('.cp-ev')];
+    const cols = (row: Element) => [...row.querySelectorAll('.cp-ev__min, .cp-ev__team, .cp-ev__who, .cp-ev__pk')].map((node) => node.textContent);
+    expect(rows.map(cols)).toEqual([
+      ["5'", '雷霆隊'],
+      ["12'", '海風隊'],
+      ['第1輪', '雷霆隊', '不指定球員', '沒進'],
+    ]);
+    const visible = (row: Element) => [...row.childNodes].filter((node) => !(node instanceof Element && node.classList.contains('s4-sr'))).map((node) => node.textContent).join('');
+    expect(visible(rows[0]!)).not.toContain('不指定球員');
+    expect(visible(rows[1]!)).not.toContain('不指定球員');
+    expect(rows[0]!.querySelector('.cp-ev__who')).toBeNull();
+  });
+
   it('開賽前、終場撤回與已確認不能點開復原或改判', () => {
     const pre = pad(S4_SCENE_PRE, { events: S4_SCENE_LIVE.events, voids: S4_SCENE_LIVE.voids });
     expect(screen.queryByRole('button', { name: "5' 進球 雷霆隊 9 劉冠廷" })).toBeNull();
