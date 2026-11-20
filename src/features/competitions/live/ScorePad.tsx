@@ -27,11 +27,12 @@ import {
   teamAction,
   teamTimeoutText,
   timeoutClock,
+  timeoutLeftText,
   timeoutTeamChoice,
   undoWithin,
 } from './copy';
 import { EventSheet } from './EventSheet';
-import { ConfirmFooter, KickoffConfirmDialog, PendingTag, PkConfirmDialog, useConfirmArmed } from './score-states';
+import { ConfirmFooter, KickoffConfirmDialog, Mark, PendingTag, PkConfirmDialog, useConfirmArmed } from './score-states';
 import { PlayerSheet } from './PlayerSheet';
 import {
   EVENT_MAX,
@@ -81,7 +82,6 @@ export interface TimeoutView {
   side: MatchSideName;
   leftSec: number;
   collapsed?: boolean;
-  over?: boolean;
   /** 這次暫停的事件時間。正式頁用來對上同一段倒數。 */
   startedAt?: number;
 }
@@ -184,7 +184,6 @@ interface TeamTimeoutState {
   side: MatchSideName;
   leftSec: number;
   collapsed: boolean;
-  over: boolean;
   done: boolean;
   /** 正式頁這段倒數的事件時間。預覽本機倒數沒有。 */
   startedAt?: number;
@@ -216,7 +215,6 @@ function previewTimeout(view: TimeoutView | undefined): TeamTimeoutState | null 
     side: view.side,
     leftSec: Math.max(0, view.leftSec),
     collapsed: view.collapsed ?? false,
-    over: view.over ?? false,
     done: view.leftSec <= 0,
     ...(view.startedAt != null ? { startedAt: view.startedAt } : {}),
   };
@@ -226,7 +224,6 @@ function sameTimeout(current: TeamTimeoutState, next: TeamTimeoutState): boolean
   return current.side === next.side
     && current.leftSec === next.leftSec
     && current.collapsed === next.collapsed
-    && current.over === next.over
     && current.done === next.done
     && current.startedAt === next.startedAt;
 }
@@ -248,28 +245,11 @@ function controlledTimeout(
     side: view.side,
     leftSec: Math.max(0, view.leftSec),
     collapsed: current != null && current.startedAt === view.startedAt ? current.collapsed : (view.collapsed ?? false),
-    over: view.over ?? false,
     done: view.leftSec <= 0,
     ...(view.startedAt != null ? { startedAt: view.startedAt } : {}),
   };
   if (current && sameTimeout(current, next)) return current;
   return next;
-}
-
-function Mark({
-  kind,
-  second,
-  scored,
-}: {
-  kind: 'goal' | 'yellow' | 'red' | 'pk';
-  second: boolean;
-  scored?: boolean;
-}): JSX.Element {
-  if (kind === 'pk') {
-    return <i class={scored ? 's4-mark s4-mark--goal' : 's4-mark s4-mark--miss'} aria-hidden="true" />;
-  }
-  const tone = kind === 'goal' ? 'goal' : second || kind === 'red' ? 'red' : 'yellow';
-  return <i class={`s4-mark s4-mark--${tone}`} aria-hidden="true" />;
 }
 
 function shownText(line: {
@@ -561,13 +541,11 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       setTimeoutOpen(false);
       return;
     }
-    const over = timeoutLeft(side) <= 0;
     setTimeoutUses((prev) => ({ ...prev, [side]: prev[side] + 1 }));
     setTeamTimeout({
       side,
       leftSec: TEAM_TIMEOUT_SEC,
       collapsed: false,
-      over,
       done: false,
     });
     setTimeoutOpen(false);
@@ -986,7 +964,6 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
               {LIVE_COPY.collapseTimeout}
             </button>
           </div>
-          {teamTimeout.over && !teamTimeout.done ? <p class="s4-timeout__over">{LIVE_COPY.timeoutOver}</p> : null}
         </>
       )}
     </div>
@@ -1140,6 +1117,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           onGoalKind={setGoalKind}
           onPick={choose}
           onClose={() => setPicker(null)}
+          side={picker.side}
         />
       ) : null}
       {openLine && openEventDoc && (openEventDoc.type === 'goal' || openEventDoc.type === 'card' || openEventDoc.type === 'pk') ? (
@@ -1163,6 +1141,10 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           onAmend={submitAmend}
           onShowCard={showOpenCard}
           onClose={() => setEventSeq(null)}
+          markKind={openEventDoc.type === 'card' ? (openEventDoc.cardType === 'red' ? 'red' : 'yellow') : openEventDoc.type}
+          markSecond={openEventDoc.type === 'card' && openEventDoc.cardType === 'second_yellow'}
+          markScored={openEventDoc.type === 'pk' ? openEventDoc.scored : undefined}
+          markSide={openEventDoc.side}
         />
       ) : null}
       {pkConfirm ? (
@@ -1187,7 +1169,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       {confirmPair ? (
         <Modal
           open
-          class="s4-dialog"
+          class="s4-dialog d2-panel"
           title={confirmPair.mode === 'amend' ? LIVE_COPY.amend : LIVE_COPY.undo}
           onClose={() => setConfirmPair(null)}
           footer={(
@@ -1195,6 +1177,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
               armed={confirmArmed}
               confirmLabel={confirmPair.mode === 'amend' ? LIVE_COPY.amendConfirm : LIVE_COPY.undoBothConfirm}
               cancelLabel={LIVE_COPY.takeoverLater}
+              confirmVariant="danger"
               onConfirm={runConfirm}
               onCancel={() => setConfirmPair(null)}
             />
@@ -1204,14 +1187,29 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
         </Modal>
       ) : null}
       {timeoutOpen ? (
-        <BottomSheet open class="s4-sheet" title={LIVE_COPY.teamTimeout} onClose={() => setTimeoutOpen(false)}>
+        <BottomSheet open class="s4-sheet d2-panel" title={LIVE_COPY.teamTimeout} onClose={() => setTimeoutOpen(false)}>
           <p class="s4-note">{LIVE_COPY.timeoutRule}</p>
           {homeTimeoutLeft <= 0 || awayTimeoutLeft <= 0 ? (
             <p class="s4-note">{LIVE_COPY.timeoutOver}</p>
           ) : null}
           <div class="s4-timeout-picks">
-            <Button disabled={timeoutSideOff('home')} onClick={() => startTimeout('home')}>{timeoutTeamChoice(match.home.name, homeTimeoutLeft)}</Button>
-            <Button disabled={timeoutSideOff('away')} onClick={() => startTimeout('away')}>{timeoutTeamChoice(match.away.name, awayTimeoutLeft)}</Button>
+            {/* 3.22：一律兩行——第一行隊名（放不下省略）、第二行「剩 N 次」（不縮）；名稱仍是整句。 */}
+            <Button
+              disabled={timeoutSideOff('home')}
+              aria-label={timeoutTeamChoice(match.home.name, homeTimeoutLeft)}
+              trailing={<span class="s4-tp__left">{timeoutLeftText(homeTimeoutLeft)}</span>}
+              onClick={() => startTimeout('home')}
+            >
+              {match.home.name}
+            </Button>
+            <Button
+              disabled={timeoutSideOff('away')}
+              aria-label={timeoutTeamChoice(match.away.name, awayTimeoutLeft)}
+              trailing={<span class="s4-tp__left">{timeoutLeftText(awayTimeoutLeft)}</span>}
+              onClick={() => startTimeout('away')}
+            >
+              {match.away.name}
+            </Button>
           </div>
         </BottomSheet>
       ) : null}

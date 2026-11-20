@@ -2,9 +2,9 @@ import type { JSX } from 'preact';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
 import { Chip } from '@/ui/Chip';
-import type { RosterPublicDoc } from '../data/types';
+import type { MatchSideName, RosterPublicDoc } from '../data/types';
 import { LIVE_COPY, withEvent } from './copy';
-import { PkGoalLock } from './score-states';
+import { Mark, PkGoalLock } from './score-states';
 import { RosterGrid } from './PlayerSheet';
 import type { GoalKind } from './types';
 
@@ -29,6 +29,10 @@ export function EventSheet({
   onAmend,
   onShowCard,
   onClose,
+  markKind,
+  markSecond = false,
+  markScored,
+  markSide,
 }: {
   summary: string;
   label: string;
@@ -52,6 +56,12 @@ export function EventSheet({
   onAmend: () => void;
   onShowCard: () => void;
   onClose: () => void;
+  /** 原紀錄前的小圖示（與紀錄列同一個）；不傳就不畫。 */
+  markKind?: 'goal' | 'yellow' | 'red' | 'pk';
+  markSecond?: boolean;
+  markScored?: boolean;
+  /** 原紀錄是哪一隊：圖示照隊色。 */
+  markSide?: MatchSideName;
 }): JSX.Element {
   const goalKinds: { id: GoalKind; label: string }[] = [
     { id: 'normal', label: LIVE_COPY.goalNormal },
@@ -66,30 +76,43 @@ export function EventSheet({
   const restGoal = halftimeGoal && kind === 'goal' && !undoOnly && !lockGoal;
   const showPick = !undoOnly && !lockGoal && !restGoal;
 
+  // 施工-第2批 3.20：「復原｜改判」是兩個送出鈕，放在面板底部固定的按鈕列（復原左、改判右）；條件與名稱不變。
+  const footer = (
+    <>
+      <Button
+        variant="secondary"
+        disabled={blocked || lockGoal}
+        aria-label={withEvent(LIVE_COPY.undo, label)}
+        onClick={onUndo}
+      >
+        {LIVE_COPY.undo}
+      </Button>
+      {undoOnly ? null : (
+        <Button
+          disabled={blocked || lockGoal || restGoal || (kind === 'card' && playerId == null)}
+          aria-label={withEvent(LIVE_COPY.amend, label)}
+          onClick={onAmend}
+        >
+          {LIVE_COPY.amend}
+        </Button>
+      )}
+    </>
+  );
+
   return (
-    <BottomSheet open class="s4-sheet" title={undoOnly ? LIVE_COPY.undo : LIVE_COPY.amend} onClose={onClose}>
+    <BottomSheet
+      open
+      class="s4-sheet d2-panel"
+      title={undoOnly ? LIVE_COPY.undo : LIVE_COPY.amend}
+      onClose={onClose}
+      footer={footer}
+    >
       {showPick ? <p class="s4-note">{LIVE_COPY.amendNote}</p> : null}
       {restGoal ? <p class="s4-note">{LIVE_COPY.halftimeGoalUndoOnly}</p> : null}
-      <p class="s4-evsum">{summary}</p>
-      <div class="s4-amend-act">
-        <Button
-          variant="ghost"
-          disabled={blocked || lockGoal}
-          aria-label={withEvent(LIVE_COPY.undo, label)}
-          onClick={onUndo}
-        >
-          {LIVE_COPY.undo}
-        </Button>
-        {undoOnly ? null : (
-          <Button
-            disabled={blocked || lockGoal || restGoal || (kind === 'card' && playerId == null)}
-            aria-label={withEvent(LIVE_COPY.amend, label)}
-            onClick={onAmend}
-          >
-            {LIVE_COPY.amend}
-          </Button>
-        )}
-      </div>
+      <p class={markSide ? `s4-evsum s4-evsum--${markSide}` : 's4-evsum'}>
+        {markKind ? <Mark kind={markKind} second={markSecond} scored={markScored} /> : null}
+        {summary}
+      </p>
       {showPick && kind === 'card' ? (
         <Button variant="secondary" data-show-card="true" aria-label={withEvent(LIVE_COPY.showCard, label)} onClick={onShowCard}>
           {LIVE_COPY.showCard}
@@ -109,7 +132,7 @@ export function EventSheet({
         </div>
       ) : null}
       {showPick && kind === 'card' ? (
-        <div class="s4-kinds">
+        <div class="s4-kinds s4-kinds--card">
           {cardKinds.map((item) => (
             <Chip
               key={item.id}

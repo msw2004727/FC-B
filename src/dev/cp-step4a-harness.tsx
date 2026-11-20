@@ -56,7 +56,6 @@ const ANCHORS: Record<string, string> = {
   'score-undo-half': '第二張黃牌已復原，第一張黃牌仍在',
   'score-timeout': '雷霆隊暫停 0:47',
   'score-timeout-collapsed': '雷霆隊暫停 0:47',
-  'score-timeout-over': '已超過規則次數（由主辦現場判斷）',
   'score-pk-start': 'PK 大戰',
   'score-pk': 'PK3:2', // 卡 2-2：PK 比分搬到板子下排、小標與數字分開節點
   'live-match': '比賽紀錄',

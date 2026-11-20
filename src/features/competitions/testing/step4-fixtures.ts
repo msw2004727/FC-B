@@ -231,7 +231,6 @@ export interface S4ScoreScene {
     side: 'home' | 'away';
     leftSec: number;
     collapsed?: boolean;
-    over?: boolean;
   };
 }
 
@@ -381,15 +380,6 @@ export const S4_SCENE_TIMEOUT: S4ScoreScene = {
   timeoutView: { side: 'home', leftSec: 47 },
 };
 
-/**
- * 球隊暫停已超過規則次數（設計總監 04:20）：橫幅下方多一行「已超過規則次數（由主辦現場判斷）」。
- * 只有非受控（預覽元件自己計次）才會出現；正式記分頁的 timeoutView 不帶 over，超過次數改為選隊鈕停用。
- */
-export const S4_SCENE_TIMEOUT_OVER: S4ScoreScene = {
-  ...S4_SCENE_LIVE,
-  timeoutView: { side: 'home', leftSec: 47, over: true },
-};
-
 export const S4_SCENE_TIMEOUT_COLLAPSED: S4ScoreScene = {
   ...S4_SCENE_LIVE,
   timeoutView: { side: 'home', leftSec: 47, collapsed: true },
@@ -467,7 +457,6 @@ export const S4_SCORE_SCENES = {
   'score-undo-half': S4_SCENE_LIVE,
   'score-timeout': S4_SCENE_TIMEOUT,
   'score-timeout-collapsed': S4_SCENE_TIMEOUT_COLLAPSED,
-  'score-timeout-over': S4_SCENE_TIMEOUT_OVER,
   'score-pk-start': S4_SCENE_PK_START,
   'score-pk': S4_SCENE_PK,
 } as const;
@@ -492,7 +481,6 @@ export const S4A_SCREENS = [
   'score-undo-half',
   'score-timeout',
   'score-timeout-collapsed',
-  'score-timeout-over',
   'score-pk-start',
   'score-pk',
   'live-match',

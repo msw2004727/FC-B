@@ -16,7 +16,7 @@ export function TakeoverDialog({
   return (
     <Modal
       open={open}
-      class="s4-dialog"
+      class="s4-dialog d2-panel"
       title={LIVE_COPY.takeoverTitle}
       onClose={onClose}
       footer={(
@@ -24,6 +24,7 @@ export function TakeoverDialog({
           armed={armed}
           confirmLabel={LIVE_COPY.takeoverAction}
           cancelLabel={LIVE_COPY.takeoverLater}
+          confirmVariant="danger"
           onConfirm={onTakeover}
           onCancel={onClose}
         />

@@ -468,8 +468,10 @@
 .cp-danger-confirm #app-confirm-modal .app-confirm-ok:focus-visible{outline:2px solid var(--d2-danger);outline-offset:2px}
 
 /* 確認鈕還不能按（刪除賽事：沒勾選或還沒滿 0.6 秒）：空心、框線粗細不變 */
-.d2-panel .ui-button[data-delete-armed="false"] { color: var(--d2-text-3); }
-.d2-panel .ui-button[data-delete-armed="false"]::before { background: none; box-shadow: inset 0 0 0 1.5px var(--d2-off-line); }
+.d2-panel .ui-button[data-delete-armed="false"],
+.d2-panel .ui-button[data-confirm-armed="false"] { color: var(--d2-text-3); }
+.d2-panel .ui-button[data-delete-armed="false"]::before,
+.d2-panel .ui-button[data-confirm-armed="false"]::before { background: none; box-shadow: inset 0 0 0 1.5px var(--d2-off-line); }
 
 /* 視覺隱藏：只給報讀，不佔版面 */
 .cps-vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
@@ -1509,7 +1511,9 @@
  * 第 2 批卡 2-1）把選擇器加進清單，尺寸另寫在 live.css。一般級原本在 step4b.css，記分頁不載那支檔，卡 2-1 整條搬來（內容不改）。 */
 .s4b-alert,
 .s4-alerts .s4-banner,
-.s4-block .s4-banner {
+.s4-block .s4-banner,
+.s4-sheet .s4-hint,
+.s4-sheet .s4-goal-lock {
   margin: 0;
   padding: 6px 10px;
   border-radius: 8px;
