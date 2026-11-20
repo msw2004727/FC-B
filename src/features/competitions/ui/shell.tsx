@@ -50,6 +50,15 @@ export function TrashIcon(): JSX.Element {
   );
 }
 
+/** 入口列與「全部賽程」鈕尾的「›」（新外觀卡 1b-5）。 */
+export function NextIcon(): JSX.Element {
+  return (
+    <svg class="cps-ico cps-ico--next" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
 /** 「一句話＋回去的鈕」的圖示：鎖頭（不公開）。 */
 export function LockIcon(): JSX.Element {
   return (
