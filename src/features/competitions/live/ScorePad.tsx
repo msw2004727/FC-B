@@ -744,7 +744,8 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   }
   if (nearCap) alerts.push(<p key="near" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.nearCap}</p>);
   if (notice) alerts.push(<p key="notice" class="s4-banner s4-banner--saved" role="alert">{notice}</p>);
-  if (!storageDanger && !link.online) {
+  // 3.12：沒有待送紀錄時不顯示「離線中，已存 N 筆」（離線本身仍看得到：板上的連線指示）；無法保存那一句不受影響。
+  if (!storageDanger && !link.online && link.pendingCount > 0) {
     alerts.push(<p key="saved" class="s4-banner s4-banner--saved" role="status">{offlineSaved(link.pendingCount)}</p>);
   }
   if (!link.wakeLock) alerts.push(<p key="wake" class="s4-wake">{LIVE_COPY.wakeLock}</p>);

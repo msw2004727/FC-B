@@ -41,6 +41,16 @@ describe('記分板新狀態', () => {
     expect(screen.getByText('離線・2 筆待送')).toBeTruthy();
   });
 
+  it('施工-第2批 3.12：離線但沒有待送時不顯示「已存 N 筆」提示，連線指示照樣是離線；無法保存照樣顯示', () => {
+    const { rerender } = render(<ScorePad {...S4_SCENE_LIVE} link={{ online: false, pendingCount: 0, storageUnavailable: false, wakeLock: true }} />);
+    expect(screen.queryByText(/離線中，已存/)).toBeNull();
+    expect(screen.getByText('離線・0 筆待送')).toBeTruthy();
+    rerender(<ScorePad {...S4_SCENE_LIVE} link={{ online: false, pendingCount: 1, storageUnavailable: false, wakeLock: true }} />);
+    expect(screen.getByText(/離線中，已存 1 筆/)).toBeTruthy();
+    rerender(<ScorePad {...S4_SCENE_LIVE} link={{ online: false, pendingCount: 0, storageUnavailable: true, wakeLock: true }} />);
+    expect(screen.getByText(LIVE_COPY.offlineUnstored)).toBeTruthy();
+  });
+
   it('儲存不可用時，有網路也顯示既有警告', () => {
     render(<ScorePad
       {...S4_SCENE_LIVE}
