@@ -210,7 +210,8 @@ describe('第 4 步預覽元件', () => {
   it('離線儲存不可用是醒目警告；儲存可用則寫已存幾筆', () => {
     pad(S4_SCENE_OFFLINE);
     expect(screen.getByRole('alert').textContent).toContain('離線紀錄無法保存，斷網時記的動作重整後會消失');
-    expect(screen.getByText('請關閉手機自動鎖定')).toBeTruthy();
+    // 施工-第2批 3.13：這個場景已經有紀錄，鎖定提醒不再常駐。
+    expect(screen.queryByText('請關閉手機自動鎖定')).toBeNull();
     expect(screen.getByText('離線・2 筆待送')).toBeTruthy();
     cleanup();
     render(

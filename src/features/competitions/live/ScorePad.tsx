@@ -748,7 +748,8 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   if (!storageDanger && !link.online && link.pendingCount > 0) {
     alerts.push(<p key="saved" class="s4-banner s4-banner--saved" role="status">{offlineSaved(link.pendingCount)}</p>);
   }
-  if (!link.wakeLock) alerts.push(<p key="wake" class="s4-wake">{LIVE_COPY.wakeLock}</p>);
+  // 3.13（記分線問答第 3 點）：鎖定提醒不常駐——畫面上還沒有任何一列紀錄時才顯示（正式頁看含待送的 feed，預覽看 lines）。
+  if (!link.wakeLock && (props.feed ?? lines).length === 0) alerts.push(<p key="wake" class="s4-wake">{LIVE_COPY.wakeLock}</p>);
 
   // PK 期間板上不放時鐘，右邊是「第 N 輪」：N＝兩隊都踢完的輪數＋1，用畫面上那一份事件列算（正式頁含待送），與 PK 比分同步。
   const pkRound = !pk

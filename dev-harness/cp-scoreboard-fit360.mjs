@@ -35,7 +35,7 @@ const SHOTS = !flags['no-shots'];
 
 /** 全部記分頁狀態（正式頁＋預覽元件）。 */
 export const U2_ALL = [
-  'u2-pre', 'u2-pre-wake-off', 'u2-live', 'u2-pending', 'u2-pk-confirm', 'u2-pk-live', 'u2-pk-goal-locked',
+  'u2-pre', 'u2-pre-wake-off', 'u2-live-wake-off', 'u2-live', 'u2-pending', 'u2-pk-confirm', 'u2-pk-live', 'u2-pk-goal-locked',
   'u2-timeout-stop', 'u2-timeout-collapsed', 'u2-crowded', 'u2-reader-tab', 'u2-reader-cap', 'u2-near-cap',
   'u2-no-permission', 'u2-no-permission-host', 'u2-load-failed-network', 'u2-load-failed-error',
   'u2-storage-unavailable', 'u2-long-name', 'u2-long-6', 'u2-long-7', 'u2-long-10', 'u2-long-11', 'u2-long-13', 'u2-long-similar',

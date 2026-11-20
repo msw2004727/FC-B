@@ -76,6 +76,8 @@ export const U2_SCREENS = [
   'u2-load-failed-network',
   'u2-load-failed-error',
   'u2-pre-wake-off',
+  // 卡 2-3(c)（記分線問答第 12 點）：進行中、0 筆紀錄、不支援螢幕常亮——鎖定提醒唯一會出現的時候。
+  'u2-live-wake-off',
   'u2-long-6',
   'u2-long-7',
   'u2-long-10',
@@ -144,6 +146,7 @@ const ANCHORS: Record<string, string> = {
   'u2-load-failed-error': '讀取失敗',
   // 開賽前螢幕喚醒還沒要求（data/wake-lock.ts 只在 play/ht 要求），所以正式頁開賽前不會出現「請關閉手機自動鎖定」；錨點只等開賽鈕。
   'u2-pre-wake-off': '開賽',
+  'u2-live-wake-off': '請關閉手機自動鎖定',
   'u2-timeout-done': '繼續計時',
   'u2-menu-disabled': '球隊暫停',
   'u2-pre-disabled': '開賽',
@@ -549,6 +552,13 @@ function seedOf(name: string): Seed {
   if (name === 'u2-load-failed-network') return { ...seedOf('u2-live'), failOpen: 'network' };
   if (name === 'u2-load-failed-error') return { ...seedOf('u2-live'), failOpen: 'error' };
   if (name === 'u2-pre-wake-off') return { ...seedOf('u2-pre'), wakeOff: true };
+  if (name === 'u2-live-wake-off') {
+    return {
+      match: match({ status: 'live', score: { home: 0, away: 0 }, clockBase: clock(3 * 60, 'h1', true) }),
+      events: [],
+      wakeOff: true,
+    };
+  }
   if (name === 'u2-fulltime-undo') return fulltimeSeed();
   if (name === 'u2-fulltime-undo-blocked') {
     return {
