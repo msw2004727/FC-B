@@ -232,14 +232,14 @@ function RulingForm({
                   <span class="cpm-drag__i">{index + 1}</span>
                   <span class="cpm-drag__n">{name}</span>
                   <Button
-                    variant="ghost"
+                    variant="secondary"
                     size="sm"
                     disabled={busy || index === 0}
                     aria-label={`${ct('moveUp')} ${name}`}
                     onClick={() => onOrder(move(order, index, -1))}
                   >{ct('moveUp')}</Button>
                   <Button
-                    variant="ghost"
+                    variant="secondary"
                     size="sm"
                     disabled={busy || index === order.length - 1}
                     aria-label={`${ct('moveDown')} ${name}`}
@@ -510,22 +510,27 @@ export function TieWorkspace({
           setClearReason('');
         }}
       />
-      {active && result ? <CompareCard ct={ct} doc={active} result={result} summary={summary} /> : null}
       {message && active && !result ? <p class="cps-note cps-warn" role="alert">{message}</p> : null}
-      {active && canHost && order.length >= 2 ? (
-        <RulingForm
-          ct={ct}
-          doc={active}
-          order={order}
-          method={method}
-          reason={reason}
-          message={exists ? ct('tieExistsHint') : message}
-          busy={busy}
-          onMethod={setMethod}
-          onOrder={setOrder}
-          onReason={setReason}
-          onSave={() => { void save(); }}
-        />
+      {/* 新外觀卡 2-5：比較表與裁定表單接成一塊。錯誤句只在還沒有比較結果時出現，排在這一塊前面與原本的先後相同。 */}
+      {active && (result || (canHost && order.length >= 2)) ? (
+        <div class="cpm-tie">
+          {result ? <CompareCard ct={ct} doc={active} result={result} summary={summary} /> : null}
+          {canHost && order.length >= 2 ? (
+            <RulingForm
+              ct={ct}
+              doc={active}
+              order={order}
+              method={method}
+              reason={reason}
+              message={exists ? ct('tieExistsHint') : message}
+              busy={busy}
+              onMethod={setMethod}
+              onOrder={setOrder}
+              onReason={setReason}
+              onSave={() => { void save(); }}
+            />
+          ) : null}
+        </div>
       ) : null}
       {exists && active ? (
         <CpCard>

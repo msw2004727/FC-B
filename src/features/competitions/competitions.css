@@ -758,20 +758,26 @@
 .cp3-result { margin: 0; font-size: var(--font-size-body-lg); line-height: var(--line-height-body-lg); font-weight: 700; white-space: nowrap; }
 .cp3-result--bad { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 700; color: var(--d2-text-2); white-space: nowrap; }
 .cp3-sec-h { margin: 0 0 var(--space-3); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-weight: 700; color: var(--color-text-secondary); white-space: nowrap; }
-.cp3-ctx { margin: 0; text-align: center; font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--color-text-muted); white-space: nowrap; }
-.cp3-score { display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr); align-items: start; }
-.cp3-score__team { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); min-width: 0; }
-.cp3-score__name { max-width: 100%; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cp3-score__num { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--font-size-display); line-height: var(--line-height-display); font-weight: 700; font-variant-numeric: tabular-nums; background: var(--color-bg-surface); }
-.cp3-score__btns { display: flex; gap: var(--space-2); }
-.cp3-score__colon { align-self: center; margin-top: 28px; text-align: center; font-size: var(--font-size-title); font-weight: 700; color: var(--color-text-muted); }
-.cp3-stepbtn { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-surface); color: var(--color-text-primary); font-size: var(--font-size-title); line-height: 1; cursor: pointer; }
-.cp3-stepbtn:disabled { opacity: 0.45; cursor: default; }
+/* 主辦面板內容（新外觀卡 2-5）：登錄比分是兩隊各一組「− 數字 ＋」，加減鈕靠樣式搬到數字兩側（標記不動：隊名 → 數字 → 兩顆鈕的容器）。 */
+.cp3-ctx { margin: 0; text-align: center; font-size: 13px; line-height: 20px; color: var(--d2-text-2); white-space: nowrap; }
+.cp3-score { display: grid; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); align-items: start; }
+.cp3-score__team { display: grid; grid-template-columns: 44px minmax(36px, 1fr) 44px; gap: 8px 6px; min-width: 0; }
+.cp3-score__name { grid-column: 1 / -1; min-width: 0; text-align: center; font-size: 15px; line-height: 24px; font-weight: 700; color: var(--d2-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp3-score__num { grid-column: 2; grid-row: 2; display: flex; align-items: center; justify-content: center; height: 56px; border-radius: 11px; background: var(--d2-sb-bg-off); color: var(--d2-sb-fg); box-shadow: var(--d2-sb-sh); font-family: var(--d2-num); font-size: 28px; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .03em; }
+.cp3-score__btns { display: contents; }
+.cp3-score__btns > .cp3-stepbtn:first-child { grid-column: 1; grid-row: 2; }
+.cp3-score__btns > .cp3-stepbtn:last-child { grid-column: 3; grid-row: 2; }
+.cp3-score__colon { display: flex; align-items: center; justify-content: center; height: 56px; margin-top: 32px; font-size: 22px; color: var(--d2-text-3); }
+.cp3-stepbtn { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 56px; padding: 0; border: 0; border-radius: 12px; background: var(--d2-glass-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh); color: var(--d2-text); font-size: 22px; line-height: 1; cursor: pointer; }
+.cp3-stepbtn:disabled { opacity: 1; background: var(--d2-off-bg); box-shadow: inset 0 0 0 1px var(--d2-off-line); color: var(--d2-text-3); cursor: default; }
 .cp3-stack-btns { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; }
 .cp3-stack-btns .ui-button { width: 100%; white-space: nowrap; }
-.cp3-textlink { align-self: center; min-height: 44px; padding: 0 var(--space-3); border: 0; background: none; color: var(--color-text-secondary); font: inherit; font-size: var(--font-size-body-sm); text-decoration: underline; white-space: nowrap; cursor: pointer; }
+.cp3-textlink { align-self: center; min-height: 44px; padding: 0 var(--space-3); border: 0; background: none; color: var(--d2-text-2); font: inherit; font-size: 13px; line-height: 20px; text-decoration: underline; white-space: nowrap; cursor: pointer; }
 .cp3-textlink:disabled { opacity: 0.45; cursor: default; }
-.cp3-judge { margin: 0; padding: var(--space-3); border-radius: var(--radius-sm); background: none; box-shadow: inset 0 0 0 1px var(--d2-line-strong); color: var(--d2-text); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-weight: 600; white-space: nowrap; }
+/* 提示列一般級（與 .s4b-alert 同一套）：棄權判定、同分「全部相同，待主辦裁定」 */
+.cp3-judge,
+.cpm-mark.cpm-mark--wait { margin: 0; padding: 6px 10px; border-radius: 8px; background: var(--d2-line); color: var(--d2-text); font-size: 13px; line-height: 20px; font-weight: 600; white-space: nowrap; }
+.cpm-mark.cpm-mark--wait { margin-top: 8px; }
 .cp3-modal-p { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: nowrap; }
 .cps-card--warn { border-left: 3px solid var(--d2-text-3); }
 
@@ -784,11 +790,11 @@
   font-weight: 700;
 }
 .cpm-sec {
-  margin: var(--space-3) 0 var(--space-2);
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  font-weight: 700;
-  color: var(--color-text-secondary);
+  margin: 16px 0 var(--space-2);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--d2-text-2);
 }
 .cpm-sec--first { margin-top: 0; }
 .cpm-reason {
@@ -807,18 +813,36 @@
   font-weight: 700;
 }
 .cpm-endact { margin-top: var(--space-3); }
+/* 後果提醒：前面一個 16px 資訊圖示（遮罩），不是色塊；連續兩句收緊 6px。撞期警示 .cpm-warn 共用同一個圖示寫法（三角驚嘆號）。 */
 .cpm-hint {
+  --cpm-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6.6'/%3E%3Cpath d='M8 7.3v3.9M8 4.9h0'/%3E%3C/svg%3E");
+  position: relative;
   margin: 0;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  font-weight: 700;
-  color: var(--d2-text-2);
+  padding-left: 24px;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--d2-text);
+}
+.cpm-hint + .cpm-hint { margin-top: -6px; }
+.cpm-hint::before,
+.cpm-warn::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  background: var(--d2-text-2);
+  -webkit-mask: var(--cpm-ico) center / 16px no-repeat;
+  mask: var(--cpm-ico) center / 16px no-repeat;
 }
 .cpm-preview {
   margin: 0;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  font-weight: 700;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--d2-text);
 }
 .cpm-tiebtn {
   display: inline;
@@ -835,63 +859,77 @@
   text-underline-offset: 2px;
   cursor: pointer;
 }
+/* 同分裁定（新外觀卡 2-5）：比較表與裁定表單兩張卡接成一塊（.cpm-tie 容器）、左緣 3px 青綠＝正在處理這一組；下卡不疊光澤。 */
+.cpm-tie > .cps-card { border-left: 3px solid var(--d2-accent); }
+.cpm-tie > .cps-card:not(:last-child) { border-radius: 14px 14px 0 0; }
+.cpm-tie > .cps-card + .cps-card { border-radius: 0 0 14px 14px; background: var(--d2-glass-base); }
+.cpm-tie .cpm-h { font-size: 17px; line-height: 24px; }
 .cpm-cmp { min-width: 0; }
+/* 欄寬是行內樣式（4.5em），列的字級固定 15px，表頭與項目名的小字寫在 span 上，欄才對得齊 */
 .cpm-cmp__r {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 4.5em 4.5em;
   column-gap: var(--space-2);
   align-items: center;
-  min-height: 28px;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
+  min-height: 36px;
+  border-top: 1px solid var(--d2-line);
+  font-size: 15px;
+  line-height: 24px;
   font-variant-numeric: tabular-nums;
 }
 .cpm-cmp__r > span { min-width: 0; white-space: nowrap; }
 .cpm-cmp__r > span:nth-child(n + 2) { text-align: right; font-weight: 700; }
-.cpm-cmp__k { font-weight: 600; }
-.cpm-cmp__r--h { min-height: 22px; color: var(--color-text-muted); }
+.cpm-cmp__k { font-size: 13px; font-weight: 600; color: var(--d2-text-2); }
+.cpm-cmp__r--h { min-height: 28px; border-top: 0; }
+.cpm-cmp__r--h > span { font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
 .cpm-cmp__r--h > span:nth-child(n + 2) { font-weight: 600; }
+/* 分出高下的那一列：左右各外推 8px 畫淡青綠底，欄位不跟著位移 */
 .cpm-cmp__r--hit {
-  border-radius: var(--radius-sm);
-  background: var(--color-success-bg);
-  color: var(--color-success-fg);
+  margin: 0 -8px;
+  padding: 0 8px;
+  border-top-color: transparent;
+  border-radius: 8px;
+  background: var(--d2-seg-on);
+  box-shadow: inset 0 0 0 1px var(--d2-accent-line);
+  color: var(--d2-seg-fg);
 }
-.cpm-cmp__r--skip { color: var(--color-text-muted); }
+.cpm-cmp__r--hit > .cpm-cmp__k { color: inherit; }
+.cpm-cmp__r--skip,
+.cpm-cmp__r--skip > .cpm-cmp__k { color: var(--d2-text-3); }
 .cpm-mark {
   margin: var(--space-2) 0 0;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
+  font-size: 13px;
+  line-height: 20px;
   font-weight: 700;
-  color: var(--color-success-fg);
+  color: var(--d2-accent-ink);
 }
-.cpm-mark--wait { color: var(--d2-text-2); }
 .cpm-rels { list-style: none; margin: 0; padding: 0; }
 .cpm-rel {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  min-height: 44px;
+  min-height: 40px;
   padding: 0;
   border: 0;
-  border-top: 1px solid var(--color-border-subtle);
+  border-top: 1px solid var(--d2-line);
   background: none;
-  color: var(--color-text-primary);
+  color: var(--d2-text);
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 .cpm-rel__t {
   flex: 0 0 auto;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--d2-text-2);
 }
 .cpm-rel__n {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
+  font-size: 15px;
+  line-height: 24px;
   font-weight: 600;
 }
 .cpm-rel svg {
@@ -909,17 +947,25 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 44px;
-  border-top: 1px solid var(--color-border-subtle);
+  min-height: 52px;
+  border-top: 1px solid var(--d2-line);
 }
 .cpm-drag__li:first-child { border-top: 0; }
-.cpm-grip { flex: 0 0 auto; display: inline-flex; color: var(--color-text-muted); }
+.cpm-grip { flex: 0 0 auto; display: inline-flex; color: var(--d2-text-3); }
 .cpm-grip svg { width: 16px; height: 16px; fill: currentColor; }
+/* 名次：28×28、圓角 8 的方塊 */
 .cpm-drag__i {
   flex: 0 0 auto;
-  width: 1.5em;
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-body);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--d2-line);
+  color: var(--d2-text);
+  font-size: 15px;
+  line-height: 1;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -936,8 +982,8 @@
 }
 /* 上移／下移用內容寬度：全站按鈕最小 120px，這列放兩顆會把隊名擠成一字一行、按鈕超出卡片（補拍發現） */
 .cpm-drag .cpm-drag__li .ui-button { flex: 0 0 auto; width: auto; min-inline-size: 0; white-space: nowrap; }
-/* 停用的上移／下移不畫底色，免得比可按的更像按鈕（Opus 終審 P3；只限這一列，不動全站 token） */
-.cpm-drag .cpm-drag__li .ui-button[aria-disabled="true"]::before { background: transparent; border-color: transparent; box-shadow: none; }
+/* 上移／下移是小顆玻璃鈕（次要鈕）；不能按的是平的淡灰、沒有框（新外觀卡 2-5 取代「停用不畫底色」：玻璃鈕旁的透明停用鈕看不出是鈕） */
+.cpm-drag .cpm-drag__li .ui-button[aria-disabled="true"]::before { background: var(--d2-off-bg); border-color: transparent; box-shadow: none; }
 .cpm-rules { margin: 0; padding: 0; list-style: decimal inside; }
 .cpm-rules li {
   padding: 8px 0;
@@ -953,7 +999,7 @@
   margin: 0;
   font-size: var(--font-size-caption);
   line-height: var(--line-height-caption);
-  color: var(--color-text-muted);
+  color: var(--d2-text-3);
 }
 .cpm-warn,
 .cpm-ok {
@@ -964,9 +1010,14 @@
   line-height: var(--line-height-body-sm);
   font-weight: 700;
 }
-.cpm-warn { background: none; box-shadow: inset 0 0 0 1px var(--d2-line-strong); color: var(--d2-text); }
-/* 撞期句由「原因　時間　對戰」三段以空白分開；窄螢幕只在段落之間換行，不把隊名拆成兩行 */
-.cpm-warn { word-break: keep-all; overflow-wrap: anywhere; }
+/* 撞期警示（新外觀卡 2-5）：提示列的長相（中性底＋三角驚嘆號），是內容句子可以折行；
+ * 撞期句由「原因　時間　對戰」三段以空白分開；窄螢幕只在段落之間換行，不把隊名拆成兩行 */
+.cpm-warn {
+  --cpm-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 1.8 1.2 13.7h13.6z'/%3E%3Cpath d='M8 6.4v3.3M8 11.6h0'/%3E%3C/svg%3E");
+  position: relative; padding: 10px 12px 10px 38px; border-radius: 10px; background: var(--d2-line); color: var(--d2-text); font-weight: 600;
+  word-break: keep-all; overflow-wrap: anywhere;
+}
+.cpm-warn::before { top: 12px; left: 12px; }
 .cpm-ok { background: var(--color-success-bg); color: var(--color-success-fg); }
 .cpm-swap {
   margin: 0;
