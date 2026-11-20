@@ -135,6 +135,29 @@ describe('工作人員頁（K11）', () => {
     expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites']);
   });
 
+  it('顧問 11-20：主辦兼記分顯示「主辦」「記分員」兩個標籤，到期跟著記分角色；只有主辦一個標籤', async () => {
+    const repo = createFakeCpRepo({
+      competitions: [competition({ id: 'cup' })],
+      staff: { cup: [{ uid: 'uid_host', roles: hostRole }] },
+      assignments: { cup: [
+        { uid: 'uid_host', roles: ['host', 'scorer'], matchIds: ['mt_9', 'mt_10'], expiresAt: EXP, memberNo: 1 },
+        { uid: 'uid_co', roles: ['coHost', 'referee'], matchIds: ['mt_9'], expiresAt: EXP, memberNo: 2 },
+        { uid: 'uid_c', roles: ['coHost'], matchIds: [], expiresAt: null, memberNo: 3 },
+      ] },
+      invites: { cup: [] },
+      matches: { cup: [match('mt_10', 10), match('mt_9', 9)] },
+    });
+    const view = draw({ actor: hostActor, repo, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
+    expect(await screen.findByText('我自己')).toBeTruthy();
+    const rows = [...view.container.querySelectorAll('.s4b-staff-list > .s4b-li')];
+    const badgesOf = (row: Element) => [...row.querySelectorAll('.ui-badge')].map((el) => el.textContent?.trim());
+    expect(badgesOf(rows[0] as Element)).toEqual(['主辦', '記分員']);
+    expect(rows[0]?.querySelector('.s4b-staff__exp')?.textContent).toBe('01/16 18:00 到期');
+    expect(badgesOf(rows[1] as Element)).toEqual(['共同主辦', '裁判']);
+    expect(badgesOf(rows[2] as Element)).toEqual(['共同主辦']);
+    expect(rows[2]?.querySelector('.s4b-staff__exp')).toBeNull();
+  });
+
   it('列出尚未使用的邀請，撤銷走確認框並送 {cid, ivId}', async () => {
     const revokeInvite = vi.fn(async () => ({ ivId: 'iv_open1', status: 'revoked' }));
     const actions: CpActions = { ...idleActions(), revokeInvite };
