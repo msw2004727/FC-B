@@ -27,6 +27,8 @@ const SCREENS = [
 const NEW_SCREENS = [
   'staff-list-rep', 'staff-invites-empty', 'staff-invites-error', 'staff-revoke-confirm', 'detail-admin-hidden',
   'accept-bad-link', 'accept-no-ticket', 'accept-net-error', 'accept-sending', 'accept-long-name',
+  // 設計總監 04:20：檢舉紀錄讀取中、沒有檢舉、讀取失敗
+  'detail-admin-reports-loading', 'detail-admin-reports-empty', 'detail-admin-reports-error',
 ];
 // 一定要拍到的文字（至少一段截圖的視窗內）
 const ANCHORS = {
@@ -34,6 +36,7 @@ const ANCHORS = {
   'staff-list-rep': '尚未使用的邀請', 'staff-invites-empty': '目前沒有尚未使用的邀請', 'staff-invites-error': '重試', 'staff-revoke-confirm': '撤銷邀請？',
   'detail-admin-hidden': '此賽事已被管理員下架', 'accept-bad-link': '邀請連結無效', 'accept-no-ticket': '找不到邀請資料',
   'accept-net-error': '操作失敗，請稍後再試', 'accept-sending': '接受邀請', 'accept-long-name': '新北市三重區',
+  'detail-admin-reports-loading': '讀取中', 'detail-admin-reports-empty': '目前沒有檢舉', 'detail-admin-reports-error': '重試',
 };
 const CODE = 'AbCdEfGhIjKlMnOpQrStUv';
 // 介面標籤（不含使用者內容：賽事名、原因、說明可以換行）
