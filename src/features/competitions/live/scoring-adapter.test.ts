@@ -314,6 +314,30 @@ function timeoutEvent(partial: Partial<ServerEvent> = {}): ServerEvent {
   };
 }
 
+describe('顧問 §3.454 G-14：改判沿用原事件的比賽秒', () => {
+  it('進球改判：帶 matchSecond 時原樣傳給 actions.goal；新記的不帶', () => {
+    const goal = vi.fn(async () => ({ status: 'applied' as const }));
+    const props = scorePadPropsFrom(view({ actions: { goal } as unknown as ScoringView['actions'] }), NOW);
+    expect(props.onRecord?.({ side: 'home', action: 'goal', plId: 'pl_th9', goalKind: 'normal', minute: 0, matchSecond: 13 })).toBe(true);
+    expect(goal).toHaveBeenLastCalledWith({ side: 'home', plId: 'pl_th9', goalKind: 'normal', matchSecond: 13 });
+    // 0 秒也要保留（不能用真假值判斷）
+    props.onRecord?.({ side: 'away', action: 'goal', plId: null, goalKind: 'own', minute: 0, matchSecond: 0 });
+    expect(goal).toHaveBeenLastCalledWith({ side: 'away', goalKind: 'own', matchSecond: 0 });
+    props.onRecord?.({ side: 'home', action: 'goal', plId: null, goalKind: 'normal', minute: 4 });
+    expect(goal).toHaveBeenLastCalledWith({ side: 'home', goalKind: 'normal' });
+  });
+  it('牌改判：帶 matchSecond 時原樣傳給 actions.card；新記的不帶', () => {
+    const card = vi.fn(async () => ({ status: 'applied' as const }));
+    const props = scorePadPropsFrom(view({ actions: { card } as unknown as ScoringView['actions'] }), NOW);
+    props.onRecord?.({ side: 'home', action: 'yellow', plId: 'pl_th9', goalKind: null, minute: 0, matchSecond: 13 });
+    expect(card).toHaveBeenLastCalledWith({ side: 'home', plId: 'pl_th9', cardType: 'yellow', matchSecond: 13 });
+    props.onRecord?.({ side: 'away', action: 'red', plId: 'pl_hf4', goalKind: null, minute: 5, matchSecond: 352 });
+    expect(card).toHaveBeenLastCalledWith({ side: 'away', plId: 'pl_hf4', cardType: 'red', matchSecond: 352 });
+    props.onRecord?.({ side: 'away', action: 'red', plId: 'pl_hf4', goalKind: null, minute: 5 });
+    expect(card).toHaveBeenLastCalledWith({ side: 'away', plId: 'pl_hf4', cardType: 'red' });
+  });
+});
+
 describe('pkCanStart 與 shootoutOffered', () => {
   const periods = ['h1', 'ht', 'h2', 'et', 'et1', 'et2', 'pk', 'ft'];
   const statuses = ['live', 'halftime', 'scheduled', 'finished'];
