@@ -594,3 +594,45 @@
   stroke-width: 2;
   stroke-linejoin: round;
 }
+
+/* 第 4 步 K12：管理員區（後台一般風格，不用液態玻璃）與下架提示。 */
+.cpa-hidden {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 700;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cpa-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+.cpa-head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.cpa-h { margin: 0; font-size: var(--font-size-body-lg); line-height: var(--line-height-body-lg); font-weight: 700; white-space: nowrap; }
+.cpa-btns { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+.cpa-btns .ui-button { width: auto; min-inline-size: 0; }
+.cpa-reports { min-width: 0; }
+.cpa-muted { margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-body-sm); white-space: nowrap; }
+.cpa-retry { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
+.cpa-list { list-style: none; margin: 0; padding: 0; }
+.cpa-li { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: var(--space-3) 0; border-top: 1px solid var(--color-border); }
+.cpa-li:first-child { border-top: 0; padding-top: 0; }
+.cpa-li:last-child { padding-bottom: 0; }
+.cpa-li__top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.cpa-reason { font-weight: 700; white-space: nowrap; font-size: var(--font-size-body); }
+.cpa-detail { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cpa-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-body-sm); font-variant-numeric: tabular-nums; }
+.cpa-meta > span { white-space: nowrap; }

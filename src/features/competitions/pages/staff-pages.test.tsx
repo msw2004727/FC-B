@@ -275,7 +275,10 @@ describe('指派頁與我的場次', () => {
     expect(removeIn(self)).not.toBeNull();
     expect(removeIn(rowOf(view, '成員 5'))).toBeNull();
     expect(removeIn(rowOf(view, '成員 6'))).toBeNull();
-    expect(removeIn(rowOf(view, '裁判'))).not.toBeNull();
+    // 顧問 11-20 雙標籤後「成員 5」那列也顯示「裁判」，改用位置取最後一列（純裁判 uid_ref）。
+    expect(rowOf(view, '成員 5')?.textContent ?? '').toContain('裁判');
+    const all = [...view.container.querySelectorAll('.s4b-staff-list > .s4b-li')];
+    expect(removeIn(all[all.length - 1] ?? null)).not.toBeNull();
   });
 
   it('移除記分員後成員 3 仍是 3，重新整理號碼不變', async () => {
@@ -338,7 +341,7 @@ describe('指派頁與我的場次', () => {
       route: { cid: 'cup' },
     }, <StaffPage />);
     expect(await screen.findByText('指派記分員')).toBeTruthy();
-    expect(repo.calls()).toEqual(['getStaff', 'listStaff']);
+    expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites']);
   });
 
   it('指派沿用既有場次、預勾已指派的場，送出單一角色', async () => {

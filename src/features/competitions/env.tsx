@@ -70,6 +70,10 @@ export interface CpPreview {
   repNick?: boolean;
   /** 主辦管理一開始顯示的分頁。鎖定／解鎖預覽仍強制已核准。 */
   manageTab?: 'pending' | 'approved' | 'rejected';
+  /** 詳情頁管理員：首屏打開下架對話框。 */
+  moderateOpen?: boolean;
+  /** 詳情頁管理員：首屏展開檢舉紀錄。 */
+  reportsOpen?: boolean;
 }
 
 export interface CpScheduleSnapshot {
@@ -110,6 +114,8 @@ export interface CpInjectedEnv {
   matches?: readonly MatchDoc[];
   preview?: CpPreview;
   wizardSeed?: WizardSeed;
+  /** 接受邀請頁的登入。省略時用站內既有的 signIn（LINE 登入，回跳到目前網址）。 */
+  signIn?: () => Promise<void>;
 }
 
 const CpEnvContext = createContext<CpInjectedEnv | null>(null);

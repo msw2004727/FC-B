@@ -101,6 +101,16 @@ export const CP_REASON_CODES = [
   'STAFF_PROTECTED',
   'FORBIDDEN',
   'COMPETITION_CLOSED',
+  // 第 4 步 K11 邀請、K12 下架與檢舉處理。
+  'INVITE_LIMIT',
+  'INVITE_NOT_FOUND',
+  'INVITE_NOT_OPEN',
+  'INVITE_INVALID',
+  'INVITE_REVOKED',
+  'INVITE_USED',
+  'INVITE_EXPIRED',
+  'NO_CHANGE',
+  'REPORT_NOT_FOUND',
 ] as const;
 
 export type CpReasonCode = (typeof CP_REASON_CODES)[number];

@@ -96,6 +96,12 @@ export function idleActions(): CpActions {
     explainTie: async () => ({}),
     assignStaff: async () => ({}),
     removeStaff: async () => ({}),
+    // K11／K12（PM 11-20 補上，CpActions 改回必填）：假資料，不連任何後端。
+    createInvite: async () => ({ ivId: 'iv_' + 'a'.repeat(20), code: 'A'.repeat(22), expiresAt: 0 }),
+    revokeInvite: async () => ({}),
+    acceptInvite: async ({ cid }) => ({ cid, roles: ['scorer'], matchCount: 1 }),
+    moderate: async () => ({}),
+    reviewReport: async () => ({}),
   };
 }
 
@@ -148,6 +154,8 @@ export const clubRepActor = actor({
 
 export const wizardActor = actor({
   uid: 'uid_host',
+  // 管理員直接過建賽閘門，harness 與測試不必另備 cpConfig/launch。
+  role: 'admin',
   displayName: '王示範',
   // 建賽下拉讀的是代表俱樂部（文件路徑 id）。
   repClubs: [{ id: 'club_host', name: '示範俱樂部' }],

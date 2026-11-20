@@ -33,6 +33,15 @@ import {
   cpHostSetWalkover,
   cpHostUpdate,
   cpParticipantReport,
+  cpHostCreateInvite,
+  cpHostRevokeInvite,
+  cpParticipantAcceptInvite,
+  cpHostModerate,
+  cpHostReviewReport,
+  type CpAcceptInviteResult,
+  type CpCreateInviteResult,
+  type CpModerateInput,
+  type CpReviewStatus,
   type CpAddRosterByRepInput,
   type StaffScoreRole,
   type CpForfeitSide,
@@ -48,6 +57,7 @@ import {
   type CpReviewEntryInput,
   type TieMethod,
 } from './data/cp-callables';
+import { CpCallError } from './data/cp-callables';
 import type { PaymentStatusWrite } from './data/types';
 
 export interface CpActions {
@@ -137,6 +147,17 @@ export interface CpActions {
     expiresAt?: number;
   }): Promise<unknown>;
   removeStaff(input: { cid: string; uid: string; roles?: readonly string[] }): Promise<unknown>;
+  // 以下五支是第 4 步 K11／K12。必填（PM 11-20：cp-open-b 合併後 screen-fixtures 的 idleActions 已補上，取代原本選填＋missingAction）。
+  createInvite(input: {
+    cid: string;
+    roles: readonly StaffScoreRole[];
+    matchIds: readonly string[];
+    expiresAt?: number;
+  }): Promise<CpCreateInviteResult>;
+  revokeInvite(input: { cid: string; ivId: string }): Promise<unknown>;
+  acceptInvite(input: { cid: string; ivId: string; code: string }): Promise<CpAcceptInviteResult>;
+  moderate(input: CpModerateInput): Promise<unknown>;
+  reviewReport(input: { cid: string; reportId: string; status: CpReviewStatus }): Promise<unknown>;
 }
 
 export const liveCpActions: CpActions = {
@@ -172,4 +193,9 @@ export const liveCpActions: CpActions = {
   explainTie: cpHostExplainTie,
   assignStaff: cpHostAssignStaff,
   removeStaff: cpHostRemoveStaff,
+  createInvite: cpHostCreateInvite,
+  revokeInvite: cpHostRevokeInvite,
+  acceptInvite: cpParticipantAcceptInvite,
+  moderate: cpHostModerate,
+  reviewReport: cpHostReviewReport,
 };
