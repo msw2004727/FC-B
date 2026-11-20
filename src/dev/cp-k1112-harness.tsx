@@ -70,8 +70,9 @@ const MATCHES = [
 ];
 
 const ASSIGN: StaffAssignment[] = [
-  { uid: 'uid_host', roles: ['host'], matchIds: [], expiresAt: null, memberNo: 1 },
-  { uid: 'uid_co', roles: ['coHost'], matchIds: [], expiresAt: null, memberNo: 2 },
+  // 顧問 11-20：主辦兼記分、共同主辦兼裁判（兩個標籤；共同主辦那列有移除鈕，是最擠的情況）
+  { uid: 'uid_host', roles: ['host', 'scorer'], matchIds: ['mt_1', 'mt_2'], expiresAt: EXP, memberNo: 1 },
+  { uid: 'uid_co', roles: ['coHost', 'referee'], matchIds: ['mt_3'], expiresAt: EXP, memberNo: 2 },
   { uid: 'uid_a', roles: ['scorer'], matchIds: ['mt_1', 'mt_2'], expiresAt: EXP, memberNo: 3, displayName: '陳小明' },
   { uid: 'uid_long', roles: ['scorer'], matchIds: ['mt_3'], expiresAt: taipeiMs(2027, 1, 17, 18, 0), memberNo: 5, displayName: '一二三四五六七八九十一二三四五' },
   { uid: 'uid_b', roles: ['referee'], matchIds: ['mt_3'], expiresAt: null, memberNo: 4, displayName: null },

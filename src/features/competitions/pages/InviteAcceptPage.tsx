@@ -67,11 +67,34 @@ function InviteAcceptView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
   // useState 的初始函式只跑一次：同一次掛載不會重讀 #。
   const [initial] = useState(() => takeTicket(cid));
   const [ticket, setTicket] = useState<InviteTicket | null>(initial.ticket);
+  const [badLink, setBadLink] = useState(initial.badLink);
   const [compName, setCompName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // 進頁就沒有邀請時的句子在畫面上依 initial 決定（字典可能還沒載入，不在這裡先算）。
   const [message, setMessage] = useState<string | null>(null);
   const loginLock = useRef(false);
+
+  // 已停在接受頁時，同分頁重新點開邀請連結只會換 #、不會重新載入（顧問 11-20 staging）：
+  // # 一變就重新讀取、立刻拿掉、更新畫面。格式錯的 # 也拿掉並顯示連結無效。
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onHash = () => {
+      const hash = window.location.hash;
+      if (!hash || hash === '#') return;
+      const parsed = parseInviteHash(hash);
+      stripLocationHash();
+      setMessage(null);
+      if (parsed && cid) {
+        setTicket({ cid, ivId: parsed.ivId, code: parsed.code });
+        setBadLink(false);
+      } else {
+        setTicket(null);
+        setBadLink(true);
+      }
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, [cid]);
 
   // 離開頁面（含 SPA 換頁）清掉暫存。整頁導去 LINE 登入不會卸載，暫存留著讓回來接續。
   useEffect(() => () => {
@@ -133,7 +156,7 @@ function InviteAcceptView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
       <S4bFrame title={ct('acceptTitle')} screen="invite-accept-invalid" onBack={back}>
         <S4bCard>
           <p class="s4b-alert" role="alert">
-            {message || (initial.badLink ? reasonText(ct, 'INVITE_INVALID') : ct('acceptNoTicket'))}
+            {message || (badLink ? reasonText(ct, 'INVITE_INVALID') : ct('acceptNoTicket'))}
           </p>
         </S4bCard>
       </S4bFrame>
