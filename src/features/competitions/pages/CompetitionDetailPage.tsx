@@ -23,6 +23,7 @@ import { HOST_NOTICE_MAX, hostNoticeCount, noticeTextProblem } from '../data/fle
 import { boundedReason } from '../data/host-write';
 import { formatTaipeiDate, formatTaipeiShort, taipeiParts, venueMapUrl } from '../format';
 import { LiveBoundary } from '../live';
+import { cpSignIn } from '../sign-in';
 import { buildRegisterInput, buildReportInput } from '../payload';
 import { competitionPhase, type CompetitionPhase } from '../data/present';
 import { hasPendingTie } from '../data/tie-present';
@@ -39,7 +40,7 @@ import { createAudiencePorts } from '../data/audience-watch';
 import { matchDayOf } from '../data/match-day';
 import { loadFullSchedule, loadScheduleDetail } from '../data/schedule-load';
 import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason, StaffAssignment, StandingDoc, SummaryEntry } from '../data/types';
-import { CpError, errorOf, reasonText } from '../ui/feedback';
+import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, type CpLoadFail } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
 import { CategoryCover, categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
 import { TieWorkspace } from '../ui/tie-panel';
@@ -168,12 +169,14 @@ async function loadDetail(env: CpInjectedEnv, cid: string, mine: MineReadCache):
   };
 }
 
+type LoadState = 'loading' | 'ready' | CpLoadFail;
+
 function applyDetail(
   next: DetailData,
   setBundle: (value: CpBundle | null) => void,
   setSummary: (value: SummaryEntry[]) => void,
   setStandings: (value: StandingDoc[]) => void,
-  setLoadState: (value: 'loading' | 'ready' | 'error') => void,
+  setLoadState: (value: LoadState) => void,
   setMine: (value: StaffAssignment | null) => void,
 ): void {
   setBundle(next.bundle);
@@ -191,7 +194,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [summary, setSummary] = useState<SummaryEntry[]>(env.schedule?.summary ?? []);
   const [standings, setStandings] = useState<StandingDoc[]>(env.schedule?.standings ?? []);
   const [myAssignment, setMyAssignment] = useState<StaffAssignment | null>(null);
-  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>(env.bundle ? 'ready' : 'loading');
+  const [loadState, setLoadState] = useState<LoadState>(env.bundle ? 'ready' : 'loading');
   const [menuOpen, setMenuOpen] = useState(env.preview?.menuOpen === true);
   const [reportOpen, setReportOpen] = useState(env.preview?.reportOpen === true);
   const [reportReason, setReportReason] = useState<ReportReason>('fake');
@@ -203,6 +206,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [registerError, setRegisterError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [reportError, setReportError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loginBusy, setLoginBusy] = useState(false);
   // 全部賽程只在按下後讀，結果留在這一頁。換賽事 id 才清掉。
   const [fullSchedule, setFullSchedule] = useState<SummaryEntry[] | null>(null);
   const [scorerState, setScorerState] = useState<{ dvId: string; tables: ScorerTables | null } | null>(null);
@@ -302,8 +306,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     void loadDetail(env, cid, mineCache.current).then((next) => {
       if (!alive) return;
       applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
-    }).catch(() => {
-      if (alive) setLoadState('error');
+    }).catch((err: unknown) => {
+      if (alive) setLoadState(loadFailOf(err));
     });
     return () => {
       alive = false;
@@ -406,18 +410,19 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   if (loadState === 'loading') {
     return <div class="cps-root"><PageSpinner /></div>;
   }
-  if (!competition || loadState === 'error') {
+  if (!competition || loadState === 'error' || loadState === 'hidden') {
+    // 權限被拒＝不公開：不放重試，也不說是下架、草稿還是內部期。網路或其他錯誤才給重試。
     return (
-      <CpFrame title={ct('detailTitle')}>
-        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
-        <Button variant="secondary" onClick={() => {
+      <CpLoadFailed
+        title={ct('detailTitle')}
+        fail={loadState === 'hidden' ? 'hidden' : 'error'}
+        onRetry={() => {
           setLoadState('loading');
           void loadDetail(env, cid, mineCache.current).then((next) => {
             applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
-          }).catch(() => setLoadState('error'));
+          }).catch((err: unknown) => setLoadState(loadFailOf(err)));
         }}
-        >{ct('retry')}</Button>
-      </CpFrame>
+      />
     );
   }
 
@@ -489,10 +494,23 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       await env.actions.report(buildReportInput({ cid, reason: reportReason, detail: reportDetail }));
       setReportOpen(false);
       setReportError(null);
+      toast.show({ message: ct('reportDone'), tone: 'success' });
     } catch (err) {
       setReportError(errorOf(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function reportLogin(): Promise<void> {
+    if (loginBusy) return;
+    setLoginBusy(true);
+    try {
+      await (env.signIn ?? cpSignIn)();
+    } catch {
+      toast.show({ message: reasonText(ct, 'UNKNOWN'), tone: 'error' });
+    } finally {
+      if (mounted.current) setLoginBusy(false);
     }
   }
 
@@ -640,6 +658,9 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     }
   }
 
+  // 未登入（登入狀態已確定）或伺服器回要先登入：面板只放「請先登入再檢舉」與登入鈕，不給填表。
+  const reportGuest = (!env.actor.uid && !env.actor.authPending) || reportError?.reason === 'SIGN_IN_REQUIRED';
+
   const reportLabels: Record<ReportReason, string> = {
     impersonation: ct('reportImpersonation'),
     fake: ct('reportFake'),
@@ -711,7 +732,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         </>
       )}
     >
-      {/* 下架後一般人讀不到根文件（走讀取失敗畫面）；Rules 只放行管理員與主辦／共同主辦（俱樂部主辦的賽事，俱樂部代表算主辦）。 */}
+      {/* 下架後一般人讀不到根文件（走不公開畫面）；Rules 只放行管理員與主辦／共同主辦（俱樂部主辦的賽事，俱樂部代表算主辦）。 */}
       {competition.hidden ? <HiddenNotice ct={ct} reason={competition.hiddenReason} /> : null}
       <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
       {showHostEnd ? (
@@ -935,10 +956,17 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           footer={(
             <div class="cps-footer">
               <Button variant="secondary" onClick={() => { setReportOpen(false); setReportError(null); }}>{ct('cancel')}</Button>
-              <Button variant="primary" loading={busy} onClick={() => { void sendReport(); }}>{ct('reportSubmit')}</Button>
+              {reportGuest
+                ? <Button variant="primary" loading={loginBusy} onClick={() => { void reportLogin(); }}>{ct('createLogin')}</Button>
+                : <Button variant="primary" loading={busy} onClick={() => { void sendReport(); }}>{ct('reportSubmit')}</Button>}
             </div>
           )}
         >
+          {reportGuest ? (
+            <div class="cps-sheet-body">
+              <p class="cps-note cps-nowrap" data-cp-report="login">{ct('reportLoginHint')}</p>
+            </div>
+          ) : (
           <div class="cps-sheet-body">
             <RadioGroup
               label={ct('reportReason')}
@@ -956,6 +984,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             />
             {reportError ? <CpError reason={reportError.reason} params={reportError.params} /> : null}
           </div>
+          )}
         </BottomSheet>
       ) : null}
     </CpFrame>

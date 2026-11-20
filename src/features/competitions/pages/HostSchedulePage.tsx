@@ -27,7 +27,7 @@ import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { ctOrKey, useCompetitionsT } from '../i18n';
 import { LiveBoundary } from '../live';
-import { CpError, errorOf, reasonText } from '../ui/feedback';
+import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText } from '../ui/feedback';
 import { DateField } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 
@@ -92,8 +92,8 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
       if (!alive) return;
       setBundle(next);
       setPhase(next ? 'ready' : 'missing');
-    }).catch(() => {
-      if (alive) setPhase('error');
+    }).catch((err: unknown) => {
+      if (alive) setPhase(loadFailOf(err));
     });
     return () => {
       alive = false;
@@ -238,12 +238,8 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   if (env.actor.authPending || phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
-  if (phase === 'error' || !competition) {
-    return (
-      <CpFrame title={ct('hostSchedTitle')}>
-        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
-      </CpFrame>
-    );
+  if (phase === 'error' || phase === 'hidden' || !competition) {
+    return <CpLoadFailed title={ct('hostSchedTitle')} fail={phase === 'hidden' ? 'hidden' : 'error'} />;
   }
   // ASSUMPTION: 「無權限」沿用 reason.NOT_HOST，不另造句子。俱樂部代表不是 staff 時擋下。
   if (!allowedOf(env, bundle?.staff ?? null)) {

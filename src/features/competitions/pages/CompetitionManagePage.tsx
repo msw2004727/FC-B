@@ -24,7 +24,7 @@ import { useInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { buildPaymentInput, buildReviewInput } from '../payload';
 import type { CompetitionCategory, DivisionDoc, EntryDoc, EntryPrivateDoc, PaymentStatus } from '../data/types';
-import { CpError, errorOf } from '../ui/feedback';
+import { CpError, CpLoadFailed, errorOf, loadFailOf } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 
@@ -106,8 +106,8 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       if (!alive) return;
       setBundle(next);
       setPhase(next.competition ? 'ready' : 'error');
-    }).catch(() => {
-      if (alive) setPhase('error');
+    }).catch((err: unknown) => {
+      if (alive) setPhase(loadFailOf(err));
     });
     return () => {
       alive = false;
@@ -164,11 +164,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   if (phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
   if (!competition) {
-    return (
-      <CpFrame title={ct('manageTitle')}>
-        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
-      </CpFrame>
-    );
+    return <CpLoadFailed title={ct('manageTitle')} fail={phase === 'hidden' ? 'hidden' : 'error'} />;
   }
 
   const rejectEntry = entries.find((entry) => entry.id === rejectId) ?? null;

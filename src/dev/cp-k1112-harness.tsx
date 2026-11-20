@@ -46,6 +46,10 @@ export const K1112_SCREENS = [
   'detail-admin-reports',
   'detail-admin-hide',
   'detail-host-hidden',
+  // 開放前提示：讀不到根文件（權限被拒）、檢舉成功、未登入檢舉。
+  'detail-hidden',
+  'detail-report-done',
+  'detail-report-guest',
 ] as const;
 
 const CODE = 'AbCdEfGhIjKlMnOpQrStUv';
@@ -137,7 +141,29 @@ function detailEnv(screen: string): CpInjectedEnv {
   };
 }
 
+/** 未登入看下架／草稿／內部期賽事：根文件讀取被 Rules 拒絕。 */
+function deniedEnv(): CpInjectedEnv {
+  const denied = async () => { throw Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' }); };
+  return { actor: { ...memberActor, uid: null }, repo: { ...repo(), getCompetition: denied }, actions: actions(), route: { cid: 'cup' } };
+}
+
+function reportEnv(guest: boolean): CpInjectedEnv {
+  const base = screenEnv('real-recruit');
+  return {
+    ...base,
+    actor: guest ? { ...memberActor, uid: null } : memberActor,
+    repo: repo(),
+    actions: { ...actions(), report: async () => ({ cid: 'cup', reported: true }) },
+    preview: { reportOpen: true },
+    signIn: async () => undefined,
+  };
+}
+
 function envOf(screen: string): { env: CpInjectedEnv; Page: ComponentType } {
+  if (screen === 'detail-hidden') return { env: deniedEnv(), Page: CompetitionDetailPage };
+  if (screen === 'detail-report-done' || screen === 'detail-report-guest') {
+    return { env: reportEnv(screen === 'detail-report-guest'), Page: CompetitionDetailPage };
+  }
   if (screen === 'staff-list') return { env: staffEnv(), Page: StaffPage };
   if (screen === 'invite-form' || screen === 'invite-link') return { env: staffEnv(), Page: StaffInvitePage };
   if (screen.startsWith('accept-')) {
@@ -205,6 +231,13 @@ const OPEN: Record<string, () => Promise<void>> = {
   'detail-admin-reports': () => until('檢舉紀錄', () => hasText('冒用我們俱樂部的名字')),
   'detail-admin-hide': () => until('下架對話框', () => hasText('下架原因')),
   'detail-host-hidden': () => until('下架提示', () => hasText('此賽事已被管理員下架')),
+  'detail-hidden': () => until('不公開', () => hasText('這場賽事目前不公開')),
+  'detail-report-done': async () => {
+    await until('檢舉面板', () => buttonsNamed('送出檢舉').length > 0);
+    buttonsNamed('送出檢舉')[0]?.click();
+    await until('檢舉成功提示', () => hasText('已收到檢舉，管理員會盡快處理'));
+  },
+  'detail-report-guest': () => until('先登入提示', () => hasText('請先登入再檢舉')),
 };
 
 void start();

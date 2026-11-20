@@ -53,7 +53,7 @@ import { useInjectedEnv } from '../env';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { undoClock } from '../live/clock';
 import { LiveBoundary } from '../live';
-import { errorOf, reasonText } from '../ui/feedback';
+import { CpLoadFailed, errorOf, loadFailOf, reasonText } from '../ui/feedback';
 import { DateField } from '../ui/fields';
 import { scheduleLabels } from '../ui/schedule-board';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
@@ -199,8 +199,8 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       setBundle(next);
       if (allowedOf(env, next.staff)) setMatches(await env.repo.listMatches(cid));
       if (alive) setPhase('ready');
-    })().catch(() => {
-      if (alive) setPhase('error');
+    })().catch((err: unknown) => {
+      if (alive) setPhase(loadFailOf(err));
     });
     return () => {
       alive = false;
@@ -214,12 +214,8 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   if (env.actor.authPending || phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
-  if (phase === 'error' || !competition) {
-    return (
-      <CpFrame title={ct('hostListTitle')}>
-        <p class="cps-note" role="alert">{ct('loadFailed')}</p>
-      </CpFrame>
-    );
+  if (phase === 'error' || phase === 'hidden' || !competition) {
+    return <CpLoadFailed title={ct('hostListTitle')} fail={phase === 'hidden' ? 'hidden' : 'error'} />;
   }
   if (!allowedOf(env, bundle?.staff ?? null)) {
     return (
