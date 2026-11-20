@@ -527,6 +527,9 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </div>
         </CpCard>
       ) : null}
+      <div class="cps-actions" style="margin-top:0">
+        <Button variant="secondary" onClick={() => toggleInfo(false)}>{ct('editCompDone')}</Button>
+      </div>
       </div>
       ) : null}
       <div>

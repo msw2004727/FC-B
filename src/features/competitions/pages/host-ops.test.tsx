@@ -1614,3 +1614,75 @@ describe('主辦表單預設收合', () => {
     expect(buttonOf('編輯賽事資訊').getAttribute('aria-expanded')).toBe('false');
   });
 });
+
+describe('顧問 R2 版面', () => {
+  it('結束賽事在場次清單之後，第一屏只有順延與對調兩顆', () => {
+    const [first, second] = flexMatches();
+    draw(matchesEnv(hostActor, { uid: 'uid_host', roles: ['host'] }, [first, second], idleActions()), HostMatchesPage);
+    const end = buttonOf('結束賽事');
+    const lists = [...document.querySelectorAll('.cp3-ml')];
+    expect(lists.length).toBeGreaterThan(0);
+    const firstList = lists[0];
+    const lastList = lists[lists.length - 1];
+    if (!firstList || !lastList) throw new Error('找不到場次清單');
+    // 結束賽事排在最後一張場次清單之後；順延、對調在清單之前。
+    expect(lastList.compareDocumentPosition(end) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(firstList.compareDocumentPosition(buttonOf('整天順延')) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    expect(firstList.compareDocumentPosition(buttonOf('兩場對調')) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    expect(end.className).toContain('danger');
+    fireEvent.click(end);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('報隊管理展開後按「完成」收回，再點「編輯賽事資訊」也能收回', async () => {
+    draw({ ...screenEnv('host-pending'), actions: idleActions() }, CompetitionManagePage);
+    fireEvent.click(buttonOf('編輯賽事資訊'));
+    const done = buttonOf('完成');
+    expect(document.getElementById('cp-comp-info')?.contains(done)).toBe(true);
+    expect(screen.queryByRole('button', { name: '取消' })).toBeNull();
+    fireEvent.click(done);
+    expect(screen.queryByLabelText('聯絡文字')).toBeNull();
+    expect(buttonOf('編輯賽事資訊').getAttribute('aria-expanded')).toBe('false');
+    await waitFor(() => expect(document.activeElement).toBe(buttonOf('編輯賽事資訊')));
+
+    fireEvent.click(buttonOf('編輯賽事資訊'));
+    expect(screen.getByRole('radio', { name: '聯賽' })).toBeTruthy();
+    fireEvent.click(buttonOf('編輯賽事資訊'));
+    expect(screen.queryByRole('radio', { name: '聯賽' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '完成' })).toBeNull();
+  });
+
+  it('主辦的公告文字佔滿整列，刪除在日期那一行；非主辦樣式不變', () => {
+    draw(hostDetail([
+      { id: 'nt_sys', text: '因雨延後一小時，請各隊留意集合時間', kind: 'system', at: 2, by: null },
+      { id: 'nt_host', text: '領隊會議改在示範球場門口', kind: 'host', at: 1, by: null },
+    ], idleActions()), CompetitionDetailPage);
+    const items = [...document.querySelectorAll('.cpm-ann li')];
+    expect(items).toHaveLength(2);
+    for (const item of items) {
+      const row = item.querySelector('.cpm-ann__row');
+      const meta = item.querySelector('.cpm-ann__meta');
+      expect(row?.querySelector('button')).toBeNull();
+      // 主辦視角的文字列只剩公告文字（系統標籤移到日期那一行）。
+      expect(row?.children).toHaveLength(1);
+      expect(meta?.querySelector('.cpm-ann__time')).not.toBeNull();
+      const del = meta?.querySelector('button');
+      expect(del?.textContent).toContain('刪除');
+      // 日期在前（靠左）、刪除在後（靠右）。
+      expect(meta?.lastElementChild?.contains(del ?? null)).toBe(true);
+    }
+    expect(items[0]?.querySelector('.cpm-ann__meta .ui-badge')?.textContent).toContain('系統');
+    cleanup();
+
+    draw(screenEnv('real-notices'), CompetitionDetailPage);
+    const memberItems = [...document.querySelectorAll('.cpm-ann li')];
+    expect(memberItems.length).toBeGreaterThan(0);
+    for (const item of memberItems) {
+      expect(item.querySelector('.cpm-ann__meta')).toBeNull();
+      expect(item.querySelector('button')).toBeNull();
+      expect(item.querySelector(':scope > .cpm-ann__time')).not.toBeNull();
+    }
+    // 非主辦的系統標籤仍在文字前面。
+    expect(memberItems[0]?.querySelector('.cpm-ann__row > .ui-badge')?.textContent).toContain('系統');
+  });
+});

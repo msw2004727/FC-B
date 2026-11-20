@@ -94,15 +94,24 @@ export function PublicBoard({
               {visible.map((notice) => (
                 <li key={notice.id}>
                   <div class="cpm-ann__row">
-                    {notice.kind === 'system' ? <Badge tone="neutral" label={ct('system')} size="sm" /> : null}
+                    {notice.kind === 'system' && !hostOps ? <Badge tone="neutral" label={ct('system')} size="sm" /> : null}
                     <span class="cpm-ann__txt">{notice.text}</span>
-                    {hostOps ? (
+                  </div>
+                  {hostOps ? (
+                    // 顧問 §R2：主辦視角公告文字佔滿整列（「系統」標籤與刪除鈕都移到日期那一行：日期靠左、刪除靠右），
+                    // 不再替刪除留一欄把字擠成三行。非主辦維持原樣。
+                    <div class="cpm-ann__meta">
+                      <span class="cpm-ann__when">
+                        {notice.kind === 'system' ? <Badge tone="neutral" label={ct('system')} size="sm" /> : null}
+                        <span class="cpm-ann__time">{noticeWhen(notice.at)}</span>
+                      </span>
                       <Button variant="ghost" size="sm" disabled={busy} onClick={() => { void onDelete(notice.id); }}>
                         {ct('noticeDelete')}
                       </Button>
-                    ) : null}
-                  </div>
-                  <span class="cpm-ann__time">{noticeWhen(notice.at)}</span>
+                    </div>
+                  ) : (
+                    <span class="cpm-ann__time">{noticeWhen(notice.at)}</span>
+                  )}
                 </li>
               ))}
             </ul>

@@ -738,6 +738,26 @@ function statusMatches(): MatchDoc[] {
 }
 
 /** 改期撞期用的兩場。句子照 host-ops：1/10 11:00 藍鯨隊對紅狐隊。 */
+/** 1/10～1/12 每天 8 場，共 24 場未賽，撐出長清單。 */
+function manyMatches(): MatchDoc[] {
+  const rows: MatchDoc[] = [];
+  for (let day = 0; day < 3; day += 1) {
+    for (let slot = 0; slot < 8; slot += 1) {
+      const n = day * 8 + slot;
+      rows.push(matchDoc({
+        id: `mt_many_${n}`,
+        status: 'scheduled',
+        matchNo: 9 + n,
+        kickoffAt: taipeiMs(2027, 1, 10 + day, 8 + slot, 0),
+        home: { teamId: `en_mh${n}`, name: `主隊${n + 1}` },
+        away: { teamId: `en_ma${n}`, name: `客隊${n + 1}` },
+        teamIds: [`en_mh${n}`, `en_ma${n}`],
+      }));
+    }
+  }
+  return rows;
+}
+
 function clashMatches(): MatchDoc[] {
   return [
     matchDoc({ id: 'mt_1', status: 'scheduled', rev: 3 }),
@@ -923,6 +943,9 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       }, { summary: [], standings: [] });
     case 'real-host-matches':
       return hostEnv(statusMatches(), actions);
+    case 'real-host-matches-many':
+      // 場次很多時「結束賽事」在清單最下方，量它跟底部導覽預留空間的關係。
+      return hostEnv([...statusMatches(), ...manyMatches()], actions);
     case 'real-host-schedule':
       return { ...base(actions, hostActor, manageBundle(HOST_STAFF)), now: NOW };
     case 'real-score-sheet':

@@ -511,6 +511,28 @@
   line-height: var(--line-height-caption);
   color: var(--color-text-muted);
 }
+/* 主辦視角：日期靠左、刪除靠右，同一行。非主辦仍只有日期（.cpm-ann__time 原樣）。 */
+.cpm-ann__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: 2px;
+}
+.cpm-ann__meta .cpm-ann__time { margin-top: 0; }
+.cpm-ann__when { display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+.cpm-ann__when > .ui-badge { flex: 0 0 auto; }
+/* 刪除鈕不吃 120px 最小寬：文字貼齊卡片右緣；點擊區仍保留 44px 高，用負邊距不把日期行撐高。 */
+.cpm-ann__meta .ui-button {
+  flex: 0 0 auto;
+  min-inline-size: 0;
+  padding-inline: var(--space-2);
+  margin-block: -10px;
+  margin-inline-end: calc(-1 * var(--space-2));
+  white-space: nowrap;
+}
+/* 「系統」標籤不被公告文字擠成直排。 */
+.cpm-ann__row > .ui-badge { flex: 0 0 auto; white-space: nowrap; }
 .cpm-ann__foot {
   display: flex;
   align-items: center;

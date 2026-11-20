@@ -42,6 +42,7 @@ const PAGES: Record<string, ComponentType> = {
   'real-contact-club': CompetitionDetailPage,
   'real-contact-personal-empty': CompetitionDetailPage,
   'real-host-matches': HostMatchesPage,
+  'real-host-matches-many': HostMatchesPage,
   'real-host-schedule': HostSchedulePage,
   'real-score-sheet': HostMatchesPage,
   'real-reschedule-clash': HostMatchesPage,

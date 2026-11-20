@@ -702,13 +702,6 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
           onOpen={() => setPosted(false)}
         />
       ) : null}
-      {showEnd ? (
-        <div class="cps-actions" style="margin-top:0">
-          <Button variant="danger" disabled={busy || endOpen} onClick={openEnd}>
-            {ct('endTitle')}
-          </Button>
-        </div>
-      ) : null}
       {matches.length === 0 ? (
         <CpCard>
           <p class="cps-note">{ct('reason.SCHEDULE_REQUIRED')}</p>
@@ -794,6 +787,14 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
           ))}
         </div>
       ))}
+      {/* 顧問 §R2：結束賽事移到場次清單之後，第一屏只留順延／對調；危險色與確認流程不變。 */}
+      {showEnd ? (
+        <div class="cps-actions" style="margin-top:0">
+          <Button variant="danger" disabled={busy || endOpen} onClick={openEnd}>
+            {ct('endTitle')}
+          </Button>
+        </div>
+      ) : null}
       {panel?.kind === 'score' && active ? (
         <BottomSheet open title={ct('scoreSheetTitle')} onClose={closePanel} busy={busy}>
           <div class="cps-sheet-body">
