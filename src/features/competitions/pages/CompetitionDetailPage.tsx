@@ -432,17 +432,16 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     );
   }
 
-  const manage = canManageCompetition({
+  const hostInput = {
     staffRoles: bundle?.staff?.roles ?? [],
     hostType: competition.hostType,
     hostTeamId: competition.hostTeamId,
     repClubIds: clubs.map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
-  });
-  const hostOps = canHostOrCo({
-    staffRoles: bundle?.staff?.roles ?? [],
-    isAdmin: isCpAdmin(env.actor.role),
-  });
+  };
+  const manage = canManageCompetition(hostInput);
+  // 俱樂部目前代表也算（後端 hostAccess）：排賽程、賽程管理、公告、同分裁定。
+  const hostOps = canHostOrCo(hostInput);
   const showMyMatches = hasScoreRole(myAssignment?.roles ?? []);
   const showRegister = canRegisterClubEntry({
     repClubIds: clubs.map((club) => club.id),

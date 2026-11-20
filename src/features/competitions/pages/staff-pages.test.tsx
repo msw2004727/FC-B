@@ -139,17 +139,28 @@ describe('指派頁與我的場次', () => {
     expect(memberView.container.textContent ?? '').toContain('回賽事頁');
     cleanup();
 
-    const rep = staffRepo();
+    // 前代表（換人後代表清單沒有這隊）：不讀賽事、不讀清單
+    const former = staffRepo();
     draw({
-      actor: clubRepActor,
-      repo: rep,
+      actor: { ...clubRepActor, repClubs: [] },
+      repo: former,
       actions: idleActions(),
       route: { cid: 'cup' },
     }, <StaffAssignPage />);
     expect(await screen.findByText('你沒有這場賽事的管理權限')).toBeTruthy();
-    expect(rep.calls()).toEqual(['getStaff']);
-    expect(rep.calls()).not.toContain('listStaff');
-    expect(rep.calls()).not.toContain('listMatches');
+    expect(former.calls()).toEqual(['getStaff']);
+    cleanup();
+
+    // 別隊代表：多讀 1 次賽事確認不是這隊代表，之後不讀清單與場次
+    const other = staffRepo();
+    draw({
+      actor: { ...clubRepActor, repClubs: [{ id: 'club_other', name: '別隊' }] },
+      repo: other,
+      actions: idleActions(),
+      route: { cid: 'cup' },
+    }, <StaffAssignPage />);
+    expect(await screen.findByText('你沒有這場賽事的管理權限')).toBeTruthy();
+    expect(other.calls()).toEqual(['getStaff', 'getCompetition']);
     cleanup();
 
     const guest = staffRepo();
@@ -161,6 +172,133 @@ describe('指派頁與我的場次', () => {
     }, <StaffPage />);
     expect(await screen.findByText('你沒有這場賽事的管理權限')).toBeTruthy();
     expect(guest.calls()).toEqual([]);
+  });
+
+  it('俱樂部目前代表看得到人員清單，自己那一列是主辦', async () => {
+    const repo = staffRepo();
+    const view = draw({
+      actor: clubRepActor,
+      repo,
+      actions: idleActions(),
+      route: { cid: 'cup' },
+    }, <StaffPage />);
+    expect(await screen.findByText('我自己')).toBeTruthy();
+    expect(repo.calls()).toEqual(['getStaff', 'getCompetition', 'listStaff', 'listInvites']);
+    expect(staffNames(view)[0]).toBe('我自己');
+    const self = rowOf(view, '我自己');
+    expect(self?.querySelector('.s4b-staff__roles')).toBeNull();
+    expect(self?.textContent ?? '').toContain('主辦');
+    expect(removeIn(self)).toBeNull();
+    // 主辦（primary）可以移除共同主辦以外的記分角色，與個人主辦相同
+    expect(removeIn(rowOf(view, '成員 3'))).not.toBeNull();
+    expect(view.container.textContent ?? '').toContain('指派記分員');
+  });
+
+  it('代表指派自己當記分員後，staff 只有記分角色，標籤顯示主辦＋記分員', async () => {
+    const repo = createFakeCpRepo({
+      competitions: [competition({ id: 'cup' })],
+      staff: STAFF_SEED,
+      assignments: {
+        cup: [
+          ...ASSIGNMENTS.cup,
+          { uid: 'uid_cap', roles: ['scorer' as const], matchIds: ['mt_1'], expiresAt: taipeiMs(2027, 1, 20, 0, 0), memberNo: 6 },
+        ],
+      },
+    });
+    const view = draw({
+      actor: clubRepActor,
+      repo,
+      actions: idleActions(),
+      route: { cid: 'cup' },
+    }, <StaffPage />);
+    expect(await screen.findByText('我自己')).toBeTruthy();
+    const self = rowOf(view, '我自己');
+    const tags = [...(self?.querySelectorAll('.s4b-staff__roles > *') ?? [])].map((el) => (el.textContent ?? '').trim());
+    expect(tags.slice(0, 2)).toEqual(['主辦', '記分員']);
+    expect(self?.textContent ?? '').toContain('1 場');
+    expect(self?.textContent ?? '').toContain('到期');
+    expect(removeIn(self)).toBeNull();
+    // 只出現一次，不另外多一列「成員 6」
+    expect(staffNames(view).filter((name) => name === '我自己')).toHaveLength(1);
+    expect(staffNames(view)).not.toContain('成員 6');
+  });
+
+  it('共同主辦、管理員看代表那一列：只顯示記分員（與後端一致，不讀別人的代表身分）', async () => {
+    const seed = {
+      competitions: [competition({ id: 'cup' })],
+      staff: STAFF_SEED,
+      assignments: {
+        cup: [
+          ...ASSIGNMENTS.cup,
+          { uid: 'uid_cap', roles: ['scorer' as const], matchIds: ['mt_1'], expiresAt: null, memberNo: 6 },
+        ],
+      },
+    };
+    for (const who of [coHostActor, adminActor]) {
+      const repo = createFakeCpRepo(seed);
+      const view = draw({ actor: who, repo, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
+      expect(await screen.findByText('成員 6')).toBeTruthy();
+      const row = rowOf(view, '成員 6');
+      expect(row?.textContent ?? '', who.uid ?? '').toContain('記分員');
+      expect(row?.textContent ?? '', who.uid ?? '').not.toContain('主辦');
+      expect(repo.calls(), who.uid ?? '').not.toContain('getCompetition');
+      cleanup();
+    }
+  });
+
+  it('個人主辦賽事：代表身分不算主辦，主辦不多讀賽事', async () => {
+    const personal = createFakeCpRepo({
+      competitions: [competition({ id: 'cup', hostType: 'personal', hostTeamId: null })],
+      staff: STAFF_SEED,
+      assignments: ASSIGNMENTS,
+    });
+    draw({ actor: clubRepActor, repo: personal, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
+    expect(await screen.findByText('你沒有這場賽事的管理權限')).toBeTruthy();
+    expect(personal.calls()).not.toContain('listStaff');
+    cleanup();
+
+    const host = staffRepo();
+    draw({ actor: hostActor, repo: host, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
+    expect(await screen.findByText('我自己')).toBeTruthy();
+    expect(host.calls()).not.toContain('getCompetition');
+    cleanup();
+
+    const admin = staffRepo();
+    draw({ actor: adminActor, repo: admin, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
+    expect(await screen.findByText('成員 2')).toBeTruthy();
+    expect(admin.calls()).not.toContain('getCompetition');
+  });
+
+  it('代表清單還在讀時不發讀取、不先顯示沒有權限', async () => {
+    const repo = staffRepo();
+    draw({
+      actor: { ...clubRepActor, repClubs: [], repClubsPending: true },
+      repo,
+      actions: idleActions(),
+      route: { cid: 'cup' },
+    }, <StaffPage />);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(repo.calls()).toEqual([]);
+    expect(screen.queryByText('你沒有這場賽事的管理權限')).toBeNull();
+  });
+
+  it('代表在指派頁可以指派自己，沿用已讀的賽事', async () => {
+    const assignStaff = vi.fn<CpActions['assignStaff']>(async () => ({}));
+    const repo = staffRepo();
+    draw({
+      actor: clubRepActor,
+      repo,
+      actions: { ...idleActions(), assignStaff },
+      route: { cid: 'cup', uid: 'uid_cap' },
+    }, <StaffAssignPage />);
+    expect(await screen.findByRole('button', { name: '儲存' })).toBeTruthy();
+    expect(repo.calls().filter((name) => name === 'getCompetition')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+    await waitFor(() => expect(assignStaff).toHaveBeenCalled());
+    expect(assignStaff.mock.calls[0]?.[0]).toMatchObject({ cid: 'cup', uid: 'uid_cap', roles: ['scorer'] });
+    // 儲存成功會換頁；換回來，避免影響後面檢查網址的案例
+    await waitFor(() => expect(window.location.pathname).toBe('/competitions/cup/staff'));
+    window.history.pushState(null, '', '/');
   });
 
   it('主辦清單用我自己與成員編號，移除鈕照角色，成功後重讀', async () => {

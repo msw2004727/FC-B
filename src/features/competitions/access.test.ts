@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { canEndCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canShowFlexSchedule, canUnlockRosters, isCpAdmin, rosterFormBlock } from './access';
+import { canEndCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canShowFlexSchedule, canUnlockRosters, isCpAdmin, isCurrentClubRep, rosterFormBlock } from './access';
+import type { StaffRole } from './data/types';
 
 const window = { repClubIds: ['club_a'], status: 'published' as const, hidden: false, regOpenAt: 10, regCloseAt: 20, now: 15 };
 
@@ -41,11 +42,33 @@ describe('賽事權限顯示', () => {
     })).toBe(false);
   });
 
-  it('排賽程只給主辦、共同主辦、管理員，俱樂部代表不算', () => {
-    expect(canHostOrCo({ staffRoles: ['host'], isAdmin: false })).toBe(true);
-    expect(canHostOrCo({ staffRoles: ['coHost'], isAdmin: false })).toBe(true);
-    expect(canHostOrCo({ staffRoles: [], isAdmin: true })).toBe(true);
-    expect(canHostOrCo({ staffRoles: [], isAdmin: false })).toBe(false);
+  it('排賽程等主辦入口對齊後端 hostAccess：主辦、共同主辦、管理員、俱樂部目前代表', () => {
+    const personal = { staffRoles: [] as StaffRole[], hostType: 'personal' as const, hostTeamId: null, repClubIds: [] as string[], isAdmin: false };
+    const club = { staffRoles: [] as StaffRole[], hostType: 'club' as const, hostTeamId: 'club_host', repClubIds: [] as string[], isAdmin: false };
+    // 個人主辦：行為不變，只看 staff 與管理員
+    expect(canHostOrCo({ ...personal, staffRoles: ['host'] })).toBe(true);
+    expect(canHostOrCo({ ...personal, staffRoles: ['coHost'] })).toBe(true);
+    expect(canHostOrCo({ ...personal, isAdmin: true })).toBe(true);
+    expect(canHostOrCo(personal)).toBe(false);
+    // 個人賽事不因為我是某俱樂部代表就算主辦
+    expect(canHostOrCo({ ...personal, repClubIds: ['club_host'] })).toBe(false);
+    // 俱樂部賽事：目前代表算主辦（沒有 staff 文件）
+    expect(canHostOrCo({ ...club, repClubIds: ['club_host'] })).toBe(true);
+    expect(isCurrentClubRep({ ...club, repClubIds: ['club_other', 'club_host'] })).toBe(true);
+    // 非代表的俱樂部成員、代表別隊、前代表（換人後清單沒有這隊）都不算
+    expect(canHostOrCo(club)).toBe(false);
+    expect(canHostOrCo({ ...club, repClubIds: ['club_other'] })).toBe(false);
+    // hostTeamId 缺值不比對
+    expect(canHostOrCo({ ...club, hostTeamId: null, repClubIds: ['club_host'] })).toBe(false);
+    expect(canHostOrCo({ ...club, hostTeamId: '', repClubIds: [''] })).toBe(false);
+    expect(isCurrentClubRep({ ...club, hostTeamId: '', repClubIds: ['', 'club_host'] })).toBe(false);
+    // 俱樂部賽事的共同主辦、管理員不變
+    expect(canHostOrCo({ ...club, staffRoles: ['coHost'] })).toBe(true);
+    expect(canHostOrCo({ ...club, isAdmin: true })).toBe(true);
+    // 審核等管理動作與主辦入口同一條（後端都是 assertHostOrCo／isHostOrCo）
+    for (const input of [personal, club, { ...club, repClubIds: ['club_host'] }, { ...personal, staffRoles: ['host'] as StaffRole[] }]) {
+      expect(canManageCompetition(input)).toBe(canHostOrCo(input));
+    }
   });
 
   it('以俱樂部報隊只給代表，而且要在公開報名期間', () => {

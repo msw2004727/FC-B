@@ -40,22 +40,27 @@ export interface ManageInput {
 }
 
 /**
- * 排賽程、賽程管理、登錄比分。對齊後端 assertHostOrCo：staff 的 host／coHost，或管理員。
- * 俱樂部代表若不是 staff，不能進。這和 canManageCompetition 不同。
+ * 俱樂部賽事的目前代表。對齊後端 context.ts hostAccess 的俱樂部分支：
+ * hostType 為 club、hostTeamId 在我的代表俱樂部清單（文件路徑 id）裡。前代表換人後清單就沒有這隊。
  */
-export function canHostOrCo(input: { staffRoles: readonly StaffRole[]; isAdmin: boolean }): boolean {
+export function isCurrentClubRep(input: Pick<ManageInput, 'hostType' | 'hostTeamId' | 'repClubIds'>): boolean {
+  return input.hostType === 'club' && !!input.hostTeamId && input.repClubIds.includes(input.hostTeamId);
+}
+
+/**
+ * 主辦或共同主辦。對齊後端 context.ts hostAccess（assertHostOrCo、hostComp、staff-host openHost 都走它）：
+ * 管理員；俱樂部賽事的目前代表；staff 的 host／coHost。不看 hidden：下架時後端另回 COMPETITION_HIDDEN。
+ * 排賽程、賽程管理、人員與指派、邀請、審核與編輯都用這一條。
+ */
+export function canHostOrCo(input: ManageInput): boolean {
   if (input.isAdmin) return true;
+  if (isCurrentClubRep(input)) return true;
   return input.staffRoles.includes('host') || input.staffRoles.includes('coHost');
 }
 
-/** 審核、鎖定、解鎖、編輯、發布、標示繳費。 */
+/** 審核、鎖定、解鎖、編輯、發布、標示繳費。與 canHostOrCo 同一條（後端都是 assertHostOrCo／isHostOrCo）。 */
 export function canManageCompetition(input: ManageInput): boolean {
-  if (input.isAdmin) return true;
-  if (input.staffRoles.includes('host') || input.staffRoles.includes('coHost')) return true;
-  if (input.hostType === 'club' && input.hostTeamId && input.repClubIds.includes(input.hostTeamId)) {
-    return true;
-  }
-  return false;
+  return canHostOrCo(input);
 }
 
 export interface RegisterInput {

@@ -10,6 +10,8 @@ import { getCompetitionsRepo } from './data/cp-repo';
 import type { CpActor } from './env';
 import { loadRepClubs } from './rep-clubs';
 
+const NO_CLUBS: CpClub[] = [];
+
 export function LiveBoundary({
   children,
   loadClubs = true,
@@ -19,38 +21,29 @@ export function LiveBoundary({
   loadClubs?: boolean;
 }) {
   const viewer = useViewer();
-  const [repClubs, setRepClubs] = useState<CpClub[]>([]);
-  // 還沒查完時空陣列不代表沒有俱樂部。
-  const [repClubsPending, setRepClubsPending] = useState(true);
+  // 清單記下是替哪個 uid 讀完的。pending 跟著目前 uid 在 render 當下算，
+  // uid 從 null 變成有值的那一輪就已是 pending，子頁的 effect 不會照空清單先讀（取代原本在 effect 裡 setPending，Opus 審 P2）。
+  const [loaded, setLoaded] = useState<{ uid: string; clubs: CpClub[] } | null>(null);
   const repo = useMemo(() => getCompetitionsRepo(), []);
 
   useEffect(() => {
-    if (!loadClubs) {
-      setRepClubs([]);
-      setRepClubsPending(true);
-      return;
-    }
-    if (!viewer.uid) {
-      setRepClubs([]);
-      setRepClubsPending(false);
-      return;
-    }
+    const uid = viewer.uid;
+    if (!loadClubs || !uid) return undefined;
     let alive = true;
-    setRepClubs([]);
-    setRepClubsPending(true);
-    void loadRepClubs(viewer.uid).then((rows) => {
-      if (!alive) return;
-      setRepClubs(rows);
-      setRepClubsPending(false);
+    void loadRepClubs(uid).then((rows) => {
+      if (alive) setLoaded({ uid, clubs: rows });
     }).catch(() => {
-      if (!alive) return;
-      setRepClubs([]);
-      setRepClubsPending(false);
+      if (alive) setLoaded({ uid, clubs: [] });
     });
     return () => {
       alive = false;
     };
   }, [viewer.uid, loadClubs]);
+
+  const clubsReady = loadClubs && !!viewer.uid && loaded?.uid === viewer.uid;
+  const repClubs = clubsReady && loaded ? loaded.clubs : NO_CLUBS;
+  // 還沒查完時空陣列不代表沒有俱樂部。未登入不查，視為已定案；loadClubs 為 false 時維持 pending。
+  const repClubsPending = !loadClubs || (!!viewer.uid && !clubsReady);
 
   // 角色只等 users 文件（settledRole），不等球隊掃描等其餘 viewer 欄位（顧問 11-20：閘門只等角色確定）。
   // 完整 viewer 到了就以 viewer.role 為準；兩者都沒到時 rolePending，閘門先不判定（Opus 審 P2-1）。

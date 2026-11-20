@@ -24,6 +24,7 @@ import {
   idleActions,
   manageBundle,
   memberActor,
+  repActor,
   screenEnv,
   wizardSeed,
   youthDivision,
@@ -210,7 +211,11 @@ const PEOPLE: Array<{ label: string; actor: CpActor; staff: StaffDoc | null; all
   { label: '主辦', actor: hostActor, staff: { uid: 'uid_host', roles: ['host'] }, allowed: true },
   { label: '共同主辦', actor: coHostActor, staff: { uid: 'uid_co', roles: ['coHost'] }, allowed: true },
   { label: '管理員', actor: adminActor, staff: null, allowed: true },
-  { label: '俱樂部代表', actor: clubRepActor, staff: null, allowed: false },
+  // 後端 hostAccess：俱樂部賽事的目前代表算主辦（沒有 staff 文件）
+  { label: '俱樂部目前代表', actor: clubRepActor, staff: null, allowed: true },
+  { label: '主辦俱樂部的一般成員', actor: { ...memberActor, memberClubIds: ['club_host'] }, staff: null, allowed: false },
+  { label: '前代表（換人後）', actor: { ...clubRepActor, repClubs: [] }, staff: null, allowed: false },
+  { label: '別隊代表', actor: repActor, staff: null, allowed: false },
 ];
 
 describe('排賽程', () => {
@@ -849,10 +854,45 @@ describe('登錄比分、確認、棄權、重置、改期', () => {
 });
 
 describe('從賽事頁進入', () => {
-  it('詳情與報隊管理只給主辦方，俱樂部代表沒有這兩個入口', () => {
-    const rep = draw(screenEnv('detail-rep'), CompetitionDetailPage);
-    expect(rep.container.textContent ?? '').not.toContain('排賽程');
+  it('詳情與報隊管理的主辦入口：主辦、管理員、俱樂部目前代表看得到，非代表看不到', () => {
+    // 主辦俱樂部的目前代表（沒有 staff 文件）
+    const rep = draw({ ...screenEnv('detail-rep'), actor: clubRepActor }, CompetitionDetailPage);
+    expect(screen.getByRole('button', { name: '排賽程' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '賽程管理' })).toBeTruthy();
     rep.unmount();
+    cleanup();
+
+    // 別隊代表（detail-rep 預設）、前代表、主辦俱樂部的一般成員
+    for (const who of [repActor, { ...clubRepActor, repClubs: [] }, { ...memberActor, memberClubIds: ['club_host'] }]) {
+      const view = draw({ ...screenEnv('detail-rep'), actor: who }, CompetitionDetailPage);
+      expect(view.container.textContent ?? '', who.uid ?? '').not.toContain('排賽程');
+      view.unmount();
+      cleanup();
+    }
+
+    // 個人主辦的賽事：代表身分不算主辦
+    const personal = screenEnv('detail-rep');
+    const solo = draw({
+      ...personal,
+      actor: clubRepActor,
+      bundle: personal.bundle?.competition
+        ? { ...personal.bundle, competition: { ...personal.bundle.competition, hostType: 'personal', hostTeamId: null } }
+        : undefined,
+    }, CompetitionDetailPage);
+    expect(solo.container.textContent ?? '').not.toContain('排賽程');
+    solo.unmount();
+    cleanup();
+
+    // 下架（hidden）不改變身分判斷，與個人主辦相同；動作由後端回 COMPETITION_HIDDEN
+    const hidden = screenEnv('detail-rep');
+    draw({
+      ...hidden,
+      actor: clubRepActor,
+      bundle: hidden.bundle?.competition
+        ? { ...hidden.bundle, competition: { ...hidden.bundle.competition, hidden: true, hiddenReason: '檢舉處理中' } }
+        : undefined,
+    }, CompetitionDetailPage);
+    expect(screen.getByRole('button', { name: '排賽程' })).toBeTruthy();
     cleanup();
 
     const detail = screenEnv('detail-rep');
@@ -872,8 +912,13 @@ describe('從賽事頁進入', () => {
     cleanup();
 
     draw({ ...screenEnv('host-approved'), actor: clubRepActor, bundle: manageBundle(null) }, CompetitionManagePage);
-    expect(screen.queryByRole('button', { name: '排賽程' })).toBeNull();
+    expect(screen.getByRole('button', { name: '排賽程' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '指派記分員' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '報隊管理' })).toBeTruthy();
+    cleanup();
+
+    draw({ ...screenEnv('host-approved'), actor: { ...clubRepActor, repClubs: [] }, bundle: manageBundle(null) }, CompetitionManagePage);
+    expect(screen.queryByRole('button', { name: '排賽程' })).toBeNull();
   });
 });
 
@@ -933,7 +978,7 @@ describe('假資料載入', () => {
     });
   }
 
-  it('主辦、共同主辦、管理員看得到排賽程，俱樂部代表被擋下', async () => {
+  it('主辦、共同主辦、管理員、俱樂部目前代表看得到排賽程，前代表被擋下', async () => {
     const generate = vi.fn(async () => previewResult(true));
     const host = draw({
       actor: hostActor,
@@ -981,11 +1026,32 @@ describe('假資料載入', () => {
       actions: idleActions(),
       route: { cid: 'cup' },
     }, HostSchedulePage);
+    expect(await screen.findByRole('button', { name: '預覽' })).toBeTruthy();
+    cleanup();
+
+    // 代表清單還在讀：先轉圈，不先顯示沒有權限
+    draw({
+      actor: { ...clubRepActor, repClubs: [], repClubsPending: true },
+      repo: repo(null),
+      actions: idleActions(),
+      route: { cid: 'cup' },
+    }, HostSchedulePage);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('button', { name: '預覽' })).toBeNull();
+    cleanup();
+
+    draw({
+      actor: { ...clubRepActor, repClubs: [] },
+      repo: repo(null),
+      actions: idleActions(),
+      route: { cid: 'cup' },
+    }, HostSchedulePage);
     expect((await screen.findByRole('alert')).textContent).toContain('只有主辦可以做這個操作');
     expect(screen.queryByRole('button', { name: '預覽' })).toBeNull();
   });
 
-  it('賽程管理從倉庫讀場次，俱樂部代表直接進入沒有按鈕', async () => {
+  it('賽程管理從倉庫讀場次，俱樂部目前代表看得到，前代表直接進入沒有按鈕', async () => {
     const host = draw({
       actor: hostActor,
       repo: repo({ uid: 'uid_host', roles: ['host'] }, [match({ id: 'mt_1', status: 'scheduled' })]),
@@ -997,14 +1063,39 @@ describe('假資料載入', () => {
     host.unmount();
     cleanup();
 
-    draw({
+    const repView = draw({
       actor: clubRepActor,
       repo: repo(null, [match({ id: 'mt_1', status: 'scheduled' })]),
+      actions: idleActions(),
+      now: taipeiMs(2027, 1, 9, 12, 0),
+      route: { cid: 'cup' },
+    }, HostMatchesPage);
+    expect(await screen.findByRole('button', { name: '登錄比分' })).toBeTruthy();
+    repView.unmount();
+    cleanup();
+
+    // 代表清單還在讀：不發讀取，等清單到了再讀
+    const waiting = repo(null, [match({ id: 'mt_1', status: 'scheduled' })]);
+    draw({
+      actor: { ...clubRepActor, repClubs: [], repClubsPending: true },
+      repo: waiting,
+      actions: idleActions(),
+      route: { cid: 'cup' },
+    }, HostMatchesPage);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(waiting.calls()).toEqual([]);
+    cleanup();
+
+    const former = repo(null, [match({ id: 'mt_1', status: 'scheduled' })]);
+    draw({
+      actor: { ...clubRepActor, repClubs: [] },
+      repo: former,
       actions: idleActions(),
       route: { cid: 'cup' },
     }, HostMatchesPage);
     expect((await screen.findByRole('alert')).textContent).toContain('只有主辦可以做這個操作');
     expect(screen.queryByText('海風隊')).toBeNull();
+    expect(former.calls()).not.toContain('listMatches');
   });
 });
 
