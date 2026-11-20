@@ -36,6 +36,7 @@ export const U2_SCREENS = [
   'u2-pk-live',
   'u2-pk-goal-locked',
   'u2-timeout-stop',
+  'u2-crowded',
   'u2-reader-tab',
   'u2-no-permission',
   'u2-storage-unavailable',
@@ -49,6 +50,7 @@ const ANCHORS: Record<string, string> = {
   'u2-pk-live': 'PK 3:2',
   'u2-pk-goal-locked': 'PK 期間不能復原或改判一般進球',
   'u2-timeout-stop': '暫停',
+  'u2-crowded': '結束暫停',
   'u2-reader-tab': '這場已在另一個分頁記分',
   'u2-no-permission': '你沒有這場的記分權限',
   'u2-storage-unavailable': '離線紀錄無法保存',
@@ -157,6 +159,8 @@ interface Seed {
   staffRoles?: string[];
   matchIds?: string[];
   online?: boolean;
+  /** 沒有 Wake Lock，畫出「請關閉手機自動鎖定」。 */
+  wakeOff?: boolean;
   reader?: boolean;
   pending?: LogEntry[];
 }
@@ -252,6 +256,30 @@ function seedOf(name: string): Seed {
       ],
     };
   }
+  if (name === 'u2-crowded') {
+    return {
+      match: match({
+        status: 'live',
+        rev: 2,
+        score: { home: 1, away: 0 },
+        clockBase: clock(10 * 60, 'h2', false, NOW - 8_000),
+      }),
+      events: [
+        goalAt(1, 'home', 8),
+        {
+          seq: 2,
+          type: 'timeout',
+          op: 'timeout-op-00000002',
+          sid: SID,
+          side: 'home',
+          matchSecond: 600,
+          createdAt: NOW - 13_000,
+        },
+      ],
+      online: false,
+      wakeOff: true,
+    };
+  }
   if (name === 'u2-reader-tab') {
     return {
       match: match({ status: 'live', score: { home: 0, away: 0 }, clockBase: clock(20 * 60, 'h1', true) }),
@@ -338,7 +366,7 @@ async function makeDeps(name: string): Promise<ScoringDeps> {
     now: () => NOW,
     locks: seed.reader ? blockedLocks() : null,
     channel: null,
-    wakeRequest: async () => ({ async release() {} }),
+    wakeRequest: seed.wakeOff ? null : async () => ({ async release() {} }),
     tick: false,
     online: () => seed.online !== false,
     watchOnline: () => () => {},
@@ -389,6 +417,9 @@ const OPEN: Record<string, () => Promise<void>> = {
   },
   'u2-pending': async () => {
     await until('兩筆待送', () => document.querySelectorAll('.s4-pending').length >= 2);
+  },
+  'u2-crowded': async () => {
+    await until('暫停列與兩條提示', () => hasText('結束暫停') && hasText('請關閉手機自動鎖定') && hasText('離線中，已存'));
   },
 };
 

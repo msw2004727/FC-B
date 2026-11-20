@@ -103,7 +103,7 @@ export function StaffListScreen(props: {
   return (
     <S4bFrame title={props.title ?? copy.staffTitle} admin screen={screen} onBack={props.onBack}>
       <S4bCard plain>
-        <ul class="cps-list">
+        <ul class="cps-list s4b-staff-list">
           {rows.map((staff) => (
             <li key={staff.id} class="s4b-li">
               <div class="s4b-staff">
@@ -124,7 +124,7 @@ export function StaffListScreen(props: {
                       {copy.remove}
                     </Button>
                   </span>
-                ) : null}
+                ) : <span class="s4b-mini" aria-hidden="true" />}
               </div>
             </li>
           ))}

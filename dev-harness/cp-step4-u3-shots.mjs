@@ -191,7 +191,7 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
     }
   }
 }
-// 第一屏：八個指派畫面的標題要在視窗內。U2 的記分控制列不適用於這組畫面。
+// 第一屏：指派畫面的標題要在視窗內。360 寬若出現記分底欄（暫停列加兩條提示那類），底邊也要在第一屏。
 const FIRST = ['u3-staff-host', 'u3-staff-cohost', 'u3-remove-confirm', 'u3-assign', 'u3-assign-error', 'u3-my-matches', 'u3-my-matches-empty', 'u3-no-permission'];
 for (const name of FIRST) {
   for (const [w, h] of ALL) {
@@ -213,13 +213,23 @@ for (const name of FIRST) {
     }
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(300);
-    const missing = await page.evaluate(() => {
+    const missing = await page.evaluate((vw) => {
+      const out = [];
       const el = document.querySelector('h1');
-      if (!el) return ['標題'];
-      const bottom = el.getBoundingClientRect().bottom;
-      if (bottom > window.innerHeight + 0.5) return [`標題超出第一屏 ${Math.round(bottom)}>${window.innerHeight}`];
-      return [];
-    });
+      if (!el) out.push('標題');
+      else {
+        const bottom = el.getBoundingClientRect().bottom;
+        if (bottom > window.innerHeight + 0.5) out.push(`標題超出第一屏 ${Math.round(bottom)}>${window.innerHeight}`);
+      }
+      if (vw === 360) {
+        const ctrl = document.querySelector('.s4-ctrl') || document.querySelector('.s4-kickoff');
+        if (ctrl) {
+          const bottom = ctrl.getBoundingClientRect().bottom;
+          if (bottom > window.innerHeight + 0.5) out.push(`底部控制列超出第一屏 ${Math.round(bottom)}>${window.innerHeight}`);
+        }
+      }
+      return out;
+    }, w);
     report.firstScreen.push({ tag, missing });
     const file = `${tag}.png`;
     await page.screenshot({ path: join(OUT, file), fullPage: false });

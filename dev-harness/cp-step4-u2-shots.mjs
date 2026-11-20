@@ -19,6 +19,7 @@ const ANCHORS = {
   'u2-pk-live': 'PK 3:2',
   'u2-pk-goal-locked': 'PK 期間不能復原或改判一般進球',
   'u2-timeout-stop': '暫停',
+  'u2-crowded': '結束暫停',
   'u2-reader-tab': '這場已在另一個分頁記分',
   'u2-no-permission': '你沒有這場的記分權限',
   'u2-storage-unavailable': '離線紀錄無法保存',
@@ -32,6 +33,7 @@ const SCREENS = [
   ['u2-pk-live', ALL, THEMES, true],
   ['u2-pk-goal-locked', ALL, THEMES, false],
   ['u2-timeout-stop', ALL, THEMES, true],
+  ['u2-crowded', ALL, THEMES, true],
   ['u2-reader-tab', ALL, THEMES, true],
   ['u2-no-permission', ALL, THEMES, true],
   ['u2-storage-unavailable', ALL, THEMES, true],
@@ -195,8 +197,8 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
     }
   }
 }
-// 第一屏：這 7 個 u2 畫面在 360×640 與 1280×800，控制列或開賽鈕的底邊要在視窗內。
-const FIRST = ['u2-pre', 'u2-live', 'u2-pending', 'u2-pk-live', 'u2-timeout-stop', 'u2-reader-tab', 'u2-storage-unavailable'];
+// 第一屏：控制列或開賽鈕的底邊要在視窗內。u2-crowded 是暫停列加兩條提示，360×640 也要過。
+const FIRST = ['u2-pre', 'u2-live', 'u2-pending', 'u2-pk-live', 'u2-timeout-stop', 'u2-crowded', 'u2-reader-tab', 'u2-storage-unavailable'];
 for (const name of FIRST) {
   for (const [w, h] of ALL) {
     for (const theme of THEMES) {
