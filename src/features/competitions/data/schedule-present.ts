@@ -149,13 +149,131 @@ export function showsScore(entry: SummaryEntry): boolean {
 export function liveStrip(entries: readonly SummaryEntry[], now: number): LiveStrip {
   const todayKey = matchDayOf(now).key;
   let today = 0;
-  let nextAt: number | null = null;
   for (const entry of entries) {
     if (entry.k != null && entry.st !== 'cancelled' && matchDayOf(entry.k).key === todayKey) today += 1;
-    if (entry.st !== 'scheduled' || entry.k == null || entry.k < now) continue;
-    if (nextAt == null || entry.k < nextAt) nextAt = entry.k;
   }
-  return { today, next: nextAt == null ? null : formatKickoffClock(nextAt) };
+  return { today, next: nextUp(entries, now)?.time ?? null };
+}
+
+export interface NextUp {
+  at: number;
+  /** 台北 HH:mm。 */
+  time: string;
+  /** 開賽時間剛好是 at 的全部 scheduled 場次（同一時間兩場以上都算下一場）。 */
+  rows: SummaryEntry[];
+}
+
+/** 下一場：st === 'scheduled' 且開賽時間 ≥ now 裡最早的那個時間，含同一時間的每一場（與 liveStrip 同一條規則）。 */
+export function nextUp(entries: readonly SummaryEntry[], now: number): NextUp | null {
+  let at: number | null = null;
+  for (const entry of entries) {
+    if (entry.st !== 'scheduled' || entry.k == null || entry.k < now) continue;
+    if (at == null || entry.k < at) at = entry.k;
+  }
+  if (at == null) return null;
+  const first = at;
+  return { at: first, time: formatKickoffClock(first), rows: entries.filter((entry) => entry.st === 'scheduled' && entry.k === first) };
+}
+
+export interface HeroUpcoming {
+  at: number;
+  time: string;
+  venue: string | null;
+  home: string | null;
+  away: string | null;
+}
+
+/** 頂部數字格。時間與名稱交給元件格式化；這裡不讀字典。 */
+export type HeroCell =
+  /** 進行中「下一場」與預熱「首場」：同一時間只有一場才帶對戰與場地。 */
+  | ({ kind: 'next' } & HeroUpcoming)
+  | ({ kind: 'first' } & HeroUpcoming)
+  | { kind: 'today'; n: number }
+  | { kind: 'countdown'; n: number }
+  | { kind: 'deadline'; at: number }
+  | { kind: 'approved'; teams: number; max: number };
+
+export interface HeroChampion {
+  id: string;
+  /** null＝只有一組（不寫組名）。 */
+  group: GroupHeading | null;
+  /** 第 1 名未裁定同分時是 null，畫面寫「冠軍待主辦裁定」。 */
+  name: string | null;
+}
+
+export interface DetailHero {
+  /** true＝記分板；false＝同排法的玻璃卡。 */
+  board: boolean;
+  lit: boolean;
+  cells: HeroCell[];
+  /** 整場延期／取消的原因（玻璃卡才有）。 */
+  reason: string | null;
+  /** 已結束才有；有冠軍或待裁定的組別各一筆。 */
+  champions: HeroChampion[];
+}
+
+/**
+ * 詳情頂部要畫什麼（施工-第1b批 3.3）。只用這一頁已經讀進來的資料，不增加讀取。
+ * 已取消、已延期、已結束一律玻璃卡；進行中、預熱、招募要算得出至少一格才放板，進行中才亮燈。
+ * 進行中而今天一場都沒有（多日賽事的休息日）不放板（設計總監定）。summary 一律是首屏那一片，不用全部賽程。
+ */
+export function detailHero(input: {
+  phase: 'recruit' | 'warm' | 'live' | 'done';
+  status: string;
+  statusReason: string | null;
+  regCloseAt: number;
+  firstMatchAt: number;
+  summary: readonly SummaryEntry[];
+  divisions: readonly { approvedCount: number; maxTeams: number }[];
+  standings: readonly StandingDoc[];
+  venues?: readonly { name?: string | null }[];
+  now: number;
+}): DetailHero {
+  const plain: DetailHero = { board: false, lit: false, cells: [], reason: null, champions: [] };
+  if (input.status === 'cancelled' || input.status === 'postponed') {
+    return { ...plain, reason: input.statusReason?.trim() || null };
+  }
+  if (input.phase === 'done') {
+    const multiple = input.standings.length > 1;
+    const champions = input.standings.flatMap((doc, index): HeroChampion[] => {
+      const result = championName(doc);
+      if (!result.pending && !result.name) return [];
+      return [{ id: doc.id, group: standingHeading(doc, index, multiple), name: result.pending ? null : result.name }];
+    });
+    return { ...plain, champions };
+  }
+  const cells: HeroCell[] = [];
+  const upCell = (kind: 'next' | 'first', up: NextUp | null): void => {
+    if (!up) return;
+    const only = up.rows.length === 1 ? up.rows[0] : undefined;
+    const upcoming: HeroUpcoming = {
+      at: up.at,
+      time: up.time,
+      venue: only ? summaryVenue(only, input.venues) || null : null,
+      home: only?.h.n ?? null,
+      away: only?.a.n ?? null,
+    };
+    cells.push(kind === 'next' ? { kind, ...upcoming } : { kind, ...upcoming });
+  };
+  if (input.phase === 'live') {
+    const today = liveStrip(input.summary, input.now).today;
+    if (today === 0) return plain;
+    upCell('next', nextUp(input.summary, input.now));
+    cells.push({ kind: 'today', n: today });
+  } else if (input.phase === 'warm') {
+    upCell('first', nextUp(input.summary, input.now));
+    cells.push({ kind: 'countdown', n: daysUntilStart(input.firstMatchAt, input.now) });
+  } else {
+    cells.push({ kind: 'deadline', at: input.regCloseAt });
+    if (input.divisions.length > 0) {
+      cells.push({
+        kind: 'approved',
+        teams: input.divisions.reduce((sum, division) => sum + division.approvedCount, 0),
+        max: input.divisions.reduce((sum, division) => sum + division.maxTeams, 0),
+      });
+    }
+  }
+  return { ...plain, board: true, lit: input.phase === 'live', cells };
 }
 
 function matchOf(

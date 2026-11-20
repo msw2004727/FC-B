@@ -26,6 +26,8 @@ import { LiveBoundary } from '../live';
 import { cpSignIn } from '../sign-in';
 import { buildRegisterInput, buildReportInput } from '../payload';
 import { competitionPhase, type CompetitionPhase } from '../data/present';
+import { detailHero } from '../data/schedule-present';
+import { firstVenueName, formatInAppDates } from '../data/list-cards';
 import { hasPendingTie } from '../data/tie-present';
 import { hasScoreRole } from '../data/staff-assign';
 import {
@@ -42,11 +44,12 @@ import { loadFullSchedule, loadScheduleDetail } from '../data/schedule-load';
 import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason, StaffAssignment, StandingDoc, SummaryEntry } from '../data/types';
 import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, type CpLoadFail } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
-import { CategoryCover, categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
+import { categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
+import { DetailHero } from '../ui/detail-hero';
 import { TieWorkspace } from '../ui/tie-panel';
 import { AdminPanel, HiddenNotice } from '../ui/admin-moderation';
 import { DeleteCompetition, teamCountOf } from '../ui/delete-competition';
-import { PublicBoard } from '../ui/public-board';
+import { HostLine, hostLineShown, PublicBoard } from '../ui/public-board';
 import { StatusTag, type StatusKind } from '../ui/status-tag';
 import { CpCard, CpFrame, CpI18nPending, CpRow, AlertIcon, MoreIcon } from '../ui/shell';
 import { TeamCrest } from '../ui/TeamCrest';
@@ -500,6 +503,20 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       ? ct('deleteStuckAdmin')
       : reasonText(ct, 'COMPETITION_DELETING');
   const entries = bundle?.entries ?? [];
+  // 頂部一律用首屏的摘要（當日或首場日那一片），不用「全部賽程」。不增加讀取。
+  const hero = detailHero({
+    phase,
+    status: competition.status,
+    statusReason: competition.statusReason,
+    regCloseAt: competition.regCloseAt,
+    firstMatchAt: competition.firstMatchAt,
+    summary,
+    divisions,
+    standings,
+    venues: competition.venues,
+    now,
+  });
+  const clubTeamId = competition.hostType === 'club' ? competition.hostTeamId : null;
   const sameYear = taipeiParts(competition.regOpenAt).year === taipeiParts(competition.regCloseAt).year;
 
   async function publish(): Promise<void> {
@@ -789,8 +806,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   return (
     <CpFrame
-      title={phase === 'recruit' ? ct('detailTitle') : competition.name}
-      userTitle={phase !== 'recruit'}
+      title={ct('detailTitle')}
+      crumb={ct('title')}
       menu={frozen ? undefined : (
         <>
           <button
@@ -823,7 +840,27 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {deletingAt != null ? (
         <p class="cpa-hidden" role="status"><AlertIcon /><span>{stuckText}</span></p>
       ) : null}
-      <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
+      <DetailHero
+        ct={ct}
+        hero={hero}
+        status={badge.label}
+        danger={competition.status === 'cancelled'}
+        category={categoryText(ct, competition.category)}
+        name={competition.name}
+        date={formatInAppDates(competition)}
+        venue={firstVenueName(competition)}
+        now={now}
+        foot={hostLineShown(clubTeamId, competition.contactNote) ? (
+          <HostLine
+            ct={ct}
+            hostName={hostName(competition, env)}
+            hostType={phase === 'recruit' ? (competition.hostType === 'club' ? ct('hostClub') : ct('hostPersonal')) : undefined}
+            contactNote={competition.contactNote}
+            clubTeamId={clubTeamId}
+            onOpenClub={openClub}
+          />
+        ) : undefined}
+      />
       {showHostEnd ? (
         <CpCard>
           <p class="cpm-ended">{ct(competition.endedBy === 'auto' ? 'endedAutoLine' : 'endedLine', { date: formatTaipeiDate(competition.endedAt ?? now) })}</p>
@@ -859,40 +896,17 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </div>
         </CpCard>
       ) : null}
-      {(competition.status === 'postponed' || competition.status === 'cancelled') && competition.statusReason ? (
-        <CpCard>
-          <div class="cp3-row">
-            <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{competition.statusReason}</p>
-            <StatusTag
-              kind={competition.status === 'cancelled' ? 'cancelled' : 'neutral'}
-              label={competition.status === 'cancelled' ? ct('cancelled') : ct('compPostponed')}
-            />
-          </div>
-        </CpCard>
-      ) : null}
       <PublicBoard
         ct={ct}
         notices={competition.notices}
-        contactNote={competition.contactNote}
-        hostName={hostName(competition, env)}
         hostOps={hostOps && !frozen}
         busy={busy}
-        clubTeamId={competition.hostType === 'club' ? competition.hostTeamId : null}
-        onOpenClub={openClub}
         onPost={publishNotice}
         onDelete={removeNotice}
       />
       {phase === 'recruit' ? (
       <>
       <CpCard>
-        <div class="cps-badges" style="margin-bottom:8px">
-          <StatusTag kind={badge.kind} label={badge.label} />
-          <StatusTag
-            kind="neutral"
-            label={competition.hostType === 'club' ? ct('hostClub') : ct('hostPersonal')}
-          />
-        </div>
-        <h2 class="cps-title cps-title--user" style="margin-bottom:12px">{competition.name}</h2>
         <dl class="cps-rows">
           <CpRow k={ct('host')}>{hostName(competition, env)}</CpRow>
           <CpRow k={ct('regPeriod')}>
@@ -945,14 +959,11 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           <DetailPhaseBody
             ct={ct}
             phase={phase}
-            firstMatchAt={competition.firstMatchAt}
             divisions={divisions}
             crests={entries}
             summary={summary}
             standings={standings}
             now={now}
-            badge={badge}
-            statusShownAbove={(competition.status === 'postponed' || competition.status === 'cancelled') && !!competition.statusReason}
             fullSchedule={fullSchedule}
             onRequestFull={requestFullSchedule}
             clock={clock}

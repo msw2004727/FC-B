@@ -1,4 +1,4 @@
-// 詳情的封面、賽程、積分榜、預熱／進行中／已結束。class 對照預覽 harness 的 cp3-*。
+// 詳情的賽程、積分榜、預熱／進行中／已結束的分頁內容。class 對照預覽 harness 的 cp3-*。頂部在 detail-hero.tsx。
 
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
@@ -6,11 +6,8 @@ import { Button } from '@/ui/Button';
 import { Tabs } from '@/ui/Tabs';
 import type { CompetitionsT } from '../i18n';
 import {
-  championName,
-  daysUntilStart,
   formatGoalDiff,
   groupSchedule,
-  liveStrip,
   scheduleHeading,
   standingHeading,
   standingLines,
@@ -29,38 +26,6 @@ import { crestFromEntry, TeamCrest } from './TeamCrest';
 import { CpCard } from './shell';
 import { StatusTag, type StatusKind } from './status-tag';
 
-function CoverGlyph({ category }: { category: CompetitionCategory }): JSX.Element {
-  if (category === 'cup') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8M9 17h6" />
-      </svg>
-    );
-  }
-  if (category === 'friendly') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7l4 3-1.5 4.5h-5L8 10z" />
-      <path d="M12 3v4M21 10l-5 0M3 10l5 0M7 20l2.5-5.5M17 20l-2.5-5.5" />
-    </svg>
-  );
-}
-
-function TrophyIcon(): JSX.Element {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8M9 17h6" />
-    </svg>
-  );
-}
-
 function ChevronIcon(): JSX.Element {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -73,17 +38,6 @@ export function categoryText(ct: CompetitionsT, category: CompetitionCategory): 
   if (category === 'cup') return ct('categoryCup');
   if (category === 'friendly') return ct('categoryFriendly');
   return ct('categoryLeague');
-}
-
-export function CategoryCover({ category, label }: { category: CompetitionCategory; label: string }): JSX.Element {
-  return (
-    <div class="cp3-cover">
-      <div class={`cp3-cover__def cp3-cover__def--${category}`} aria-hidden="true">
-        <CoverGlyph category={category} />
-      </div>
-      <span class={`cp3-cover__cat cp3-cover__cat--${category}`}>{label}</span>
-    </div>
-  );
 }
 
 function SideName({
@@ -350,38 +304,6 @@ function scheduleGroups(
   );
 }
 
-function PhaseStrip({
-  ct,
-  phase,
-  summary,
-  now,
-  badge,
-  firstMatchAt,
-}: {
-  ct: CompetitionsT;
-  phase: 'warm' | 'live';
-  summary: readonly SummaryEntry[];
-  now: number;
-  badge: { label: string; kind: StatusKind };
-  firstMatchAt: number;
-}): JSX.Element {
-  const strip = liveStrip(summary, now);
-  // ASSUMPTION: 沒有更晚的場次時只寫「今天 N 場」，不硬湊下一場時間。
-  const text = phase === 'warm'
-    ? ct('countdown', { n: daysUntilStart(firstMatchAt, now) })
-    : (strip.next
-      ? ct('todayLine', { n: strip.today, time: strip.next })
-      : ct('todayOnly', { n: strip.today }));
-  return (
-    <CpCard>
-      <div class="cp3-strip">
-        <span class="cp3-strip__txt">{text}</span>
-        <StatusTag kind={badge.kind} label={badge.label} />
-      </div>
-    </CpCard>
-  );
-}
-
 function ScorerBlock({
   ct,
   choices,
@@ -427,14 +349,11 @@ function ScorerBlock({
 export function DetailPhaseBody({
   ct,
   phase,
-  firstMatchAt,
   divisions,
   crests,
   summary,
   standings,
   now,
-  badge,
-  statusShownAbove = false,
   fullSchedule,
   onRequestFull,
   clock = 'keep',
@@ -447,16 +366,12 @@ export function DetailPhaseBody({
 }: {
   ct: CompetitionsT;
   phase: Exclude<CompetitionPhase, 'recruit'>;
-  firstMatchAt: number;
   divisions: readonly DivisionDoc[];
   crests: readonly EntryDoc[];
   /** 預熱＝首場那天；進行中＝今天。已結束首屏是空的。 */
   summary: readonly SummaryEntry[];
   standings: readonly StandingDoc[];
   now: number;
-  badge: { label: string; kind: StatusKind };
-  /** 頁面上方已經有狀態卡（整場取消／延期附原因）時為 true；沒有冠軍就不再畫只剩狀態標籤的卡。 */
-  statusShownAbove?: boolean;
   /** null＝還沒按「全部賽程」或已結束展開。有值才是全集，而且同一頁只讀一次。 */
   fullSchedule: readonly SummaryEntry[] | null;
   onRequestFull: () => boolean | Promise<boolean>;
@@ -504,44 +419,11 @@ export function DetailPhaseBody({
   }
 
   if (phase === 'done') {
-    const multiple = standings.length > 1;
     const loadedRows = fullSchedule;
     const foldGroups = scheduleGroups(ct, loadedRows ?? [], divisions, now, venues);
     const foldLabel = loadedRows ? ct('foldSchedule', { n: loadedRows.length }) : ct('tabSchedule');
-    const champions = standings.flatMap((doc, index) => {
-      const result = championName(doc);
-      const value = result.pending ? ct('championPending') : result.name;
-      if (!value) return [];
-      const label = headingText(ct, standingHeading(doc, index, multiple));
-      return [{ id: doc.id, text: label ? `${label}　${value}` : value }];
-    });
     return (
       <>
-        {champions.length > 0 ? (
-          <CpCard class="cps-card--ok">
-            <div class="cp3-row">
-              <div class="cp3-champ">
-                <TrophyIcon />
-                <div class="cp3-champ__t">
-                  <span class="cp3-champ__k">{ct('champion')}</span>
-                  {champions.map((c) => (
-                    <span class="cp3-champ__v" key={c.id}>{c.text}</span>
-                  ))}
-                </div>
-              </div>
-              <StatusTag kind={badge.kind} label={badge.label} />
-            </div>
-          </CpCard>
-        ) : statusShownAbove ? null : (
-          // 沒有冠軍（整場取消、沒有積分榜）時不畫獎盃與「冠軍」字樣，只留狀態標籤（PM 截圖驗收發現）；
-          // 上方已有狀態卡時整張省略，避免空卡只剩標籤（顧問 §3.294 P3）
-          <CpCard>
-            <div class="cp3-row">
-              <span />
-              <StatusTag kind={badge.kind} label={badge.label} />
-            </div>
-          </CpCard>
-        )}
         {standingsNode}
         <CpCard>
           <div class="cps-actions">
@@ -595,14 +477,6 @@ export function DetailPhaseBody({
 
   return (
     <>
-      <PhaseStrip
-        ct={ct}
-        phase={phase}
-        summary={summary}
-        now={now}
-        badge={badge}
-        firstMatchAt={firstMatchAt}
-      />
       <Tabs
         label={ct('detailTabs')}
         variant="underline"

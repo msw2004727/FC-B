@@ -471,16 +471,6 @@
 /* 頁首裡的圓形鈕：外觀 36px 貼齊內容邊緣（點擊區 44 往外多出 4px） */
 .cps-top > .cps-iconbtn:first-child { margin-left: -4px; }
 .cps-top > .cps-iconbtn ~ .cps-iconbtn { margin-left: auto; margin-right: -4px; }
-.cps-top h1.cps-top__user {
-  /* 顧問 §3.460：頂列標題是賽事名稱時（進行中、已結束的詳情頁）最多兩行、超過才省略；固定文字標題維持一行。 */
-  white-space: normal;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  line-height: var(--line-height-body);
-}
 /* 圓形圖示鈕：點擊區 44×44，外觀是 36px 圓形玻璃；--flat（垃圾桶）沒有玻璃底 */
 .cps-iconbtn {
   position: relative; z-index: 0; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
@@ -648,22 +638,75 @@
 .cps-gate__btns > :first-child:nth-last-child(2),
 .cps-gate__btns > :last-child:nth-child(2) { flex: 1 1 0; min-inline-size: 0; }
 
+/* 詳情頂部（卡 1b-3）：玻璃外框上緣嵌記分板，不放板時是同排法的玻璃卡（.d2-plain），下半是主辦列。
+ * .d2-hero／.d2-hero--bare／.d2-foot 不綁詳情頁，別頁的玻璃頂部直接套；板的底色、框、數字字型吃上面的 .d2-sb 共用元件。 */
+.d2-hero { position: relative; padding: 6px 6px 0; border-radius: 16px; overflow: hidden; background: var(--d2-glass-base); box-shadow: var(--d2-glass-sh); }
+.d2-hero::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: inherit; pointer-events: none; box-shadow: var(--d2-glass-edge); }
+.d2-hero--bare { padding-bottom: 6px; }
+.d2-foot { margin: 0 -6px; padding: 0 10px 0 14px; background: var(--d2-glass-gloss); }
+.d2-board { --sb-radius: 11px; --sb-pad: 12px 14px 14px; }
+.d2-board__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.d2-board__cat { font-size: 12px; line-height: 16px; color: var(--d2-sb-fg2); }
+/* 賽事名稱是這一頁唯一的 h1：自然折行、最多兩行，第三行以上省略 */
+.d2-board__name {
+  margin: 10px 0 0; font-size: 22px; line-height: 32px; font-weight: 700; color: var(--d2-sb-fg);
+  white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.d2-board__meta { display: flex; align-items: center; min-width: 0; margin: 0; white-space: nowrap; font-size: 13px; line-height: 20px; color: var(--d2-sb-fg2); font-variant-numeric: tabular-nums; }
+.d2-board__meta span { flex: 0 0 auto; }
+.d2-board__meta span:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 同一行兩段資訊中間一顆 3px 圓點 */
+.d2-board__meta span + span::before,
+.d2-board .d2-cell__k span + span::before { content: ''; display: inline-block; width: 3px; height: 3px; margin: 0 8px; border-radius: 50%; background: currentColor; vertical-align: middle; }
+.d2-board .d2-cells { margin-top: 12px; padding-top: 10px; }
+.d2-board .d2-cell:first-child { flex: 1 1 auto; }
+.d2-board .d2-cell + .d2-cell { flex: 0 0 auto; min-width: 72px; }
+.d2-board .d2-cell__k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d2-board .d2-cell__v { min-width: 0; gap: 8px; }
+.d2-board .d2-cell__v .d2-num { flex: 0 0 auto; }
+.d2-cell__t { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; font-size: 13px; line-height: 28px; font-weight: 600; color: var(--d2-sb-fg); }
+.d2-cell__t span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.d2-cell__t i { flex: 0 0 auto; font-style: normal; font-size: 12px; font-weight: 400; color: var(--d2-sb-fg2); }
+.d2-plain { padding: 8px 8px 12px; white-space: nowrap; }
+.d2-plain .d2-sb__st,
+.d2-plain .d2-board__cat,
+.d2-plain .d2-board__meta { color: var(--d2-text-2); }
+.d2-plain .d2-sb__st--danger { color: var(--d2-danger); font-weight: 700; }
+.d2-plain .d2-board__name { color: var(--d2-text); }
+.d2-plain__notes { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--d2-line); }
+.d2-plain__notes .cpm-reason { margin: 0; font-size: 13px; line-height: 20px; color: var(--d2-text); white-space: normal; overflow-wrap: anywhere; }
+.d2-plain__notes .cpm-reason b { font-weight: 400; color: var(--d2-text-2); }
+/* 冠軍：一組＝小標＋隊名一行；多組＝小標自己一行、下面一組一行，最多三行，超過「等 N 組」 */
+.d2-plain__champ { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin: 0; }
+.d2-plain__champ b { flex: 0 0 auto; font-size: 12px; line-height: 28px; font-weight: 400; color: var(--d2-text-2); }
+.d2-plain__champ span,
+.d2-plain__champs dd { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; font-size: 19px; line-height: 28px; font-weight: 700; color: var(--d2-text); }
+.d2-plain__champs dd { font-size: 17px; }
+.d2-plain__champk,
+.d2-plain__more { margin: 0; font-size: 12px; line-height: 20px; color: var(--d2-text-2); }
+.d2-plain__more { font-size: 13px; }
+.d2-plain__champs { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; margin: 0; }
+.d2-plain__champs dt { max-width: 120px; margin: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; line-height: 28px; color: var(--d2-text-2); }
+/* 主辦列（頂部下半）：小字「主辦」｜名稱｜（招募中）主辦類型｜靠右「聯絡主辦」小鈕；聯絡文字接下一行 */
+.cpm-contact { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 52px; }
+.d2-foot .cpm-h { flex: 0 0 auto; font-size: 12px; line-height: 20px; font-weight: 400; color: var(--d2-text-2); }
+.d2-foot > .cpm-h { display: block; padding-top: 10px; }
+.cpm-host { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
+.cpm-contact .ui-badge { flex: 0 0 auto; }
+.cpm-contact .ui-button { flex: 0 0 auto; min-inline-size: 0; margin-left: auto; padding: 0 12px; }
+.cpm-public { margin: -4px 0 12px; font-size: 13px; line-height: 20px; color: var(--d2-text-2); overflow-wrap: anywhere; }
+.d2-foot > .cpm-h + .cpm-public { margin: 0 0 12px; font-size: 15px; line-height: 24px; color: var(--d2-text); }
+
+/* 細線分列（共用，第 3、4 批引用）：直接子層每列最小高 44、列與列之間 1px 細線；--48 是列高 48 的變體。只管列高與分線，列內怎麼排由各頁決定 */
+.d2-lines > * { min-height: 44px; }
+.d2-lines > * + * { border-top: 1px solid var(--d2-line); }
+.d2-lines--48 > * { min-height: 48px; }
+
 /* 第 3 步詳情：class 對照預覽 harness 的 cp3-*。字級只用字級 token。
  * 隊徽底色與分類漸層用 category-tokens，不在這裡重抄色值。 */
 .cps-root .ui-radio__text,
 .cps-root .ui-radio-group__label,
 .cps-root .ui-tabs__label { white-space: nowrap; }
-
-.cp3-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; }
-.cp3-strip { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-.cp3-strip__txt { font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.cp3-strip .ui-badge { flex: 0 0 auto; white-space: nowrap; }
-
-.cp3-champ { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
-.cp3-champ svg { flex: 0 0 auto; width: 36px; height: 36px; fill: none; stroke: var(--d2-text-2); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.cp3-champ__t { min-width: 0; }
-.cp3-champ__k { display: block; font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--color-text-muted); white-space: nowrap; }
-.cp3-champ__v { display: block; font-size: var(--font-size-title); line-height: var(--line-height-title); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .cp3-day { margin: 0 0 var(--space-2); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-weight: 700; color: var(--color-text-secondary); white-space: nowrap; }
 .cp3-ml { list-style: none; margin: 0 0 var(--space-4); padding: 0; }
@@ -729,15 +772,6 @@
 .cp3-tn em { font-style: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp3-tn--h { justify-content: flex-end; width: 100%; }
 .cp3-m__vs .cp3-tn { overflow: hidden; }
-
-.cp3-cover { position: relative; border-radius: var(--radius-lg, 14px); overflow: hidden; aspect-ratio: 8 / 3; }
-.cp3-cover__def { position: relative; display: block; width: 100%; height: 100%; }
-.cp3-cover__def--league { background: linear-gradient(120deg, var(--cat-league-from), var(--cat-league-to)); }
-.cp3-cover__def--cup { background: linear-gradient(120deg, var(--cat-cup-from), var(--cat-cup-to)); }
-.cp3-cover__def--friendly { background: linear-gradient(120deg, var(--cat-friendly-from), var(--cat-friendly-to)); }
-.cp3-cover__def::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 14px, rgba(255,255,255,0) 14px 28px); }
-.cp3-cover__def svg { position: absolute; right: 6%; top: 50%; transform: translateY(-50%); height: 80%; fill: none; stroke: rgba(255,255,255,.55); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
-.cp3-cover__cat { position: absolute; left: 10px; bottom: 10px; padding: 3px 10px; border-radius: 999px; background: rgba(15,23,42,.62); box-shadow: inset 0 1px 0 rgba(255,255,255,.22); color: #fff; font-size: var(--font-size-caption); font-weight: 700; white-space: nowrap; }
 
 .cp3-roster-head { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .cp3-roster-head__t { min-width: 0; flex: 1 1 auto; }
@@ -805,7 +839,6 @@
   color: var(--color-text-secondary);
 }
 .cpm-reason b { color: var(--color-text-muted); font-weight: 600; }
-.cp3-row .cpm-reason { margin: 0; flex: 1 1 auto; }
 .cpm-ended {
   margin: 0;
   font-size: var(--font-size-body-lg);
@@ -1091,53 +1124,6 @@
 /* 取消（ghost）不吃 120px 最小寬，避免「已發 n／20 則」被壓到疊在取消上（11-20 外框驗收 P2-1）。 */
 .cpm-ann__btns .ui-button--ghost { min-inline-size: 0; padding-inline: var(--space-3); }
 .cpm-ann__foot .cpm-meta { margin: 0; white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.cpm-contact {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-  min-width: 0;
-}
-.cpm-host {
-  min-width: 0;
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-body);
-  font-weight: 600;
-  white-space: nowrap;
-}
-.cpm-public {
-  margin: var(--space-2) 0 0;
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-body);
-}
-.cpm-pm {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
-  min-height: 32px;
-  padding: 4px 12px;
-  border: 1px solid var(--color-info);
-  border-radius: 999px;
-  background: var(--color-info-bg);
-  color: var(--color-info-fg);
-  font: inherit;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-}
-.cpm-pm svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linejoin: round;
-}
-
 /* 第 4 步 K12：管理員區（後台一般風格，不用液態玻璃）與下架提示。 */
 .cpa-hidden {
   /* 卡 1b-7：前面一顆 16px 三角驚嘆號（.cps-ico），文字照原文換行 */
