@@ -81,6 +81,11 @@ const PAGES: Record<string, ComponentType> = {
   'real-done-nochamp': CompetitionDetailPage,
   'real-done-pending': CompetitionDetailPage,
   'real-long': CompetitionDetailPage,
+  // 設計總監 04:56：長隊名＋隔日 01:30、長組別名、長結束原因、長公告。
+  'real-long-overnight': CompetitionDetailPage,
+  'real-long-division': CompetitionDetailPage,
+  'real-ended-long-reason': CompetitionDetailPage,
+  'real-notice-long': CompetitionDetailPage,
   'real-long-recruit': CompetitionDetailPage,
   'real-draft-host': CompetitionDetailPage,
   'real-scorer': CompetitionDetailPage,
@@ -331,6 +336,10 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('發布鈕可按', () => buttonsNamed('發布公告').some((el) => !el.disabled));
   },
   'real-gate-two': () => until('兩顆鈕', () => document.querySelectorAll('.cps-gate__btns button').length === 2),
+  'real-long-overnight': () => until('隔日場次', () => hasText('隔日 01:30') && hasText('新北市蘆洲區示範青年足球甲隊')),
+  'real-long-division': () => until('長組別名', () => hasText('五、六年級生限定')),
+  'real-ended-long-reason': () => until('長結束原因', () => hasText('敬請見諒')),
+  'real-notice-long': () => until('長公告', () => hasText('賽後一週以內可憑證件領回')),
   'real-contact-personal': () => until('聯絡主辦', () => hasText('賽前到集合點找王示範')),
   'real-ctx-short': () => until('頁首賽事名', () => !!document.querySelector('.cps-top__ctx')),
   'real-ctx-long': () => until('頁首賽事名', () => !!document.querySelector('.cps-top__ctx')),
