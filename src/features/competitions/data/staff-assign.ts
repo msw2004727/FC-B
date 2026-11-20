@@ -1,4 +1,4 @@
-// 指派畫面的純規則。staff 文件沒有名字。
+// 指派畫面的純規則。staff 文件只有接受邀請的人才有 displayName。
 // 編號用文件上的 memberNo（K10 配發、不回收），不依 uid 現算。
 // 比賽日沿用預覽的 05:00 邊界，避免清單與指派頁分叉。
 
@@ -87,6 +87,8 @@ export interface StaffNameInput {
   uid: string;
   roles: readonly string[];
   memberNo?: number;
+  /** 接受邀請時寫入的顯示名。有值優先於「成員 N」。 */
+  displayName?: string | null;
 }
 
 /** 顯示用編號。只接受正整數，其餘當缺值。 */
@@ -118,7 +120,7 @@ function memberLabel(memberNo: number | undefined, labels: StaffNameLabels): str
   return n == null ? labels.member : labels.memberN(n);
 }
 
-/** 自己是「我自己」。其他人是「成員 {memberNo}」；缺編號是「成員」。 */
+/** 自己是「我自己」。其他人有 displayName 就用；沒有是「成員 {memberNo}」；缺編號是「成員」。 */
 export function staffDisplayNames(
   rows: readonly StaffNameInput[],
   selfUid: string,
@@ -131,7 +133,8 @@ export function staffDisplayNames(
       continue;
     }
     if (!rowRole(row.roles)) continue;
-    names.set(row.uid, memberLabel(row.memberNo, labels));
+    const shown = typeof row.displayName === 'string' ? row.displayName.trim() : '';
+    names.set(row.uid, shown || memberLabel(row.memberNo, labels));
   }
   return names;
 }

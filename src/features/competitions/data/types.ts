@@ -80,6 +80,10 @@ export interface CompetitionDoc {
   status: CompetitionStatus;
   statusReason: string | null;
   hidden: boolean;
+  /** 管理員下架原因（2～200 字）。恢復後是 null；舊文件沒有這欄。一般人讀不到下架的根文件。 */
+  hiddenReason?: string | null;
+  /** 下架時間（毫秒）。恢復後是 null。 */
+  hiddenAt?: number | null;
   regOpenAt: number;
   regCloseAt: number;
   firstMatchAt: number;
@@ -221,7 +225,41 @@ export interface StaffAssignment {
    * 讀取只留正整數；缺欄、0、負數、小數、非數字都丟掉。
    */
   memberNo?: number;
+  /** 接受邀請時伺服器寫入的顯示名（≤30 字）。null 或缺值時畫面退回「成員 N」。 */
+  displayName?: string | null;
 }
+
+/** 記分邀請（competitions/{cid}/invites/{ivId}）。主辦、共同主辦可讀。不含代碼，也不含 uid。 */
+export type InviteStatus = 'open' | 'used' | 'revoked';
+
+export interface InviteDoc {
+  id: string;
+  roles: ('scorer' | 'referee')[];
+  matchIds: string[];
+  /** 毫秒。 */
+  expiresAt: number | null;
+  status: InviteStatus;
+  createdAt: number | null;
+  usedAt: number | null;
+  usedMemberNo: number | null;
+}
+
+/** 檢舉紀錄（competitions/{cid}/reports/{reportId}，只有管理員可讀）。刻意不帶 reporterUid。 */
+export type ReportReviewStatus = 'open' | 'resolved' | 'dismissed';
+
+export interface ReportDoc {
+  id: string;
+  reason: ReportReason;
+  detail: string | null;
+  count: number;
+  lastAt: number | null;
+  status: ReportReviewStatus;
+  reopened: boolean;
+}
+
+/** 邀請與檢舉清單上限（Rules：invites list limit ≤ 100）。 */
+export const CP_INVITE_LIST_LIMIT = 30;
+export const CP_REPORT_LIST_LIMIT = 50;
 
 export interface MatchSide {
   teamId: string;

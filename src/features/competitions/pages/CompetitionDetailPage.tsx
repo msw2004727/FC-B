@@ -43,6 +43,7 @@ import { CpError, errorOf, reasonText } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
 import { CategoryCover, categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
 import { TieWorkspace } from '../ui/tie-panel';
+import { AdminPanel, HiddenNotice } from '../ui/admin-moderation';
 import { PublicBoard } from '../ui/public-board';
 import { CpCard, CpFrame, CpI18nPending, CpRow, MoreIcon } from '../ui/shell';
 import { TeamCrest } from '../ui/TeamCrest';
@@ -207,6 +208,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [scorerState, setScorerState] = useState<{ dvId: string; tables: ScorerTables | null } | null>(null);
   const scorerToken = useRef(0);
   const [restoreOpen, setRestoreOpen] = useState(false);
+  // 管理員下架對話框（K12）。右上選單與管理員區共用。
+  const [hideOpen, setHideOpen] = useState(env.preview?.moderateOpen === true);
   const [restoreReason, setRestoreReason] = useState('');
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
   const fullCache = useRef<SummaryEntry[] | null>(null);
@@ -448,6 +451,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   // 手動結束與自動結束都顯示結束狀態卡（Flash 初審 P3：自動結束時管理員要看得到結束來源）
   const showHostEnd = competition.endedAt != null && (competition.endedBy === 'host' || competition.endedBy === 'auto');
   const allowRestore = canRestoreCompetition(competition, isCpAdmin(env.actor.role));
+  const isAdmin = isCpAdmin(env.actor.role);
   const divisions = bundle?.divisions ?? [];
   const entries = bundle?.entries ?? [];
   const sameYear = taipeiParts(competition.regOpenAt).year === taipeiParts(competition.regCloseAt).year;
@@ -697,11 +701,18 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setReportError(null); setReportOpen(true); }}>
                 {ct('report')}
               </button>
+              {isAdmin && !competition.hidden ? (
+                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setHideOpen(true); }}>
+                  {ct('moderateHide')}
+                </button>
+              ) : null}
             </div>
           ) : null}
         </>
       )}
     >
+      {/* 下架後一般人讀不到根文件（走讀取失敗畫面）；Rules 只放行管理員與主辦／共同主辦（俱樂部主辦的賽事，俱樂部代表算主辦）。 */}
+      {competition.hidden ? <HiddenNotice ct={ct} reason={competition.hiddenReason} /> : null}
       <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
       {showHostEnd ? (
         <CpCard>
@@ -864,6 +875,25 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           {manageActions}
         </>
       )}
+
+      {isAdmin ? (
+        <AdminPanel
+          ct={ct}
+          cid={cid}
+          hidden={competition.hidden}
+          actions={env.actions}
+          repo={env.repo}
+          hideOpen={hideOpen}
+          setHideOpen={setHideOpen}
+          initialReportsOpen={env.preview?.reportsOpen === true}
+          onHiddenChange={(hidden, reason) => {
+            setBundle((current) => (current?.competition ? {
+              ...current,
+              competition: { ...current.competition, hidden, hiddenReason: reason, hiddenAt: hidden ? (env.now ?? Date.now()) : null },
+            } : current));
+          }}
+        />
+      ) : null}
 
       {registerOpen ? (
         <BottomSheet

@@ -338,7 +338,7 @@ describe('指派頁與我的場次', () => {
       route: { cid: 'cup' },
     }, <StaffPage />);
     expect(await screen.findByText('指派記分員')).toBeTruthy();
-    expect(repo.calls()).toEqual(['getStaff', 'listStaff']);
+    expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites']);
   });
 
   it('指派沿用既有場次、預勾已指派的場，送出單一角色', async () => {

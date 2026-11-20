@@ -4,7 +4,11 @@
 
 import type { CompetitionsRepo } from '../data/cp-repo';
 import {
+  CP_INVITE_LIST_LIMIT,
   CP_READ_LIMIT,
+  CP_REPORT_LIST_LIMIT,
+  type InviteDoc,
+  type ReportDoc,
   type CompetitionDoc,
   type CpMineItem,
   type DivisionDoc,
@@ -41,6 +45,10 @@ export interface FakeCpSeed {
   /** key 是 cid。每片是一筆 summary 文件。 */
   summary?: Readonly<Record<string, readonly { id: string; entries: readonly SummaryEntry[] }[]>>;
   standings?: Readonly<Record<string, readonly StandingDoc[]>>;
+  /** key 是 cid。listInvites 只回 status open。 */
+  invites?: Readonly<Record<string, readonly InviteDoc[]>>;
+  /** key 是 cid。 */
+  reports?: Readonly<Record<string, readonly ReportDoc[]>>;
 }
 
 /** 測試用計數。查詢是回傳文件數＋1（Rules 讀父文件；0 筆仍是 1）。單筆 get 不加。calls 不含快取命中與非法 id。 */
@@ -82,6 +90,8 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
   const matches = seed.matches ?? {};
   const summary = seed.summary ?? {};
   const standings = seed.standings ?? {};
+  const invites = seed.invites ?? {};
+  const reports = seed.reports ?? {};
   const calls: string[] = [];
   let reads = 0;
   const crestCache = new Map<string, Promise<EntryDoc[]>>();
@@ -106,6 +116,7 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
     if (typeof row.memberNo === 'number' && Number.isInteger(row.memberNo) && row.memberNo >= 1) {
       next.memberNo = row.memberNo;
     }
+    if (typeof row.displayName === 'string' && row.displayName.trim()) next.displayName = row.displayName;
     return next;
   }
 
@@ -290,6 +301,21 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
 
     invalidateCrests(cid) {
       crestCache.delete(cid);
+    },
+
+    async listInvites(cid) {
+      if (!isSafeId(cid)) return [];
+      const rows = take((invites[cid] ?? []).filter((row) => row.status === 'open'), CP_INVITE_LIST_LIMIT)
+        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+      noteQuery('listInvites', rows.length);
+      return rows.map((row) => ({ ...row, roles: [...row.roles], matchIds: [...row.matchIds] }));
+    },
+
+    async listReports(cid) {
+      if (!isSafeId(cid)) return [];
+      const rows = take([...(reports[cid] ?? [])].sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0)), CP_REPORT_LIST_LIMIT);
+      noteQuery('listReports', rows.length);
+      return rows.map((row) => ({ ...row }));
     },
   };
 }
