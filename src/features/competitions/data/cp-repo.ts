@@ -20,6 +20,13 @@ import {
   type CompetitionStatus,
   type CpMineItem,
   type DivisionDoc,
+  CP_INVITE_LIST_LIMIT,
+  CP_REPORT_LIST_LIMIT,
+  type InviteDoc,
+  type InviteStatus,
+  type ReportDoc,
+  type ReportReason,
+  type ReportReviewStatus,
   type EntryDoc,
   type EntryPrivateDoc,
   type EntryStatus,
@@ -92,6 +99,10 @@ export interface CompetitionsRepo {
   listEntriesForCrest(cid: string): Promise<EntryDoc[]>;
   /** 清掉這個賽事的隊徽快取。下次 listEntriesForCrest 會再查。 */
   invalidateCrests(cid: string): void;
+  /** 尚未使用的邀請（status == open），最多 CP_INVITE_LIST_LIMIT。只給主辦／共同主辦呼叫。 */
+  listInvites(cid: string): Promise<InviteDoc[]>;
+  /** 檢舉紀錄，lastAt 由新到舊，最多 CP_REPORT_LIST_LIMIT。只給管理員呼叫（Rules 只准管理員讀）。不回傳 reporterUid。 */
+  listReports(cid: string): Promise<ReportDoc[]>;
 }
 
 interface DocSnap {
@@ -110,6 +121,8 @@ export interface CpFirestoreSdk {
   query(col: unknown, ...clauses: unknown[]): unknown;
   where(field: string, op: string, value: unknown): unknown;
   limit(n: number): unknown;
+  /** 檢舉清單排序用。測試替身可省略，省略時只在記憶體排序。 */
+  orderBy?(field: string, direction?: 'asc' | 'desc'): unknown;
   getDoc(ref: unknown): Promise<DocSnap>;
   getDocs(query: unknown): Promise<QuerySnap>;
 }
@@ -225,6 +238,8 @@ export function competitionFromDoc(id: string, raw: Record<string, unknown>): Co
     status,
     statusReason: str(raw.statusReason),
     hidden: bool(raw.hidden) ?? false,
+    hiddenReason: str(raw.hiddenReason),
+    hiddenAt: optNum(raw.hiddenAt),
     regOpenAt,
     regCloseAt,
     firstMatchAt,
@@ -402,9 +417,70 @@ function assignmentFromDoc(uid: string, raw: Record<string, unknown>): StaffAssi
   }
   const memberNo = memberNoOf(raw.memberNo);
   const expiresAt = optNum(raw.expiresAt);
-  return memberNo == null
+  const row: StaffAssignment = memberNo == null
     ? { uid, roles, matchIds, expiresAt }
     : { uid, roles, matchIds, expiresAt, memberNo };
+  const displayName = staffNameOf(raw.displayName);
+  if (displayName != null) row.displayName = displayName;
+  return row;
+}
+
+/** staff.displayName。只收非空字串，去頭尾空白、最多 30 字；其餘當沒有。 */
+function staffNameOf(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return clipCodePoints(trimmed, 30);
+}
+
+const INVITE_STATUSES: readonly InviteStatus[] = ['open', 'used', 'revoked'];
+const REPORT_STATUSES: readonly ReportReviewStatus[] = ['open', 'resolved', 'dismissed'];
+const REPORT_REASONS: readonly ReportReason[] = ['impersonation', 'fake', 'inappropriate', 'privacy', 'other'];
+
+export function inviteFromDoc(id: string, raw: Record<string, unknown>): InviteDoc | null {
+  const status = oneOf(raw.status, INVITE_STATUSES);
+  if (!status) return null;
+  const roles: ('scorer' | 'referee')[] = [];
+  if (Array.isArray(raw.roles)) {
+    for (const item of raw.roles) {
+      const role = oneOf(item, ['scorer', 'referee'] as const);
+      if (role && !roles.includes(role)) roles.push(role);
+    }
+  }
+  const matchIds: string[] = [];
+  if (Array.isArray(raw.matchIds)) {
+    for (const item of raw.matchIds) {
+      if (typeof item === 'string' && !matchIds.includes(item)) matchIds.push(item);
+      if (matchIds.length >= 100) break;
+    }
+  }
+  return {
+    id,
+    roles,
+    matchIds,
+    expiresAt: optNum(raw.expiresAt),
+    status,
+    createdAt: optNum(raw.createdAt),
+    usedAt: optNum(raw.usedAt),
+    usedMemberNo: memberNoOf(raw.usedMemberNo) ?? null,
+  };
+}
+
+/** 檢舉文件。只挑畫面要的欄位；reporterUid 不讀出來，畫面拿不到。 */
+export function reportFromDoc(id: string, raw: Record<string, unknown>): ReportDoc | null {
+  const reason = oneOf(raw.reason, REPORT_REASONS);
+  if (!reason) return null;
+  const detail = str(raw.detail);
+  const count = num(raw.count);
+  return {
+    id,
+    reason,
+    detail: detail && detail.trim() ? detail : null,
+    count: count != null && count > 0 ? Math.floor(count) : 1,
+    lastAt: optNum(raw.lastAt),
+    status: oneOf(raw.status, REPORT_STATUSES) ?? 'open',
+    reopened: bool(raw.reopened) ?? false,
+  };
 }
 
 function sideOf(value: unknown): MatchSide | null {
@@ -948,6 +1024,34 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
 
     invalidateCrests(cid) {
       crestCache.delete(cid);
+    },
+
+    async listInvites(cid) {
+      if (!isSafeId(cid)) return [];
+      const { db, sdk } = await ready();
+      // 只用等號篩選，不加 orderBy（免複合索引）；建立時間在記憶體排序。
+      const snap = await sdk.getDocs(sdk.query(
+        sdk.collection(db, `competitions/${cid}/invites`),
+        sdk.where('status', '==', 'open'),
+        sdk.limit(CP_INVITE_LIST_LIMIT),
+      ));
+      return snap.docs
+        .map((doc) => inviteFromDoc(doc.id, doc.data() ?? {}))
+        .filter((doc): doc is InviteDoc => doc != null && doc.status === 'open')
+        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    },
+
+    async listReports(cid) {
+      if (!isSafeId(cid)) return [];
+      const { db, sdk } = await ready();
+      const clauses: unknown[] = [];
+      if (sdk.orderBy) clauses.push(sdk.orderBy('lastAt', 'desc'));
+      clauses.push(sdk.limit(CP_REPORT_LIST_LIMIT));
+      const snap = await sdk.getDocs(sdk.query(sdk.collection(db, `competitions/${cid}/reports`), ...clauses));
+      return snap.docs
+        .map((doc) => reportFromDoc(doc.id, doc.data() ?? {}))
+        .filter((doc): doc is ReportDoc => doc != null)
+        .sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0));
     },
   };
 }

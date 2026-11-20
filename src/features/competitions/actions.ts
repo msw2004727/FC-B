@@ -33,6 +33,15 @@ import {
   cpHostSetWalkover,
   cpHostUpdate,
   cpParticipantReport,
+  cpHostCreateInvite,
+  cpHostRevokeInvite,
+  cpParticipantAcceptInvite,
+  cpHostModerate,
+  cpHostReviewReport,
+  type CpAcceptInviteResult,
+  type CpCreateInviteResult,
+  type CpModerateInput,
+  type CpReviewStatus,
   type CpAddRosterByRepInput,
   type StaffScoreRole,
   type CpForfeitSide,
@@ -48,6 +57,7 @@ import {
   type CpReviewEntryInput,
   type TieMethod,
 } from './data/cp-callables';
+import { CpCallError } from './data/cp-callables';
 import type { PaymentStatusWrite } from './data/types';
 
 export interface CpActions {
@@ -137,6 +147,23 @@ export interface CpActions {
     expiresAt?: number;
   }): Promise<unknown>;
   removeStaff(input: { cid: string; uid: string; roles?: readonly string[] }): Promise<unknown>;
+  // 以下五支是第 4 步 K11／K12。選填：既有測試替身（screen-fixtures 的 idleActions）沒有實作，
+  // 頁面拿不到時回通用失敗，不會退回正式 Functions。正式頁一律用 liveCpActions。
+  createInvite?(input: {
+    cid: string;
+    roles: readonly StaffScoreRole[];
+    matchIds: readonly string[];
+    expiresAt?: number;
+  }): Promise<CpCreateInviteResult>;
+  revokeInvite?(input: { cid: string; ivId: string }): Promise<unknown>;
+  acceptInvite?(input: { cid: string; ivId: string; code: string }): Promise<CpAcceptInviteResult>;
+  moderate?(input: CpModerateInput): Promise<unknown>;
+  reviewReport?(input: { cid: string; reportId: string; status: CpReviewStatus }): Promise<unknown>;
+}
+
+/** 選填動作沒有實作時丟的錯誤。畫面顯示通用失敗。 */
+export function missingAction(): never {
+  throw new CpCallError('UNKNOWN', {});
 }
 
 export const liveCpActions: CpActions = {
@@ -172,4 +199,9 @@ export const liveCpActions: CpActions = {
   explainTie: cpHostExplainTie,
   assignStaff: cpHostAssignStaff,
   removeStaff: cpHostRemoveStaff,
+  createInvite: cpHostCreateInvite,
+  revokeInvite: cpHostRevokeInvite,
+  acceptInvite: cpParticipantAcceptInvite,
+  moderate: cpHostModerate,
+  reviewReport: cpHostReviewReport,
 };

@@ -41,7 +41,7 @@ function checkboxLabel(match: MatchDoc, venues: CompetitionDoc['venues']): strin
   return `${clockLabel(match.kickoffAt).time} ${venue} ${vs}`.trim();
 }
 
-function assignDays(ct: CompetitionsT, matches: readonly MatchDoc[], venues: CompetitionDoc['venues']): AssignDayGroup[] {
+export function assignDays(ct: CompetitionsT, matches: readonly MatchDoc[], venues: CompetitionDoc['venues']): AssignDayGroup[] {
   const labeled = matches.map((match) => ({ match, label: checkboxLabel(match, venues) }));
   const grouped = groupByCompetitionDay(labeled.map((row) => ({ ...row, kickoffAt: row.match.kickoffAt })));
   const days = grouped.days.map((group) => ({

@@ -601,3 +601,66 @@ export function cpHostRemoveStaff(input: {
 /** 規格上的動作名稱。與 cpHostAssignStaff／cpHostRemoveStaff 同一支。 */
 export const assignStaff = cpHostAssignStaff;
 export const removeStaff = cpHostRemoveStaff;
+
+// ── 第 4 步 K11 邀請記分員、K12 管理員下架與檢舉處理 ──
+
+export interface CpCreateInviteResult {
+  ivId: string;
+  /** 22 字一次性代碼。只在這次回傳出現，不得寫進 log、錯誤回報或儲存。 */
+  code: string;
+  /** 毫秒。 */
+  expiresAt: number;
+}
+
+/** 建立記分邀請。roles 1～2 個、matchIds 0～100 個；省略 expiresAt 由伺服器給（末場＋7 天）。 */
+export function cpHostCreateInvite(input: {
+  cid: string;
+  roles: readonly StaffScoreRole[];
+  matchIds: readonly string[];
+  expiresAt?: number;
+}): Promise<CpCreateInviteResult> {
+  return callAction('cpHost', payload('createInvite', {
+    cid: input.cid,
+    roles: input.roles,
+    matchIds: input.matchIds,
+    expiresAt: input.expiresAt,
+  }));
+}
+
+export function cpHostRevokeInvite(input: { cid: string; ivId: string }): Promise<{ ivId: string; status: 'revoked' }> {
+  return callAction('cpHost', payload('revokeInvite', { cid: input.cid, ivId: input.ivId }));
+}
+
+export interface CpAcceptInviteResult {
+  cid: string;
+  roles: string[];
+  matchCount: number;
+}
+
+/** 接受邀請。code 只放在 Callable 本文，不放網址查詢字串。 */
+export function cpParticipantAcceptInvite(input: { cid: string; ivId: string; code: string }): Promise<CpAcceptInviteResult> {
+  return callAction('cpParticipant', payload('acceptInvite', { cid: input.cid, ivId: input.ivId, code: input.code }));
+}
+
+export type CpModerateInput = { cid: string; hidden: true; reason: string } | { cid: string; hidden: false };
+
+/** 管理員下架（帶原因）或恢復（不帶 reason，帶了伺服器回 UNKNOWN_FIELD）。 */
+export function cpHostModerate(input: CpModerateInput): Promise<{ cid: string; hidden: boolean }> {
+  return callAction('cpHost', payload('moderate', input.hidden
+    ? { cid: input.cid, hidden: true, reason: input.reason }
+    : { cid: input.cid, hidden: false }));
+}
+
+export type CpReviewStatus = 'open' | 'resolved' | 'dismissed';
+
+export function cpHostReviewReport(input: {
+  cid: string;
+  reportId: string;
+  status: CpReviewStatus;
+}): Promise<{ cid: string; reportId: string; status: CpReviewStatus }> {
+  return callAction('cpHost', payload('reviewReport', {
+    cid: input.cid,
+    reportId: input.reportId,
+    status: input.status,
+  }));
+}

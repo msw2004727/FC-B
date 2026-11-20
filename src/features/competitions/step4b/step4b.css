@@ -338,3 +338,46 @@ h3.s4b-h {
   .s4b-plain, .s4b .cps-card { border-color: #000 !important; }
   .s4b-sign { border-color: #000 !important; }
 }
+
+/* 第 4 步 K11：尚未使用的邀請與邀請連結。 */
+.s4b-inv__h { margin-bottom: var(--space-3); }
+.s4b-inv { gap: 2px; width: 100%; }
+.s4b-inv__n { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.s4b-inv-list > .s4b-li { padding-block: 10px; }
+.s4b-inv-list > .s4b-li:first-child { padding-top: 0; }
+.s4b-inv-list > .s4b-li:last-child { padding-bottom: 0; }
+.s4b-inv__url {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.s4b .s4b-inv__once { color: var(--color-warning-fg); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); }
+/* 賽事名稱是使用者內容，可以換行，不得撐破 360 寬。 */
+.s4b h2.s4b-accept__name { white-space: normal; overflow-wrap: anywhere; }
+/* K11 追加：記分指派到期顯示在名字下一行（名字、角色、場次維持第一列）。 */
+/* 不用 :has()（同檔顧問裁定）：<li> 由元件依有無到期加 s4b-li--exp。 */
+.s4b-staff-list > .s4b-li--exp,
+.s4b-staff-list > .s4b-li--exp:first-child,
+.s4b-staff-list > .s4b-li--exp:last-child { height: auto; min-height: 56px; padding-block: 6px; }
+.s4b-staff--exp { row-gap: 0; }
+.s4b-staff > .s4b-staff__exp {
+  grid-row: 2;
+  grid-column: 1 / 5;
+  min-width: 0;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-variant-numeric: tabular-nums;
+}
+.s4b-staff--exp > .s4b-mini { grid-row: 1 / 3; }
+/* 顯示名可能很長：名字欄先吃剩餘空間（到原長為止）再省略，不讓空白留在中間欄。 */
+.s4b-staff { grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr) 4.5em 64px; }
