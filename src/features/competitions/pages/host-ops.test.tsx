@@ -987,6 +987,9 @@ describe('聯絡主辦', () => {
     expect(foot?.querySelector('.cpm-h')?.textContent).toBe('主辦');
     expect(screen.queryByRole('heading', { name: '聯絡主辦' })).toBeNull();
     expect(foot?.querySelector('.cpm-public')?.textContent).toBe('賽前到集合點找王示範');
+    // 獨立審 B P2：招募中個人主辦有聯絡文字時，主辦名稱與「個人主辦」標籤要在頂部主辦列（招募卡的主辦列因此藏起來）
+    expect(foot?.querySelector('.cpm-contact .cpm-host')?.textContent ?? '').not.toBe('');
+    expect(foot?.querySelector('.cpm-contact')?.textContent ?? '').toContain('個人主辦');
     expect(screen.queryByRole('link', { name: '聯絡主辦' })).toBeNull();
     expect(screen.queryByRole('button', { name: '私訊主辦' })).toBeNull();
   });
