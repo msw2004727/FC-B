@@ -177,6 +177,10 @@ describe('正式記分頁權限', () => {
     expect(screen.queryByText(LIVE_COPY.assignScorerHint)).toBeNull();
     expect(screen.queryByRole('button', { name: '開賽' })).toBeNull();
     expect(screen.getByRole('button', { name: LIVE_COPY.backToSchedule })).toBeTruthy();
+    // 卡 2-6（施工-第2批 3.26）：第 1b 批「一句話＋回去的鈕」版面，鎖頭；「回賽程」是實心主要鈕。
+    expect(document.querySelector('.cps-gate .cps-ico')).toBeTruthy();
+    expect(screen.getByText(LIVE_COPY.noScorePermission).className).toBe('cps-gate__text');
+    expect(screen.getByRole('button', { name: LIVE_COPY.backToSchedule }).classList.contains('ui-button--primary')).toBe(true);
     expect(document.querySelector('.cps-top')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '記分' })).toBeTruthy();
     // 沒有記分權限時保留 App 外框（顧問審 a7026243 P2-1）。
@@ -337,7 +341,8 @@ describe('G-06 進場失敗不是沒有權限', () => {
     expect(screen.getByText(LIVE_COPY.loadFailedAuto)).toBeTruthy();
     expect(screen.getByRole('button', { name: LIVE_COPY.retry })).toBeTruthy();
     // 鈕的順序：回賽程在左、重試在右（顧問 §3.467）。
-    const actions = [...document.querySelectorAll('.cps-actions button')].map((node) => node.textContent);
+    // 卡 2-6：按鈕列換成第 1b 批版面的 .cps-gate__btns（順序不變）。
+    const actions = [...document.querySelectorAll('.cps-gate__btns button')].map((node) => node.textContent);
     expect(actions).toEqual([LIVE_COPY.backToSchedule, LIVE_COPY.retry]);
     expect(screen.queryByText(LIVE_COPY.noScorePermission)).toBeNull();
     expect(open).toHaveBeenCalledTimes(1);
