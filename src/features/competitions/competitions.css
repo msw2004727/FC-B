@@ -1047,6 +1047,13 @@
 .cpm-cmp__r--hit > .cpm-cmp__k { color: inherit; }
 .cpm-cmp__r--skip,
 .cpm-cmp__r--skip > .cpm-cmp__k { color: var(--d2-text-3); }
+/* 三隊以上（設計總監 04:20）：項目名自己一行、數字在下一行平均分欄；九隊以上放不下時表格在卡內左右捲，頁面不捲。
+ * 容器左右各外推 8px，讓淡青綠列的外推留在捲動容器裡。 */
+.cpm-cmp--stack { overflow-x: auto; margin: 0 -8px; padding: 0 8px; }
+.cpm-cmp--stack .cpm-cmp__r { column-gap: 4px; padding-block: 6px; }
+.cpm-cmp--stack .cpm-cmp__k { grid-column: 1 / -1; line-height: 20px; }
+.cpm-cmp--stack .cpm-cmp__r > span:nth-child(n + 2) { text-align: center; overflow: hidden; text-overflow: ellipsis; }
+.cpm-cmp--stack .cpm-cmp__r--h > span:first-child { display: none; }
 .cpm-mark {
   margin: var(--space-2) 0 0;
   font-size: 13px;
