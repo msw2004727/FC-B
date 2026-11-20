@@ -1053,7 +1053,12 @@ describe('賽事第 2 步畫面', () => {
     stranger.actor = { ...memberActor, memberClubIds: [] };
     const blocked = mount(JoinRosterPage, stranger);
     expect(blocked.container.textContent ?? '').toContain('只有俱樂部成員可以做這個操作');
-    expect(screen.getByRole('link', { name: '返回名單' }).getAttribute('href')).toBe('/competitions/cup/entries/en_a');
+    // 第 3 批小修（設計總監 05:08）：「返回名單」從連結改成整列寬次要鈕、句子中性色（原本斷言 role=link 與 href）
+    const back = screen.getByRole('button', { name: '返回名單' });
+    expect(back.className).toContain('ui-button--secondary');
+    expect(screen.getByRole('alert').className).not.toContain('cps-warn');
+    fireEvent.click(back);
+    expect(window.location.pathname).toBe('/competitions/cup/entries/en_a');
     expect(screen.queryByLabelText('背號')).toBeNull();
     blocked.unmount();
 
@@ -1179,6 +1184,51 @@ describe('賽事第 2 步畫面', () => {
     }));
     expect(view.container.textContent ?? '').toContain('已核准 3／8 隊');
     expect(view.container.textContent ?? '').not.toContain('已核准 2／8 隊');
+  });
+
+  it('報隊管理矮板：待審與已核准兩格；讀到上限不放待審、沒有組別不放已核准，兩格都沒有就不放板（第 4 批 3.3）', () => {
+    const view = mount(CompetitionManagePage, screenEnv('host-pending'));
+    const cells = (root: Element) => [...root.querySelectorAll('.d2-sb--row .d2-cell__k')].map((el) => el.textContent);
+    expect(cells(view.container)).toEqual(['待審', '已核准']);
+    expect(view.container.querySelector('.d2-sb--row .d2-cells')?.getAttribute('aria-hidden')).toBe('true');
+    expect(view.container.querySelector('.d2-sb--row .cps-vh')?.textContent ?? '').toContain('待審 ');
+    view.unmount();
+
+    const base = screenEnv('host-pending');
+    const full = base.bundle ? {
+      ...base.bundle,
+      entries: Array.from({ length: 100 }, (_, i) => ({ ...base.bundle!.entries[0]!, id: `en_${i}` })),
+    } : undefined;
+    const atLimit = mount(CompetitionManagePage, { ...base, bundle: full });
+    expect(cells(atLimit.container)).toEqual(['已核准']);
+    atLimit.unmount();
+
+    const noDiv = screenEnv('host-pending');
+    const bare = mount(CompetitionManagePage, { ...noDiv, bundle: noDiv.bundle ? { ...noDiv.bundle, divisions: [] } : undefined });
+    expect(cells(bare.container)).toEqual(['待審']);
+    bare.unmount();
+
+    const none = screenEnv('host-pending');
+    const empty = mount(CompetitionManagePage, {
+      ...none,
+      bundle: none.bundle ? {
+        ...none.bundle,
+        divisions: [],
+        entries: Array.from({ length: 100 }, (_, i) => ({ ...none.bundle!.entries[0]!, id: `en_${i}` })),
+      } : undefined,
+    });
+    expect(empty.container.querySelector('.d2-sb--row')).toBeNull();
+    expect(screen.getByRole('button', { name: '排賽程' })).toBeTruthy();
+  });
+
+  it('鎖定全部名單的確認框是危險確認：開著時掛紅框 class，預設焦點在取消（顧問 §3.465）', async () => {
+    mount(CompetitionManagePage, { ...screenEnv('host-approved', spyActions()) });
+    fireEvent.click(screen.getByRole('button', { name: '鎖定全部名單' }));
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    expect(document.documentElement.classList.contains('cp-danger-confirm')).toBe(true);
+    await waitFor(() => expect(document.activeElement?.textContent ?? '').toBe('取消'));
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    await waitFor(() => expect(document.documentElement.classList.contains('cp-danger-confirm')).toBe(false));
   });
 
   it('首場不在未來時精靈步驟 1 顯示時間不能早於現在', async () => {

@@ -11,6 +11,7 @@ import {
   scheduleHeading,
   standingHeading,
   standingLines,
+  standingsNeedWide,
   type GroupHeading,
   type PublicMark,
   type ScheduleGroup,
@@ -168,7 +169,7 @@ export function MatchSchedule({
                     })}
                   </ul>
                 </CpCard>
-                <div style="height:12px" />
+                <div class="cp3-daygap" />
               </div>
             ))}
           </div>
@@ -216,7 +217,7 @@ export function StandingsTable({
             {heading ? <h3 class="cp3-day">{heading}</h3> : null}
             {/* 新外觀卡 3-4：三張表共用 .cp-tbl；測試用到的 class（.cp3-st、.cp3-st__r、--h、--top、.rk、.t、.pt）留在對應元素上 */}
             <CpCard class="cp-tblcard cp3-st">
-              <table class="cp-tbl cp-tbl--st">
+              <table class={standingsNeedWide(lines) ? 'cp-tbl cp-tbl--st cp-tbl--st-wide' : 'cp-tbl cp-tbl--st'}>
                 <thead>
                   <tr class="cp3-st__r cp3-st__r--h">
                     <th scope="col" class="rk">{ct('colRank')}</th>
@@ -319,6 +320,17 @@ function GroupSwitch({
   onPick: (id: string) => void;
 }): JSX.Element {
   const box = useRef<HTMLDivElement>(null);
+  // 放不下、可以往右捲時才加右緣淡出（看得出還有）；用按鈕列本身的寬度判斷，不受淡出留的內距影響
+  const [scrolls, setScrolls] = useState(false);
+  useEffect(() => {
+    const el = box.current;
+    const list = el?.querySelector<HTMLElement>('.ui-tabs__list');
+    if (!el || !list) return undefined;
+    const measure = () => setScrolls(list.scrollWidth > el.clientWidth + 1);
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [choices]);
   useEffect(() => {
     const el = box.current;
     const on = el?.querySelector<HTMLElement>('[aria-pressed="true"]');
@@ -327,9 +339,9 @@ function GroupSwitch({
     const inner = on.getBoundingClientRect();
     if (inner.left < outer.left) el.scrollLeft -= outer.left - inner.left;
     else if (inner.right > outer.right) el.scrollLeft += inner.right - outer.right;
-  }, [current]);
+  }, [current, scrolls]);
   return (
-    <div class="cp-grp" ref={box}>
+    <div class={scrolls ? 'cp-grp cp-grp--scroll' : 'cp-grp'} ref={box}>
       <div class="ui-tabs d2-seg-sm">
         <div class="ui-tabs__list" role="group">
           {choices.map((choice) => (
@@ -366,7 +378,7 @@ function ScorerBlock({
     ? <GroupSwitch choices={choices} current={state?.dvId ?? null} onPick={onPick} />
     : null;
   return (
-    <div style="margin-top:12px">
+    <div class="cp-scb">
       {tables ? (
         <ScorersTable
           scorers={tables.scorers}
@@ -464,7 +476,8 @@ export function DetailPhaseBody({
     const foldLabel = loadedRows ? ct('foldSchedule', { n: loadedRows.length }) : ct('tabSchedule');
     return (
       <>
-        {standingsNode}
+        {/* 沒有積分（已取消、沒有分組賽）時不放空容器，免得頂部卡下面多一段 12px 間距（設計總監 04:56） */}
+        {standings.length > 0 ? standingsNode : null}
         {/* 已結束的「射手榜」：入口列卡（一列、右邊箭頭），按了在卡內原地展開 */}
         <CpCard class="d2-rows d2-lines d2-lines--48">
           <Button

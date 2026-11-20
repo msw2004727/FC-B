@@ -233,6 +233,14 @@ export const P3_STAND_LONG: StandingDoc[] = [standing({
       ...(index === 10 ? { decidedBy: 'host' as const } : {}),
     });
   }),
+}), standing({
+  // 第二組（設計總監 05:02／05:05）：數字欄不可省略的驗收——「進/失 112/98、淨勝 +14、積分 100」，兩組欄位要上下對齊
+  id: 'dv_adult__group__B',
+  groupId: 'B',
+  rows: [
+    row({ teamId: 'en_b1', name: '臺北市立第一示範足球俱樂部', rank: 1, points: 100, played: 40, win: 32, draw: 4, loss: 4, goalsFor: 112, goalsAgainst: 98, goalDiff: 14 }),
+    row({ teamId: 'en_b2', name: '雷霆隊', rank: 2, points: 9, played: 4, win: 3, draw: 0, loss: 1, goalsFor: 9, goalsAgainst: 4, goalDiff: 5 }),
+  ],
 })];
 
 /** 長隊名那一份給的隊徽：第一隊有上傳隊徽圖，其餘字章。 */
@@ -378,10 +386,19 @@ const MY_LONG: MatchDoc[] = [
   myMatch('my_l3', { status: 'scheduled', kickoffAt: taipeiMs(2027, 1, 10, 1, 30), venueName: '1號場', score: { home: 0, away: 0 }, clockBase: IDLE_CLOCK, home: { teamId: 'en_l5', name: LONG_TEAMS[4]! }, away: { teamId: 'en_long1', name: P3_LONG_HOME } }),
 ];
 
+/** 板卡是跨日的那一場（最早一場未開賽在隔日凌晨）＋長場地名（設計總監 05:08 補拍）。 */
+const LONG_VENUE = '新北市三重區光榮國民小學附設綜合運動場第二面人工草皮場';
+const MY_EDGE: MatchDoc[] = [
+  myMatch('my_e1', { status: 'scheduled', kickoffAt: taipeiMs(2027, 1, 10, 1, 30), venueName: LONG_VENUE, score: { home: 0, away: 0 }, clockBase: IDLE_CLOCK, home: { teamId: 'en_c', name: '雷霆隊' }, away: { teamId: 'en_b', name: '藍鯨隊' } }),
+  myMatch('my_e2', { status: 'scheduled', kickoffAt: taipeiMs(2027, 1, 10, 9, 0), venueName: LONG_VENUE, score: { home: 0, away: 0 }, clockBase: IDLE_CLOCK, home: { teamId: 'en_h', name: '海風隊' }, away: { teamId: 'en_c', name: '山貓隊' } }),
+  myMatch('my_e3', { status: 'finished', kickoffAt: taipeiMs(2027, 1, 9, 9, 0), venueName: LONG_VENUE, score: { home: 2, away: 1 }, finishedAt: taipeiMs(2027, 1, 9, 10, 0) }),
+];
+
 export const P3_MY_MATCHES: Record<string, MatchDoc[]> = {
   pre: MY_PRE,
   done: MY_DONE,
   long: MY_LONG,
+  edge: MY_EDGE,
 };
 
 /**

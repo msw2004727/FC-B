@@ -87,19 +87,22 @@ export function CpGate({
   icon,
   text,
   load,
+  alert = true,
   children,
 }: {
   icon: JSX.Element;
   text: string;
   /** 寫在那一句上的 data-cp-load（測試與示範頁靠它找）。 */
   load?: string;
+  /** false：那一句不帶 role="alert"（不是錯誤，例如建立賽事「登入後才能建立賽事」，不讓報讀立刻打斷）。 */
+  alert?: boolean;
   children?: ComponentChildren;
 }): JSX.Element {
   const hasButtons = toChildArray(children).length > 0;
   return (
     <CpCard class="cps-gate">
       {icon}
-      <p class="cps-gate__text" role="alert" data-cp-load={load}>{text}</p>
+      <p class="cps-gate__text" role={alert ? 'alert' : undefined} data-cp-load={load}>{text}</p>
       {hasButtons ? <div class="cps-gate__btns">{children}</div> : null}
     </CpCard>
   );
@@ -140,7 +143,10 @@ export function CpError({
   return <p class="cps-note cps-warn" role="alert">{text}</p>;
 }
 
-/** 登錄表單不符資格時：原因＋回名單頁。ENTRY_STATUS 不是伺服器代碼，不走 reasonText。 */
+/**
+ * 登錄表單不符資格時：原因＋回名單頁。ENTRY_STATUS 不是伺服器代碼，不走 reasonText。
+ * 長相與記分頁「沒有記分權限＋回賽程」同一種（設計總監 11-21 05:08）：一張卡、中性字色的一句話、整列寬的次要鈕；紅色只留給取消與危險。
+ */
 export function RosterBlocked({
   reason,
   cid,
@@ -154,26 +160,14 @@ export function RosterBlocked({
   const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
-  const href = `/competitions/${cid}/entries/${enId}`;
+  const text = reason === 'ENTRY_STATUS' ? ct('rosterEntryClosed') : reasonText(ct, reason);
   return (
     <CpFrame title={ct('rosterTitle')}>
       <CpCard>
-        {reason === 'ENTRY_STATUS'
-          ? <p class="cps-note cps-warn" role="alert">{ct('rosterEntryClosed')}</p>
-          : <CpError reason={reason} />}
-        <p style="margin-top:12px">
-          <a
-            class="cps-link"
-            href={href}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation(); // 不讓 preact-iso LocationProvider 的全域連結攔截再推一筆歷史（11-20 預演：返回要按兩次）。
-              route(href);
-            }}
-          >
-            {ct('backToRoster')}
-          </a>
-        </p>
+        <p class="cps-note" role="alert">{text}</p>
+        <div class="cps-actions">
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/entries/${enId}`)}>{ct('backToRoster')}</Button>
+        </div>
       </CpCard>
     </CpFrame>
   );

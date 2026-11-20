@@ -100,6 +100,15 @@ export const P3_SHOTS: Record<string, Shot> = {
   'p3-my-pre': { page: ScorerMatchesPage, env: () => myMatchesEnv('pre'), anchor: '進入記分' },
   'p3-my-done': { page: ScorerMatchesPage, env: () => myMatchesEnv('done'), anchor: '已取消' },
   'p3-my-long': { page: ScorerMatchesPage, env: () => myMatchesEnv('long'), anchor: '一二三四五六七八九十示範隊' },
+  // 第 3 批小修補拍（設計總監 05:08）：跨日板卡＋長場地名；射手榜名額附註在 360 寬（直接捲到附註）
+  'p3-my-edge': { page: ScorerMatchesPage, env: () => myMatchesEnv('edge'), anchor: '隔日' },
+  'p3-detail-scorers-cap-end': {
+    page: CompetitionDetailPage,
+    env: () => detailLiveEnv({ stats: P3_STATS_CAP }),
+    clicks: ['射手榜'],
+    anchor: '只顯示前 50 名',
+    scrollTo: '.cp-sc__cap',
+  },
 };
 
 function buttonsNamed(name: string): HTMLButtonElement[] {

@@ -86,6 +86,9 @@ export const U2_SCREENS = [
   'u2-long-similar',
   // 設計總監 04:20（總收尾覆蓋率）：暫停倒數走完、選單含停用的列、開賽鈕停用、全螢幕記分（App 外框下）。
   'u2-timeout-done',
+  // 設計總監 05:08：客隊喊暫停（暫停條左緣客隊色 s4-timeout--away）、客隊暫停收合。
+  'u2-timeout-away',
+  'u2-timeout-away-collapsed',
   'u2-menu-disabled',
   'u2-pre-disabled',
   'u2-fullscreen',
@@ -148,6 +151,8 @@ const ANCHORS: Record<string, string> = {
   'u2-pre-wake-off': '開賽',
   'u2-live-wake-off': '請關閉手機自動鎖定',
   'u2-timeout-done': '繼續計時',
+  'u2-timeout-away': '海風隊暫停 0:47',
+  'u2-timeout-away-collapsed': '海風隊',
   'u2-menu-disabled': '球隊暫停',
   'u2-pre-disabled': '開賽',
   'u2-fullscreen': '34:00',
@@ -597,6 +602,14 @@ function seedOf(name: string): Seed {
     };
   }
   if (name === 'u2-menu' || name === 'u2-timeout-sheet' || name === 'u2-fullscreen') return seedOf('u2-live');
+  if (name === 'u2-timeout-away' || name === 'u2-timeout-away-collapsed') {
+    // 同 u2-timeout-stop（13 秒前開始、剩 0:47），換成客隊（海風隊）喊暫停。
+    const op = name === 'u2-timeout-away' ? 'timeout-op-00000011' : 'timeout-op-00000012';
+    return {
+      match: match({ status: 'live', rev: 2, score: { home: 1, away: 0 }, clockBase: clock(10 * 60, 'h2', false, NOW - 8_000) }),
+      events: [goalAt(1, 'home', 8), { ...timeoutAt(2, op), side: 'away' }],
+    };
+  }
   if (name === 'u2-timeout-done') {
     // 暫停在 60 秒前開始（規則預設 60 秒）：倒數剛好走完，橫幅留著，主鈕變「繼續計時」。
     return {
@@ -853,6 +866,12 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('紅色列＋暫停條', () => heldRow() != null && buttonsNamed('收合').length > 0);
     clickButton('收合');
     await until('收合條', () => buttonsNamed('收合').length === 0 && document.querySelector('.s4-timeout') != null);
+  },
+  'u2-timeout-away': () => until('客隊暫停條', () => document.querySelector('.s4-timeout.s4-timeout--away') != null),
+  'u2-timeout-away-collapsed': async () => {
+    await until('客隊暫停條', () => buttonsNamed('收合').length > 0 && document.querySelector('.s4-timeout--away') != null);
+    clickButton('收合');
+    await until('客隊收合條', () => buttonsNamed('收合').length === 0 && document.querySelector('.s4-timeout--mini.s4-timeout--away') != null);
   },
   'u2-timeout-collapsed': async () => {
     await until('暫停條', () => buttonsNamed('收合').length > 0);

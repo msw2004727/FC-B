@@ -1,27 +1,14 @@
 @import '../competitions.css';
 
 /* 第 4 步預覽。字級只用字級 token。360／390 短語不從中間拆。
- * 主辦後台用平面卡片（s4b-admin），不套賽事頁液態玻璃。 */
+ * 新外觀第 4 批卡 4-D 起，主辦後台（人員、指派、建立邀請）與其他賽事頁同一種玻璃卡與頁面底色（取代原本的平面卡 s4b-admin／s4b-plain）。 */
 
-.s4b { min-width: 0; min-height: 100vh; }
+/* 不設整頁最小高（設計總監 11-21 05:16）：.s4b 與 .cps-root 是同一個節點，底色由 .cps-root 的固定底色層鋪滿；
+ * 原本的 min-height: 100vh 讓短頁面多出一段可捲的空白（人員、指派、建立邀請、我的場次、接受邀請）。 */
+.s4b { min-width: 0; }
 .s4b * { box-sizing: border-box; }
 .s4b .cps-stack,
-.s4b .cps-card,
-.s4b .s4b-plain { min-width: 0; max-width: 100%; }
-
-.s4b-admin.cps-root,
-[data-theme="dark"] .s4b-admin.cps-root {
-  background: var(--color-bg-root);
-  color: var(--color-text-primary);
-}
-
-.s4b-plain {
-  padding: var(--space-4);
-  border: 1px solid var(--d2-line);
-  border-radius: var(--radius-md);
-  background: var(--d2-field-bg);
-  color: var(--d2-text);
-}
+.s4b .cps-card { min-width: 0; max-width: 100%; }
 
 .s4b .ui-button,
 .s4b .ui-button__label,
@@ -44,7 +31,7 @@
 
 .s4b-pair { display: flex; gap: var(--space-2); min-width: 0; }
 .s4b-pair .ui-button { flex: 1 1 0; width: auto; min-inline-size: 0; }
-.s4b-mini .ui-button { flex: 0 0 auto; width: auto; min-inline-size: 0; padding-inline: 10px; }
+.s4b-mini .ui-button { flex: 0 0 auto; width: auto; min-inline-size: 0; }
 .s4b-blockbtn .ui-button { width: 100%; min-inline-size: 0; }
 
 .s4b-h {
@@ -95,85 +82,53 @@ h3.s4b-h {
   gap: 8px;
   min-width: 0;
   padding: 8px 0;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--d2-line);
 }
 .s4b-li:first-child { border-top: 0; padding-top: 0; }
 .s4b-li:last-child { padding-bottom: 0; }
 
-/* 只套人員清單。邀請列也用 .s4b-li，但是兩行，不進這個選擇器。 */
-.s4b-staff-list > .s4b-li {
-  min-height: 56px;
-  height: 56px;
-  padding-block: 0;
-  align-items: center;
-}
-.s4b-staff-list > .s4b-li:first-child,
-.s4b-staff-list > .s4b-li:last-child {
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-.s4b-staff {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) 4.5em 64px;
-  column-gap: 8px;
-  align-items: center;
-  min-width: 0;
-  width: 100%;
-}
-.s4b-staff__name { font-weight: 700; white-space: nowrap; font-size: var(--font-size-body); }
-.s4b-staff .s4b-staff__name {
-  grid-column: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
+/* 人員清單與「尚未使用的邀請」（新外觀卡 4-D）：列高至少 56、上下內距 6、列間細線；卡片上下內距 4。 */
+.s4b-listcard { padding-block: 4px; }
+.s4b-staff-list > .s4b-li,
+.s4b-inv-list > .s4b-li { min-height: 56px; padding: 6px 0; }
+/* 人員一列：名字（太長省略）｜角色標籤｜空白｜N 場（靠右）｜垃圾桶 44。兩行的列：第二行與名字左緣對齊（雙標籤＋到期，或單標籤的到期），垃圾桶跨兩行置中。
+ * 雙標籤不壓縮不拆字、放不下整顆換到下一列（顧問 11-20 staging；標籤的不折行是第 0 批 .ui-badge 那條）。 */
+.s4b-staff { display: grid; grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr) auto 44px; column-gap: 8px; align-items: center; min-width: 0; width: 100%; }
+.s4b-staff > * { grid-row: 1; }
+.s4b-staff__name { grid-column: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
 .s4b-staff > .ui-badge { grid-column: 2; justify-self: start; }
-.s4b-staff__meta {
-  white-space: nowrap;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-body-sm);
-}
-.s4b-staff .s4b-staff__meta {
-  grid-column: 4;
-  text-align: end;
-  font-variant-numeric: tabular-nums;
-}
 .s4b-staff__gap { flex: 1 1 auto; min-width: 0; }
 .s4b-staff > .s4b-staff__gap { grid-column: 3; }
-/* PM 收件修正：gap（第 3 欄）在 DOM 裡排在 meta（第 4 欄）之後，自動排位會把它和移除鈕推到第二列；全部固定在第一列。 */
-.s4b-staff > * { grid-row: 1; }
-.s4b-staff > .s4b-mini { grid-column: 5; justify-self: end; min-width: 0; max-width: 100%; }
-.s4b-staff .ui-badge { justify-self: start; }
-/* 主辦兼記分（顧問 11-20 staging）：角色標籤與到期放第二列，可整顆換行、標籤本身不壓縮不拆字。 */
-.s4b-staff--multi > .s4b-staff__roles {
-  grid-row: 2;
-  grid-column: 1 / 5;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  min-width: 0;
-}
-.s4b-staff__roles > .s4b-role-tag { flex: none; white-space: nowrap; }
-.s4b-staff__roles > .s4b-role-tag .ui-badge__label { white-space: nowrap; overflow-wrap: normal; }
-.s4b-staff__roles > .s4b-staff__exp-inline {
-  white-space: nowrap;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  font-variant-numeric: tabular-nums;
-}
+.s4b-staff > .s4b-staff__meta { grid-column: 4; text-align: end; }
+.s4b-staff > .s4b-mini { grid-column: 5; justify-self: end; min-width: 0; }
+.s4b-staff--exp > .s4b-mini { grid-row: 1 / 3; }
+.s4b-staff > .s4b-staff__exp,
+.s4b-staff--multi > .s4b-staff__roles { grid-row: 2; grid-column: 1 / 5; min-width: 0; }
+.s4b-staff--multi > .s4b-staff__roles { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.s4b-staff__roles > .s4b-role-tag { flex: none; }
+/* 次要色等寬數字的一組字：場數、到期、邀請列的場數與到期（整段不折行） */
+.s4b-staff__meta,
+.s4b-staff__exp,
+.s4b-staff__exp-inline,
+.s4b-inv__n,
+.s4b-inv__exp { margin: 0; font-size: 13px; line-height: 20px; color: var(--d2-text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 垃圾桶 44×44：圖示右緣對齊卡片內容右緣 */
+.s4b-mini .cps-iconbtn { width: 44px; height: 44px; margin-right: -13px; }
+/* 邀請列：第一行角色｜場數 ……… 撤銷（紅字無框、點擊區 44，往外延伸不撐高列、字的右緣對齊卡片內容） */
+.s4b-inv__role { font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
+.s4b-inv .s4b-mini { flex: 0 0 auto; margin: -10px -16px -10px 0; }
+.s4b-inv .s4b-mini .ui-button { min-inline-size: 44px; }
 
-.s4b-day {
-  margin: var(--space-3) 0 var(--space-2);
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  font-weight: 700;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-}
-.s4b-day:first-child { margin-top: 0; }
+/* 指派表單（卡 4-D）：日期小標；第二天起上面一條細線 */
+.s4b-day { margin: 0 0 4px; font-size: 13px; line-height: 20px; font-weight: 700; color: var(--d2-text-2); white-space: nowrap; }
+/* 一場一列（高 48、列間細線）：方框｜時間（窄體數字；跨日的日期在時間上面）｜場地（太長省略）｜對戰（佔剩下的寬度、太長省略）；整列不折行 */
+.s4b-mrow .ui-checkbox__label { align-items: center; gap: 10px; min-height: 48px; padding-block: 0; white-space: nowrap; }
+.s4b-mrow + .s4b-mrow { border-top: 1px solid var(--d2-line); }
+.s4b-mrow__when { display: flex; flex: 0 0 auto; flex-direction: column; justify-content: center; min-width: 46px; }
+.s4b-mrow__when small { font-size: 12px; line-height: 14px; color: var(--d2-text-2); }
+.s4b-mrow__when b { font-size: 19px; line-height: 24px; color: var(--d2-text); }
+.s4b-mrow__court { flex: 0 1 auto; min-width: 40px; max-width: 88px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
+.s4b-mrow__vs { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
 
 .s4b-m {
   display: flex;
@@ -189,9 +144,9 @@ h3.s4b-h {
 /* 兩天之間。每一天包在 .s4b-daygroup 裡；不用 :has()（顧問預審：不支援的瀏覽器會整條丟掉，取代原 div:has() 寫法）。 */
 .s4b-m + .s4b-day,
 .s4b-daygroup + .s4b-daygroup > .s4b-day {
-  margin-top: var(--space-4);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border-strong);
+  margin-top: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--d2-line);
 }
 .s4b-m__top, .s4b-between {
   display: flex;
@@ -208,10 +163,10 @@ h3.s4b-h {
 
 .s4b-err {
   margin: 0;
-  color: var(--color-danger-fg);
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  font-weight: 700;
+  color: var(--d2-danger);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
   white-space: nowrap;
 }
 .s4b-status {
@@ -224,7 +179,7 @@ h3.s4b-h {
 }
 .s4b-foot {
   margin: 0;
-  color: var(--color-text-secondary);
+  color: var(--d2-text-2);
   font-size: var(--font-size-body-sm);
   line-height: var(--line-height-body-sm);
   white-space: nowrap;
@@ -238,30 +193,29 @@ h3.s4b-h {
     box-shadow: none !important;
     text-shadow: none !important;
   }
-  .s4b-plain, .s4b .cps-card { border-color: #000 !important; }
+  .s4b .cps-card { border-color: #000 !important; }
 }
 
-/* 第 4 步 K11：尚未使用的邀請與邀請連結。 */
-.s4b-inv__h { margin-bottom: var(--space-3); }
+/* 第 4 步 K11：尚未使用的邀請與邀請連結（新外觀卡 4-D 改寫）。 */
+h2.s4b-inv__h { margin: 0 0 12px; font-size: 15px; line-height: 24px; }
 .s4b-inv { gap: 2px; width: 100%; }
-.s4b-inv__n { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
-.s4b-inv-list > .s4b-li { padding-block: 10px; }
-.s4b-inv-list > .s4b-li:first-child { padding-top: 0; }
-.s4b-inv-list > .s4b-li:last-child { padding-bottom: 0; }
+/* 邀請連結卡：角色、到期兩行小字；連結是唯讀框（可在任何位置換行、點一下全選、不省略） */
+.s4b-link .s4b-line { font-size: 13px; line-height: 20px; color: var(--d2-text-2); font-variant-numeric: tabular-nums; }
 .s4b-inv__url {
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-input);
-  color: var(--color-text-primary);
+  padding: 10px 12px;
+  border: 1px solid var(--d2-switch-edge);
+  border-radius: 12px;
+  background: var(--d2-field-bg);
+  color: var(--d2-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
+  font-size: 13px;
+  line-height: 20px;
   overflow-wrap: anywhere;
+  word-break: break-all;
+  -webkit-user-select: all;
   user-select: all;
 }
-.s4b .s4b-inv__once { color: var(--d2-text-2); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); }
 /* 接受邀請頁（新外觀卡 3-1，取代 .s4b h2.s4b-accept__name）：一張玻璃卡。賽事名稱是使用者內容、告知句是蒐集個資當下的告知，
  * 兩者都可換行；按鈕整列寬、高 48，接在告知句下 16。提示沿用 .s4b-alert（一般提示），這一頁只加三角驚嘆號並讓句子可換行。 */
 .s4b-accept { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -269,28 +223,12 @@ h2.s4b-accept__name { margin: 0 0 -10px; font-size: 19px; line-height: 28px; fon
 .s4b-accept__notice { margin: 0; font-size: 15px; line-height: 24px; font-weight: 400; color: var(--d2-text); }
 .s4b-accept__btn .ui-button { min-height: 48px; }
 .s4b-accept__btn .ui-button::before { top: 0; bottom: 0; }
-.s4b-accept__alert { display: flex; align-items: flex-start; gap: 6px; }
-.s4b-accept__alert > span { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-.s4b-accept__alert .cps-ico { width: 16px; height: 16px; margin-top: 2px; }
-/* K11 追加：記分指派到期顯示在名字下一行（名字、角色、場次維持第一列）。 */
-/* 不用 :has()（同檔顧問裁定）：<li> 由元件依有無到期加 s4b-li--exp。 */
-.s4b-staff-list > .s4b-li--exp,
-.s4b-staff-list > .s4b-li--exp:first-child,
-.s4b-staff-list > .s4b-li--exp:last-child { height: auto; min-height: 56px; padding-block: 6px; }
-.s4b-staff--exp { row-gap: 0; }
-.s4b-staff > .s4b-staff__exp {
-  grid-row: 2;
-  grid-column: 1 / 5;
-  min-width: 0;
-  white-space: nowrap;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-  font-variant-numeric: tabular-nums;
-}
-.s4b-staff--exp > .s4b-mini { grid-row: 1 / 3; }
-/* 顯示名可能很長：名字欄先吃剩餘空間（到原長為止）再省略，不讓空白留在中間欄。 */
-.s4b-staff { grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr) 4.5em 64px; }
+.s4b-accept__alert,
+.s4b-inv__once { display: flex; align-items: flex-start; gap: 6px; }
+.s4b-accept__alert > span,
+.s4b-inv__once > span { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.s4b-accept__alert .cps-ico,
+.s4b-inv__once .cps-ico { width: 16px; height: 16px; margin-top: 2px; }
 /* 我的場次（新外觀卡 3-3）：離現在最近的一場升成記分板卡（全頁唯一的實心青綠鈕），其餘一天一張玻璃卡。
  * 日期分組與列用這一頁自己的 class；.s4b-m 只當「一場」的標記保留（共用的 .s4b-m／.s4b-day 規則給指派表單與預覽畫面，不動）。 */
 .s4b-mgroup + .s4b-mgroup { margin-top: 4px; }

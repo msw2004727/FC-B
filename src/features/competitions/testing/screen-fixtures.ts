@@ -1176,6 +1176,23 @@ function longBoard(): { summary: SummaryEntry[]; standings: StandingDoc[] } {
   };
 }
 
+// ── 設計總監 04:56 補的長文字狀態（長度都是正式輸入框上限：組別名 30、結束原因 100、公告 300）──
+export const LONG_TEAM_2 = '新北市蘆洲區示範青年足球甲隊';
+export const LONG_DIVISION = '三重區國小高年級男女混合五人制足球邀請組（五、六年級生限定）';
+export const LONG_END_REASON = '因颱風警報與場地主管機關通知，示範運動公園全區自即日起封閉整修，剩餘第四輪與冠軍戰無法於原定期間內進行，經主辦與各隊領隊會議討論後決定提前結束賽事，名次依目前積分榜認列，報名費將依比例退還，敬請見諒。';
+export const LONG_NOTICE = '各隊領隊請注意：第三輪起比賽地點改到三重區示範運動公園第二足球場，集合時間提前為開賽前四十分鐘，請攜帶球員證件正本供裁判核對；停車場因施工僅開放北側入口，建議搭乘捷運至示範站二號出口步行約八分鐘。若遇大雨或雷擊警報，將於當日上午七點前在本頁發布是否延賽的公告，請各隊務必指派專人留意並轉知隊員。另外提醒：場邊禁止吸菸與飲酒，垃圾請自行帶走，違者依規章扣除行為分。如有任何問題，請在賽前一日晚上九點前透過聯絡主辦的方式與我們聯繫，賽事當日現場服務台設於第一足球場入口旁的帳篷，服務台另備有急救箱、冰敷袋與飲用水，球員受傷請先到服務台由駐場防護員評估；遺失物品也請到服務台登記，賽後一週以內可憑證件領回。';
+
+/** 1/9 比賽日：晚上 22:30 一場、凌晨 01:30（日曆 1/10，比賽日仍是 1/9，時刻寫「隔日 01:30」）一場，兩場都有長隊名。 */
+function overnightBoard(): { summary: SummaryEntry[]; standings: StandingDoc[] } {
+  return {
+    summary: [
+      summaryEntry({ id: 'on1', k: taipeiMs(2027, 1, 9, 22, 30), st: 'scheduled', no: 1, v: LONG_VENUE, h: { id: 'en_l1', n: LONG_TEAM }, a: { id: 'en_l2', n: '海風隊' } }),
+      summaryEntry({ id: 'on2', k: taipeiMs(2027, 1, 10, 1, 30), st: 'scheduled', no: 2, v: LONG_VENUE, h: { id: 'en_l3', n: LONG_TEAM_2 }, a: { id: 'en_l1', n: LONG_TEAM } }),
+    ],
+    standings: [],
+  };
+}
+
 /** 以俱樂部報隊：一個或兩個代表俱樂部。 */
 function clubRep(count: 1 | 2): CpActor {
   const clubs = count === 1
@@ -1245,6 +1262,20 @@ function longManageBundle(): CpBundle {
     ...b,
     competition: competition({ name: LONG_COMP_NAME }),
     entries: b.entries.map((row) => (names[row.id] ? { ...row, name: names[row.id] ?? row.name } : row)),
+  };
+}
+
+/** 待審卡的長俱樂部名（俱樂部名稱上限 30 字）與長聯絡人（設計總監 05:19 補驗）。 */
+function longPendingBundle(): CpBundle {
+  const b = manageBundle();
+  const names: Record<string, string> = {
+    en_pa: '新北市三重區二〇二七年春季社區青年足球俱樂部一隊',
+    en_pb: LONG_TEAM_2,
+  };
+  return {
+    ...b,
+    entries: b.entries.map((row) => (names[row.id] ? { ...row, name: names[row.id] ?? row.name } : row)),
+    privates: b.privates.map((row) => (row.id === 'en_pa' ? { ...row, contactName: '歐陽示範一二三四五六七八九十' } : row)),
   };
 }
 
@@ -1560,6 +1591,31 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       const b = env.bundle;
       return b ? { ...env, bundle: { ...b, entries: b.entries.map((row, index) => (index === 0 ? { ...row, name: LONG_TEAM } : row)) } } : env;
     }
+    case 'real-long-overnight':
+      // 設計總監 04:56：比賽列長隊名＋跨午夜「隔日 01:30」。
+      return detailEnv(memberActor, LIVE_NOW, { category: 'cup' }, overnightBoard());
+    case 'real-long-division': {
+      // 設計總監 04:56：組別名 30 字（輸入框上限），招募中的組別卡。
+      const env = detailEnv(memberActor, NOW, {}, { summary: [], standings: [] });
+      const b = env.bundle;
+      return b ? { ...env, bundle: { ...b, divisions: b.divisions.map((row, index) => (index === 0 ? { ...row, name: LONG_DIVISION } : row)) } } : env;
+    }
+    case 'real-ended-long-reason':
+      // 設計總監 04:56：結束原因 100 字（輸入框上限），同 real-ended-host 的管理員視角。
+      return detailEnv(adminActor, DONE_NOW, { endedAt: ENDED_AT, endedBy: 'host', endReason: LONG_END_REASON }, championBoard());
+    case 'real-notice-long':
+      // 設計總監 04:56：一則 300 字公告（輸入框上限）＋一則短的系統公告，觀眾視角。
+      return detailEnv(memberActor, NOW, {
+        hostType: 'personal',
+        hostTeamId: null,
+        hostDisplay: '王示範',
+        feeNote: null,
+        contactNote: null,
+        notices: [
+          notice('nt_long', LONG_NOTICE, 'host', taipeiMs(2026, 12, 10, 9, 0)),
+          notice('nt_sys', '賽程摘要已更新', 'system', taipeiMs(2026, 12, 8, 12, 0)),
+        ],
+      }, { summary: [], standings: [] });
     case 'real-draft-host':
       return detailEnv(hostActor, NOW, { status: 'draft' }, { summary: [], standings: [] }, HOST_STAFF);
     case 'real-scorer':
@@ -1630,6 +1686,8 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return base(actions, hostActor, longManageBundle(), { manageTab: 'approved' });
     case 'host-long-pending':
       return base(actions, hostActor, longManageBundle(), { manageTab: 'pending' });
+    case 'host-pending-longclub':
+      return base(actions, hostActor, longPendingBundle(), { manageTab: 'pending' });
     case 'gate-guest':
       return gateEnv('guest', actions);
     case 'gate-member':

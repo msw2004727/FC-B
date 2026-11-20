@@ -98,24 +98,37 @@ describe('記分板共用元件與窄體數字字型（第 0 批卡 0-6）', () 
   });
 });
 
-describe('積分榜欄寬（實量覆核 7.3；新外觀卡 3-4 改成 <table>，整段取代原本 .cp3-st__r 格線那一條）', () => {
-  it('固定欄寬照 3.2，360 寬隊名文字至少放得下 4 個中文字加省略號，且仍單行省略', () => {
-    const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');
-    const num = (re: RegExp) => Number(css.match(re)?.[1] ?? NaN);
-    const fixed = num(/\.cp-tbl--st th:nth-child\(1\) \{ width: (\d+)px; \}/)
-      + num(/\.cp-tbl--st th:nth-child\(6\) \{ width: (\d+)px; \}/) * 4
-      + num(/\.cp-tbl--st th:nth-child\(7\) \{ width: (\d+)px; \}/)
-      + num(/\.cp-tbl--st th:nth-child\(8\) \{ width: (\d+)px; \}/)
-      + num(/\.cp-tbl--st th:nth-child\(9\) \{ width: (\d+)px; \}/);
-    expect(fixed).toBe(24 + 18 * 4 + 36 + 28 + 44);
-    // 360 寬：.app-main 8×2、.cps-root 8×2、表格卡左 10 右 1 → 表格 317；隊名格內距 2＋4、隊徽 24、隊徽與字距 6
-    const text = 360 - 16 - 16 - 11 - fixed - 6 - 24 - 6;
-    // 13px：4 個字 52 加省略號約 13
-    expect(text).toBeGreaterThanOrEqual(13 * 4 + 13);
+describe('積分榜欄寬（實量覆核 7.3；新外觀卡 3-4 改成 <table>；設計總監 05:12 最後版）', () => {
+  const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');
+  const num = (re: RegExp) => Number(css.match(re)?.[1] ?? NaN);
+  const narrow = num(/\.cp-tbl--st th:nth-child\(6\) \{ width: (\d+)px; \}/);
+  const rank = num(/\.cp-tbl--st th:nth-child\(1\) \{ width: (\d+)px; \}/);
+  const points = num(/\.cp-tbl--st th:nth-child\(9\) \{ width: (\d+)px; \}/);
+  // 360 寬：.app-main 8×2、.cps-root 8×2、表格卡左 10 右 1；隊名格右內距 2、隊徽 24、隊徽與字距 6
+  const textOf = (goals: number, diff: number) => 360 - 16 - 16 - 11 - (rank + narrow * 4 + goals + diff + points) - 2 - 24 - 6;
+
+  it('賽勝和負各 20（兩位數相鄰兩欄分得開）；一般組 進/失 36、淨勝 28，隊名至少 5 個字寬', () => {
+    expect(narrow).toBe(20);
+    const goals = num(/\.cp-tbl--st th:nth-child\(7\) \{ width: (\d+)px; \}/);
+    const diff = num(/\.cp-tbl--st th:nth-child\(8\) \{ width: (\d+)px; \}/);
+    expect([rank, goals, diff, points]).toEqual([24, 36, 28, 44]);
+    // 13px：5 個字 65（原本 18px 欄時是 77，少 4px，不到半個字）
+    expect(textOf(goals, diff)).toBeGreaterThanOrEqual(13 * 5);
+  });
+
+  it('有人進球、失球或淨勝 ≥ 100 的組：進/失 46、淨勝 34，隊名仍留 3 個字加省略號', () => {
+    const goals = num(/\.cp-tbl--st-wide th:nth-child\(7\) \{ width: (\d+)px; \}/);
+    const diff = num(/\.cp-tbl--st-wide th:nth-child\(8\) \{ width: (\d+)px; \}/);
+    expect([goals, diff]).toEqual([46, 34]);
+    expect(textOf(goals, diff)).toBeGreaterThanOrEqual(13 * 3 + 13);
+  });
+
+  it('固定欄寬單行；數字格不省略（被截＝顯示錯的資料），只有隊名格省略；名次格不裁', () => {
     expect(css).toMatch(/\.cp-tbl \{[^}]*table-layout: fixed;/);
-    expect(css).toMatch(/\.cp-tbl th, \.cp-tbl td \{[^}]*white-space: nowrap;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
+    expect(css).toMatch(/\.cp-tbl th, \.cp-tbl td \{[^}]*white-space: nowrap;/);
+    expect(css).toMatch(/\.cp-tbl--st th, \.cp-tbl--st td \{[^}]*overflow: visible;[^}]*text-overflow: clip;/);
+    expect(css).toMatch(/\.cp-tbl--st \.t \{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
     expect(css).toMatch(/\.cp3-tn em \{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
-    // 名次格不裁：「同分／裁定」往外擴的點擊區不被 overflow 裁掉
     expect(css).toMatch(/\.cp-tbl td\.rk \{[^}]*overflow: visible;/);
   });
 });

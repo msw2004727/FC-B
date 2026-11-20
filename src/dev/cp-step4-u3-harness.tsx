@@ -59,10 +59,19 @@ function assignDays(): AssignDayGroup[] {
   return groupMatches(S4B_MATCHES).map((group) => ({
     key: group.key,
     heading: dayText(group.month, group.day, weekdayIndex(group.key) ?? group.weekday),
-    matches: group.matches.map((match) => ({
-      id: match.id,
-      label: `${clockLabel(match.kickoffAt).time} ${match.venue} ${vsLabel(match)}`,
-    })),
+    matches: group.matches.map((match) => {
+      // 新外觀卡 4-D：場次拆三段（時間、場地、對戰），跨日的日期另放；整句仍是報讀名稱（同 StaffAssignPage 的 assignDays）。
+      const clock = clockLabel(match.kickoffAt).time;
+      const cut = clock.lastIndexOf(' ');
+      return {
+        id: match.id,
+        label: `${clock} ${match.venue} ${vsLabel(match)}`,
+        ...(cut > 0 ? { day: clock.slice(0, cut) } : {}),
+        time: cut > 0 ? clock.slice(cut + 1) : clock,
+        venue: match.venue,
+        vs: vsLabel(match),
+      };
+    }),
   }));
 }
 
