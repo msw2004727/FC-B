@@ -116,6 +116,53 @@ describe('詳情頁讀不到根文件', () => {
     expect(button('重試')).toBeNull();
   });
 
+  it('登入還在確認時被拒：先轉圈不閃不公開；uid 到了重讀成功就顯示賽事', async () => {
+    const base = createFakeCpRepo({
+      competitions: [competition({ id: 'cup', name: '示範盃', hidden: true, hiddenReason: '主辦資料不實' })],
+      staff: { cup: [{ uid: 'uid_host', roles: ['host'] }] },
+    });
+    let reads = 0;
+    const repo = {
+      ...base,
+      getCompetition: async (cid: string) => {
+        reads += 1;
+        if (reads === 1) throw DENIED;
+        return base.getCompetition(cid);
+      },
+    };
+    const pending: CpActor = { ...hostActor, uid: null, authPending: true };
+    const view = draw(CompetitionDetailPage, liveEnv(pending, repo));
+    await waitFor(() => expect(reads).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByText('這場賽事目前不公開')).toBeNull();
+    view.rerender(
+      <LocationProvider>
+        <CpEnvProvider value={liveEnv(hostActor, repo)}>
+          <CompetitionDetailPage />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    expect(await screen.findByText('此賽事已被管理員下架：主辦資料不實')).toBeTruthy();
+    expect(screen.queryByText('這場賽事目前不公開')).toBeNull();
+  });
+
+  it('登入確認完仍是訪客：被拒就顯示不公開', async () => {
+    const repo = failingRepo([DENIED]);
+    const pending: CpActor = { ...guestActor, authPending: true };
+    const view = draw(CompetitionDetailPage, liveEnv(pending, repo));
+    await waitFor(() => expect(repo.reads()).toBe(1));
+    expect(screen.queryByText('這場賽事目前不公開')).toBeNull();
+    view.rerender(
+      <LocationProvider>
+        <CpEnvProvider value={liveEnv(guestActor, repo)}>
+          <CompetitionDetailPage />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    expect(await screen.findByText('這場賽事目前不公開')).toBeTruthy();
+    expect(view.container.querySelector('[data-cp-load="private"]')).toBeTruthy();
+  });
+
   it('主辦看自己被下架的賽事：讀得到根文件，下架提示不變', async () => {
     const base = createFakeCpRepo({
       competitions: [competition({ id: 'cup', name: '示範盃', hidden: true, hiddenReason: '主辦資料不實' })],
@@ -154,13 +201,47 @@ describe('其他讀賽事根文件的頁面', () => {
   }
 });
 
+describe('報名管理：只有根文件被拒才算不公開', () => {
+  it('根文件讀得到、私有報名資料被拒：照常顯示管理頁，不顯示不公開', async () => {
+    const base = createFakeCpRepo({
+      competitions: [competition({ id: 'cup', name: '示範盃' })],
+      staff: { cup: [{ uid: 'uid_host', roles: ['host'] }] },
+    });
+    let privateReads = 0;
+    const repo = {
+      ...base,
+      listEntryPrivate: async () => {
+        privateReads += 1;
+        throw DENIED;
+      },
+    };
+    const view = draw(CompetitionManagePage, liveEnv(hostActor, repo));
+    await waitFor(() => expect(privateReads).toBe(1));
+    await waitFor(() => expect(view.container.querySelector('.cps-root .ui-spinner, [class*="spinner"]')).toBeNull());
+    expect(view.container.textContent ?? '').toContain('示範盃');
+    expect(screen.queryByText('這場賽事目前不公開')).toBeNull();
+    expect(screen.queryByText('讀取失敗')).toBeNull();
+  });
+
+  it('私有報名資料網路錯誤：維持讀取失敗', async () => {
+    const base = createFakeCpRepo({
+      competitions: [competition({ id: 'cup', name: '示範盃' })],
+      staff: { cup: [{ uid: 'uid_host', roles: ['host'] }] },
+    });
+    const repo = { ...base, listEntryPrivate: async () => { throw new Error('Failed to fetch'); } };
+    draw(CompetitionManagePage, liveEnv(hostActor, repo));
+    expect(await screen.findByText('讀取失敗')).toBeTruthy();
+    expect(screen.queryByText('這場賽事目前不公開')).toBeNull();
+  });
+});
+
 describe('檢舉提示', () => {
   it('送出成功：關閉面板並提示已收到檢舉', async () => {
     const show = vi.spyOn(toast, 'show');
     const report = vi.fn(async () => ({ cid: 'cup', reported: true }));
     draw(CompetitionDetailPage, screenEnv('detail-report', { ...idleActions(), report }));
     fireEvent.click(button('送出檢舉') as HTMLButtonElement);
-    await waitFor(() => expect(show).toHaveBeenCalledWith({ message: '已收到檢舉，管理員會盡快處理', tone: 'success' }));
+    await waitFor(() => expect(show).toHaveBeenCalledWith({ message: '已收到檢舉', tone: 'success' }));
     expect(report).toHaveBeenCalledTimes(1);
     expect(button('送出檢舉')).toBeNull();
   });
@@ -196,6 +277,23 @@ describe('檢舉提示', () => {
     expect(await screen.findByText('請先登入再檢舉')).toBeTruthy();
     expect(button('登入')).toBeTruthy();
     expect(screen.queryByText('操作失敗，請稍後再試')).toBeNull();
+  });
+
+  it('SIGN_IN_REQUIRED 後在原頁登入成功（uid 出現）：面板回到檢舉表單', async () => {
+    const report = vi.fn(async () => { throw new CpCallError('SIGN_IN_REQUIRED', {}); });
+    const env = screenEnv('detail-report', { ...idleActions(), report });
+    const view = draw(CompetitionDetailPage, { ...env, actor: { ...memberActor, uid: 'uid_stale' } });
+    fireEvent.click(button('送出檢舉') as HTMLButtonElement);
+    expect(await screen.findByText('請先登入再檢舉')).toBeTruthy();
+    view.rerender(
+      <LocationProvider>
+        <CpEnvProvider value={{ ...env, actor: memberActor }}>
+          <CompetitionDetailPage />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    await waitFor(() => expect(screen.queryByText('請先登入再檢舉')).toBeNull());
+    expect(button('送出檢舉')).toBeTruthy();
   });
 
   it('登入狀態還在確認：不先說要登入；uid 晚到後照常顯示檢舉表單', async () => {

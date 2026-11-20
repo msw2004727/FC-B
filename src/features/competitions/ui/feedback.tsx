@@ -63,7 +63,7 @@ export function CpLoadFailed({
   if (fail === 'hidden') {
     return (
       <CpFrame title={title}>
-        <p class="cps-note" role="alert" data-cp-load="hidden">{ct('reason.COMPETITION_HIDDEN')}</p>
+        <p class="cps-note" role="alert" data-cp-load="private">{ct('reason.COMPETITION_HIDDEN')}</p>
         <Button variant="secondary" onClick={() => route('/tournaments', true)}>{ct('backToTournaments')}</Button>
       </CpFrame>
     );

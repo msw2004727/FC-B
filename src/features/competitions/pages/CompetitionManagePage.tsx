@@ -46,8 +46,21 @@ async function loadManage(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
     repClubIds: representativeClubs(env.actor).map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
   }) : false;
-  const privates = manage ? await env.repo.listEntryPrivate(cid, null) : [];
+  const privates = manage ? await readPrivates(env, cid) : [];
   return { competition, divisions, entries, roster: [], privates, staff };
+}
+
+/**
+ * 私有報名資料。前端的可管理判定與 Rules（俱樂部代表鏡像、token 角色）可能暫時不一致，
+ * 這時被拒只當成沒有私有資料，不把讀得到的公開賽事當成不公開；不公開只看根文件那批讀取。
+ */
+async function readPrivates(env: CpInjectedEnv, cid: string): Promise<EntryPrivateDoc[]> {
+  try {
+    return await env.repo.listEntryPrivate(cid, null);
+  } catch (err) {
+    if (loadFailOf(err) === 'hidden') return [];
+    throw err;
+  }
 }
 
 function payLabel(ct: CompetitionsT, status: PaymentStatus): { label: string; tone: 'success' | 'neutral' } {

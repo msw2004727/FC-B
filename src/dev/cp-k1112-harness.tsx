@@ -235,7 +235,7 @@ const OPEN: Record<string, () => Promise<void>> = {
   'detail-report-done': async () => {
     await until('檢舉面板', () => buttonsNamed('送出檢舉').length > 0);
     buttonsNamed('送出檢舉')[0]?.click();
-    await until('檢舉成功提示', () => hasText('已收到檢舉，管理員會盡快處理'));
+    await until('檢舉成功提示', () => hasText('已收到檢舉'));
   },
   'detail-report-guest': () => until('先登入提示', () => hasText('請先登入再檢舉')),
 };

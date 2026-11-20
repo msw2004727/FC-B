@@ -237,6 +237,11 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     mounted.current = false;
   }, []);
 
+  // 伺服器回要先登入後，在原頁登入成功（沒有整頁導向）：清掉錯誤，檢舉面板回到表單。
+  useEffect(() => {
+    if (env.actor.uid) setReportError(null);
+  }, [env.actor.uid]);
+
   // 只在換賽事時清全部賽程快取。首次掛載不清：effect 晚於第一次繪製，
   // 使用者若在那之前就按展開，剛讀到的全集會被清掉、展開後一片空白（截圖驗收抓到）。
   const fullCid = useRef(cid);
@@ -407,7 +412,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const competition = bundle?.competition ?? null;
-  if (loadState === 'loading') {
+  // 登入還在確認時先轉圈：主辦從深連結進來，uid 到之前會被拒，不先閃「不公開」（uid 到了 effect 會重讀）。
+  if (loadState === 'loading' || (loadState === 'hidden' && env.actor.authPending)) {
     return <div class="cps-root"><PageSpinner /></div>;
   }
   if (!competition || loadState === 'error' || loadState === 'hidden') {
