@@ -344,7 +344,14 @@ export async function loadViewer(
     ? { uid, teamIds: userData.teamIds, teamId: userData.teamId }
     : null;
   const role = userInfo.role;
-  if (userDocRead) onRole?.(role);
+  if (userDocRead) {
+    // 通知端出錯不得讓完整 viewer 載入失敗（11-20 Opus 審 P3-1）。
+    try {
+      onRole?.(role);
+    } catch (err) {
+      warnOnce('onRole', err);
+    }
+  }
 
   const roleDocPromise: Promise<DocResult> = role === 'user'
     ? Promise.resolve({ ok: true, data: null })

@@ -7,7 +7,7 @@ import { emit } from '@/core/events';
 import { getCurrentUser } from '@/data/auth';
 import { getFirebase } from '@/data/firebase';
 import { getDoc, getDocs } from 'firebase/firestore';
-import { getSettledViewerRole, requestViewerRefresh, resetViewerCacheForTest, useSettledViewerRole, useViewer } from './viewer';
+import { getSettledViewerRole, loadViewer, requestViewerRefresh, resetViewerCacheForTest, useSettledViewerRole, useViewer } from './viewer';
 
 vi.mock('@/data/auth', () => ({ getCurrentUser: vi.fn() }));
 vi.mock('@/data/firebase', () => ({ getFirebase: vi.fn() }));
@@ -227,5 +227,16 @@ describe('角色已確定訊號', () => {
     expect(getSettledViewerRole('u1')).toBe('super_admin');
     view.unmount();
     expect(getSettledViewerRole('u1')).toBeNull();
+  });
+});
+
+describe('loadViewer 的 onRole', () => {
+  it('onRole 拋錯也不讓完整 viewer 載入失敗（11-20 Opus 審 P3-1）', async () => {
+    holdRest?.resolve();
+    const viewer = await loadViewer('u1', undefined, () => {
+      throw new Error('listener boom');
+    });
+    expect(viewer.role).toBe('super_admin');
+    expect(viewer.displayName).toBe('甲');
   });
 });

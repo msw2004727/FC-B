@@ -54,6 +54,7 @@ export function LiveBoundary({
 
   // 角色只等 users 文件（settledRole），不等球隊掃描等其餘 viewer 欄位（顧問 11-20：閘門只等角色確定）。
   // 完整 viewer 到了就以 viewer.role 為準；兩者都沒到時 rolePending，閘門先不判定（Opus 審 P2-1）。
+  // 完整 viewer 若一直沒到，role 停在已確定的角色、其餘欄位維持最小值：刻意如此，比一直 pending 好（11-20 Opus 審 P3-3）。
   const settledRole = useSettledViewerRole(viewer.uid);
   const fullLoaded = !!viewer.uid && isViewerPermissionsLoaded(viewer);
   const actor: CpActor = {
