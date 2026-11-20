@@ -1,17 +1,13 @@
-// 詳情的封面、賽程、積分榜、預熱／進行中／已結束。class 對照預覽 harness 的 cp3-*。
+// 詳情的賽程、積分榜、預熱／進行中／已結束的分頁內容。class 對照預覽 harness 的 cp3-*。頂部在 detail-hero.tsx。
 
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { Badge, type BadgeTone } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Tabs } from '@/ui/Tabs';
 import type { CompetitionsT } from '../i18n';
 import {
-  championName,
-  daysUntilStart,
   formatGoalDiff,
   groupSchedule,
-  liveStrip,
   scheduleHeading,
   standingHeading,
   standingLines,
@@ -26,40 +22,10 @@ import { ScorersTable } from '../live/ScorersTable';
 import type { CompetitionPhase } from '../data/present';
 import { pkScoreLabel } from '../live/copy';
 import { LiveScoreBadge } from '../live/LiveScoreBadge';
-import { crestFromEntry, TeamCrest } from './TeamCrest';
+import { TeamCrest } from './TeamCrest';
+import { MatchVs, MatchWhen } from './match-row';
 import { CpCard } from './shell';
-
-function CoverGlyph({ category }: { category: CompetitionCategory }): JSX.Element {
-  if (category === 'cup') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8M9 17h6" />
-      </svg>
-    );
-  }
-  if (category === 'friendly') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7l4 3-1.5 4.5h-5L8 10z" />
-      <path d="M12 3v4M21 10l-5 0M3 10l5 0M7 20l2.5-5.5M17 20l-2.5-5.5" />
-    </svg>
-  );
-}
-
-function TrophyIcon(): JSX.Element {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8M9 17h6" />
-    </svg>
-  );
-}
+import { StatusTag, type StatusKind } from './status-tag';
 
 function ChevronIcon(): JSX.Element {
   return (
@@ -75,39 +41,6 @@ export function categoryText(ct: CompetitionsT, category: CompetitionCategory): 
   return ct('categoryLeague');
 }
 
-export function CategoryCover({ category, label }: { category: CompetitionCategory; label: string }): JSX.Element {
-  return (
-    <div class="cp3-cover">
-      <div class={`cp3-cover__def cp3-cover__def--${category}`} aria-hidden="true">
-        <CoverGlyph category={category} />
-      </div>
-      <span class={`cp3-cover__cat cp3-cover__cat--${category}`}>{label}</span>
-    </div>
-  );
-}
-
-function SideName({
-  entryId,
-  name,
-  crests,
-  align,
-  logo,
-}: {
-  entryId: string;
-  name: string;
-  crests: readonly EntryDoc[];
-  align: 'home' | 'away';
-  /** 摘要 h.l／a.l。有值就用這張；沒有才用報名隊徽或字首。 */
-  logo?: string | null;
-}): JSX.Element {
-  const crest = crestFromEntry(entryId, name, crests);
-  const mark = <TeamCrest teamId={crest.teamId} name={crest.name} teamLogo={logo || crest.teamLogo} size={22} />;
-  if (align === 'home') {
-    return <span class="cp3-tn cp3-tn--h"><em>{name}</em>{mark}</span>;
-  }
-  return <span class="cp3-tn">{mark}<em>{name}</em></span>;
-}
-
 function standingCrest(teamId: string, name: string, crests: readonly EntryDoc[]): {
   teamId: string;
   name: string;
@@ -120,11 +53,11 @@ function standingCrest(teamId: string, name: string, crests: readonly EntryDoc[]
   return { teamId: found.teamId || teamId, name: name || found.name, teamLogo: found.teamLogo };
 }
 
-function markBadge(ct: CompetitionsT, mark: PublicMark): { label: string; tone: BadgeTone } {
-  if (mark === 'pending') return { label: ct('matchPending'), tone: 'warning' };
-  if (mark === 'forfeit') return { label: ct('matchForfeit'), tone: 'danger' };
-  if (mark === 'cancelled') return { label: ct('matchCancelled'), tone: 'danger' };
-  return { label: ct('matchMoved'), tone: 'info' };
+function markBadge(ct: CompetitionsT, mark: PublicMark): { label: string; kind: StatusKind } {
+  if (mark === 'pending') return { label: ct('matchPending'), kind: 'neutral' };
+  if (mark === 'forfeit') return { label: ct('matchForfeit'), kind: 'neutral' };
+  if (mark === 'cancelled') return { label: ct('matchCancelled'), kind: 'cancelled' };
+  return { label: ct('matchMoved'), kind: 'neutral' };
 }
 
 function headingText(ct: CompetitionsT, heading: GroupHeading | null): string | null {
@@ -166,6 +99,7 @@ export function MatchSchedule({
   standings,
   crests,
   clock = 'keep',
+  nextIds,
   onOpenMatch,
 }: {
   ct: CompetitionsT;
@@ -173,6 +107,8 @@ export function MatchSchedule({
   standings: readonly StandingDoc[];
   crests: readonly EntryDoc[];
   clock?: ScheduleClock;
+  /** 「下一場」的場次 id（同一時間多場都算）。只有進行中、clock 是 keep 才傳。 */
+  nextIds?: ReadonlySet<string>;
   /** 每一場都能進單場頁，含未開賽。 */
   onOpenMatch?: (mtId: string) => void;
 }): JSX.Element {
@@ -191,43 +127,39 @@ export function MatchSchedule({
                   <ul class="cp3-ml">
                     {day.matches.map((match) => {
                       const badge = clock === 'keep' && match.mark ? markBadge(ct, match.mark) : null;
+                      const live = clock === 'keep' && match.live;
+                      // 「下一場」標籤：這一列沒有別的狀態標籤、也不是進行中才掛
+                      const next = clock === 'keep' && !badge && !live && nextIds?.has(match.id) === true;
+                      const off = clock === 'cancelled' || match.mark === 'cancelled';
+                      const mod = next ? ' cp3-m--next' : live ? ' cp3-m--live' : off ? ' cp3-m--off' : '';
                       return (
                         <li
-                          class="cp3-m"
+                          class={`cp3-m${mod}`}
                           key={match.id}
                           onClick={onOpenMatch ? () => onOpenMatch(match.id) : undefined}
                         >
                           <div class="cp3-m__top">
                             {clock === 'tbd' ? (
-                              <span class="cp3-m__when"><b>{ct('compTbd')}</b></span>
+                              <MatchWhen time={ct('compTbd')} />
                             ) : clock === 'cancelled' ? (
-                              <span class="cp3-m__when"><b>{ct('cancelled')}</b></span>
+                              <MatchWhen time={ct('cancelled')} />
                             ) : match.time == null ? (
-                              <span class="cp3-m__when"><b>{ct('timeTbd')}</b></span>
+                              <MatchWhen time={ct('timeTbd')} />
                             ) : (
-                              <span class="cp3-m__when">
-                                <b>{match.time}</b>
-                                {match.venue ? `　${match.venue}` : ''}
-                              </span>
+                              <MatchWhen time={match.time} venue={match.venue} />
                             )}
-                            {badge ? <Badge tone={badge.tone} label={badge.label} size="sm" /> : null}
-                            {clock === 'keep' && match.live ? <LiveScoreBadge kind="live" /> : null}
+                            {badge ? <StatusTag kind={badge.kind} label={badge.label} /> : null}
+                            {next ? <StatusTag kind="next" label={ct('boardNext')} /> : null}
+                            {live ? <LiveScoreBadge kind="live" /> : null}
                             {clock === 'keep' && match.corrected ? <LiveScoreBadge kind="corrected" /> : null}
                           </div>
-                          <div class="cp3-m__vs">
-                            <span class="h">
-                              <SideName entryId={match.homeId} name={match.homeName} crests={crests} align="home" logo={match.homeLogo} />
-                            </span>
-                            {match.score ? (
-                              <span class="s">{match.score[0]}：{match.score[1]}</span>
-                            ) : (
-                              <span class="s vs">vs</span>
-                            )}
-                            <span class="a">
-                              <SideName entryId={match.awayId} name={match.awayName} crests={crests} align="away" logo={match.awayLogo} />
-                            </span>
-                            {match.pk ? <span class="cp3-m__pk">{pkScoreLabel(match.pk[0], match.pk[1])}</span> : null}
-                          </div>
+                          <MatchVs
+                            home={{ id: match.homeId, name: match.homeName, logo: match.homeLogo }}
+                            away={{ id: match.awayId, name: match.awayName, logo: match.awayLogo }}
+                            crests={crests}
+                            score={match.score}
+                            pk={match.pk ? pkScoreLabel(match.pk[0], match.pk[1]) : null}
+                          />
                           {clock === 'keep' && match.reason ? (
                             <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{match.reason}</p>
                           ) : null}
@@ -350,38 +282,6 @@ function scheduleGroups(
   );
 }
 
-function PhaseStrip({
-  ct,
-  phase,
-  summary,
-  now,
-  badge,
-  firstMatchAt,
-}: {
-  ct: CompetitionsT;
-  phase: 'warm' | 'live';
-  summary: readonly SummaryEntry[];
-  now: number;
-  badge: { label: string; tone: BadgeTone };
-  firstMatchAt: number;
-}): JSX.Element {
-  const strip = liveStrip(summary, now);
-  // ASSUMPTION: 沒有更晚的場次時只寫「今天 N 場」，不硬湊下一場時間。
-  const text = phase === 'warm'
-    ? ct('countdown', { n: daysUntilStart(firstMatchAt, now) })
-    : (strip.next
-      ? ct('todayLine', { n: strip.today, time: strip.next })
-      : ct('todayOnly', { n: strip.today }));
-  return (
-    <CpCard>
-      <div class="cp3-strip">
-        <span class="cp3-strip__txt">{text}</span>
-        <Badge tone={badge.tone} label={badge.label} size="sm" />
-      </div>
-    </CpCard>
-  );
-}
-
 function ScorerBlock({
   ct,
   choices,
@@ -427,17 +327,15 @@ function ScorerBlock({
 export function DetailPhaseBody({
   ct,
   phase,
-  firstMatchAt,
   divisions,
   crests,
   summary,
   standings,
   now,
-  badge,
-  statusShownAbove = false,
   fullSchedule,
   onRequestFull,
   clock = 'keep',
+  nextIds,
   renderStandings,
   onOpenStandings,
   venues,
@@ -447,20 +345,18 @@ export function DetailPhaseBody({
 }: {
   ct: CompetitionsT;
   phase: Exclude<CompetitionPhase, 'recruit'>;
-  firstMatchAt: number;
   divisions: readonly DivisionDoc[];
   crests: readonly EntryDoc[];
   /** 預熱＝首場那天；進行中＝今天。已結束首屏是空的。 */
   summary: readonly SummaryEntry[];
   standings: readonly StandingDoc[];
   now: number;
-  badge: { label: string; tone: BadgeTone };
-  /** 頁面上方已經有狀態卡（整場取消／延期附原因）時為 true；沒有冠軍就不再畫只剩狀態標籤的卡。 */
-  statusShownAbove?: boolean;
   /** null＝還沒按「全部賽程」或已結束展開。有值才是全集，而且同一頁只讀一次。 */
   fullSchedule: readonly SummaryEntry[] | null;
   onRequestFull: () => boolean | Promise<boolean>;
   clock?: ScheduleClock;
+  /** 「下一場」的場次 id（頂部記分板同一條規則），只標在賽程分頁。 */
+  nextIds?: ReadonlySet<string>;
   /** 省略就用內建積分榜（含排序說明）。同分面板由呼叫端塞進來。 */
   renderStandings?: (docs: readonly StandingDoc[]) => JSX.Element;
   /** 切到積分頁時才補讀組別（進行中首屏不讀）。 */
@@ -504,44 +400,11 @@ export function DetailPhaseBody({
   }
 
   if (phase === 'done') {
-    const multiple = standings.length > 1;
     const loadedRows = fullSchedule;
     const foldGroups = scheduleGroups(ct, loadedRows ?? [], divisions, now, venues);
     const foldLabel = loadedRows ? ct('foldSchedule', { n: loadedRows.length }) : ct('tabSchedule');
-    const champions = standings.flatMap((doc, index) => {
-      const result = championName(doc);
-      const value = result.pending ? ct('championPending') : result.name;
-      if (!value) return [];
-      const label = headingText(ct, standingHeading(doc, index, multiple));
-      return [{ id: doc.id, text: label ? `${label}　${value}` : value }];
-    });
     return (
       <>
-        {champions.length > 0 ? (
-          <CpCard class="cps-card--ok">
-            <div class="cp3-row">
-              <div class="cp3-champ">
-                <TrophyIcon />
-                <div class="cp3-champ__t">
-                  <span class="cp3-champ__k">{ct('champion')}</span>
-                  {champions.map((c) => (
-                    <span class="cp3-champ__v" key={c.id}>{c.text}</span>
-                  ))}
-                </div>
-              </div>
-              <Badge tone={badge.tone} label={badge.label} size="sm" />
-            </div>
-          </CpCard>
-        ) : statusShownAbove ? null : (
-          // 沒有冠軍（整場取消、沒有積分榜）時不畫獎盃與「冠軍」字樣，只留狀態標籤（PM 截圖驗收發現）；
-          // 上方已有狀態卡時整張省略，避免空卡只剩標籤（顧問 §3.294 P3）
-          <CpCard>
-            <div class="cp3-row">
-              <span />
-              <Badge tone={badge.tone} label={badge.label} size="sm" />
-            </div>
-          </CpCard>
-        )}
         {standingsNode}
         <CpCard>
           <div class="cps-actions">
@@ -559,7 +422,7 @@ export function DetailPhaseBody({
             <ScorerBlock ct={ct} choices={divisionChoices} state={scorerState} onPick={(id) => onOpenScorers?.(id)} />
           ) : null}
         </CpCard>
-        <CpCard>
+        <CpCard class="d2-foldcard">
           <button
             type="button"
             class={`cp3-fold${open ? ' cp3-fold--open' : ''}`}
@@ -576,7 +439,7 @@ export function DetailPhaseBody({
             <ChevronIcon />
           </button>
           {open && loadedRows ? (
-            <div style="margin-top:12px">
+            <div>
               <MatchSchedule ct={ct} groups={foldGroups} standings={standings} crests={crests} clock={clock} onOpenMatch={onOpenMatch} />
             </div>
           ) : null}
@@ -595,14 +458,6 @@ export function DetailPhaseBody({
 
   return (
     <>
-      <PhaseStrip
-        ct={ct}
-        phase={phase}
-        summary={summary}
-        now={now}
-        badge={badge}
-        firstMatchAt={firstMatchAt}
-      />
       <Tabs
         label={ct('detailTabs')}
         variant="underline"
@@ -622,7 +477,7 @@ export function DetailPhaseBody({
             label: ct('tabSchedule'),
             panel: (
               <div style="margin-top:12px">
-                <MatchSchedule ct={ct} groups={shown} standings={standings} crests={crests} clock={clock} onOpenMatch={onOpenMatch} />
+                <MatchSchedule ct={ct} groups={shown} standings={standings} crests={crests} clock={clock} nextIds={nextIds} onOpenMatch={onOpenMatch} />
                 <div class="cps-actions">
                   <Button variant="secondary" onClick={onRequestFull}>{ct('fullSchedule')}</Button>
                 </div>

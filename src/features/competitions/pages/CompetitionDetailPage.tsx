@@ -6,7 +6,6 @@ import { useLocation, useRoute } from 'preact-iso';
 import { openHttpAnchor } from '@/core/open-external';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { dangerConfirm } from '../ui/danger-confirm';
-import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
 import { PageSpinner } from '@/ui/PageSpinner';
@@ -27,6 +26,8 @@ import { LiveBoundary } from '../live';
 import { cpSignIn } from '../sign-in';
 import { buildRegisterInput, buildReportInput } from '../payload';
 import { competitionPhase, type CompetitionPhase } from '../data/present';
+import { detailHero, nextUp } from '../data/schedule-present';
+import { firstVenueName, formatInAppDates } from '../data/list-cards';
 import { hasPendingTie } from '../data/tie-present';
 import { hasScoreRole } from '../data/staff-assign';
 import {
@@ -43,12 +44,14 @@ import { loadFullSchedule, loadScheduleDetail } from '../data/schedule-load';
 import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason, StaffAssignment, StandingDoc, SummaryEntry } from '../data/types';
 import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, type CpLoadFail } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
-import { CategoryCover, categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
+import { categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
+import { DetailHero } from '../ui/detail-hero';
 import { TieWorkspace } from '../ui/tie-panel';
 import { AdminPanel, HiddenNotice } from '../ui/admin-moderation';
 import { DeleteCompetition, teamCountOf } from '../ui/delete-competition';
-import { PublicBoard } from '../ui/public-board';
-import { CpCard, CpFrame, CpI18nPending, CpRow, MoreIcon } from '../ui/shell';
+import { HostLine, hostLineShown, PublicBoard } from '../ui/public-board';
+import { StatusTag, type StatusKind } from '../ui/status-tag';
+import { CpCard, CpFrame, CpI18nPending, CpRow, AlertIcon, MoreIcon } from '../ui/shell';
 import { TeamCrest } from '../ui/TeamCrest';
 
 const REPORTS: ReportReason[] = ['impersonation', 'fake', 'inappropriate', 'privacy', 'other'];
@@ -60,26 +63,26 @@ function statusBadge(
   ct: CompetitionsT,
   competition: CompetitionDoc,
   now: number,
-): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
-  if (competition.status === 'draft') return { label: ct('draft'), tone: 'warning' };
-  if (competition.status === 'postponed') return { label: ct('compPostponed'), tone: 'warning' };
-  if (competition.status === 'cancelled') return { label: ct('cancelled'), tone: 'danger' };
-  if (now < competition.regOpenAt) return { label: ct('reason.REG_NOT_OPEN'), tone: 'neutral' };
-  if (now > competition.regCloseAt) return { label: ct('reason.REG_CLOSED'), tone: 'neutral' };
-  return { label: ct('recruiting'), tone: 'success' };
+): { label: string; kind: StatusKind } {
+  if (competition.status === 'draft') return { label: ct('draft'), kind: 'neutral' };
+  if (competition.status === 'postponed') return { label: ct('compPostponed'), kind: 'neutral' };
+  if (competition.status === 'cancelled') return { label: ct('cancelled'), kind: 'cancelled' };
+  if (now < competition.regOpenAt) return { label: ct('reason.REG_NOT_OPEN'), kind: 'neutral' };
+  if (now > competition.regCloseAt) return { label: ct('reason.REG_CLOSED'), kind: 'neutral' };
+  return { label: ct('recruiting'), kind: 'neutral' };
 }
 
 function phaseBadge(
   ct: CompetitionsT,
   competition: CompetitionDoc,
   phase: Exclude<CompetitionPhase, 'recruit'>,
-): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' | 'info' } {
-  if (competition.status === 'draft') return { label: ct('draft'), tone: 'warning' };
-  if (competition.status === 'postponed') return { label: ct('compPostponed'), tone: 'warning' };
-  if (competition.status === 'cancelled') return { label: ct('cancelled'), tone: 'danger' };
-  if (phase === 'warm') return { label: ct('phaseWarm'), tone: 'info' };
-  if (phase === 'live') return { label: ct('phaseLive'), tone: 'warning' };
-  return { label: ct('phaseDone'), tone: 'neutral' };
+): { label: string; kind: StatusKind } {
+  if (competition.status === 'draft') return { label: ct('draft'), kind: 'neutral' };
+  if (competition.status === 'postponed') return { label: ct('compPostponed'), kind: 'neutral' };
+  if (competition.status === 'cancelled') return { label: ct('cancelled'), kind: 'cancelled' };
+  if (phase === 'warm') return { label: ct('phaseWarm'), kind: 'neutral' };
+  if (phase === 'live') return { label: ct('phaseLive'), kind: 'live' };
+  return { label: ct('phaseDone'), kind: 'neutral' };
 }
 
 function hostName(competition: CompetitionDoc, env: CpInjectedEnv): string {
@@ -500,6 +503,20 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       ? ct('deleteStuckAdmin')
       : reasonText(ct, 'COMPETITION_DELETING');
   const entries = bundle?.entries ?? [];
+  // 頂部一律用首屏的摘要（當日或首場日那一片），不用「全部賽程」。不增加讀取。
+  const hero = detailHero({
+    phase,
+    status: competition.status,
+    statusReason: competition.statusReason,
+    regCloseAt: competition.regCloseAt,
+    firstMatchAt: competition.firstMatchAt,
+    summary,
+    divisions,
+    standings,
+    venues: competition.venues,
+    now,
+  });
+  const clubTeamId = competition.hostType === 'club' ? competition.hostTeamId : null;
   const sameYear = taipeiParts(competition.regOpenAt).year === taipeiParts(competition.regCloseAt).year;
 
   async function publish(): Promise<void> {
@@ -761,38 +778,36 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     </>
   );
 
-  const manageActions = (
-    <>
-      {frozen ? null : hostButtons}
-      {showDelete ? (
-        <DeleteCompetition
-          ct={ct}
-          cid={cid}
-          name={competition.name}
-          teams={divisions.length > 0 ? teamCountOf(divisions) : null}
-          loadTeams={async () => teamCountOf(await env.repo.listDivisions(cid))}
-          resume={deletingAt != null}
-          actions={env.actions}
-          reload={() => env.repo.getCompetition(cid)}
-          onDeleted={() => {
-            toast.show({ message: ct('deleteDone') });
-            env.repo.invalidateCrests(cid);
-            // 取代目前這筆歷史：返回不會回到已刪除的賽事。列表每次進入都重讀公開清單與 cpMine。
-            route('/tournaments', true);
-          }}
-          onStuck={(doc) => {
-            setBundle((current) => (current ? { ...current, competition: doc } : current));
-          }}
-          previewOpen={env.preview?.deleteDialog}
-        />
-      ) : null}
-    </>
-  );
+  const manageActions = frozen ? null : hostButtons;
+  // 刪除賽事（新外觀卡 1b-7）：從主辦按鈕拆出來，固定畫在頁面內容最後、管理員區之前（各階段同一個位置）。
+  // 卡住前後是同一個位置，確認框不會被重掛關掉。
+  const deleteBlock = showDelete ? (
+    <DeleteCompetition
+      ct={ct}
+      cid={cid}
+      name={competition.name}
+      teams={divisions.length > 0 ? teamCountOf(divisions) : null}
+      loadTeams={async () => teamCountOf(await env.repo.listDivisions(cid))}
+      resume={deletingAt != null}
+      actions={env.actions}
+      reload={() => env.repo.getCompetition(cid)}
+      onDeleted={() => {
+        toast.show({ message: ct('deleteDone') });
+        env.repo.invalidateCrests(cid);
+        // 取代目前這筆歷史：返回不會回到已刪除的賽事。列表每次進入都重讀公開清單與 cpMine。
+        route('/tournaments', true);
+      }}
+      onStuck={(doc) => {
+        setBundle((current) => (current ? { ...current, competition: doc } : current));
+      }}
+      previewOpen={env.preview?.deleteDialog}
+    />
+  ) : null;
 
   return (
     <CpFrame
-      title={phase === 'recruit' ? ct('detailTitle') : competition.name}
-      userTitle={phase !== 'recruit'}
+      title={ct('detailTitle')}
+      crumb={ct('title')}
       menu={frozen ? undefined : (
         <>
           <button
@@ -810,7 +825,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                 {ct('report')}
               </button>
               {isAdmin && !competition.hidden ? (
-                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setHideOpen(true); }}>
+                <button type="button" role="menuitem" class="cps-menu__danger" onClick={() => { setMenuOpen(false); setHideOpen(true); }}>
                   {ct('moderateHide')}
                 </button>
               ) : null}
@@ -823,9 +838,29 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {competition.hidden && deletingAt == null ? <HiddenNotice ct={ct} reason={competition.hiddenReason} /> : null}
       {/* 刪到一半：後端也寫了 hidden，但不是管理員下架。能續刪的人看到續刪提示，其他人（共同主辦）只看到刪除中。 */}
       {deletingAt != null ? (
-        <p class="cpa-hidden" role="status" style="white-space:pre-line">{stuckText}</p>
+        <p class="cpa-hidden" role="status"><AlertIcon /><span>{stuckText}</span></p>
       ) : null}
-      <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
+      <DetailHero
+        ct={ct}
+        hero={hero}
+        status={badge.label}
+        danger={competition.status === 'cancelled'}
+        category={categoryText(ct, competition.category)}
+        name={competition.name}
+        date={formatInAppDates(competition)}
+        venue={firstVenueName(competition)}
+        now={now}
+        foot={hostLineShown(clubTeamId, competition.contactNote) ? (
+          <HostLine
+            ct={ct}
+            hostName={hostName(competition, env)}
+            hostType={phase === 'recruit' ? (competition.hostType === 'club' ? ct('hostClub') : ct('hostPersonal')) : undefined}
+            contactNote={competition.contactNote}
+            clubTeamId={clubTeamId}
+            onOpenClub={openClub}
+          />
+        ) : undefined}
+      />
       {showHostEnd ? (
         <CpCard>
           <p class="cpm-ended">{ct(competition.endedBy === 'auto' ? 'endedAutoLine' : 'endedLine', { date: formatTaipeiDate(competition.endedAt ?? now) })}</p>
@@ -861,42 +896,17 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </div>
         </CpCard>
       ) : null}
-      {(competition.status === 'postponed' || competition.status === 'cancelled') && competition.statusReason ? (
-        <CpCard>
-          <div class="cp3-row">
-            <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{competition.statusReason}</p>
-            <Badge
-              tone={competition.status === 'cancelled' ? 'danger' : 'warning'}
-              label={competition.status === 'cancelled' ? ct('cancelled') : ct('compPostponed')}
-              size="sm"
-            />
-          </div>
-        </CpCard>
-      ) : null}
       <PublicBoard
         ct={ct}
         notices={competition.notices}
-        contactNote={competition.contactNote}
-        hostName={hostName(competition, env)}
         hostOps={hostOps && !frozen}
         busy={busy}
-        clubTeamId={competition.hostType === 'club' ? competition.hostTeamId : null}
-        onOpenClub={openClub}
         onPost={publishNotice}
         onDelete={removeNotice}
       />
       {phase === 'recruit' ? (
       <>
       <CpCard>
-        <div class="cps-badges" style="margin-bottom:8px">
-          <Badge tone={badge.tone} label={badge.label} size="sm" />
-          <Badge
-            tone={competition.hostType === 'club' ? 'info' : 'neutral'}
-            label={competition.hostType === 'club' ? ct('hostClub') : ct('hostPersonal')}
-            size="sm"
-          />
-        </div>
-        <h2 class="cps-title cps-title--user" style="margin-bottom:12px">{competition.name}</h2>
         <dl class="cps-rows">
           <CpRow k={ct('host')}>{hostName(competition, env)}</CpRow>
           <CpRow k={ct('regPeriod')}>
@@ -949,17 +959,15 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           <DetailPhaseBody
             ct={ct}
             phase={phase}
-            firstMatchAt={competition.firstMatchAt}
             divisions={divisions}
             crests={entries}
             summary={summary}
             standings={standings}
             now={now}
-            badge={badge}
-            statusShownAbove={(competition.status === 'postponed' || competition.status === 'cancelled') && !!competition.statusReason}
             fullSchedule={fullSchedule}
             onRequestFull={requestFullSchedule}
             clock={clock}
+            nextIds={phase === 'live' && clock === 'keep' ? new Set((nextUp(summary, now)?.rows ?? []).map((row) => row.id)) : undefined}
             onOpenStandings={needRanking}
             venues={competition.venues}
             onOpenMatch={(mtId) => route(`/competitions/${cid}/matches/${mtId}/live`)}
@@ -987,6 +995,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           {manageActions}
         </>
       )}
+
+      {deleteBlock}
 
       {isAdmin && !frozen ? (
         <AdminPanel
@@ -1121,7 +1131,7 @@ function DivisionBlock({
     <CpCard>
       <div class="cps-head-row">
         <h3 class="cps-h">{division.name}</h3>
-        <Badge tone={statusBadge(ct, competition, now).tone} label={statusBadge(ct, competition, now).label} size="sm" />
+        <StatusTag kind={statusBadge(ct, competition, now).kind} label={statusBadge(ct, competition, now).label} />
       </div>
       <p class="cps-sub cps-nowrap" style="margin-top:4px">{meta}</p>
       {/* 報名費與停用的線上支付鈕只限俱樂部主辦（顧問 §3.257） */}
@@ -1140,7 +1150,7 @@ function DivisionBlock({
               </a>
             </div>
             {/* 顧問 §3.463：長隊名時「已核准」被擠成兩行。只在這一列讓標籤不縮、不換行，隊名讓位省略；不動共用 Badge。 */}
-            <Badge tone="success" label={ct('approved')} size="sm" class="cps-li__tag" />
+            <StatusTag kind="neutral" label={ct('approved')} class="cps-li__tag" />
           </li>
         ))}
       </ul>

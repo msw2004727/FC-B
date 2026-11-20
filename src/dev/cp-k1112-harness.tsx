@@ -52,6 +52,8 @@ export const K1112_SCREENS = [
   'detail-hidden',
   'detail-report-done',
   'detail-report-guest',
+  // 新外觀第 1b 批卡 1b-7：詳情頁讀取失敗（網路類錯誤，有重試）。
+  'detail-load-error',
   // 新外觀第 4 批第 7 節「要補」：代表自己那一列、邀請清單空的／讀取失敗、撤銷確認框、已下架的管理員視角。
   'staff-list-rep',
   'staff-invites-empty',
@@ -172,6 +174,12 @@ function deniedEnv(): CpInjectedEnv {
   return { actor: { ...memberActor, uid: null }, repo: { ...repo(), getCompetition: denied }, actions: actions(), route: { cid: 'cup' } };
 }
 
+/** 讀根文件遇到網路類錯誤：讀取失敗＋重試（重試仍失敗）。 */
+function loadErrorEnv(): CpInjectedEnv {
+  const broken = async () => { throw Object.assign(new Error('network'), { code: 'unavailable' }); };
+  return { actor: { ...memberActor, uid: null }, repo: { ...repo(), getCompetition: broken }, actions: actions(), route: { cid: 'cup' } };
+}
+
 function reportEnv(guest: boolean): CpInjectedEnv {
   const base = screenEnv('real-recruit');
   return {
@@ -186,6 +194,7 @@ function reportEnv(guest: boolean): CpInjectedEnv {
 
 function envOf(screen: string): { env: CpInjectedEnv; Page: ComponentType } {
   if (screen === 'detail-hidden') return { env: deniedEnv(), Page: CompetitionDetailPage };
+  if (screen === 'detail-load-error') return { env: loadErrorEnv(), Page: CompetitionDetailPage };
   if (screen === 'detail-report-done' || screen === 'detail-report-guest') {
     return { env: reportEnv(screen === 'detail-report-guest'), Page: CompetitionDetailPage };
   }
@@ -265,6 +274,7 @@ const OPEN: Record<string, () => Promise<void>> = {
   'detail-admin-hide': () => until('下架對話框', () => hasText('下架原因')),
   'detail-host-hidden': () => until('下架提示', () => hasText('此賽事已被管理員下架')),
   'detail-hidden': () => until('不公開', () => hasText('這場賽事目前不公開')),
+  'detail-load-error': () => until('讀取失敗', () => hasText('讀取失敗') && buttonsNamed('重試').length > 0),
   'detail-report-done': async () => {
     await until('檢舉面板', () => buttonsNamed('送出檢舉').length > 0);
     buttonsNamed('送出檢舉')[0]?.click();

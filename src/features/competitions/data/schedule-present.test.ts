@@ -3,9 +3,11 @@ import { taipeiMs } from '../format';
 import {
   championName,
   daysUntilStart,
+  detailHero,
   formatGoalDiff,
   groupSchedule,
   liveStrip,
+  nextUp,
   publicMark,
   scheduleDayLabel,
   scheduleHeading,
@@ -280,5 +282,95 @@ describe('組別名稱', () => {
     expect(scheduleHeading('dv_1', 1, true, docs)).toEqual({ name: '公開組', n: 1 });
     expect(scheduleHeading('dv_2', 0, true, docs)).toEqual({ name: null, n: 2 });
     expect(scheduleHeading('dv_missing', 1, true, docs)).toEqual({ name: null, n: 2 });
+  });
+});
+
+describe('詳情頂部（新外觀卡 1b-3）', () => {
+  const base = {
+    status: 'published',
+    statusReason: null,
+    regCloseAt: taipeiMs(2026, 12, 20, 23, 59),
+    firstMatchAt: JAN9_AM,
+    summary: [] as SummaryEntry[],
+    divisions: [] as { approvedCount: number; maxTeams: number }[],
+    standings: [] as StandingDoc[],
+    now: NOW_LIVE,
+  };
+
+  it('下一場：同一時間兩場都算；改期、已取消、已過的不算；沒有就是 null', () => {
+    const up = nextUp([
+      entry({ id: 'a', k: JAN9_PM, st: 'scheduled' }),
+      entry({ id: 'b', k: JAN9_PM, st: 'scheduled', v: '2號場' }),
+      entry({ id: 'off', k: taipeiMs(2027, 1, 9, 13, 0), st: 'cancelled' }),
+      entry({ id: 'moved', k: taipeiMs(2027, 1, 9, 13, 0), st: 'postponed' }),
+      entry({ id: 'past', k: JAN9_AM, st: 'scheduled' }),
+    ], NOW_LIVE);
+    expect(up?.time).toBe('14:30');
+    expect(up?.rows.map((row) => row.id)).toEqual(['a', 'b']);
+    expect(nextUp([entry({ id: 'done', k: JAN9_AM, st: 'confirmed' })], NOW_LIVE)).toBeNull();
+    // 凌晨場：台北 01:30 照時鐘寫 01:30
+    const night = taipeiMs(2027, 1, 10, 1, 30);
+    expect(nextUp([entry({ id: 'n', k: night, st: 'scheduled' })], taipeiMs(2027, 1, 10, 0, 30))?.time).toBe('01:30');
+  });
+
+  it('進行中亮燈：下一場只有一場寫對戰與場地，兩場以上只寫時間；今天沒有場次就不放板', () => {
+    const one = detailHero({ ...base, phase: 'live', summary: [
+      entry({ id: 'done', k: JAN9_AM, st: 'confirmed', s: [1, 0] }),
+      entry({ id: 'next', k: JAN9_PM, st: 'scheduled', v: '2號場' }),
+    ] });
+    expect(one).toMatchObject({ board: true, lit: true });
+    expect(one.cells).toEqual([
+      { kind: 'next', at: JAN9_PM, time: '14:30', venue: '2號場', home: '海風隊', away: '山貓隊' },
+      { kind: 'today', n: 2 },
+    ]);
+    const twin = detailHero({ ...base, phase: 'live', summary: [
+      entry({ id: 'a', k: JAN9_PM, st: 'scheduled' }),
+      entry({ id: 'b', k: JAN9_PM, st: 'scheduled' }),
+    ] });
+    expect(twin.cells[0]).toEqual({ kind: 'next', at: JAN9_PM, time: '14:30', venue: null, home: null, away: null });
+    const over = detailHero({ ...base, phase: 'live', summary: [entry({ id: 'done', k: JAN9_AM, st: 'confirmed' })] });
+    expect(over.cells).toEqual([{ kind: 'today', n: 1 }]);
+    const rest = detailHero({ ...base, phase: 'live', summary: [] });
+    expect(rest).toMatchObject({ board: false, lit: false, cells: [] });
+  });
+
+  it('預熱不亮燈：首場＋距開賽；還沒排賽程只剩距開賽', () => {
+    const now = taipeiMs(2026, 12, 21, 12, 0);
+    const warm = detailHero({ ...base, phase: 'warm', now, summary: [entry({ id: 'm1', k: JAN9_AM, st: 'scheduled' })] });
+    expect(warm).toMatchObject({ board: true, lit: false });
+    expect(warm.cells.map((cell) => cell.kind)).toEqual(['first', 'countdown']);
+    expect(warm.cells[1]).toEqual({ kind: 'countdown', n: 19 });
+    expect(detailHero({ ...base, phase: 'warm', now }).cells).toEqual([{ kind: 'countdown', n: 19 }]);
+  });
+
+  it('招募：報名截止＋已核准加總；沒有組別只剩報名截止', () => {
+    const recruit = detailHero({ ...base, phase: 'recruit', divisions: [
+      { approvedCount: 2, maxTeams: 8 },
+      { approvedCount: 1, maxTeams: 6 },
+    ] });
+    expect(recruit.cells).toEqual([
+      { kind: 'deadline', at: base.regCloseAt },
+      { kind: 'approved', teams: 3, max: 14 },
+    ]);
+    expect(detailHero({ ...base, phase: 'recruit' }).cells).toEqual([{ kind: 'deadline', at: base.regCloseAt }]);
+  });
+
+  it('已取消、已延期、已結束一律玻璃卡；取消延期帶原因，已結束帶冠軍（含待裁定，不含沒有第一名的組）', () => {
+    expect(detailHero({ ...base, phase: 'live', status: 'cancelled', statusReason: ' 報名隊伍不足 ' }))
+      .toEqual({ board: false, lit: false, cells: [], reason: '報名隊伍不足', champions: [] });
+    expect(detailHero({ ...base, phase: 'recruit', status: 'postponed', statusReason: null }).board).toBe(false);
+    const won = table([row({ teamId: 't1', name: '海風隊', points: 9, rank: 1 })], false);
+    const tied = { ...table([
+      row({ teamId: 't2', name: '銀河隊', points: 5, rank: 1, hasUnresolvedTie: true }),
+      row({ teamId: 't3', name: '山貓隊', points: 5, rank: 2, hasUnresolvedTie: true }),
+    ], true), id: 'dv_2__group__A', divisionId: 'dv_2', divisionName: '公開組' };
+    const empty = { ...table([], false), id: 'dv_3__group__A', divisionId: 'dv_3' };
+    const done = detailHero({ ...base, phase: 'done', standings: [won, tied, empty] });
+    expect(done.board).toBe(false);
+    expect(done.champions).toEqual([
+      { id: won.id, group: { name: null, n: 1 }, name: '海風隊' },
+      { id: tied.id, group: { name: '公開組', n: 2 }, name: null },
+    ]);
+    expect(detailHero({ ...base, phase: 'done', standings: [won] }).champions).toEqual([{ id: won.id, group: null, name: '海風隊' }]);
   });
 });

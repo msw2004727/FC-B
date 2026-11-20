@@ -8,7 +8,6 @@ import {
   filterInAppCards,
   firstVenueName,
   formatInAppDates,
-  formatInAppWhenWhere,
   isTrulyLive,
   passesInAppStatus,
   pickInAppBoard,
@@ -21,22 +20,6 @@ const IDE = '\u3000';
 const EN = '\u2013';
 
 describe('站內卡片純函式', () => {
-  it('日期用比賽期間；同一年省略結束年；同一天不重複；地點用第一個有名稱的場地', () => {
-    const doc = competition();
-    expect(formatInAppWhenWhere(doc)).toBe(`2027/01/09 ${EN} 01/10${IDE}示範球場`);
-    expect(formatInAppWhenWhere({
-      ...doc,
-      firstMatchAt: taipeiMs(2026, 12, 30, 8, 0),
-      lastMatchAt: taipeiMs(2027, 1, 2, 18, 0),
-    })).toBe(`2026/12/30 ${EN} 2027/01/02${IDE}示範球場`);
-    expect(formatInAppWhenWhere({
-      ...doc,
-      firstMatchAt: taipeiMs(2027, 2, 6, 8, 0),
-      lastMatchAt: taipeiMs(2027, 2, 6, 18, 0),
-    })).toBe(`2027/02/06${IDE}示範球場`);
-    expect(formatInAppWhenWhere({ ...doc, venues: [{ ...doc.venues[0]!, name: '  ' }] })).toBe(`2027/01/09 ${EN} 01/10`);
-  });
-
   it('距開賽是台北日曆日差，當天與已過都是 0', () => {
     const now = taipeiMs(2026, 12, 10, 12, 0);
     expect(daysUntilFirstMatch(now, taipeiMs(2026, 12, 13, 9, 0))).toBe(3);
@@ -129,7 +112,7 @@ describe('站內卡片純函式', () => {
       line: null,
     });
     expect(cards.find((card) => card.cid === 'named')).toMatchObject({
-      phase: null, mine: true, dates: '', date: '', venue: '', firstMatchAt: null,
+      phase: null, mine: true, date: '', venue: '', firstMatchAt: null,
     });
     expect(cards.find((card) => card.cid === 'later')).toMatchObject({
       date: `2027/03/01 ${EN} 01/10`,
@@ -167,7 +150,7 @@ describe('站內卡片純函式', () => {
     expect(filterInAppCards(cards, 'all', 'done', false).map((card) => card.cid)).toEqual(['hosted']);
   });
 
-  it('日期與場地拆成兩個欄位；組起來與原本那一句相同', () => {
+  it('日期與場地拆成兩個欄位；同一年省略結束年；同一天不重複；地點用第一個有名稱的場地', () => {
     const doc = competition();
     expect(formatInAppDates(doc)).toBe(`2027/01/09 ${EN} 01/10`);
     expect(formatInAppDates({
@@ -185,7 +168,6 @@ describe('站內卡片純函式', () => {
     })).toBe('第二球場');
     const [card] = assembleInAppCards({ publicDocs: [doc], hosted: [], mine: [], now: NOW });
     expect(card).toMatchObject({ date: `2027/01/09 ${EN} 01/10`, venue: '示範球場', firstMatchAt: doc.firstMatchAt });
-    expect(card!.dates).toBe(`${card!.date}${IDE}${card!.venue}`);
   });
 
   it('排序：真的在進行中排最上面（延期的不算）；彼此之間與其餘照首場新到舊、沒時間的排後', () => {
@@ -223,7 +205,6 @@ describe('站內卡片純函式', () => {
       name: 'x',
       category: 'league',
       phase: 'recruit',
-      dates: '',
       date: '',
       venue: '',
       firstMatchAt: 1000,

@@ -753,6 +753,129 @@ function decidedStandings(): StandingDoc {
   });
 }
 
+// ── 卡 2-5 同分裁定補兩個示範狀態（設計總監 03:38）──
+// 下面積分列與 explainTie 回傳都不是手寫的：把同一組場次餵給 functions-cp 引擎（computeRows → rankRows、
+// explainTie，規則 RR_FEDA_DEFAULT＝h2hFirst），照輸出原樣抄進來。teamIds 依積分表列順序送（與 samePointTeamIds 相同）。
+// 引擎在某一項分出高下就停（同一群不再往下比），所以淡青綠列一定是最後一列。
+
+type TieGame = [id: string, home: string, away: string, homeGoals: number, awayGoals: number, day: number, hour: number];
+
+const TIE_NAMES: Readonly<Record<string, string>> = {
+  en_h: '海風隊', en_b: '銀河隊', en_c: '雷霆隊', en_a: '山貓隊', en_d: '青鳥隊', en_e: '赤焰隊',
+};
+
+function tieGames(games: readonly TieGame[]): SummaryEntry[] {
+  return games.map(([id, home, away, hg, ag, day, hour], index) => summaryEntry({
+    id,
+    k: taipeiMs(2027, 1, day, hour, 0),
+    st: 'confirmed',
+    no: index + 1,
+    s: [hg, ag],
+    h: { id: home, n: TIE_NAMES[home] ?? home },
+    a: { id: away, n: TIE_NAMES[away] ?? away },
+  }));
+}
+
+/** 分得出高下：銀河、雷霆同 4 分，對戰銀河 2：1 勝，靠「對戰積分」分出（銀河淨勝球反而較少，正好看出對戰優先）。 */
+const TIE_RANKED_GAMES: readonly TieGame[] = [
+  ['mt_rel', 'en_b', 'en_c', 2, 1, 9, 9],
+  ['mt_r2', 'en_h', 'en_a', 2, 0, 9, 11],
+  ['mt_r3', 'en_h', 'en_b', 2, 0, 9, 13],
+  ['mt_r4', 'en_c', 'en_a', 1, 1, 9, 15],
+  ['mt_r5', 'en_c', 'en_h', 1, 0, 10, 9],
+  ['mt_r6', 'en_b', 'en_a', 1, 1, 10, 11],
+];
+
+function tieRankedStandings(): StandingDoc {
+  return standingDoc({
+    rows: [
+      standingRow({ teamId: 'en_h', name: '海風隊', rank: 1, points: 6, played: 3, win: 2, draw: 0, loss: 1, goalsFor: 4, goalsAgainst: 1, goalDiff: 3 }),
+      standingRow({ teamId: 'en_b', name: '銀河隊', rank: 2, points: 4, played: 3, win: 1, draw: 1, loss: 1, goalsFor: 3, goalsAgainst: 4, goalDiff: -1 }),
+      standingRow({ teamId: 'en_c', name: '雷霆隊', rank: 3, points: 4, played: 3, win: 1, draw: 1, loss: 1, goalsFor: 3, goalsAgainst: 3, goalDiff: 0 }),
+      standingRow({ teamId: 'en_a', name: '山貓隊', rank: 4, points: 2, played: 3, win: 0, draw: 2, loss: 1, goalsFor: 2, goalsAgainst: 4, goalDiff: -2 }),
+    ],
+  });
+}
+
+const TIE_RANKED_EXPLAINED = {
+  dvId: 'dv_adult',
+  groupId: 'A',
+  naturalOrder: ['en_b', 'en_c'],
+  steps: [
+    { teamIds: ['en_b', 'en_c'], criterion: 'points', values: [{ teamId: 'en_b', value: 4 }, { teamId: 'en_c', value: 4 }], split: false },
+    { teamIds: ['en_b', 'en_c'], criterion: 'headToHeadPoints', values: [{ teamId: 'en_b', value: 3 }, { teamId: 'en_c', value: 0 }], split: true },
+  ],
+  splits: [{ criterion: 'headToHeadPoints', aboveTeamIds: ['en_b'], belowTeamIds: ['en_c'] }],
+  decidedCriterion: 'headToHeadPoints',
+  pending: false,
+  pendingCriterion: null,
+  matchIds: ['mt_rel'],
+  decision: null,
+  marks: [{ teamId: 'en_b', rank: 2, decidedBy: null }, { teamId: 'en_c', rank: 3, decidedBy: null }],
+};
+
+/**
+ * 四隊同分：海風全勝，其餘四隊同 4 分（對戰各 1 勝 1 和 1 敗、對戰積分也都是 4），
+ * 靠「對戰淨勝球」一次分成四段。用來量比較表四欄在 360 寬放不放得下。
+ */
+const TIE_FOUR_GAMES: readonly TieGame[] = [
+  ['mt_f1', 'en_b', 'en_c', 4, 0, 9, 9],
+  ['mt_f2', 'en_d', 'en_e', 1, 0, 9, 11],
+  ['mt_f3', 'en_c', 'en_d', 2, 0, 9, 13],
+  ['mt_f4', 'en_e', 'en_b', 1, 0, 9, 15],
+  ['mt_f5', 'en_b', 'en_d', 0, 0, 10, 9],
+  ['mt_f6', 'en_c', 'en_e', 0, 0, 10, 11],
+  ['mt_f7', 'en_h', 'en_b', 1, 0, 10, 13],
+  ['mt_f8', 'en_h', 'en_c', 1, 0, 10, 15],
+  ['mt_f9', 'en_h', 'en_d', 1, 0, 11, 9],
+  ['mt_f10', 'en_h', 'en_e', 1, 0, 11, 11],
+];
+
+function tieFourStandings(): StandingDoc {
+  return standingDoc({
+    rows: [
+      standingRow({ teamId: 'en_h', name: '海風隊', rank: 1, points: 12, played: 4, win: 4, draw: 0, loss: 0, goalsFor: 4, goalsAgainst: 0, goalDiff: 4 }),
+      standingRow({ teamId: 'en_b', name: '銀河隊', rank: 2, points: 4, played: 4, win: 1, draw: 1, loss: 2, goalsFor: 4, goalsAgainst: 2, goalDiff: 2 }),
+      standingRow({ teamId: 'en_e', name: '赤焰隊', rank: 3, points: 4, played: 4, win: 1, draw: 1, loss: 2, goalsFor: 1, goalsAgainst: 2, goalDiff: -1 }),
+      standingRow({ teamId: 'en_d', name: '青鳥隊', rank: 4, points: 4, played: 4, win: 1, draw: 1, loss: 2, goalsFor: 1, goalsAgainst: 3, goalDiff: -2 }),
+      standingRow({ teamId: 'en_c', name: '雷霆隊', rank: 5, points: 4, played: 4, win: 1, draw: 1, loss: 2, goalsFor: 2, goalsAgainst: 5, goalDiff: -3 }),
+    ],
+  });
+}
+
+const FOUR_IDS = ['en_b', 'en_e', 'en_d', 'en_c'];
+const fourValues = (values: readonly number[]) => FOUR_IDS.map((teamId, index) => ({ teamId, value: values[index] ?? null }));
+
+const TIE_FOUR_EXPLAINED = {
+  dvId: 'dv_adult',
+  groupId: 'A',
+  naturalOrder: [...FOUR_IDS],
+  steps: [
+    { teamIds: [...FOUR_IDS], criterion: 'points', values: fourValues([4, 4, 4, 4]), split: false },
+    { teamIds: [...FOUR_IDS], criterion: 'headToHeadPoints', values: fourValues([4, 4, 4, 4]), split: false },
+    { teamIds: [...FOUR_IDS], criterion: 'headToHeadGoalDiff', values: fourValues([3, 0, -1, -2]), split: true },
+  ],
+  splits: [
+    { criterion: 'headToHeadGoalDiff', aboveTeamIds: ['en_b'], belowTeamIds: ['en_e'] },
+    { criterion: 'headToHeadGoalDiff', aboveTeamIds: ['en_e'], belowTeamIds: ['en_d'] },
+    { criterion: 'headToHeadGoalDiff', aboveTeamIds: ['en_d'], belowTeamIds: ['en_c'] },
+  ],
+  decidedCriterion: 'headToHeadGoalDiff',
+  pending: false,
+  pendingCriterion: null,
+  matchIds: ['mt_f1', 'mt_f2', 'mt_f3', 'mt_f4', 'mt_f5', 'mt_f6'],
+  decision: null,
+  marks: FOUR_IDS.map((teamId, index) => ({ teamId, rank: index + 2, decidedBy: null })),
+};
+
+/** explainTie 假回傳：送來的隊伍與引擎跑的那一組不同就丟錯，避免畫面拿到對不上的數字。 */
+function tieExplainOf(expected: readonly string[], result: unknown) {
+  return async (input: { teamIds: string[] }) => {
+    if (input.teamIds.join(',') !== expected.join(',')) throw new CpCallError('TIE_NOT_SAME_POINTS', {});
+    return result;
+  };
+}
+
 function statusMatches(): MatchDoc[] {
   const rows: Array<Partial<MatchDoc> & Pick<MatchDoc, 'id' | 'status'>> = [
     { id: 'mt_sched', status: 'scheduled', matchNo: 1, kickoffAt: taipeiMs(2027, 1, 9, 9, 0), home: { teamId: 'en_h', name: '海風隊' }, away: { teamId: 'en_a', name: '山貓隊' }, teamIds: ['en_h', 'en_a'] },
@@ -890,8 +1013,12 @@ function crestLiveBoard(pkOnly: boolean): { summary: SummaryEntry[]; standings: 
   };
 }
 
-/** 五個組別各一份積分（各有冠軍）。組別名稱要在 bundle.divisions 裡才標得出來。 */
-const FIVE_DIVISIONS: DivisionDoc[] = ['成人組', '壯年組', 'U15', 'U12', '女子組'].map((name, index) => division({
+/** 30 字組名（卡 1b-3 驗組名省略）。 */
+export const LONG_DIVISION_NAME = '新北市三重區二〇二七年社區五人制足球聯賽成人男子組第一級別組';
+
+/** 五個組別各一份積分（各有冠軍）。冠軍那一行的組名讀積分文件的 divisionName，其中一組是 30 字組名。 */
+const FIVE_DIVISION_NAMES = ['成人組', '壯年組', 'U15', 'U12', LONG_DIVISION_NAME];
+const FIVE_DIVISIONS: DivisionDoc[] = FIVE_DIVISION_NAMES.map((name, index) => division({
   dvId: `dv_${index + 1}`,
   name,
   order: index,
@@ -906,6 +1033,7 @@ function fiveChampionBoard(): { summary: SummaryEntry[]; standings: StandingDoc[
     standings: FIVE_DIVISIONS.map((dv, index) => standingDoc({
       id: `${dv.dvId}__group__A`,
       divisionId: dv.dvId,
+      divisionName: dv.name,
       rows: [
         standingRow({ teamId: `en_c${index}`, name: teams[index] ?? '海風隊', points: 9, rank: 1, win: 3, draw: 0, loss: 1 }),
         standingRow({ teamId: `en_r${index}`, name: '山貓隊', points: 4, rank: 2 }),
@@ -1244,6 +1372,26 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
         HOST_STAFF,
         actions,
       );
+    case 'real-tie-ranked':
+      // 卡 2-5 補（設計總監 03:38）：同分但比較表分得出高下，比較表最後一列是淡青綠的「對戰積分」。
+      return detailEnv(
+        hostActor,
+        DONE_NOW,
+        {},
+        { summary: tieGames(TIE_RANKED_GAMES), standings: [tieRankedStandings()] },
+        HOST_STAFF,
+        { ...actions, explainTie: tieExplainOf(['en_b', 'en_c'], TIE_RANKED_EXPLAINED) },
+      );
+    case 'real-tie-four':
+      // 卡 2-5 補（設計總監 03:38）：四隊同分，比較表四欄，量 360 寬放不放得下。
+      return detailEnv(
+        hostActor,
+        DONE_NOW,
+        {},
+        { summary: tieGames(TIE_FOUR_GAMES), standings: [tieFourStandings()] },
+        HOST_STAFF,
+        { ...actions, explainTie: tieExplainOf(FOUR_IDS, TIE_FOUR_EXPLAINED) },
+      );
     case 'real-end-dialog':
       return hostEnv(
         [
@@ -1270,12 +1418,6 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return detailEnv(memberActor, taipeiMs(2027, 1, 10, 12, 0), { category: 'cup' }, liveBoard());
     case 'real-warm-no-schedule':
       return detailEnv(memberActor, WARM_NOW, {}, { summary: [], standings: [] });
-    case 'real-recruit-nocap': {
-      // 組別沒有隊數上限（maxTeams 0）。
-      const env = detailEnv(memberActor, NOW, {}, { summary: [], standings: [] });
-      const b = env.bundle;
-      return b ? { ...env, bundle: { ...b, divisions: b.divisions.map((dv) => ({ ...dv, maxTeams: 0 })) } } : env;
-    }
     case 'real-recruit-nodiv': {
       const env = detailEnv(memberActor, NOW, {}, { summary: [], standings: [] });
       return env.bundle ? { ...env, bundle: { ...env.bundle, divisions: [], entries: [] } } : env;
@@ -1319,6 +1461,7 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
     case 'real-swap-open':
       return hostEnv(clashMatches(), actions);
     case 'real-shift-clash':
+    case 'real-shift-clash-settled':
       return withSecondVenue(hostEnv(clashMatches(), shiftClashActions(actions)));
     case 'real-pending-fresh':
       return hostEnv(freshPendingMatches(), actions);

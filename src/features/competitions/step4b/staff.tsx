@@ -2,13 +2,13 @@
 
 import type { ComponentChildren, JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Modal } from '@/ui/Modal';
 import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { CpFrame } from '../ui/shell';
+import { StatusTag, type StatusKind } from '../ui/status-tag';
 import {
   S4B_ASSIGN_PEOPLE,
   S4B_COMP_NAME,
@@ -39,30 +39,16 @@ import {
 import { assignRoleLabel, copy, inviteLifeLabel, matchStatusLabel, staffRoleLabel, weekdayName } from './copy';
 import { Line, MatchBits, S4bCard, S4bFrame, vsLabel } from './ui';
 
-function roleTone(role: S4bStaff['role']): 'brand' | 'neutral' | 'info' | 'warning' {
-  if (role === 'host') return 'brand';
-  if (role === 'scorer') return 'info';
-  if (role === 'referee') return 'warning';
-  return 'neutral';
-}
-
 /**
  * 主辦兼記分那一列的角色標籤。外觀沿用 Badge 的類別，但不經過 Text：Text 會在中文詞之間插 <wbr>
  *（ui/Text.tsx 的斷詞設計），窄寬時標籤被壓縮就會把「記分員」拆成兩行（顧問 11-20 staging 量測）。
  */
-function RoleTag({ role, label }: { role: S4bStaff['role']; label: string }): JSX.Element {
+function RoleTag({ label }: { label: string }): JSX.Element {
   return (
-    <span class={`ui-badge ui-badge--${roleTone(role)} ui-badge--soft ui-badge--sm s4b-role-tag`} title={label}>
+    <span class="ui-badge ui-badge--soft ui-badge--sm d2-tag d2-tag--neutral s4b-role-tag" title={label}>
       <span class="ui-badge__label">{label}</span>
     </span>
   );
-}
-
-function lifeTone(life: ReturnType<typeof inviteLife>): 'success' | 'neutral' | 'danger' | 'warning' {
-  if (life === 'active') return 'success';
-  if (life === 'revoked') return 'danger';
-  if (life === 'expired') return 'warning';
-  return 'neutral';
 }
 
 function dayText(month: number, day: number, weekday: number): string {
@@ -135,12 +121,12 @@ export function StaffListScreen(props: {
                 <span class="s4b-staff__name">{staff.name}</span>
                 {multi ? (
                   <span class="s4b-staff__roles">
-                    <RoleTag role={staff.role} label={staff.roleLabel} />
-                    {(staff.extraRoles ?? []).map((extra) => <RoleTag key={extra.role} role={extra.role} label={extra.label} />)}
+                    <RoleTag label={staff.roleLabel} />
+                    {(staff.extraRoles ?? []).map((extra) => <RoleTag key={extra.role} label={extra.label} />)}
                     {staff.expiresLabel ? <span class="s4b-staff__exp-inline">{staff.expiresLabel}</span> : null}
                   </span>
                 ) : (
-                  <Badge tone={roleTone(staff.role)} size="sm" label={staff.roleLabel} />
+                  <StatusTag kind="neutral" label={staff.roleLabel} />
                 )}
                 <span class="s4b-staff__meta">{staff.countLabel}</span>
                 <span class="s4b-staff__gap" />
@@ -325,7 +311,7 @@ function InviteRow({ row, onRevoke }: { row: S4bInvite; onRevoke: (id: string) =
         <div class="s4b-m__top">
           <span class="s4b-k">{assignRoleLabel[row.role]}</span>
           {match ? <span class="s4b-k">{clockLabel(match.kickoffAt).time}</span> : null}
-          <Badge tone={lifeTone(life)} size="sm" label={inviteLifeLabel[life]} />
+          <StatusTag kind="neutral" label={inviteLifeLabel[life]} />
           <span class="s4b-staff__gap" />
           {canRevokeInvite(life) ? (
             <span class="s4b-mini">
@@ -430,10 +416,13 @@ export interface ScorerMatchRow {
   id: string;
   match: S4bMatch;
   statusLabel: string;
-  statusTone: 'brand' | 'neutral';
+  /** 狀態標籤長相；null＝不放標籤（未開賽，共同裁定第 12 條）。 */
+  statusKind: StatusKind | null;
   showEnter: boolean;
-  /** 沒有開賽時間時改寫時刻，不走 MatchBits。 */
+  /** 沒有開賽時間時改寫時刻，不用窄體字。 */
   timeLabel?: string;
+  /** 升成記分板卡的那一場（全頁最多一場）：lit＝進行中或中場（亮燈），off＝最早一場未開賽。 */
+  board?: 'lit' | 'off';
 }
 
 export interface ScorerDay {
@@ -442,20 +431,95 @@ export interface ScorerDay {
   matches: readonly ScorerMatchRow[];
 }
 
+/**
+ * 挑記分板卡（新外觀卡 3-3，第 3 批 3.6）：只在已讀進來的清單裡挑，不另外查。
+ * 進行中或中場（statusKind live）優先；沒有就挑清單順序（由早到晚）最前面的一場未開賽（statusKind null）；都沒有就不放板。
+ */
+export function markScorerBoard(days: readonly ScorerDay[]): ScorerDay[] {
+  const rows = days.flatMap((day) => day.matches);
+  const lit = rows.find((row) => row.statusKind === 'live');
+  const pick = lit ?? rows.find((row) => row.statusKind === null);
+  if (!pick) return [...days];
+  const board: 'lit' | 'off' = lit ? 'lit' : 'off';
+  return days.map((day) => ({
+    ...day,
+    matches: day.matches.map((row) => (row === pick ? { ...row, board } : row)),
+  }));
+}
+
 function fixtureScorerDays(): ScorerDay[] {
   const staff = S4B_STAFF.find((row) => row.id === S4B_SCORER_ID);
   const matches = scorerMatchOrder(matchesByIds(staff?.matchIds ?? []), S4B_NOW);
-  return groupMatches(matches).map((group) => ({
+  return markScorerBoard(groupMatches(matches).map((group) => ({
     key: group.key,
     heading: dayText(group.month, group.day, weekdayIndex(group.key) ?? group.weekday),
     matches: group.matches.map((match) => ({
       id: match.id,
       match,
       statusLabel: matchStatusLabel[match.status],
-      statusTone: match.status === 'live' ? 'brand' as const : 'neutral' as const,
+      statusKind: match.status === 'live' ? 'live' as const : match.status === 'scheduled' ? null : 'neutral' as const,
       showEnter: true,
     })),
-  }));
+  })));
+}
+
+/** 開賽時間：有時間＝窄體數字（跨日另給「隔日」）；沒有時間＝中文「時間待定」用一般字。 */
+function rowClock(row: ScorerMatchRow): { time: string; nextDay: boolean; tbd: boolean } {
+  if (row.timeLabel) return { time: row.timeLabel, nextDay: false, tbd: true };
+  const clock = clockLabel(row.match.kickoffAt);
+  return { time: clock.time, nextDay: clock.nextDay, tbd: false };
+}
+
+/** 記分板卡：外面一圈玻璃、上面嵌板、板下玻璃上放這一頁唯一的實心青綠鈕。最外層保留 .s4b-m（測試靠它找「進行中」那一場）。 */
+function ScorerBoardCard({ row, enterLabel, onEnter }: { row: ScorerMatchRow; enterLabel: string; onEnter?: (id: string) => void }): JSX.Element {
+  const lit = row.board === 'lit';
+  const clock = rowClock(row);
+  return (
+    <div class="s4b-m s4b-mb">
+      <div class={lit ? 'd2-sb d2-sb--lit s4b-mb__sb' : 'd2-sb s4b-mb__sb'}>
+        <div class="s4b-mb__top">
+          {lit ? <span class="d2-sb__st"><i aria-hidden="true" />{row.statusLabel}</span> : null}
+          {row.match.venue ? <span class="s4b-mb__venue">{row.match.venue}</span> : null}
+        </div>
+        <div class={clock.nextDay ? 's4b-mb__main s4b-mb__main--2' : 's4b-mb__main'}>
+          <span class={clock.tbd ? 's4b-mb__tbd' : 'd2-num s4b-mb__time'}>{clock.time}</span>
+          {clock.nextDay ? <span class="s4b-mb__next">{copy.nextDay}</span> : null}
+          {/* 主隊｜對｜客隊三段相連（讀起來仍是「甲對乙」），兩隊各自省略、客隊不會整個消失（11-21 實量補定） */}
+          <span class="s4b-mb__vs">
+            <span class="s4b-mb__team">{row.match.home}</span>
+            <span class="s4b-mb__x">{copy.vs('', '')}</span>
+            <span class="s4b-mb__team">{row.match.away}</span>
+          </span>
+        </div>
+      </div>
+      {row.showEnter ? (
+        <div class="s4b-mb__act">
+          <Button variant="primary" onClick={() => onEnter?.(row.id)}>{enterLabel}</Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** 其餘各場：時間（窄體）＋場地＋（跨日）隔日＋靠右的狀態標籤；第二行對戰＋小顆次要鈕。 */
+function ScorerListRow({ row, enterLabel, onEnter }: { row: ScorerMatchRow; enterLabel: string; onEnter?: (id: string) => void }): JSX.Element {
+  const clock = rowClock(row);
+  return (
+    <div class="s4b-m">
+      <div class="s4b-mr__top">
+        <span class={clock.tbd ? 's4b-mr__tbd' : 'd2-num s4b-mr__time'}>{clock.time}</span>
+        {row.match.venue ? <span class="s4b-mr__venue">{row.match.venue}</span> : null}
+        {clock.nextDay ? <StatusTag kind="neutral" label={copy.nextDay} /> : null}
+        {row.statusKind ? <StatusTag kind={row.statusKind} label={row.statusLabel} class="s4b-mr__st" /> : null}
+      </div>
+      <div class="s4b-between">
+        <span class="s4b-k s4b-mr__vs">{vsLabel(row.match)}</span>
+        {row.showEnter ? (
+          <Button variant="secondary" size="sm" onClick={() => onEnter?.(row.id)}>{enterLabel}</Button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 export function ScorerMatchesScreen(props: {
@@ -470,35 +534,24 @@ export function ScorerMatchesScreen(props: {
   const enterLabel = props.enterLabel ?? copy.enterScore;
   return (
     <S4bFrame title={props.title ?? copy.scorerTitle} screen="scorer-my-matches" onBack={props.onBack}>
-      <S4bCard>
-        {days.length === 0 ? <p class="s4b-foot">{props.empty ?? ''}</p> : null}
-        {days.map((group) => (
-          <div key={group.key} class="s4b-daygroup">
-            <p class="s4b-day">{group.heading}</p>
-            {group.matches.map((row) => (
-              <div key={row.id} class="s4b-m">
-                <div class="s4b-m__top">
-                  {row.timeLabel ? (
-                    <>
-                      <span class="s4b-k">{row.timeLabel}</span>
-                      <span class="s4b-k">{row.match.venue}</span>
-                    </>
-                  ) : (
-                    <MatchBits match={row.match} />
-                  )}
-                  <Badge tone={row.statusTone} size="sm" label={row.statusLabel} />
-                </div>
-                <div class="s4b-between">
-                  <span class="s4b-k">{vsLabel(row.match)}</span>
-                  {row.showEnter ? (
-                    <Button variant="primary" size="sm" onClick={() => props.onEnter?.(row.id)}>{enterLabel}</Button>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+      {days.length === 0 ? (
+        <S4bCard><p class="s4b-mempty">{props.empty ?? ''}</p></S4bCard>
+      ) : null}
+      {days.map((group) => {
+        const board = group.matches.find((row) => row.board);
+        const rest = group.matches.filter((row) => !row.board);
+        return (
+          <div key={group.key} class="s4b-mgroup">
+            <p class="s4b-mday">{group.heading}</p>
+            {board ? <ScorerBoardCard row={board} enterLabel={enterLabel} onEnter={props.onEnter} /> : null}
+            {rest.length > 0 ? (
+              <section class="cps-card s4b-mlist">
+                {rest.map((row) => <ScorerListRow key={row.id} row={row} enterLabel={enterLabel} onEnter={props.onEnter} />)}
+              </section>
+            ) : null}
           </div>
-        ))}
-      </S4bCard>
+        );
+      })}
     </S4bFrame>
   );
 }

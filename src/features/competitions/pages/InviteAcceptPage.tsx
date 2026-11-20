@@ -28,7 +28,7 @@ import { LiveBoundary } from '../live';
 import { cpSignIn } from '../sign-in';
 import { S4bCard, S4bFrame } from '../step4b/ui';
 import { errorOf, reasonText } from '../ui/feedback';
-import { CpI18nPending } from '../ui/shell';
+import { AlertIcon, CpI18nPending } from '../ui/shell';
 
 /** 接受頁的錯誤句子。結束、取消改用邀請語氣，其他沿用 reasons。 */
 export function acceptErrorText(ct: CompetitionsT, reason: string, params?: Record<string, unknown>): string {
@@ -146,8 +146,9 @@ function InviteAcceptView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
     return (
       <S4bFrame title={ct('acceptTitle')} screen="invite-accept-invalid" onBack={back}>
         <S4bCard>
-          <p class="s4b-alert" role="alert">
-            {message || (badLink ? reasonText(ct, 'INVITE_INVALID') : ct('acceptNoTicket'))}
+          <p class="s4b-alert s4b-accept__alert" role="alert">
+            <AlertIcon />
+            <span>{message || (badLink ? reasonText(ct, 'INVITE_INVALID') : ct('acceptNoTicket'))}</span>
           </p>
         </S4bCard>
       </S4bFrame>
@@ -157,9 +158,9 @@ function InviteAcceptView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
     return (
       <S4bFrame title={ct('acceptTitle')} screen="invite-accept-login" onBack={back}>
         <S4bCard>
-          <div class="s4b-gap">
-            <p class="s4b-line"><span class="s4b-k">{ct('acceptLogin')}</span></p>
-            <div class="s4b-blockbtn">
+          <div class="s4b-accept">
+            <p class="s4b-accept__notice">{ct('acceptLogin')}</p>
+            <div class="s4b-blockbtn s4b-accept__btn">
               <Button variant="primary" onClick={() => { void login(); }}>{ct('acceptLoginButton')}</Button>
             </div>
           </div>
@@ -170,12 +171,13 @@ function InviteAcceptView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
   return (
     <S4bFrame title={ct('acceptTitle')} screen="invite-accept" onBack={back}>
       <S4bCard>
-        <div class="s4b-gap">
-          {compName ? <h2 class="s4b-h s4b-accept__name">{compName}</h2> : null}
+        <div class="s4b-accept">
+          {compName ? <h2 class="s4b-accept__name">{compName}</h2> : null}
           {/* 蒐集顯示名稱的當下告知本人（顧問 11-20，隱私權條文「記分員與裁判」） */}
-          <p class="s4b-line s4b-accept__notice">{ct('acceptNotice')}</p>
-          {message ? <p class="s4b-alert" role="alert">{message}</p> : null}
-          <div class="s4b-blockbtn">
+          <p class="s4b-accept__notice">{ct('acceptNotice')}</p>
+          {/* 這張邀請現在不能用（不是資料遺失）：一般提示＋三角驚嘆號，不用紅字 */}
+          {message ? <p class="s4b-alert s4b-accept__alert" role="alert"><AlertIcon /><span>{message}</span></p> : null}
+          <div class="s4b-blockbtn s4b-accept__btn">
             <Button variant="primary" loading={busy} disabled={busy} onClick={() => { void accept(); }}>
               {ct('acceptButton')}
             </Button>

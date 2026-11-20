@@ -97,13 +97,20 @@ const crestRows: EntryDoc[] = [
 ];
 
 describe('詳情四狀態', () => {
-  it('招募沿用報名資訊，封面是分類膠囊，核准隊伍用 48 隊徽', () => {
+  // 新外觀卡 1b-3：封面拿掉，分類字收進頂部記分板；頁首改成小字「賽事」，賽事名稱是板內唯一的 h1。
+  it('招募沿用報名資訊，分類在頂部不亮燈的板上，核准隊伍用 48 隊徽', () => {
     const view = draw(screenEnv('detail-rep'), CompetitionDetailPage);
-    expect(view.container.querySelector('.cp3-cover__def--league')).toBeTruthy();
-    expect(view.container.querySelector('.cp3-cover__cat')?.textContent).toBe('聯賽');
-    expect(readFileSync('src/features/competitions/competitions.css', 'utf8')).toContain('aspect-ratio: 8 / 3');
+    expect(view.container.querySelector('.cp3-cover')).toBeNull();
+    expect(readFileSync('src/features/competitions/competitions.css', 'utf8')).not.toContain('.cp3-cover');
+    const board = view.container.querySelector('.d2-hero .d2-board');
+    expect(board?.classList.contains('d2-sb--lit')).toBe(false);
+    expect(board?.querySelector('.d2-board__cat')?.textContent).toBe('聯賽');
+    expect(board?.querySelectorAll('.d2-cell')[0]?.querySelector('.d2-cell__k')?.textContent).toBe('報名截止');
+    expect(view.container.querySelectorAll('h1')).toHaveLength(1);
+    expect(view.container.querySelector('h1')?.className).toBe('d2-board__name');
+    expect(view.container.querySelector('.cps-top__crumb')?.textContent).toBe('賽事');
     expect(view.container.textContent ?? '').toContain('以俱樂部報隊');
-    expect(view.container.textContent ?? '').toContain('賽事詳情');
+    expect(view.container.textContent ?? '').not.toContain('賽事詳情');
     expect(view.container.textContent ?? '').not.toContain('距開賽');
     const crest = view.container.querySelector('.cps-li .cp3-crest');
     expect(crest?.getAttribute('style')?.replace(/\s/g, '')).toContain('width:48px');
@@ -120,14 +127,18 @@ describe('詳情四狀態', () => {
         standings: [],
       },
     }, CompetitionDetailPage);
-    expect(view.container.textContent ?? '').toContain('距開賽 19 天');
+    const cells = [...view.container.querySelectorAll('.d2-board .d2-cell')].map((node) => node.textContent);
+    expect(cells[1]).toBe('距開賽19天');
+    expect(view.container.querySelector('.d2-board')?.classList.contains('d2-sb--lit')).toBe(false);
     expect(view.container.textContent ?? '').toContain('預熱中');
     expect(screen.getByRole('tab', { name: '賽程' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: '積分' })).toBeTruthy();
     expect(view.container.textContent ?? '').toContain('1月9日　週六');
-    expect(view.container.textContent ?? '').toContain('08:00　1號場');
+    // 新外觀卡 1b-4：時間與場地分成兩個節點；比賽列隊徽 22→24
+    expect(view.container.querySelector('.cp3-m .cp3-m__when')?.textContent).toBe('08:001號場');
+    expect(view.container.querySelector('.cp3-m .cp3-m__court')?.textContent).toBe('1號場');
     expect(view.container.textContent ?? '').toContain('vs');
-    expect(view.container.querySelector('.cp3-m .cp3-crest')?.getAttribute('style')?.replace(/\s/g, '')).toContain('width:22px');
+    expect(view.container.querySelector('.cp3-m .cp3-crest')?.getAttribute('style')?.replace(/\s/g, '')).toContain('width:24px');
   });
 
   it('盃賽封面與進行中徽章、待確認場次在同一畫面', () => {
@@ -157,11 +168,16 @@ describe('詳情四狀態', () => {
         standings: [],
       },
     }, CompetitionDetailPage);
-    expect(view.container.querySelector('.cp3-cover__def--cup')).toBeTruthy();
-    expect(view.container.querySelector('.cp3-cover__cat')?.textContent).toBe('盃賽');
+    expect(view.container.querySelector('.d2-board__cat')?.textContent).toBe('盃賽');
+    expect(view.container.querySelector('.d2-board')?.classList.contains('d2-sb--lit')).toBe(true);
     expect(screen.getByText('進行中')).toBeTruthy();
     expect(screen.getByText('待確認')).toBeTruthy();
-    expect(view.container.textContent ?? '').toContain('今天 3 場・下一場 14:30');
+    // 「今天 3 場・下一場 14:30」拆成兩格：下一場（只有一場，帶場地與對戰）｜今天 3 場
+    const cells = [...view.container.querySelectorAll('.d2-board .d2-cell')];
+    expect(cells[0]?.querySelector('.d2-cell__k')?.textContent).toBe('下一場2號場');
+    expect(cells[0]?.querySelector('.d2-num')?.textContent).toBe('14:30');
+    expect(cells[0]?.classList.contains('d2-cell--now')).toBe(true);
+    expect(cells[1]?.textContent).toBe('今天3場');
     expect(view.container.textContent ?? '').toContain('2：1');
     expect(view.container.textContent ?? '').toContain('時間待定');
     expect(view.container.textContent ?? '').toContain('改期');
@@ -185,7 +201,8 @@ describe('詳情四狀態', () => {
       schedule: { summary: rows, standings: [standings(true)] },
     }, CompetitionDetailPage);
     expect(view.container.textContent ?? '').toContain('已結束');
-    expect(view.container.querySelector('.cp3-champ__v')?.textContent).toBe('海風隊');
+    // 冠軍搬到頂部玻璃卡（只有一組：「冠軍｜隊名」一行）
+    expect(view.container.querySelector('.d2-hero .d2-plain .d2-plain__champ span')?.textContent).toBe('海風隊');
     const head = view.container.querySelector('.cp3-st__r--h');
     expect(head?.textContent).toBe('名次隊名賽勝和負進/失淨勝積分');
     expect(view.container.querySelector('.cp3-st__r--top')?.textContent).toContain('海風隊');
@@ -203,7 +220,8 @@ describe('詳情四狀態', () => {
     fireEvent.click(fold);
     expect(fold.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByRole('button', { name: '賽程（1 場）' })).toBeTruthy();
-    expect(view.container.textContent ?? '').toContain('18:00　1號場');
+    // 新外觀卡 1b-4：時間與場地分成兩個節點；完整比分在視覺隱藏那一段
+    expect(view.container.querySelector('.cp3-m .cp3-m__when')?.textContent).toBe('18:001號場');
     expect(view.container.textContent ?? '').toContain('1：0');
   });
 
@@ -241,12 +259,33 @@ describe('詳情四狀態', () => {
       bundle: { ...bundle, competition: competition(), entries: [...bundle.entries, ...crestRows] },
       schedule: { summary: [], standings: [named, pending] },
     }, CompetitionDetailPage);
-    expect([...view.container.querySelectorAll('.cp3-champ__v')].map((node) => node.textContent)).toEqual([
-      '公開組　海風隊',
-      '組別 2　冠軍待主辦裁定',
+    // 多組冠軍在頂部玻璃卡：組名與隊名分成兩格
+    expect([...view.container.querySelectorAll('.d2-plain__champs dt, .d2-plain__champs dd')].map((node) => node.textContent)).toEqual([
+      '公開組', '海風隊',
+      '組別 2', '冠軍待主辦裁定',
     ]);
     const headings = [...view.container.querySelectorAll('h3.cp3-day')].map((node) => node.textContent);
     expect(headings).toEqual(['公開組', '組別 2']);
+  });
+
+  it('同一時間兩場：板上只寫時間，兩列都掛「下一場」；進行中列比分青綠（新外觀卡 1b-4）', () => {
+    const view = draw(screenEnv('real-live-twin-next'), CompetitionDetailPage);
+    const first = view.container.querySelector('.d2-board .d2-cell');
+    expect(first?.querySelector('.d2-cell__k')?.textContent).toBe('下一場');
+    expect(first?.querySelector('.d2-cell__t')).toBeNull();
+    const nextRows = [...view.container.querySelectorAll('.cp3-m.cp3-m--next')];
+    expect(nextRows).toHaveLength(2);
+    for (const row of nextRows) {
+      expect(row.querySelector('.d2-tag--next')?.textContent).toBe('下一場');
+      expect(row.querySelector('.cp3-m__when b')?.textContent).toBe('14:30');
+    }
+    expect(view.container.querySelectorAll('.d2-tag--next')).toHaveLength(2);
+  });
+
+  it('五個組別的冠軍最多列三行，超過寫「等 5 組」（新外觀卡 1b-3）', () => {
+    const view = draw(screenEnv('real-done-five'), CompetitionDetailPage);
+    expect(view.container.querySelectorAll('.d2-plain__champs dd')).toHaveLength(3);
+    expect(view.container.querySelector('.d2-plain__more')?.textContent).toBe('等 5 組');
   });
 
   it('已結束展開失敗就收合，並顯示讀取失敗與重試', async () => {
@@ -360,7 +399,8 @@ describe('回前景重讀', () => {
         now: taipeiMs(2026, 12, 21, 12, 0),
         route: { cid: 'cup' },
       }, CompetitionDetailPage);
-      expect(await screen.findByText('距開賽 19 天')).toBeTruthy();
+      // 新外觀卡 1b-3：「距開賽 19 天」拆成頂部數字格的小標與數字
+      expect(await screen.findByText('距開賽')).toBeTruthy();
       expect(repo.calls()).toEqual([
         'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff', 'getSummaryShard', 'getStaffAssignment',
       ]);

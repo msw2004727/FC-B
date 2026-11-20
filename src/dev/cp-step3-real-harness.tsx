@@ -22,10 +22,13 @@ import CompetitionDetailPage from '@/features/competitions/pages/CompetitionDeta
 import HostMatchesPage from '@/features/competitions/pages/HostMatchesPage';
 import HostSchedulePage from '@/features/competitions/pages/HostSchedulePage';
 import NewCompetitionPage from '@/features/competitions/pages/NewCompetitionPage';
+import { CpCard, CpFrame, MoreIcon } from '@/features/competitions/ui/shell';
 
 const params = new URLSearchParams(location.search);
 const screenName = params.get('screen') || 'real-recruit';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
+// ?frame=shell：外面包正式 App 的內容容器（ui-app-shell 最大寬 560／640 與 app-main 內距），1280 截圖用（沿用 cp-p3-public 包法）。
+const framed = params.get('frame') === 'shell';
 document.documentElement.setAttribute('data-theme', theme);
 
 const PAGES: Record<string, ComponentType> = {
@@ -57,11 +60,13 @@ const PAGES: Record<string, ComponentType> = {
   'real-clear-schedule': HostSchedulePage,
   'real-tie-exists': CompetitionDetailPage,
   'real-tie-decision': CompetitionDetailPage,
+  // 卡 2-5 補（設計總監 03:38）：分得出高下（淡青綠列）、四隊同分（360 寬放不放得下）。
+  'real-tie-ranked': CompetitionDetailPage,
+  'real-tie-four': CompetitionDetailPage,
   // 新外觀第 1b 批第 7 節「要補示範狀態」（截圖拍正式版現況；面板類由下方 OPEN 點正式按鈕打開）。
   'real-live-twin-next': CompetitionDetailPage,
   'real-live-no-today': CompetitionDetailPage,
   'real-warm-no-schedule': CompetitionDetailPage,
-  'real-recruit-nocap': CompetitionDetailPage,
   'real-recruit-nodiv': CompetitionDetailPage,
   'real-done-five': CompetitionDetailPage,
   'real-done-nochamp': CompetitionDetailPage,
@@ -83,6 +88,8 @@ const PAGES: Record<string, ComponentType> = {
   // 新外觀第 4 批第 7 節「要補」：賽程管理、排賽程。
   'real-swap-open': HostMatchesPage,
   'real-shift-clash': HostMatchesPage,
+  // 同上，等「撞期」提示框消失後再拍（現況提示框會蓋住按鈕列）。
+  'real-shift-clash-settled': HostMatchesPage,
   'real-pending-fresh': HostMatchesPage,
   'real-host-matches-empty': HostMatchesPage,
   'real-host-matches-denied': HostMatchesPage,
@@ -123,7 +130,35 @@ function ContactPersonal(): ComponentChildren {
   );
 }
 
+/** 頁首帶賽事名小字（CpFrame 的 context，1b-2）：短名稱、30 字長名稱各一，驗單行省略、不擠頁名與右上鈕。 */
+const CTX_NAMES: Record<string, string> = {
+  'real-ctx-short': '三重春季盃',
+  'real-ctx-long': '二〇二七新北市三重區春季示範盃青年組五人制足球邀請錦標賽決賽',
+};
+
+function ContextHeader({ name }: { name: string }): ComponentChildren {
+  return (
+    <CpFrame
+      title="賽程管理"
+      context={name}
+      menu={<button type="button" class="cps-iconbtn" aria-label="更多"><MoreIcon /></button>}
+    >
+      <CpCard>
+        <p class="cps-sub" style="margin:0">頁首右邊是賽事名小字（單行，太長以省略號收尾）。</p>
+      </CpCard>
+    </CpFrame>
+  );
+}
+
 function Screen(): ComponentChildren {
+  const ctxName = CTX_NAMES[screenName];
+  if (ctxName) {
+    return (
+      <CpEnvProvider value={screenEnv('real-host-matches')}>
+        <ContextHeader name={ctxName} />
+      </CpEnvProvider>
+    );
+  }
   if (screenName === 'list-in') {
     return (
       <CpEnvProvider value={screenEnv('list-in')}>
@@ -272,9 +307,13 @@ const OPEN: Record<string, () => Promise<void>> = {
     tag()?.click();
     await until('裁定卡', () => buttonsNamed('撤銷裁定').length > 0);
   },
+  'real-tie-ranked': () => openTie('銀河隊', () => !!document.querySelector('.cpm-cmp__r--hit') && hasText('對戰積分')),
+  'real-tie-four': () => openTie('銀河隊', () => document.querySelectorAll('.cpm-cmp__r--h > span').length === 5 && !!document.querySelector('.cpm-cmp__r--hit')),
+  'real-ctx-short': () => until('頁首賽事名', () => !!document.querySelector('.cps-top__ctx')),
+  'real-ctx-long': () => until('頁首賽事名', () => !!document.querySelector('.cps-top__ctx')),
   // ── 新外觀第 1b 批 ──
   'real-live-twin-next': () => until('兩場下一場', () => hasText('綠洲隊') && hasText('晨光隊')),
-  'real-done-five': () => until('五組冠軍', () => hasText('赤焰隊') && hasText('組別 5')),
+  'real-done-five': () => until('五組冠軍', () => hasText('赤焰隊') && hasText('第一級別組')),
   'real-done-pending': () => until('冠軍待裁定', () => hasText('冠軍待主辦裁定')),
   'real-scorer': () => until('我的場次', () => buttonsNamed('我的場次').length > 0),
   'real-admin-menu': () => until('右上選單', () => !!document.querySelector('.cps-menu') && hasText('下架')),
@@ -302,14 +341,16 @@ const OPEN: Record<string, () => Promise<void>> = {
     clickButton('兩場對調');
     await until('兩場對調表單', () => buttonsNamed('確認對調').length > 0 && document.querySelectorAll('.cpm-swap').length === 2);
   },
-  'real-shift-clash': async () => {
-    clickButton('整天順延');
-    await until('整天順延表單', () => buttonsNamed('確認順延').length > 0);
-    setField('#cp-shift-date', '2027-01-10');
-    setField('textarea', '場地整修，整天往後延');
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    clickButton('確認順延');
-    await until('仍要順延', () => buttonsNamed('仍要順延').length > 0 && !!document.querySelector('.cpm-warn')?.textContent?.includes('藍鯨隊'));
+  'real-shift-clash': () => openShiftClash(),
+  'real-shift-clash-settled': async () => {
+    await openShiftClash();
+    // 提示框 2.5 秒後收掉；最多等 8 秒。
+    const start = Date.now();
+    while (Date.now() - start < 8000) {
+      if (!document.querySelector('.ui-toast-host')?.children.length) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error('畫面未出現：撞期提示框沒有消失');
   },
   'real-pending-fresh': () => until('待確認列', () => buttonsNamed('確認').length > 0 && buttonsNamed('記分').length > 0),
   'real-host-matches-empty': () => until('沒有場次', () => hasText('請先排賽程')),
@@ -336,6 +377,28 @@ const OPEN: Record<string, () => Promise<void>> = {
   },
 };
 
+/** 同分裁定：點指定隊伍那一列名次欄的「同分」鈕，等比較表出現。 */
+async function openTie(team: string, ready: () => boolean): Promise<void> {
+  const btn = () => [...document.querySelectorAll('.cp3-st__r')]
+    .find((row) => (row.textContent ?? '').includes(team))
+    ?.querySelector<HTMLButtonElement>('button.cpm-tiebtn');
+  if (!btn() && buttonsNamed('積分').length > 0) clickButton('積分');
+  await until('同分鈕', () => btn() != null);
+  btn()?.click();
+  await until('同分比較表', ready);
+}
+
+/** 整天順延 1/9 → 1/10，送出後撞期，等「仍要順延」出現。 */
+async function openShiftClash(): Promise<void> {
+  clickButton('整天順延');
+  await until('整天順延表單', () => buttonsNamed('確認順延').length > 0);
+  setField('#cp-shift-date', '2027-01-10');
+  setField('textarea', '場地整修，整天往後延');
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  clickButton('確認順延');
+  await until('仍要順延', () => buttonsNamed('仍要順延').length > 0 && !!document.querySelector('.cpm-warn')?.textContent?.includes('藍鯨隊'));
+}
+
 /** 主辦公告：點指定那一則的「刪除」，等確認框出現。 */
 async function openNoticeDelete(text: string, confirm: string): Promise<void> {
   await until('公告', () => hasText(text));
@@ -353,9 +416,14 @@ async function start(): Promise<void> {
   await loadCompetitionsDict('zh-TW');
   const root = document.getElementById('app');
   if (!root) return;
+  if (framed) await import('@/ui/app-shell.css');
   render(
     <LocationProvider>
-      <Screen />
+      {framed ? (
+        <div class="app-shell ui-app-shell">
+          <main class="app-main"><Screen /></main>
+        </div>
+      ) : <Screen />}
       <ToastHost />
       <AppConfirmHost />
     </LocationProvider>,

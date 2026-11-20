@@ -50,16 +50,53 @@ export function TrashIcon(): JSX.Element {
   );
 }
 
+/** 「一句話＋回去的鈕」的圖示：鎖頭（不公開）。 */
+export function LockIcon(): JSX.Element {
+  return (
+    <svg class="cps-ico" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
+/** 「一句話＋回去的鈕」的圖示：圓圈 i（讀取失敗）。 */
+export function InfoIcon(): JSX.Element {
+  return (
+    <svg class="cps-ico" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5M12 8h.01" />
+    </svg>
+  );
+}
+
+/** 三角驚嘆號：頁面層級紅色提示、刪除確認框的警告句。不帶任何文字節點。 */
+export function AlertIcon(): JSX.Element {
+  return (
+    <svg class="cps-ico" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 4L2.5 20h19z" />
+      <path d="M12 10v4M12 17h.01" />
+    </svg>
+  );
+}
+
+/**
+ * 站內賽事頁共用的頁框與頁首（新外觀第 1b 批卡 1b-2；第 3、4 批引用，不另寫一份）。
+ * 頁首＝返回鈕＋頁名 h1＋（選用）賽事名小字＋（選用）右上 menu。
+ * - crumb：返回鈕旁的小字（詳情頁傳「賽事」）。有值時頁首不畫 h1，該頁內容必須自己畫一個 h1。
+ * - context：頁名右邊的賽事名小字（單行省略，接在 h1 後面、不在 h1 裡面）。讀取失敗、不公開等畫面不要傳。
+ */
 export function CpFrame({
   title,
-  userTitle = false,
+  crumb,
+  context,
   onBack,
   menu,
   children,
 }: {
   title: string;
-  /** 標題是使用者取的名稱（賽事名稱）：最多兩行、超過才省略。 */
-  userTitle?: boolean;
+  crumb?: string;
+  context?: string;
   onBack?: () => void;
   menu?: ComponentChildren;
   children: ComponentChildren;
@@ -74,7 +111,8 @@ export function CpFrame({
         <button type="button" class="cps-iconbtn" aria-label={ct('back')} onClick={onBack ?? goBack}>
           <BackIcon />
         </button>
-        <h1 class={userTitle ? 'cps-top__user' : undefined}>{title}</h1>
+        {crumb ? <span class="cps-top__crumb">{crumb}</span> : <h1>{title}</h1>}
+        {context ? <span class="cps-top__ctx">{context}</span> : null}
         {menu}
       </header>
       <div class="cps-stack">{children}</div>

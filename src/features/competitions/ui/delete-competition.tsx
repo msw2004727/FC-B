@@ -14,6 +14,7 @@ import type { CpActions } from '../actions';
 import type { CompetitionDoc } from '../data/types';
 import type { CompetitionsT } from '../i18n';
 import { errorOf, reasonText } from './feedback';
+import { AlertIcon } from './shell';
 
 export const DELETE_ARM_MS = 600;
 
@@ -87,10 +88,11 @@ export interface DeleteCompetitionProps {
 export function DeleteCompetition(props: DeleteCompetitionProps): JSX.Element {
   const { ct, resume, previewOpen } = props;
   const [open, setOpen] = useState(previewOpen != null);
-  // 一律放在主辦區最下方、與其他按鈕拉開距離。續刪時只換字，位置不變（換位置會重掛、關掉正在顯示錯誤的確認框）。
+  // 頁面固定在內容最後、管理員區之前（各階段一致）；置中、不佔整列寬、上面一條細線（新外觀卡 1b-7）。
+  // 續刪時只換字，位置不變（換位置會重掛、關掉正在顯示錯誤的確認框）。
   return (
     <>
-      <div class="cps-actions" style="margin-top:var(--space-8)">
+      <div class="cps-del-zone">
         <Button variant="danger" onClick={() => setOpen(true)}>{resume ? ct('deleteResume') : ct('deleteComp')}</Button>
       </div>
       {open ? (
@@ -226,8 +228,8 @@ function DeleteDialog({
           <p class="cps-h cps-del-name">{name}</p>
           <p class="cps-note cps-nowrap">{ct('deleteTeams', { n: count == null ? '…' : count })}</p>
         </div>
-        {/* 顧問 §3.459：360 寬剛好 324＝324，拿掉 cps-nowrap，讓它可以在標點處換行。 */}
-        <p class="cps-note cps-warn cps-del-warn">{ct('deleteWarn')}</p>
+        {/* 顧問 §3.459：360 寬剛好 324＝324，拿掉 cps-nowrap，讓它可以在標點處換行。卡 1b-7：紅字＋三角驚嘆號（不再用 cps-warn）。 */}
+        <p class="cps-note cps-del-warn"><AlertIcon /><span>{ct('deleteWarn')}</span></p>
         <Checkbox
           label={ct('deleteAck')}
           checked={ack}
@@ -237,9 +239,9 @@ function DeleteDialog({
             setAck(next);
           }}
         />
-        {/* 文案在分號處帶換行（360 寬放不下一行時不拆字）；pre-line 只用在這裡，共用的 CpError 不動。 */}
+        {/* 文案在分號處帶換行（360 寬放不下一行時不拆字）；pre-line（cps-pre）只用在這裡，共用的 CpError 不動。 */}
         {error ? (
-          <p class="cps-note cps-warn" role="alert" style="white-space:pre-line">{reasonText(ct, error.reason, error.params)}</p>
+          <p class="cps-note cps-warn cps-pre" role="alert">{reasonText(ct, error.reason, error.params)}</p>
         ) : null}
       </div>
     </Modal>

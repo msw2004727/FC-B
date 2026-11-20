@@ -1,9 +1,8 @@
-// 詳情頁的公告與聯絡主辦。公告要進這頁才看得到。
+// 詳情頁的公告卡與頂部主辦列。公告要進這頁才看得到。
 // 俱樂部主辦連到既有俱樂部頁。個人主辦只顯示公開聯絡文字，不開站內私訊。
 
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Textarea } from '@/ui/Textarea';
 import { clipCodePoints } from '../format';
@@ -17,6 +16,7 @@ import {
 import type { CompetitionNotice } from '../data/types';
 import type { CompetitionsT } from '../i18n';
 import { CpCard } from './shell';
+import { StatusTag } from './status-tag';
 
 const NOTICE_TOGGLE_ID = 'cp-notice-toggle';
 const NOTICE_COMPOSE_ID = 'cp-notice-compose';
@@ -29,24 +29,15 @@ export function clubPagePath(teamId: string): string {
 export function PublicBoard({
   ct,
   notices,
-  contactNote,
-  hostName,
   hostOps,
   busy,
-  clubTeamId,
-  onOpenClub,
   onPost,
   onDelete,
 }: {
   ct: CompetitionsT;
   notices: readonly CompetitionNotice[];
-  contactNote: string | null;
-  hostName: string;
   hostOps: boolean;
   busy: boolean;
-  /** 俱樂部主辦且有 hostTeamId 才有值。沒有就不顯示連到俱樂部的連結。 */
-  clubTeamId: string | null;
-  onOpenClub: (teamId: string) => void;
   onPost: (text: string) => Promise<boolean>;
   onDelete: (noticeId: string) => Promise<void>;
 }): JSX.Element {
@@ -60,9 +51,6 @@ export function PublicBoard({
   const more = ordered.length > NOTICE_PREVIEW_COUNT && !showAll;
   const posted = hostNoticeCount(notices);
   const showNotices = ordered.length > 0 || hostOps;
-  const clubPath = clubTeamId ? clubPagePath(clubTeamId) : null;
-  // 個人主辦沒有公開文字時，整區不顯示。俱樂部主辦一定留連結（聯絡方式在俱樂部頁）。
-  const showContact = clubPath != null || contactNote != null;
 
   useEffect(() => {
     const target = focusAfter.current;
@@ -94,7 +82,7 @@ export function PublicBoard({
               {visible.map((notice) => (
                 <li key={notice.id}>
                   <div class="cpm-ann__row">
-                    {notice.kind === 'system' && !hostOps ? <Badge tone="neutral" label={ct('system')} size="sm" /> : null}
+                    {notice.kind === 'system' && !hostOps ? <StatusTag kind="neutral" label={ct('system')} /> : null}
                     <span class="cpm-ann__txt">{notice.text}</span>
                   </div>
                   {hostOps ? (
@@ -102,7 +90,7 @@ export function PublicBoard({
                     // 不再替刪除留一欄把字擠成三行。非主辦維持原樣。
                     <div class="cpm-ann__meta">
                       <span class="cpm-ann__when">
-                        {notice.kind === 'system' ? <Badge tone="neutral" label={ct('system')} size="sm" /> : null}
+                        {notice.kind === 'system' ? <StatusTag kind="neutral" label={ct('system')} /> : null}
                         <span class="cpm-ann__time">{noticeWhen(notice.at)}</span>
                       </span>
                       <Button variant="ghost" size="sm" disabled={busy} onClick={() => { void onDelete(notice.id); }}>
@@ -162,28 +150,66 @@ export function PublicBoard({
           ) : null}
         </CpCard>
       ) : null}
-      {showContact ? (
-        <CpCard>
-          <h2 class="cpm-h">{ct('contactHost')}</h2>
-          {clubPath && clubTeamId ? (
-            <div class="cpm-contact">
-              {hostName ? <span class="cpm-host">{hostName}</span> : null}
-              <a
-                class="cpm-pm"
-                href={clubPath}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation(); // 不讓 preact-iso LocationProvider 的全域連結攔截再推一筆歷史（11-20 預演：返回要按兩次）。
-                  onOpenClub(clubTeamId);
-                }}
-              >
-                {ct('contactHost')}
-              </a>
-            </div>
-          ) : null}
-          {contactNote ? <p class="cpm-public">{contactNote}</p> : null}
-        </CpCard>
-      ) : null}
+    </>
+  );
+}
+
+/** 有沒有主辦列：俱樂部主辦一定有（聯絡方式在俱樂部頁）；個人主辦要有公開聯絡文字。 */
+export function hostLineShown(clubTeamId: string | null, contactNote: string | null): boolean {
+  return clubTeamId != null || contactNote != null;
+}
+
+/**
+ * 頂部下半的主辦列（新外觀卡 1b-3）：小字「主辦」｜主辦名稱｜（招募中）主辦類型｜靠右「聯絡主辦」小鈕，公開聯絡文字接下一行。
+ * 個人主辦只有聯絡文字時，小字「主辦」自己一行、下面聯絡文字。沒有任何聯絡（個人主辦、沒填）回 null，頂部只剩板。
+ */
+export function HostLine({
+  ct,
+  hostName,
+  hostType,
+  contactNote,
+  clubTeamId,
+  onOpenClub,
+}: {
+  ct: CompetitionsT;
+  hostName: string;
+  /** 只有招募中才傳（主辦類型標籤只在招募中出現）。 */
+  hostType?: string;
+  contactNote: string | null;
+  /** 俱樂部主辦且有 hostTeamId 才有值。沒有就不顯示連到俱樂部的連結。 */
+  clubTeamId: string | null;
+  onOpenClub: (teamId: string) => void;
+}): JSX.Element | null {
+  if (!hostLineShown(clubTeamId, contactNote)) return null;
+  if (!clubTeamId) {
+    return (
+      <>
+        <span class="cpm-h">{ct('host')}</span>
+        <p class="cpm-public">{contactNote}</p>
+      </>
+    );
+  }
+  const clubPath = clubPagePath(clubTeamId);
+  return (
+    <>
+      <div class="cpm-contact">
+        <span class="cpm-h">{ct('host')}</span>
+        {hostName ? <span class="cpm-host">{hostName}</span> : null}
+        {hostType ? <StatusTag kind="neutral" label={hostType} /> : null}
+        <Button
+          href={clubPath}
+          variant="secondary"
+          size="sm"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation(); // 不讓 preact-iso LocationProvider 的全域連結攔截再推一筆歷史（11-20 預演：返回要按兩次）。
+            onOpenClub(clubTeamId);
+          }}
+        >
+          {ct('contactHost')}
+        </Button>
+      </div>
+      {contactNote ? <p class="cpm-public">{contactNote}</p> : null}
     </>
   );
 }

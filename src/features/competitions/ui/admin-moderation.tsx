@@ -5,7 +5,6 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { appConfirm } from '@/ui/AppConfirm';
-import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
 import { Modal } from '@/ui/Modal';
 import { Textarea } from '@/ui/Textarea';
@@ -17,6 +16,8 @@ import type { ReportDoc, ReportReason, ReportReviewStatus } from '../data/types'
 import { formatTaipeiShort } from '../format';
 import type { CompetitionsT } from '../i18n';
 import { errorOf, reasonText } from './feedback';
+import { AlertIcon } from './shell';
+import { StatusTag } from './status-tag';
 
 export const MODERATE_REASON_MIN = 2;
 export const MODERATE_REASON_MAX = 200;
@@ -26,7 +27,8 @@ export function HiddenNotice({ ct, reason }: { ct: CompetitionsT; reason: string
   const text = reason && reason.trim()
     ? ct('hiddenByAdmin', { reason: reason.trim() })
     : ct('hiddenByAdminNoReason');
-  return <p class="cpa-hidden" role="status">{text}</p>;
+  // 圖示不帶文字節點；那一句維持是一個完整的文字節點（測試用 findByText 找）。
+  return <p class="cpa-hidden" role="status"><AlertIcon /><span>{text}</span></p>;
 }
 
 export function reportReasonLabel(ct: CompetitionsT, reason: ReportReason): string {
@@ -37,10 +39,10 @@ export function reportReasonLabel(ct: CompetitionsT, reason: ReportReason): stri
   return ct('reportOther');
 }
 
-function statusBadge(ct: CompetitionsT, status: ReportReviewStatus): { label: string; tone: 'warning' | 'success' | 'neutral' } {
-  if (status === 'resolved') return { label: ct('reportStatusResolved'), tone: 'success' };
-  if (status === 'dismissed') return { label: ct('reportStatusDismissed'), tone: 'neutral' };
-  return { label: ct('reportStatusOpen'), tone: 'warning' };
+function statusLabel(ct: CompetitionsT, status: ReportReviewStatus): string {
+  if (status === 'resolved') return ct('reportStatusResolved');
+  if (status === 'dismissed') return ct('reportStatusDismissed');
+  return ct('reportStatusOpen');
 }
 
 export function ModerateDialog({
@@ -205,44 +207,43 @@ export function AdminPanel(props: AdminPanelProps): JSX.Element {
   return (
     <section class="cpa-panel" data-admin-panel>
       <div class="cpa-head">
-        <h2 class="cpa-h">{ct('adminArea')}</h2>
-        {props.hidden ? <Badge tone="danger" size="sm" label={ct('moderateHidden')} /> : null}
+        <h2 class="cpm-h">{ct('adminArea')}</h2>
+        {props.hidden ? <StatusTag kind="cancelled" label={ct('moderateHidden')} /> : null}
       </div>
       <div class="cpa-btns">
         {props.hidden ? (
-          <Button variant="secondary" size="sm" disabled={busy} onClick={() => { void restore(); }}>{ct('moderateRestore')}</Button>
+          <Button variant="secondary" disabled={busy} onClick={() => { void restore(); }}>{ct('moderateRestore')}</Button>
         ) : (
-          <Button variant="danger" size="sm" disabled={busy} onClick={() => { setHideError(null); props.setHideOpen(true); }}>{ct('moderateHide')}</Button>
+          <Button variant="danger" disabled={busy} onClick={() => { setHideError(null); props.setHideOpen(true); }}>{ct('moderateHide')}</Button>
         )}
-        <Button variant="secondary" size="sm" aria-expanded={reportsOpen} onClick={toggleReports}>{ct('reportsTitle')}</Button>
+        <Button variant="secondary" aria-expanded={reportsOpen} onClick={toggleReports}>{ct('reportsTitle')}</Button>
       </div>
       {reportsOpen ? (
-        <div class="cpa-reports" data-reports>
+        <div data-reports>
           {reportsFailed ? (
             <div class="cpa-retry">
               <p class="cps-note cps-warn" role="alert">{ct('loadFailed')}</p>
               <Button variant="secondary" size="sm" onClick={() => { void loadReports(); }}>{ct('retry')}</Button>
             </div>
           ) : reports == null ? (
-            <p class="cpa-muted">{ct('reportsLoading')}</p>
+            <p class="cps-note cps-nowrap">{ct('reportsLoading')}</p>
           ) : reports.length === 0 ? (
-            <p class="cpa-muted">{ct('reportsEmpty')}</p>
+            <p class="cps-note cps-nowrap">{ct('reportsEmpty')}</p>
           ) : (
-            <ul class="cpa-list">
+            <ul class="cps-list">
               {reports.map((row) => {
-                const badge = statusBadge(ct, row.status);
                 const actionable = row.status === 'open' || row.reopened;
                 return (
                   <li key={row.id} class="cpa-li" data-report={row.id}>
                     <div class="cpa-li__top">
                       <span class="cpa-reason">{reportReasonLabel(ct, row.reason)}</span>
-                      <Badge tone={badge.tone} size="sm" label={badge.label} />
-                      {row.reopened ? <Badge tone="danger" size="sm" label={ct('reportReopened')} /> : null}
+                      <StatusTag kind="neutral" label={statusLabel(ct, row.status)} />
+                      {row.reopened ? <StatusTag kind="neutral" label={ct('reportReopened')} /> : null}
                     </div>
                     {row.detail ? <p class="cpa-detail">{row.detail}</p> : null}
                     <p class="cpa-meta">
-                      <span>{ct('reportCount', { n: row.count })}</span>
-                      {row.lastAt != null ? <span>{ct('reportLastAt', { date: formatTaipeiShort(row.lastAt) })}</span> : null}
+                      <span class="cps-nowrap">{ct('reportCount', { n: row.count })}</span>
+                      {row.lastAt != null ? <span class="cps-nowrap">{ct('reportLastAt', { date: formatTaipeiShort(row.lastAt) })}</span> : null}
                     </p>
                     <div class="cpa-btns">
                       {actionable ? (
