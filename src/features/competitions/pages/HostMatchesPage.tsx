@@ -194,8 +194,8 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       }
       return undefined;
     }
-    // 代表清單還在讀：先等，避免把代表當成無權限而少讀隊徽與場次。
-    if (repPending) return undefined;
+    // 登入判定中或代表清單還在讀：先等，不用空身分先讀一輪（冷開多讀），也不把代表當成無權限。
+    if (env.actor.authPending || repPending) return undefined;
     let alive = true;
     void (async () => {
       const next = await loadBundle(env, cid);
@@ -214,7 +214,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cid, env.actor.uid, env.actor.role, env.bundle, env.matches, repKey, repPending]);
+  }, [cid, env.actor.authPending, env.actor.uid, env.actor.role, env.bundle, env.matches, repKey, repPending]);
 
   const competition = bundle?.competition ?? null;
   const divisions = bundle?.divisions ?? [];

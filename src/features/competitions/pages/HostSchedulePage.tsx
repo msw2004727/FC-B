@@ -89,12 +89,18 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
   const previewSeq = useRef(0);
   const seeded = useRef(Boolean(competition));
 
+  // 這份資料是替哪個 uid 讀的。冷開時 uid 晚到，舊資料（staff 為空）不拿來判權限，先轉圈。
+  const [loadedUid, setLoadedUid] = useState<string | null | undefined>(env.bundle ? env.actor.uid : undefined);
+
   useEffect(() => {
-    if (env.bundle) return undefined;
+    // 登入判定中不讀：uid 到了才讀一次（冷開不先用空身分讀一輪）。
+    if (env.bundle || env.actor.authPending) return undefined;
     let alive = true;
+    const uid = env.actor.uid;
     void loadBundle(env, cid).then((next) => {
       if (!alive) return;
       setBundle(next);
+      setLoadedUid(uid);
       setPhase(next ? 'ready' : 'missing');
     }).catch(() => {
       if (alive) setPhase('error');
@@ -104,7 +110,7 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
     };
     // 正式頁只在 cid 或身分變時重讀。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cid, env.actor.uid, env.actor.role, env.bundle]);
+  }, [cid, env.actor.authPending, env.actor.uid, env.actor.role, env.bundle]);
 
   useEffect(() => {
     if (!competition || seeded.current) return;
@@ -241,7 +247,8 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
   }
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
-  if (env.actor.authPending || phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
+  const staleUid = !env.bundle && phase === 'ready' && loadedUid !== env.actor.uid;
+  if (env.actor.authPending || phase === 'loading' || staleUid) return <div class="cps-root"><PageSpinner /></div>;
   if (phase === 'error' || !competition) {
     return (
       <CpFrame title={ct('hostSchedTitle')}>
@@ -249,7 +256,7 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
       </CpFrame>
     );
   }
-  // ASSUMPTION: 「無權限」沿用 reason.NOT_HOST，不另造句子。俱樂部代表不是 staff 時擋下。
+  // ASSUMPTION: 「無權限」沿用 reason.NOT_HOST，不另造句子。俱樂部賽事的目前代表算主辦。
   const allowed = allowedOf(env, competition, bundle?.staff ?? null);
   // 代表清單還在讀時先等，不先顯示沒有權限。
   if (!allowed && env.actor.repClubsPending === true) return <div class="cps-root"><PageSpinner /></div>;

@@ -223,6 +223,29 @@ describe('指派頁與我的場次', () => {
     expect(staffNames(view)).not.toContain('成員 6');
   });
 
+  it('共同主辦、管理員看代表那一列：只顯示記分員（與後端一致，不讀別人的代表身分）', async () => {
+    const seed = {
+      competitions: [competition({ id: 'cup' })],
+      staff: STAFF_SEED,
+      assignments: {
+        cup: [
+          ...ASSIGNMENTS.cup,
+          { uid: 'uid_cap', roles: ['scorer' as const], matchIds: ['mt_1'], expiresAt: null, memberNo: 6 },
+        ],
+      },
+    };
+    for (const who of [coHostActor, adminActor]) {
+      const repo = createFakeCpRepo(seed);
+      const view = draw({ actor: who, repo, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
+      expect(await screen.findByText('成員 6')).toBeTruthy();
+      const row = rowOf(view, '成員 6');
+      expect(row?.textContent ?? '', who.uid ?? '').toContain('記分員');
+      expect(row?.textContent ?? '', who.uid ?? '').not.toContain('主辦');
+      expect(repo.calls(), who.uid ?? '').not.toContain('getCompetition');
+      cleanup();
+    }
+  });
+
   it('個人主辦賽事：代表身分不算主辦，主辦不多讀賽事', async () => {
     const personal = createFakeCpRepo({
       competitions: [competition({ id: 'cup', hostType: 'personal', hostTeamId: null })],

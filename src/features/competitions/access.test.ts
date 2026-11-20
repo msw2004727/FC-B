@@ -60,6 +60,8 @@ describe('賽事權限顯示', () => {
     expect(canHostOrCo({ ...club, repClubIds: ['club_other'] })).toBe(false);
     // hostTeamId 缺值不比對
     expect(canHostOrCo({ ...club, hostTeamId: null, repClubIds: ['club_host'] })).toBe(false);
+    expect(canHostOrCo({ ...club, hostTeamId: '', repClubIds: [''] })).toBe(false);
+    expect(isCurrentClubRep({ ...club, hostTeamId: '', repClubIds: ['', 'club_host'] })).toBe(false);
     // 俱樂部賽事的共同主辦、管理員不變
     expect(canHostOrCo({ ...club, staffRoles: ['coHost'] })).toBe(true);
     expect(canHostOrCo({ ...club, isAdmin: true })).toBe(true);
