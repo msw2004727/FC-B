@@ -305,6 +305,16 @@
 .cps-root .ui-textarea textarea::placeholder,
 .d2-panel .ui-input input::placeholder,
 .d2-panel .ui-textarea textarea::placeholder { color: var(--d2-text-3); }
+/* 停用欄位：補回被上面欄位規則蓋掉的停用樣子；text-fill 與 opacity 給 iOS LINE（設計 07:25） */
+.cps-root .ui-input input:disabled,
+.cps-root .ui-select select:disabled,
+.cps-root .ui-textarea textarea:disabled,
+.d2-panel .ui-input input:disabled,
+.d2-panel .ui-select select:disabled,
+.d2-panel .ui-textarea textarea:disabled {
+  background: var(--d2-off-bg); box-shadow: inset 0 0 0 1px var(--d2-off-line);
+  color: var(--d2-text-3); -webkit-text-fill-color: var(--d2-text-3); opacity: 1;
+}
 .cps-root .ui-input label,
 .cps-root .ui-select label,
 .cps-root .ui-textarea label,
