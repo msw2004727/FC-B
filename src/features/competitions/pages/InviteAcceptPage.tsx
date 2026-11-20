@@ -1,6 +1,10 @@
 // 接受記分邀請（K11）。網址 /competitions/:cid/invite#i=<ivId>&c=<code>（顧問裁定：代碼不放查詢字串）。
 // 進頁讀到 # 立刻 replaceState 拿掉。未登入者按「登入」時才暫存到 sessionStorage（LINE 登入回跳帶不了 #）。
-// 成功、任何錯誤、離開頁面都清掉暫存。代碼不寫進 console、toast、錯誤訊息或任何回報。
+// 成功、任何錯誤、離開頁面都清掉 sessionStorage 暫存。代碼不寫進 console、toast、錯誤訊息或任何回報。
+// 顧問 11-20：連線或不明錯誤時記憶體裡的邀請保留（可直接再按一次）；伺服器明確回無效／已使用／已撤銷／已過期才整個清掉。
+
+/** 伺服器明確判定這張邀請不能再用的錯誤碼：清掉記憶體裡的邀請。其他（連線、不明、賽事狀態）保留讓本人可再按。 */
+const FINAL_INVITE_REASONS = new Set(['INVITE_INVALID', 'INVITE_USED', 'INVITE_REVOKED', 'INVITE_EXPIRED']);
 
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -36,12 +40,14 @@ export function acceptErrorText(ct: CompetitionsT, reason: string, params?: Reco
  * 進頁只做一次：# 優先，其次 sessionStorage（登入回來）。有 # 一律從網址列拿掉（格式錯也拿掉）。
  * 讀到 # 只留在記憶體；只有按「登入」才寫 sessionStorage（Opus 審 P3-1：已登入者整頁離開不會留暫存）。
  */
-function takeTicket(cid: string): InviteTicket | null {
+function takeTicket(cid: string): { ticket: InviteTicket | null; badLink: boolean } {
   const hash = typeof window === 'undefined' ? '' : window.location.hash;
   const parsed = parseInviteHash(hash);
   if (hash) stripLocationHash();
-  if (parsed && cid) return { cid, ivId: parsed.ivId, code: parsed.code };
-  return cid ? readInviteTicket(cid) : null;
+  if (parsed && cid) return { ticket: { cid, ivId: parsed.ivId, code: parsed.code }, badLink: false };
+  const stored = cid ? readInviteTicket(cid) : null;
+  // 網址帶了 # 但格式不對＝連結無效；沒有 # 也沒有暫存（換瀏覽器、LINE 登入回來暫存不見）＝找不到邀請資料（顧問 11-20）。
+  return { ticket: stored, badLink: !stored && hash.length > 1 };
 }
 
 async function defaultSignIn(): Promise<void> {
@@ -59,10 +65,12 @@ function InviteAcceptView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
   const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   // useState 的初始函式只跑一次：同一次掛載不會重讀 #。
-  const [ticket, setTicket] = useState<InviteTicket | null>(() => takeTicket(cid));
+  const [initial] = useState(() => takeTicket(cid));
+  const [ticket, setTicket] = useState<InviteTicket | null>(initial.ticket);
   const [compName, setCompName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(ticket ? null : '');
+  // 進頁就沒有邀請時的句子在畫面上依 initial 決定（字典可能還沒載入，不在這裡先算）。
+  const [message, setMessage] = useState<string | null>(null);
   const loginLock = useRef(false);
 
   // 離開頁面（含 SPA 換頁）清掉暫存。整頁導去 LINE 登入不會卸載，暫存留著讓回來接續。
@@ -97,7 +105,7 @@ function InviteAcceptView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
       // 錯誤句子只來自 reason 代碼，不帶 err.message、不帶代碼。
       const info = errorOf(err);
       clearInviteTicket();
-      setTicket(null);
+      if (FINAL_INVITE_REASONS.has(info.reason)) setTicket(null);
       setMessage(acceptErrorText(ct, info.reason, info.params));
     } finally {
       setBusy(false);
@@ -124,7 +132,9 @@ function InviteAcceptView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
     return (
       <S4bFrame title={ct('acceptTitle')} screen="invite-accept-invalid" onBack={back}>
         <S4bCard>
-          <p class="s4b-alert" role="alert">{message || reasonText(ct, 'INVITE_INVALID')}</p>
+          <p class="s4b-alert" role="alert">
+            {message || (initial.badLink ? reasonText(ct, 'INVITE_INVALID') : ct('acceptNoTicket'))}
+          </p>
         </S4bCard>
       </S4bFrame>
     );
@@ -148,6 +158,8 @@ function InviteAcceptView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
       <S4bCard>
         <div class="s4b-gap">
           {compName ? <h2 class="s4b-h s4b-accept__name">{compName}</h2> : null}
+          {/* 蒐集顯示名稱的當下告知本人（顧問 11-20，隱私權條文「記分員與裁判」） */}
+          <p class="s4b-line s4b-accept__notice">{ct('acceptNotice')}</p>
           {message ? <p class="s4b-alert" role="alert">{message}</p> : null}
           <div class="s4b-blockbtn">
             <Button variant="primary" loading={busy} disabled={busy} onClick={() => { void accept(); }}>

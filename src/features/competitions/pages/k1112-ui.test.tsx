@@ -347,12 +347,59 @@ describe('接受邀請（K11，代碼放 #）', () => {
     noCodeLeak();
   });
 
-  it('別的賽事的暫存不接續；沒有代碼顯示連結無效', async () => {
+  it('顧問 11-20：連線或不明錯誤保留邀請可直接再按（暫存照清）；伺服器明確判定無效、已用、撤銷、過期才整個清掉', async () => {
+    for (const reason of ['UNAVAILABLE', 'UNKNOWN', 'DEADLINE_EXCEEDED']) {
+      openWithHash();
+      sessionStorage.setItem(INVITE_STORE_KEY, JSON.stringify({ cid: 'cup', ivId: IV, code: CODE }));
+      const acceptInvite = vi.fn()
+        .mockImplementationOnce(() => Promise.reject(new CpCallError(reason, {})))
+        .mockImplementationOnce(async () => ({ cid: 'cup', roles: ['scorer'], matchCount: 1 }));
+      draw(acceptEnv({ actions: { ...idleActions(), acceptInvite } }), <InviteAcceptPage />);
+      fireEvent.click(await screen.findByText('接受邀請', { selector: 'button *, button' }));
+      await waitFor(() => expect(acceptInvite).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(button('接受邀請')).toBeTruthy());
+      expect(sessionStorage.getItem(INVITE_STORE_KEY)).toBeNull();
+      fireEvent.click(button('接受邀請'));
+      await waitFor(() => expect(acceptInvite).toHaveBeenCalledTimes(2));
+      expect(acceptInvite.mock.calls[1]).toEqual([{ cid: 'cup', ivId: IV, code: CODE }]);
+      await waitFor(() => expect(location.pathname).toBe('/competitions/cup/my-matches'));
+      noCodeLeak();
+      cleanup();
+    }
+    for (const reason of ['INVITE_INVALID', 'INVITE_USED', 'INVITE_REVOKED', 'INVITE_EXPIRED']) {
+      openWithHash();
+      const acceptInvite = vi.fn(async () => { throw new CpCallError(reason, {}); });
+      draw(acceptEnv({ actions: { ...idleActions(), acceptInvite } }), <InviteAcceptPage />);
+      fireEvent.click(await screen.findByText('接受邀請', { selector: 'button *, button' }));
+      await waitFor(() => expect(acceptInvite).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.queryByText('接受邀請', { selector: 'button *, button' })).toBeNull());
+      cleanup();
+    }
+  });
+
+  it('顧問 11-20：已登入看到告知句（接受後成為記分人員、主辦會看到顯示名稱）', async () => {
+    openWithHash();
+    draw(acceptEnv(), <InviteAcceptPage />);
+    expect(await screen.findByText('接受後你會成為這場賽事的記分人員，主辦會看到你的顯示名稱。')).toBeTruthy();
+  });
+
+  it('顧問 11-20：沒有 # 也沒有暫存（換瀏覽器、LINE 登入回來暫存不見）顯示找不到邀請資料', async () => {
+    history.replaceState(null, '', '/competitions/cup/invite');
+    sessionStorage.removeItem(INVITE_STORE_KEY);
+    draw(acceptEnv(), <InviteAcceptPage />);
+    expect(await screen.findByText('找不到邀請資料，請重新點開邀請連結。')).toBeTruthy();
+    cleanup();
+    history.replaceState(null, '', '/competitions/cup/invite?from=line');
+    draw(acceptEnv({ actor: { ...memberActor, uid: null } }), <InviteAcceptPage />);
+    expect(await screen.findByText('找不到邀請資料，請重新點開邀請連結。')).toBeTruthy();
+  });
+
+  it('別的賽事的暫存不接續；沒有代碼顯示找不到邀請資料', async () => {
     history.replaceState(null, '', '/competitions/cup/invite');
     sessionStorage.setItem(INVITE_STORE_KEY, JSON.stringify({ cid: 'other', ivId: IV, code: CODE }));
     const acceptInvite = vi.fn();
     draw(acceptEnv({ actions: { ...idleActions(), acceptInvite } }), <InviteAcceptPage />);
-    expect(await screen.findByText('邀請連結無效')).toBeTruthy();
+    expect(await screen.findByText('找不到邀請資料，請重新點開邀請連結。')).toBeTruthy();
     expect(acceptInvite).not.toHaveBeenCalled();
   });
 });

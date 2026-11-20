@@ -401,6 +401,8 @@
   "acceptLogin": "登入後才能接受邀請",
   "acceptLoginButton": "登入",
   "acceptDone": "已加入記分人員",
+  "acceptNotice": "接受後你會成為這場賽事的記分人員，主辦會看到你的顯示名稱。",
+  "acceptNoTicket": "找不到邀請資料，請重新點開邀請連結。",
   "acceptEnded": "賽事已結束，邀請無法使用",
   "acceptClosed": "賽事已取消，邀請無法使用",
   "hiddenByAdmin": "此賽事已被管理員下架：{reason}",
