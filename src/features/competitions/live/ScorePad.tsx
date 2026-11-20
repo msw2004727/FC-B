@@ -754,6 +754,23 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     </div>
   );
 
+  // 進球上方的隊名標籤與兩欄分隔線。隊名已在按鈕 aria-label 裡，標籤只給眼睛看。
+  const pad = (
+    <div key="pad" class="s4-pad">
+      <div class="s4-tags" aria-hidden="true">
+        <span class="s4-tag s4-tag--home">
+          <TeamLockup entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" place="column" />
+        </span>
+        <span class="s4-tag s4-tag--away">
+          <TeamLockup entryId={match.away.teamId} name={match.away.name} crests={crests} align="away" place="column" />
+        </span>
+      </div>
+      {goals}
+      {cardRow}
+      <span class="s4-pad__rule" aria-hidden="true" />
+    </div>
+  );
+
   const log = (
     <div key="log" class="s4-feed">
       {props.feed ? (
@@ -996,8 +1013,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       {alertBlock}
       {timeoutBanner}
       {log}
-      {goals}
-      {cardRow}
+      {pad}
       {bar}
 
       {picker ? (
