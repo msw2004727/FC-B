@@ -55,7 +55,42 @@ export const U2_SCREENS = [
   'a1-undo-confirm',
   'a1-blocked-ht-before',
   'a1-pk-blocked',
+  // 新外觀第 2 批卡 2-0（施工-第2批 3.27）：正式頁才有的組合、面板固定狀態、讀取失敗、長隊名各字數。
+  'u2-fulltime-undo',
+  'u2-fulltime-undo-blocked',
+  'a1-held-offline',
+  'a1-held-pause-reserved',
+  'a1-held-timeout',
+  'a1-held-timeout-collapsed',
+  'u2-timeout-collapsed',
+  'u2-near-cap',
+  'u2-reader-cap',
+  'u2-menu',
+  'u2-timeout-sheet',
+  'u2-amend-card',
+  'a1-amend-confirm',
+  'u2-no-permission-host',
+  'u2-load-failed-network',
+  'u2-load-failed-error',
+  'u2-pre-wake-off',
+  'u2-long-6',
+  'u2-long-7',
+  'u2-long-10',
+  'u2-long-11',
+  'u2-long-13',
+  'u2-long-similar',
 ] as const;
+
+/** 長隊名示範：字數（主隊、客隊同字數）與兩隊名稱。卡 2-0：施工-第2批 3.5 的門檻。 */
+export const U2_LONG_NAMES: Record<string, readonly [string, string]> = {
+  'u2-long-6': ['信義青年聯隊', '前鎮海風球隊'],
+  'u2-long-7': ['信義青年足球隊', '前鎮海風足球隊'],
+  'u2-long-10': ['台北信義青年足球聯隊', '高雄市前鎮海風足球隊'],
+  'u2-long-11': ['台北市信義青年足球聯隊', '高雄市前鎮區海風足球隊'],
+  'u2-long-13': ['台北市信義區青年足球聯合隊', '高雄市前鎮區海風足球俱樂部'],
+  // 兩個 12 字、只差最後一個字（原型 long-similar 是截圖腳本臨時換字）。
+  'u2-long-similar': ['台北市信義區青年足球甲隊', '台北市信義區青年足球乙隊'],
+};
 
 const ANCHORS: Record<string, string> = {
   'u2-pre': '開賽',
@@ -83,6 +118,30 @@ const ANCHORS: Record<string, string> = {
   'a1-undo-confirm': '會一併復原第二張黃牌',
   'a1-blocked-ht-before': '前一筆沒送出，請點「未套用的動作」處理',
   'a1-pk-blocked': '先處理沒送出的紀錄，才能開始 PK',
+  'u2-fulltime-undo': '撤回終場',
+  'u2-fulltime-undo-blocked': '先處理沒送出的紀錄，才能撤回終場',
+  'a1-held-offline': '離線中，已存',
+  'a1-held-pause-reserved': '為保留記分額度，停錶已停用',
+  'a1-held-timeout': '結束暫停',
+  'a1-held-timeout-collapsed': '前一筆沒送出',
+  'u2-timeout-collapsed': '雷霆隊',
+  'u2-near-cap': '本場紀錄接近上限',
+  'u2-reader-cap': '紀錄已達上限，請由主辦在賽後登錄比分',
+  'u2-menu': '離開記分',
+  'u2-timeout-sheet': '每半場重新計算',
+  'u2-amend-card': '看這張牌',
+  'a1-amend-confirm': '確定改判',
+  'u2-no-permission-host': '請先在指派頁把自己指派為記分員',
+  'u2-load-failed-network': '讀取失敗，連線恢復後會自動重試',
+  'u2-load-failed-error': '讀取失敗',
+  // 開賽前螢幕喚醒還沒要求（data/wake-lock.ts 只在 play/ht 要求），所以正式頁開賽前不會出現「請關閉手機自動鎖定」；錨點只等開賽鈕。
+  'u2-pre-wake-off': '開賽',
+  'u2-long-6': '34:00',
+  'u2-long-7': '34:00',
+  'u2-long-10': '34:00',
+  'u2-long-11': '34:00',
+  'u2-long-13': '34:00',
+  'u2-long-similar': '34:00',
 };
 
 const HOME: RosterPublicDoc[] = [
@@ -230,6 +289,43 @@ interface Seed {
   pending?: LogEntry[];
   /** 控制權在別的裝置（同帳號另一個 sid）。 */
   otherDevice?: boolean;
+  /** 進場（backend.open）丟錯：network＝{ code: 'unavailable' }、error＝一般錯誤（G-06 讀取失敗畫面）。 */
+  failOpen?: 'network' | 'error';
+}
+
+/** 一筆被拒的客隊進球＋之後兩筆待送（a1-held 的待送內容）。 */
+function heldPending(): LogEntry[] {
+  return [
+    rejectedEntry('rej-goal-away-00001', { kind: 'goal', side: 'away', plId: 'pl_hf10', goalKind: 'normal', matchSecond: 1500 }, 2, 'conflict', NOW - 60_000),
+    pendingGoal('pend-goal-home-00002', 'home', 'pl_th9', NOW - 30_000),
+    pendingGoal('pend-goal-home-00003', 'home', 'pl_th9', NOW - 10_000),
+  ];
+}
+
+function timeoutAt(seq: number, op: string): ServerEvent {
+  return { seq, type: 'timeout', op, sid: SID, side: 'home', matchSecond: 600, createdAt: NOW - 13_000 };
+}
+
+/** 球隊暫停進行中（同 u2-timeout-stop）。 */
+function timeoutSeed(op: string): Seed {
+  return {
+    match: match({ status: 'live', rev: 2, score: { home: 1, away: 0 }, clockBase: clock(10 * 60, 'h2', false, NOW - 8_000) }),
+    events: [goalAt(1, 'home', 8), timeoutAt(2, op)],
+  };
+}
+
+/** 終場已送出、還在撤回期（19 秒前）。正式頁多一顆「離開記分」。 */
+function fulltimeSeed(): Seed {
+  return {
+    match: match({
+      status: 'finished',
+      rev: 3,
+      score: { home: 2, away: 1 },
+      clockBase: clock(90 * 60, 'h2', false, null),
+      finishedAt: NOW - 19_000,
+    }),
+    events: [goalAt(1, 'home', 12), goalAt(2, 'away', 40), goalAt(3, 'home', 77)],
+  };
 }
 
 function seedOf(name: string): Seed {
@@ -382,11 +478,7 @@ function seedOf(name: string): Seed {
     return {
       match: match({ status: 'live', rev: 1, score: { home: 1, away: 0 }, clockBase: clock(31 * 60, 'h1', true) }),
       events: [goalAt(1, 'home', 12)],
-      pending: [
-        rejectedEntry('rej-goal-away-00001', { kind: 'goal', side: 'away', plId: 'pl_hf10', goalKind: 'normal', matchSecond: 1500 }, 2, 'conflict', NOW - 60_000),
-        pendingGoal('pend-goal-home-00002', 'home', 'pl_th9', NOW - 30_000),
-        pendingGoal('pend-goal-home-00003', 'home', 'pl_th9', NOW - 10_000),
-      ],
+      pending: heldPending(),
     };
   }
   if (name === 'a1-pk-blocked') {
@@ -438,6 +530,65 @@ function seedOf(name: string): Seed {
       matchIds: [],
     };
   }
+  if (name === 'u2-no-permission-host') {
+    // 主辦但沒有本場指派：多一句「請先在指派頁把自己指派為記分員」。
+    return { ...seedOf('u2-no-permission'), staffRoles: ['host'] };
+  }
+  if (name === 'u2-load-failed-network') return { ...seedOf('u2-live'), failOpen: 'network' };
+  if (name === 'u2-load-failed-error') return { ...seedOf('u2-live'), failOpen: 'error' };
+  if (name === 'u2-pre-wake-off') return { ...seedOf('u2-pre'), wakeOff: true };
+  if (name === 'u2-fulltime-undo') return fulltimeSeed();
+  if (name === 'u2-fulltime-undo-blocked') {
+    return {
+      ...fulltimeSeed(),
+      pending: [
+        rejectedEntry('rej-goal-away-00021', { kind: 'goal', side: 'away', plId: 'pl_hf10', goalKind: 'normal', matchSecond: 5100 }, 4, 'conflict', NOW - 40_000),
+      ],
+    };
+  }
+  if (name === 'a1-held-offline') return { ...seedOf('a1-held'), online: false };
+  if (name === 'a1-held-pause-reserved') {
+    // 已用超過 130（rev 140）：停錶已停用，加上紅色列。
+    const seed = seedOf('a1-held');
+    return { ...seed, match: { ...seed.match, rev: 140 } };
+  }
+  if (name === 'a1-held-timeout' || name === 'a1-held-timeout-collapsed') {
+    const seed = timeoutSeed('timeout-op-00000003');
+    return {
+      ...seed,
+      pending: [
+        rejectedEntry('rej-goal-away-00031', { kind: 'goal', side: 'away', plId: 'pl_hf10', goalKind: 'normal', matchSecond: 560 }, 3, 'conflict', NOW - 20_000),
+      ],
+    };
+  }
+  if (name === 'u2-timeout-collapsed') return timeoutSeed('timeout-op-00000004');
+  if (name === 'u2-near-cap') {
+    // 已用 182（180～189）：一般級「本場紀錄接近上限」。
+    const seed = seedOf('u2-live');
+    return { ...seed, match: { ...seed.match, rev: 182 } };
+  }
+  if (name === 'u2-reader-cap') {
+    // 另一分頁在記＋紀錄達上限（施工-第2批 3.10：兩句同時）。
+    return {
+      match: match({ status: 'live', rev: 190, score: { home: 0, away: 0 }, clockBase: clock(20 * 60, 'h1', true) }),
+      reader: true,
+    };
+  }
+  if (name === 'u2-menu' || name === 'u2-timeout-sheet') return seedOf('u2-live');
+  if (name === 'u2-amend-card') return seedOf('a1-showcard');
+  if (name === 'a1-amend-confirm') return seedOf('a1-undo-confirm');
+  const long = U2_LONG_NAMES[name];
+  if (long) {
+    const seed = seedOf('u2-live');
+    return {
+      ...seed,
+      match: {
+        ...seed.match,
+        home: { teamId: 'en_c', name: long[0], logo: null },
+        away: { teamId: 'en_h', name: long[1], logo: null },
+      },
+    };
+  }
   return {
     match: match({ status: 'live', score: { home: 0, away: 0 }, clockBase: clock(15 * 60, 'h1', true) }),
     staffRoles: ['scorer'],
@@ -479,6 +630,8 @@ function makeBackend(seed: Seed, failCommit: boolean): ScoringBackend {
   return {
     port,
     async open(live) {
+      if (seed.failOpen === 'network') throw { code: 'unavailable' };
+      if (seed.failOpen === 'error') throw new Error('harness: open failed');
       listener = live;
       return {
         match: state.match,
@@ -558,8 +711,9 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('待送列', () => document.querySelectorAll('.s4-pending').length >= 2);
   },
   'a1-held-sheet': async () => {
-    await until('未套用的動作', () => buttonsNamed('未套用的動作').length > 0);
-    clickButton('未套用的動作');
+    // 卡 2-0：紅色列出現時（方案 B 之後）紀錄區那顆「未套用的動作」不畫，改點紅色列開面板。
+    await until('紅色列', () => heldRow() != null);
+    clickHeldRow();
   },
   'a1-blocked-ht-before': async () => {
     await until('下半場開始', () => buttonsNamed('下半場開始').length > 0);
@@ -573,10 +727,10 @@ const OPEN: Record<string, () => Promise<void>> = {
     clickButton('下半場開始');
   },
   'a1-resumed': async () => {
-    await until('未套用的動作', () => buttonsNamed('未套用的動作').length > 0);
+    await until('紅色列', () => heldRow() != null && buttonsNamed('下半場開始').length > 0);
     clickButton('下半場開始');
     await until('被擋提示', () => hasText('先處理沒送出的紀錄'));
-    clickButton('未套用的動作');
+    clickHeldRow();
     await until('重新套用', () => buttonsNamed('重新套用').length > 0);
     clickButton('重新套用');
     await until('下半場', () => buttonsNamed('終場').length > 0 && !hasText('先處理沒送出的紀錄'));
@@ -640,9 +794,82 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('兩筆待送', () => document.querySelectorAll('.s4-pending').length >= 2);
   },
   'u2-crowded': async () => {
-    await until('暫停列與兩條提示', () => hasText('結束暫停') && hasText('請關閉手機自動鎖定') && hasText('離線中，已存'));
+    // 卡 2-0：行為調整②③之後「請關閉手機自動鎖定」「離線中，已存 0 筆」不再出現，只等暫停條。
+    await until('暫停列', () => hasText('結束暫停'));
+  },
+  'u2-fulltime-undo': async () => {
+    await until('撤回終場', () => buttonsNamed('撤回終場').length > 0 && buttonsNamed('離開記分').length > 0);
+  },
+  'u2-fulltime-undo-blocked': async () => {
+    await until('撤回終場', () => buttonsNamed('撤回終場').length > 0 && heldRow() != null);
+    clickButton('撤回終場');
+    await until('撤回被擋', () => hasText('先處理沒送出的紀錄，才能撤回終場'));
+  },
+  'a1-held-offline': async () => {
+    await until('紅色列＋離線', () => heldRow() != null && hasText('離線中，已存'));
+  },
+  'a1-held-pause-reserved': async () => {
+    await until('紅色列＋停錶已停用', () => heldRow() != null && hasText('為保留記分額度，停錶已停用'));
+  },
+  'a1-held-timeout': async () => {
+    await until('紅色列＋暫停條', () => heldRow() != null && hasText('結束暫停'));
+  },
+  'a1-held-timeout-collapsed': async () => {
+    await until('紅色列＋暫停條', () => heldRow() != null && buttonsNamed('收合').length > 0);
+    clickButton('收合');
+    await until('收合條', () => buttonsNamed('收合').length === 0 && document.querySelector('.s4-timeout') != null);
+  },
+  'u2-timeout-collapsed': async () => {
+    await until('暫停條', () => buttonsNamed('收合').length > 0);
+    clickButton('收合');
+    await until('收合條', () => buttonsNamed('收合').length === 0 && document.querySelector('.s4-timeout') != null);
+  },
+  'u2-reader-cap': async () => {
+    await until('兩句同時', () => hasText('這場已在另一個分頁記分') && hasText('紀錄已達上限'));
+  },
+  'u2-menu': async () => {
+    await until('選單', () => document.querySelector('.s4-menu-btn') != null);
+    document.querySelector<HTMLButtonElement>('.s4-menu-btn')?.click();
+    await until('選單項目', () => document.querySelector('.s4-menu') != null);
+  },
+  'u2-timeout-sheet': async () => {
+    await until('選單', () => document.querySelector('.s4-menu-btn') != null);
+    document.querySelector<HTMLButtonElement>('.s4-menu-btn')?.click();
+    await until('選單項目', () => document.querySelector('.s4-menu') != null);
+    const item = [...document.querySelectorAll<HTMLButtonElement>('.s4-menu button')].find((el) => (el.textContent ?? '').trim() === '球隊暫停');
+    if (!item) throw new Error('找不到按鈕：球隊暫停');
+    item.click();
+    await until('暫停選隊', () => document.querySelector('.s4-timeout-picks') != null);
+  },
+  'u2-amend-card': async () => {
+    await until('黃牌列', () => hasText('劉冠廷'));
+    const row = [...document.querySelectorAll<HTMLButtonElement>('.s4-ev button')].find((el) => (el.textContent ?? '').includes("20'"));
+    if (!row) throw new Error('找不到黃牌列');
+    row.click();
+    await until('牌的事件面板', () => buttonsNamed('看這張牌').length > 0);
+  },
+  'a1-amend-confirm': async () => {
+    await until('黃牌列', () => hasText('劉冠廷'));
+    const rows = [...document.querySelectorAll<HTMLButtonElement>('.s4-ev button')].filter((el) => (el.textContent ?? '').includes("20'"));
+    rows[0]?.click();
+    await until('改判', () => [...document.querySelectorAll('.s4-sheet button')].some((el) => (el.textContent ?? '').trim().startsWith('改判')));
+    [...document.querySelectorAll<HTMLButtonElement>('.s4-sheet button')].find((el) => (el.textContent ?? '').trim().startsWith('改判'))?.click();
+  },
+  'u2-pre-wake-off': async () => {
+    await until('開賽', () => document.querySelector('.s4-kickoff') != null);
   },
 };
+
+/** 紅色可點列（`.s4-banner__tap`，記分小批 §3.459 (a)）。 */
+function heldRow(): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>('.s4-banner__tap');
+}
+
+function clickHeldRow(): void {
+  const node = heldRow();
+  if (!node) throw new Error('找不到紅色列');
+  node.click();
+}
 
 void start();
 
