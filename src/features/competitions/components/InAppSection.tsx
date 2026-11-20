@@ -74,9 +74,14 @@ export interface InAppSectionProps {
   tab?: InAppTab;
   /** false：資料照留，不畫卡（正在看外部賽事）。 */
   active?: boolean;
-  /** 閘門結果。正式頁用來決定要不要畫來源切換，也用來決定要不要查代表俱樂部。 */
-  onGate?: (open: boolean) => void;
+  /**
+   * 閘門結果。正式頁用來決定要不要畫來源切換，也用來決定要不要查代表俱樂部。
+   * reason='denied'：伺服器明確判定看不到（不含讀取失敗）。賽事頁只在這時清「上次有過」的本機線索。
+   */
+  onGate?: (open: boolean, reason?: CpGateReason) => void;
 }
+
+export type CpGateReason = 'denied';
 
 function SectionBody({
   actor,
@@ -91,7 +96,7 @@ function SectionBody({
   now: number;
   tab: InAppTab;
   active: boolean;
-  onGate?: (open: boolean) => void;
+  onGate?: (open: boolean, reason?: CpGateReason) => void;
 }): JSX.Element | null {
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
@@ -140,7 +145,7 @@ function SectionBody({
       }
       if (!canSeeInAppSection({ isPublic, isTester, isAdmin })) {
         if (!alive) return;
-        onGateRef.current?.(false);
+        onGateRef.current?.(false, 'denied');
         setHostQuery(null);
         setPhase('hidden');
         return;
@@ -287,9 +292,9 @@ function LiveInApp(props: InAppSectionProps): JSX.Element {
     clubsUid.current = viewer.uid;
     setLoadClubs(false);
   }, [viewer.uid]);
-  const report = (open: boolean): void => {
+  const report = (open: boolean, reason?: CpGateReason): void => {
     setLoadClubs(open);
-    props.onGate?.(open);
+    props.onGate?.(open, reason);
   };
   return (
     <LiveBoundary loadClubs={!uidStale && loadClubs}>

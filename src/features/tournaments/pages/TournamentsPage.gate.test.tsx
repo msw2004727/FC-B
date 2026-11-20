@@ -164,7 +164,8 @@ describe('開關打開時的來源與讀取', () => {
     expect(screen.queryByText('FEDA CUP 2026 飛達盃')).toBeNull();
 
     fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
-    expect(location.search).toBe('');
+    // 顧問 11-20 方案 2 條件 3 取代 §3.373：點外部也明確寫 ?src=ext。
+    expect(location.search).toBe('?src=ext');
     expect(document.querySelector('[data-active]')?.getAttribute('data-active')).toBe('0');
     expect(screen.getByText('FEDA CUP 2026 飛達盃')).toBeTruthy();
     expect(slot.mounts).toBe(1);
@@ -192,7 +193,8 @@ describe('開關打開時的來源與讀取', () => {
     fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
     expect(location.search).toBe('?src=in&keep=1');
     fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
-    expect(location.search).toBe('?keep=1');
+    // 顧問 11-20 方案 2 條件 3 取代 §3.373：點外部也明確寫 ?src=ext。
+    expect(location.search).toBe('?src=ext&keep=1');
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
   });
 
@@ -290,7 +292,8 @@ describe('開關打開時的來源與讀取', () => {
     expect(screen.queryByText('2027 春季聯賽')).toBeNull();
     fireEvent.keyDown(screen.getByRole('tab', { name: '站內賽事' }), { key: 'ArrowRight' });
     expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true');
-    expect(location.search).toBe('');
+    // 顧問 11-20 方案 2 條件 3 取代 §3.373：點外部也明確寫 ?src=ext。
+    expect(location.search).toBe('?src=ext');
     expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
   });
 });
