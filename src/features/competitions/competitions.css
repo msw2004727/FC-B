@@ -144,6 +144,8 @@
   flex: 0 0 auto; white-space: nowrap; font-size: var(--font-size-body); line-height: var(--line-height-body);
 }
 .cps-player__name { font-weight: 600; }
+/* 顧問 §3.471 X-02：使用者取的暱稱（名單頁）。長暱稱可縮、超過省略，背號、位置、標籤、刪除鈕不讓位（取代上方「不截斷」只對暱稱）。 */
+.cps-player__name.cps-player__name--fit { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cps-player .ui-badge { flex: 0 0 auto; white-space: nowrap; }
 
 .cps-bar { height: 6px; border-radius: 3px; background: var(--color-border); overflow: hidden; margin: var(--space-2) 0; }

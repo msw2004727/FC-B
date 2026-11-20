@@ -45,3 +45,12 @@ describe('詳情頁隊伍清單標籤（顧問 §3.463）', () => {
     expect(css).toMatch(/\.cps-li__main \{[^}]*min-width: 0;/);
   });
 });
+
+describe('名單頁長暱稱（顧問 §3.471 X-02）', () => {
+  it('暱稱可縮並省略，位置與標籤仍不縮', () => {
+    const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');
+    expect(css).toMatch(/\.cps-player__name\.cps-player__name--fit \{[^}]*flex: 0 1 auto;[^}]*min-width: 0;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
+    expect(css).toMatch(/\.cps-player__name, \.cps-player__pos \{[^}]*flex: 0 0 auto;/);
+    expect(css).toMatch(/\.cps-player \.ui-badge \{[^}]*flex: 0 0 auto;[^}]*white-space: nowrap;/);
+  });
+});

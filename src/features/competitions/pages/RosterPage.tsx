@@ -63,7 +63,8 @@ function PlayerRow({
   return (
     <li class="cps-li cps-player" data-roster-row>
       <span class="cps-num">{player.number}</span>
-      <span class="cps-player__name">{player.displayName}</span>
+      {/* 顧問 §3.471 X-02：20 字暱稱把這列撐出卡片。只在名單頁暱稱加 --fit：可縮、超過省略（單行列）。 */}
+      <span class="cps-player__name cps-player__name--fit">{player.displayName}</span>
       <span class="cps-player__pos">{pos}</span>
       {player.isMinor ? <Badge tone="warning" label={ct('minor')} size="sm" /> : null}
       {canEdit ? (

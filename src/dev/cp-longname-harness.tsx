@@ -1,6 +1,6 @@
 // 長賽事名稱／長隊名量測（顧問 §3.460）：正式頁面＋記憶體假資料，不連 Firestore、不呼叫 Functions。
 // ?page=list|detail|detail-live|manage|matches|schedule|staff|roster|wizard-3|wizard-done|accept|live
-// ?name=short|22|24（賽事名稱）、?team=short|long（隊名）、?theme=light|dark。畫完設 window.__CPS_READY。
+// ?name=short|22|24（賽事名稱）、?team=short|long（隊名）、?nick=long（名單 20 字暱稱）、?theme=light|dark。畫完設 window.__CPS_READY。
 import { render } from 'preact';
 import type { ComponentChildren, ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
@@ -53,6 +53,9 @@ const COMP_NAMES: Record<string, string | null> = {
 };
 const COMP = COMP_NAMES[params.get('name') ?? 'short'] ?? null;
 const LONG_TEAM = params.get('team') === 'long';
+// ?nick=long：名單第一位球員換成 20 字暱稱（顧問 §3.471 X-02，比照第二輪模擬測試）。
+const LONG_NICK = params.get('nick') === 'long' ? '小飛'.repeat(10) : null;
+let nickUsed = false;
 // 13 字隊名，三個輪流套，主客隊認得出是哪一隊。
 const TEAMS = ['新北市三重區社區足球俱樂部', '桃園市中壢區青年足球俱樂部', '高雄市前鎮區海風足球俱樂部'];
 const teamMap = new Map<string, string>();
@@ -81,6 +84,11 @@ function rename<T>(value: T, key = ''): T {
     out[k] = rename(v, k);
   }
   if (COMP && (key === 'competition' || key === 'wizardSeed') && typeof out.name === 'string') out.name = COMP;
+  // 名單球員（有背號與 displayName）只換第一位，actor 的 displayName 不動。
+  if (LONG_NICK && !nickUsed && typeof out.displayName === 'string' && 'number' in out) {
+    nickUsed = true;
+    out.displayName = LONG_NICK;
+  }
   return out as T;
 }
 
