@@ -760,7 +760,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                   })}
                 </ul>
               </CpCard>
-              <div style="height:12px" />
+              <div class="cp3-daygap" />
             </div>
           ))}
         </div>

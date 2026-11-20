@@ -851,6 +851,7 @@
  * 小標（含組名，使用者內容）單行省略，30 字組名在 360 寬不撐出橫向捲動。 */
 .cp3-day { min-width: 0; margin: 4px 4px 8px; font-size: 13px; line-height: 20px; font-weight: 700; color: var(--d2-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cp3-ml { list-style: none; margin: 0; padding: 0; }
+.cp3-daygap { height: 12px; } /* 每天那張卡下面的間隔；觀眾版 MatchSchedule 與主辦賽程管理頁共用（卡 1b-8，取代兩處行內 height:12px） */
 .cp3-m { min-width: 0; padding: 12px 0; border-top: 1px solid var(--d2-line); }
 .cp3-m:first-child { border-top: 0; padding-top: 0; }
 .cp3-m:last-child { padding-bottom: 0; }
