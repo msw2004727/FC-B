@@ -221,10 +221,12 @@ function DeleteDialog({
     >
       <div class="cps-sheet-body">
         <div>
-          <p class="cps-h">{name}</p>
+          {/* 顧問 §3.459：長賽事名稱在 360 寬被切、沒有省略號。只在這個框加 cps-del-name（最多兩行、超過才省略），不動共用的 .cps-h。 */}
+          <p class="cps-h cps-del-name">{name}</p>
           <p class="cps-note cps-nowrap">{ct('deleteTeams', { n: count == null ? '…' : count })}</p>
         </div>
-        <p class="cps-note cps-warn cps-nowrap">{ct('deleteWarn')}</p>
+        {/* 顧問 §3.459：360 寬剛好 324＝324，拿掉 cps-nowrap，讓它可以在標點處換行。 */}
+        <p class="cps-note cps-warn cps-del-warn">{ct('deleteWarn')}</p>
         <Checkbox
           label={ct('deleteAck')}
           checked={ack}

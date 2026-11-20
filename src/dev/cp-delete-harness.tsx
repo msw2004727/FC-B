@@ -35,7 +35,9 @@ export const DELETE_SCREENS = [
   'detail-stuck-late',
 ] as const;
 
-const PERSONAL: Partial<CompetitionDoc> = { name: '2027 春季社區足球聯賽', hostType: 'personal', hostTeamId: null, feeNote: null };
+// ?long=1：22 字長名稱（顧問 §3.459 刪除框長名稱截圖）
+const LONG_NAME = '新北市三重區二〇二七年春季社區五人制足球聯賽';
+const PERSONAL: Partial<CompetitionDoc> = { name: params.get('long') === '1' ? LONG_NAME : '2027 春季社區足球聯賽', hostType: 'personal', hostTeamId: null, feeNote: null };
 
 function envOf(screen: string): CpInjectedEnv {
   const base = screenEnv('real-recruit');

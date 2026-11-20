@@ -151,6 +151,18 @@
 .cps-inapp { margin: 0 0 var(--space-4); }
 .cps-head-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .cps-head-row .cps-h { margin: 0; }
+/* 刪除確認框（顧問 §3.459）：賽事名稱是使用者內容，允許換行、最多兩行、超過才省略號；只套這個框。 */
+.cps-sheet-body .cps-h.cps-del-name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+/* 刪除確認框的警告句：可以換行（中文在標點處斷）。 */
+.cps-sheet-body .cps-del-warn { white-space: normal; line-break: strict; }
 
 /* 第 3 步詳情：class 對照預覽 harness 的 cp3-*。字級只用字級 token。
  * 隊徽底色與分類漸層用 category-tokens，不在這裡重抄色值。 */
