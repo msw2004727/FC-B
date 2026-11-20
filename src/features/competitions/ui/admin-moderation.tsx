@@ -246,8 +246,8 @@ export function AdminPanel(props: AdminPanelProps): JSX.Element {
                     <div class="cpa-btns">
                       {actionable ? (
                         <>
-                          <Button variant="secondary" size="sm" disabled={rowBusy != null} onClick={() => { void review(row.id, 'resolved'); }}>{ct('reportResolve')}</Button>
-                          <Button variant="ghost" size="sm" disabled={rowBusy != null} onClick={() => { void review(row.id, 'dismissed'); }}>{ct('reportDismiss')}</Button>
+                          <Button variant="secondary" size="sm" disabled={rowBusy != null} onClick={() => { void review(row.id, 'resolved'); }}>{ct('reportMarkResolved')}</Button>
+                          <Button variant="ghost" size="sm" disabled={rowBusy != null} onClick={() => { void review(row.id, 'dismissed'); }}>{ct('reportMarkDismissed')}</Button>
                         </>
                       ) : (
                         <Button variant="ghost" size="sm" disabled={rowBusy != null} onClick={() => { void review(row.id, 'open'); }}>{ct('reportReopen')}</Button>

@@ -711,7 +711,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         </>
       )}
     >
-      {/* 下架後一般人讀不到根文件（走讀取失敗畫面）；讀得到的只有主辦、共同主辦、代表與管理員。 */}
+      {/* 下架後一般人讀不到根文件（走讀取失敗畫面）；Rules 只放行管理員與主辦／共同主辦（俱樂部主辦的賽事，俱樂部代表算主辦）。 */}
       {competition.hidden ? <HiddenNotice ct={ct} reason={competition.hiddenReason} /> : null}
       <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
       {showHostEnd ? (

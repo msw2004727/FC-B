@@ -363,7 +363,10 @@ h3.s4b-h {
 /* 賽事名稱是使用者內容，可以換行，不得撐破 360 寬。 */
 .s4b h2.s4b-accept__name { white-space: normal; overflow-wrap: anywhere; }
 /* K11 追加：記分指派到期顯示在名字下一行（名字、角色、場次維持第一列）。 */
-.s4b-staff-list > .s4b-li:has(.s4b-staff--exp) { height: auto; min-height: 56px; padding-block: 6px; }
+/* 不用 :has()（同檔顧問裁定）：<li> 由元件依有無到期加 s4b-li--exp。 */
+.s4b-staff-list > .s4b-li--exp,
+.s4b-staff-list > .s4b-li--exp:first-child,
+.s4b-staff-list > .s4b-li--exp:last-child { height: auto; min-height: 56px; padding-block: 6px; }
 .s4b-staff--exp { row-gap: 0; }
 .s4b-staff > .s4b-staff__exp {
   grid-row: 2;

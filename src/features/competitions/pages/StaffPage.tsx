@@ -85,6 +85,8 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
   const [list, setList] = useState<StaffAssignment[]>([]);
   const [viewer, setViewer] = useState<StaffViewerKind | null>(null);
   const [invites, setInvites] = useState<InviteDoc[]>([]);
+  // 邀請讀取失敗不當成「沒有邀請」（Opus 審 P3-3）。
+  const [invitesFailed, setInvitesFailed] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null);
   const [busy, setBusy] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -111,11 +113,12 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
       }
       const [next, open] = await Promise.all([
         env.repo.listStaff(cid),
-        env.repo.listInvites(cid).catch(() => [] as InviteDoc[]),
+        env.repo.listInvites(cid).then((rows) => ({ ok: true as const, rows }), () => ({ ok: false as const, rows: [] as InviteDoc[] })),
       ]);
       if (!alive) return;
       setList(next);
-      setInvites(open);
+      setInvites(open.rows);
+      setInvitesFailed(!open.ok);
       setViewer(viewerKind(staff?.roles ?? [], isCpAdmin(env.actor.role)));
       setPhase('ready');
     })().catch(() => {
@@ -129,6 +132,15 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
   async function reload(): Promise<void> {
     const next = await env.repo.listStaff(cid);
     setList(next);
+  }
+
+  async function retryInvites(): Promise<void> {
+    try {
+      setInvites(await env.repo.listInvites(cid));
+      setInvitesFailed(false);
+    } catch {
+      setInvitesFailed(true);
+    }
   }
 
   async function confirmRemove(): Promise<void> {
@@ -209,6 +221,7 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
         empty={ct('inviteNone')}
         rows={inviteRows(ct, invites)}
         revokeLabel={ct('inviteRevoke')}
+        failed={invitesFailed ? { message: ct('loadFailed'), retryLabel: ct('retry'), onRetry: () => { void retryInvites(); } } : null}
         onRevoke={(id) => {
           setRemoveError(null);
           setConfirmTarget({ kind: 'invite', id });

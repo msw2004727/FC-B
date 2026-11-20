@@ -112,7 +112,7 @@ export function StaffListScreen(props: {
       <S4bCard plain>
         <ul class="cps-list s4b-staff-list">
           {rows.map((staff) => (
-            <li key={staff.id} class="s4b-li">
+            <li key={staff.id} class={staff.expiresLabel ? 's4b-li s4b-li--exp' : 's4b-li'}>
               <div class={staff.expiresLabel ? 's4b-staff s4b-staff--exp' : 's4b-staff'}>
                 <span class="s4b-staff__name">{staff.name}</span>
                 <Badge tone={roleTone(staff.role)} size="sm" label={staff.roleLabel} />
@@ -510,11 +510,20 @@ export function OpenInviteList(props: {
   rows: readonly OpenInviteRow[];
   revokeLabel: string;
   onRevoke: (id: string) => void;
+  /** 讀取失敗：顯示訊息與重試，不顯示「沒有」。 */
+  failed?: { message: string; retryLabel: string; onRetry: () => void } | null;
 }): JSX.Element {
   return (
     <S4bCard plain>
       <h2 class="s4b-h s4b-inv__h">{props.title}</h2>
-      {props.rows.length === 0 ? <p class="s4b-foot">{props.empty}</p> : (
+      {props.failed ? (
+        <div class="s4b-gap">
+          <p class="cps-note cps-warn" role="alert">{props.failed.message}</p>
+          <span class="s4b-mini">
+            <Button variant="secondary" size="sm" onClick={props.failed.onRetry}>{props.failed.retryLabel}</Button>
+          </span>
+        </div>
+      ) : props.rows.length === 0 ? <p class="s4b-foot">{props.empty}</p> : (
         <ul class="cps-list s4b-inv-list">
           {props.rows.map((row) => (
             <li key={row.id} class="s4b-li" data-invite={row.id}>

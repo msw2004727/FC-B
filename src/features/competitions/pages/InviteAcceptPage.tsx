@@ -1,5 +1,5 @@
 // 接受記分邀請（K11）。網址 /competitions/:cid/invite#i=<ivId>&c=<code>（顧問裁定：代碼不放查詢字串）。
-// 進頁讀到 # 立刻 replaceState 拿掉，並暫存到 sessionStorage（LINE 登入回跳帶不了 #）。
+// 進頁讀到 # 立刻 replaceState 拿掉。未登入者按「登入」時才暫存到 sessionStorage（LINE 登入回跳帶不了 #）。
 // 成功、任何錯誤、離開頁面都清掉暫存。代碼不寫進 console、toast、錯誤訊息或任何回報。
 
 import type { JSX } from 'preact';
@@ -32,16 +32,15 @@ export function acceptErrorText(ct: CompetitionsT, reason: string, params?: Reco
   return reasonText(ct, reason, params);
 }
 
-/** 進頁只做一次：# 優先，其次 sessionStorage。讀到 # 就存起來並從網址列拿掉。 */
+/**
+ * 進頁只做一次：# 優先，其次 sessionStorage（登入回來）。有 # 一律從網址列拿掉（格式錯也拿掉）。
+ * 讀到 # 只留在記憶體；只有按「登入」才寫 sessionStorage（Opus 審 P3-1：已登入者整頁離開不會留暫存）。
+ */
 function takeTicket(cid: string): InviteTicket | null {
   const hash = typeof window === 'undefined' ? '' : window.location.hash;
   const parsed = parseInviteHash(hash);
   if (hash) stripLocationHash();
-  if (parsed && cid) {
-    const ticket = { cid, ivId: parsed.ivId, code: parsed.code };
-    saveInviteTicket(ticket);
-    return ticket;
-  }
+  if (parsed && cid) return { cid, ivId: parsed.ivId, code: parsed.code };
   return cid ? readInviteTicket(cid) : null;
 }
 

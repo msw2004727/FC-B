@@ -4,6 +4,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/pr
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocationProvider } from 'preact-iso';
 import { toast } from '@/ui/Toast';
+
+const fn = vi.hoisted(() => ({ httpsCallable: vi.fn() }));
+vi.mock('firebase/functions', () => ({
+  httpsCallable: (...args: unknown[]) => {
+    fn.httpsCallable(...args);
+    return async () => ({ data: {} });
+  },
+}));
 import type { CpActions } from '../actions';
 import { CpCallError } from '../data/cp-callables';
 import { INVITE_STORE_KEY } from '../data/invite-link';
@@ -156,6 +164,35 @@ describe('工作人員頁（K11）', () => {
     expect(await screen.findByText('這個邀請已使用或已撤銷')).toBeTruthy();
   });
 
+  it('只列 status open（repo 回混合狀態也篩掉）', async () => {
+    const repo = staffRepo();
+    const mixed = { ...repo, listInvites: async () => INVITES.map((row) => ({ ...row })) };
+    const view = draw({ actor: hostActor, repo: mixed, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
+    await screen.findByText('尚未使用的邀請');
+    await waitFor(() => expect(view.container.querySelectorAll('[data-invite]')).toHaveLength(1));
+    expect(view.container.querySelector('[data-invite="iv_used1"]')).toBeNull();
+  });
+
+  it('邀請讀取失敗：顯示讀取失敗與重試，不顯示「沒有」；重試成功列出', async () => {
+    const repo = staffRepo();
+    let fail = true;
+    const flaky = {
+      ...repo,
+      listInvites: async (cid: string) => {
+        if (fail) throw new Error('x');
+        return repo.listInvites(cid);
+      },
+    };
+    const view = draw({ actor: hostActor, repo: flaky, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
+    expect(await screen.findByText('讀取失敗')).toBeTruthy();
+    expect(view.container.textContent).not.toContain('目前沒有尚未使用的邀請');
+    expect(screen.getByText('陳小明')).toBeTruthy();
+    fail = false;
+    fireEvent.click(button('重試'));
+    await waitFor(() => expect(view.container.querySelectorAll('[data-invite]')).toHaveLength(1));
+    expect(view.container.textContent).not.toContain('讀取失敗');
+  });
+
   it('一般會員看不到，也不讀邀請', async () => {
     const repo = staffRepo();
     draw({ actor: memberActor, repo, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
@@ -230,6 +267,8 @@ describe('接受邀請（K11，代碼放 #）', () => {
     expect(location.pathname).toBe('/competitions/cup/invite');
     noCodeLeak();
     expect(await screen.findByText('示範盃')).toBeTruthy();
+    // 已登入不寫暫存（Opus 審 P3-1）。
+    expect(sessionStorage.getItem(INVITE_STORE_KEY)).toBeNull();
     fireEvent.click(button('接受邀請'));
     await waitFor(() => expect(acceptInvite).toHaveBeenCalledWith({ cid: 'cup', ivId: IV, code: CODE }));
     await waitFor(() => expect(location.pathname).toBe('/competitions/cup/my-matches'));
@@ -262,16 +301,16 @@ describe('接受邀請（K11，代碼放 #）', () => {
     }
   });
 
-  it('未登入：提示登入、暫存在 sessionStorage，按登入呼叫 signIn；卸載後清掉', async () => {
+  it('未登入：提示登入；按登入才暫存到 sessionStorage 並呼叫 signIn；卸載後清掉', async () => {
     openWithHash();
     const signIn = vi.fn(async () => undefined);
     draw(acceptEnv({ actor: { ...memberActor, uid: null }, signIn }), <InviteAcceptPage />);
     expect(await screen.findByText('登入後才能接受邀請')).toBeTruthy();
     noCodeLeak();
-    expect(JSON.parse(sessionStorage.getItem(INVITE_STORE_KEY) ?? '{}')).toEqual({ cid: 'cup', ivId: IV, code: CODE });
+    expect(sessionStorage.getItem(INVITE_STORE_KEY)).toBeNull();
     fireEvent.click(button('登入'));
     await waitFor(() => expect(signIn).toHaveBeenCalledTimes(1));
-    expect(sessionStorage.getItem(INVITE_STORE_KEY)).not.toBeNull();
+    expect(JSON.parse(sessionStorage.getItem(INVITE_STORE_KEY) ?? '{}')).toEqual({ cid: 'cup', ivId: IV, code: CODE });
     cleanup();
     expect(sessionStorage.getItem(INVITE_STORE_KEY)).toBeNull();
   });
@@ -284,6 +323,25 @@ describe('接受邀請（K11，代碼放 #）', () => {
     fireEvent.click(await screen.findByText('接受邀請', { selector: 'button *, button' }));
     await waitFor(() => expect(acceptInvite).toHaveBeenCalledWith({ cid: 'cup', ivId: IV, code: CODE }));
     await waitFor(() => expect(sessionStorage.getItem(INVITE_STORE_KEY)).toBeNull());
+  });
+
+  it('# 後格式錯誤：仍拿掉 #、查詢字串保留，顯示連結無效', async () => {
+    history.replaceState(null, '', '/competitions/cup/invite?from=line#i=bad&c=zz');
+    draw(acceptEnv(), <InviteAcceptPage />);
+    expect(await screen.findByText('邀請連結無效')).toBeTruthy();
+    expect(location.pathname).toBe('/competitions/cup/invite');
+    expect(location.search).toBe('?from=line');
+    expect(location.hash).toBe('');
+  });
+
+  it('動作替身缺 acceptInvite：顯示通用失敗，不送任何 Callable', async () => {
+    openWithHash();
+    fn.httpsCallable.mockClear();
+    draw(acceptEnv({ actions: idleActions() }), <InviteAcceptPage />);
+    fireEvent.click(await screen.findByText('接受邀請', { selector: 'button *, button' }));
+    expect(await screen.findByText('操作失敗，請稍後再試')).toBeTruthy();
+    expect(fn.httpsCallable).not.toHaveBeenCalled();
+    noCodeLeak();
   });
 
   it('別的賽事的暫存不接續；沒有代碼顯示連結無效', async () => {
@@ -357,7 +415,7 @@ describe('詳情頁管理員區（K12）', () => {
     const second = view.container.querySelector('[data-report="rp_bbbbbbbb"]') as HTMLElement;
     expect(second.textContent).toContain('已處理');
     expect(() => button('重新開啟', second)).not.toThrow();
-    fireEvent.click(button('已處理', first));
+    fireEvent.click(button('標為已處理', first));
     await waitFor(() => expect(reviewReport).toHaveBeenCalledWith({ cid: 'cup', reportId: 'rp_aaaaaaaa', status: 'resolved' }));
     await waitFor(() => expect(() => button('重新開啟', first)).not.toThrow());
     fireEvent.click(button('檢舉紀錄'));
@@ -372,7 +430,7 @@ describe('詳情頁管理員區（K12）', () => {
     const view = draw(env, <CompetitionDetailPage />);
     fireEvent.click(await screen.findByText('檢舉紀錄'));
     await screen.findByText('冒用我們俱樂部的名字');
-    fireEvent.click(button('不處理', view.container.querySelector('[data-report="rp_aaaaaaaa"]') as HTMLElement));
+    fireEvent.click(button('標為不處理', view.container.querySelector('[data-report="rp_aaaaaaaa"]') as HTMLElement));
     await waitFor(() => expect(show).toHaveBeenCalledWith(expect.objectContaining({ message: '找不到這筆檢舉' })));
   });
 
@@ -405,6 +463,18 @@ describe('詳情頁管理員區（K12）', () => {
     fireEvent.input(dialog.querySelector('textarea') as HTMLTextAreaElement, { target: { value: '測試原因' } });
     fireEvent.click(button('下架', dialog));
     expect(await screen.findByText('狀態沒有變更')).toBeTruthy();
+  });
+
+  it('動作替身缺 moderate：對話框顯示通用失敗，不送任何 Callable', async () => {
+    fn.httpsCallable.mockClear();
+    const { env } = detailEnv(adminActor, idleActions());
+    draw(env, <CompetitionDetailPage />);
+    fireEvent.click(button('下架', (await screen.findByText('管理員')).closest('[data-admin-panel]') as HTMLElement));
+    const dialog = (await screen.findByRole('dialog')) as HTMLElement;
+    fireEvent.input(dialog.querySelector('textarea') as HTMLTextAreaElement, { target: { value: '測試原因' } });
+    fireEvent.click(button('下架', dialog));
+    expect(await screen.findByText('操作失敗，請稍後再試')).toBeTruthy();
+    expect(fn.httpsCallable).not.toHaveBeenCalled();
   });
 
   it('主辦打開已下架的賽事看到原因', async () => {
