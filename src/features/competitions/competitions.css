@@ -377,6 +377,47 @@
 /* 視覺隱藏：只給報讀，不佔版面 */
 .cps-vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
+/* 記分板共用元件與窄體數字字型（第 0 批卡 0-6）：先寫好，還沒有畫面使用；class 是新的，只會出現在賽事頁，所以不帶根節點前綴。
+ * 字型用新的家族名稱指向站內已有的字型檔，不沿用球員卡的 Bebas Neue 宣告；涵蓋數字、冒號與斜線。
+ * 各批只用 --sb-num（數字字級）、--sb-pad（板的內距）、--sb-radius（板的圓角）設自己的尺寸，不另寫底色、框、數字字型。 */
+@font-face {
+  font-family: 'CP Score';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/bebas-neue-latin-400-normal.woff2') format('woff2');
+  unicode-range: U+0020, U+0025, U+002B, U+002D-003A, U+0041-005A, U+0061-007A;
+}
+.d2-num { font-family: var(--d2-num); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .03em; line-height: 1; }
+.d2-sb {
+  position: relative; padding: var(--sb-pad, 12px 14px); border-radius: var(--sb-radius, 9px);
+  background: var(--d2-sb-bg-off); color: var(--d2-sb-fg); box-shadow: var(--d2-sb-sh); white-space: nowrap;
+}
+.d2-sb--lit { background: var(--d2-sb-bg); box-shadow: var(--d2-sb-sh-lit), var(--d2-sb-bar); }
+.d2-sb__st { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--d2-sb-fg2); letter-spacing: .04em; }
+.d2-sb__st i { display: none; }
+.d2-sb--lit .d2-sb__st { font-weight: 700; color: var(--d2-sb-now); }
+.d2-sb--lit .d2-sb__st i { display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--d2-sb-now); box-shadow: 0 0 0 3px rgba(52,211,153,.2); }
+.d2-cells { display: flex; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--d2-sb-line); }
+.d2-cell { flex: 1 1 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 0 0 14px; border-left: 1px solid var(--d2-sb-line); }
+.d2-cell:first-child { padding-left: 0; border-left: 0; }
+.d2-cell__k { font-size: 12px; line-height: 16px; color: var(--d2-sb-fg2); }
+.d2-cell__v { display: flex; align-items: baseline; gap: 5px; height: 28px; line-height: 28px; }
+.d2-cell__v .d2-num { font-size: var(--sb-num, 28px); line-height: 28px; }
+.d2-cell__v small { position: relative; top: -1px; font-size: 13px; line-height: 28px; font-weight: 400; color: var(--d2-sb-fg2); }
+/* 「現在」那一格：只有亮燈的板才是青綠 */
+.d2-sb--lit .d2-cell--now .d2-num { color: var(--d2-sb-now); }
+/* 數字格橫排（卡板、矮板）：小標在左、數字在右 */
+.d2-cells--row { margin-top: 9px; padding-top: 9px; }
+.d2-cells--row .d2-cell { flex-direction: row; align-items: baseline; gap: 8px; height: 24px; }
+.d2-cells--row .d2-cell__k { position: relative; top: -1px; line-height: 24px; }
+.d2-cells--row .d2-cell__v { height: 24px; line-height: 24px; }
+.d2-cells--row .d2-cell__v .d2-num { font-size: var(--sb-num, 22px); line-height: 24px; }
+.d2-cells--row .d2-cell__v small { line-height: 24px; }
+/* 板上的中性描邊標籤與隊徽字章 */
+.d2-sb .ui-badge { background: none; box-shadow: inset 0 0 0 1px var(--d2-sb-line); color: var(--d2-sb-fg2); }
+.d2-sb .cp3-crest.cp3-crest--txt { background: rgba(255,255,255,.1); color: var(--d2-sb-fg); box-shadow: inset 0 0 0 1px rgba(255,255,255,.22); }
+
 .cps-root {
   box-sizing: border-box;
   min-height: 100%;

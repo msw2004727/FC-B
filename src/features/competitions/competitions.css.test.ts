@@ -76,3 +76,22 @@ describe('賽事新外觀色票（第 0 批卡 0-2）', () => {
     expect(css).not.toContain('!important');
   });
 });
+
+describe('記分板共用元件與窄體數字字型（第 0 批卡 0-6）', () => {
+  const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');
+
+  it('字型用新家族名稱、不沿用球員卡的 Bebas Neue，涵蓋數字、冒號、斜線；--d2-num 第一順位是它', () => {
+    const face = css.match(/@font-face \{[^}]*\}/)?.[0] ?? '';
+    expect(face).toContain("font-family: 'CP Score';");
+    expect(face).not.toContain('Bebas Neue');
+    expect(face).toContain('U+002D-003A');
+    expect(face).toContain('font-display: swap;');
+    expect(css).toMatch(/--d2-num: 'CP Score',/);
+  });
+
+  it('記分板 class 存在且只用色票變數', () => {
+    for (const sel of ['.d2-num {', '.d2-sb {', '.d2-sb--lit {', '.d2-sb__st {', '.d2-cells {', '.d2-cell {', '.d2-cell__k {', '.d2-cell__v {', '.d2-sb--lit .d2-cell--now .d2-num {', '.d2-cells--row {']) {
+      expect(css).toContain(sel);
+    }
+  });
+});
