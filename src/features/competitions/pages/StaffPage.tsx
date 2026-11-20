@@ -1,25 +1,29 @@
-// 人員清單。主辦或共同主辦指派記分角色。平面卡片，沿用 v4 清單。
+// 人員清單。主辦或共同主辦指派記分角色、邀請記分員（K11）。平面卡片，沿用 v4 清單。
+// 尚未使用的邀請：listInvites（status open、limit 30），只在確認是主辦／共同主辦後才讀。
 
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { canHostOrCo, isCpAdmin } from '../access';
-import { liveCpActions } from '../actions';
+import { liveCpActions, missingAction } from '../actions';
 import {
   canRemoveStaffRow,
   compareStaffOrder,
+  hasScoreRole,
   rowRole,
   staffDisplayNames,
   viewerKind,
   type StaffViewerKind,
 } from '../data/staff-assign';
-import type { StaffAssignment, StaffAssignmentRole } from '../data/types';
+import type { InviteDoc, StaffAssignment, StaffAssignmentRole } from '../data/types';
+import { formatTaipeiShort } from '../format';
 import type { CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { LiveBoundary } from '../live';
-import { StaffDeniedScreen, StaffListScreen, type StaffListRow } from '../step4b/staff';
+import { OpenInviteList, StaffDeniedScreen, StaffListScreen, type OpenInviteRow, type StaffListRow } from '../step4b/staff';
+import { inviteRoleText } from './StaffInvitePage';
 import { errorOf, reasonText } from '../ui/feedback';
 import { CpI18nPending } from '../ui/shell';
 
@@ -53,10 +57,25 @@ function toRows(
       roleLabel: roleText(ct, role),
       countLabel: ct('assignedCount', { n: item.matchIds.length }),
       removable: canRemoveStaffRow(viewer, item.roles, item.uid === selfUid),
+      // 只有記分角色才有到期；null＝不過期，不顯示。
+      ...(hasScoreRole(item.roles) && item.expiresAt != null
+        ? { expiresLabel: ct('staffExpires', { date: formatTaipeiShort(item.expiresAt) }) }
+        : {}),
     });
   }
   return rows;
 }
+
+function inviteRows(ct: CompetitionsT, list: readonly InviteDoc[]): OpenInviteRow[] {
+  return list.filter((row) => row.status === 'open').map((row) => ({
+    id: row.id,
+    roleLabel: inviteRoleText(ct, row.roles),
+    countLabel: ct('assignedCount', { n: row.matchIds.length }),
+    expiresLabel: row.expiresAt == null ? '' : ct('inviteExpires', { date: formatTaipeiShort(row.expiresAt) }),
+  }));
+}
+
+type ConfirmTarget = { kind: 'staff' | 'invite'; id: string };
 
 function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Element {
   const cpDict = useCompetitionsT();
@@ -65,7 +84,8 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
   const [phase, setPhase] = useState<'loading' | 'denied' | 'ready' | 'error'>('loading');
   const [list, setList] = useState<StaffAssignment[]>([]);
   const [viewer, setViewer] = useState<StaffViewerKind | null>(null);
-  const [confirmUid, setConfirmUid] = useState<string | null>(null);
+  const [invites, setInvites] = useState<InviteDoc[]>([]);
+  const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null);
   const [busy, setBusy] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
@@ -89,9 +109,13 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
         setPhase('denied');
         return;
       }
-      const next = await env.repo.listStaff(cid);
+      const [next, open] = await Promise.all([
+        env.repo.listStaff(cid),
+        env.repo.listInvites(cid).catch(() => [] as InviteDoc[]),
+      ]);
       if (!alive) return;
       setList(next);
+      setInvites(open);
       setViewer(viewerKind(staff?.roles ?? [], isCpAdmin(env.actor.role)));
       setPhase('ready');
     })().catch(() => {
@@ -108,12 +132,21 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
   }
 
   async function confirmRemove(): Promise<void> {
-    if (!confirmUid) return;
+    if (!confirmTarget || busy) return;
     setBusy(true);
     setRemoveError(null);
     try {
-      await env.actions.removeStaff({ cid, uid: confirmUid });
-      setConfirmUid(null);
+      if (confirmTarget.kind === 'invite') {
+        const revoke = env.actions.revokeInvite ?? missingAction;
+        await revoke({ cid, ivId: confirmTarget.id });
+        // 撤銷成功只從畫面拿掉，不重讀（+0 讀）。
+        const gone = confirmTarget.id;
+        setInvites((prev) => prev.filter((row) => row.id !== gone));
+        setConfirmTarget(null);
+        return;
+      }
+      await env.actions.removeStaff({ cid, uid: confirmTarget.id });
+      setConfirmTarget(null);
       await reload();
     } catch (err) {
       const info = errorOf(err);
@@ -142,6 +175,9 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
     );
   }
   const uid = env.actor.uid;
+  const confirmCopy = confirmTarget?.kind === 'invite'
+    ? { title: ct('inviteRevokeTitle'), body: ct('inviteRevokeBody'), confirmLabel: ct('inviteRevoke') }
+    : { title: ct('staffRemoveTitle'), body: ct('staffRemoveBody'), confirmLabel: ct('remove') };
   return (
     <StaffListScreen
       viewerRole={viewer}
@@ -151,23 +187,34 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
       onAssign={() => route(`/competitions/${cid}/staff/assign`)}
       onRemove={(id) => {
         setRemoveError(null);
-        setConfirmUid(id);
+        setConfirmTarget({ kind: 'staff', id });
       }}
+      inviteLabel={ct('staffInvite')}
+      onInvite={() => route(`/competitions/${cid}/staff/invite`)}
       confirmBusy={busy}
-      confirm={confirmUid ? {
-        title: ct('staffRemoveTitle'),
-        body: ct('staffRemoveBody'),
-        confirmLabel: ct('remove'),
+      confirm={confirmTarget ? {
+        ...confirmCopy,
         cancelLabel: ct('cancel'),
         ...(removeError ? { error: removeError } : {}),
       } : null}
       onConfirm={() => { void confirmRemove(); }}
       onDismiss={() => {
         if (busy) return;
-        setConfirmUid(null);
+        setConfirmTarget(null);
         setRemoveError(null);
       }}
-    />
+    >
+      <OpenInviteList
+        title={ct('inviteOpenList')}
+        empty={ct('inviteNone')}
+        rows={inviteRows(ct, invites)}
+        revokeLabel={ct('inviteRevoke')}
+        onRevoke={(id) => {
+          setRemoveError(null);
+          setConfirmTarget({ kind: 'invite', id });
+        }}
+      />
+    </StaffListScreen>
   );
 }
 

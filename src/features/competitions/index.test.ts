@@ -23,8 +23,10 @@ const COMPETITION_PATHS = [
   '/competitions/:cid/entries/:enId/add',
   '/competitions/:cid/entries/:enId',
   '/competitions/:cid/staff/assign',
+  '/competitions/:cid/staff/invite',
   '/competitions/:cid/staff',
   '/competitions/:cid/my-matches',
+  '/competitions/:cid/invite',
   '/competitions/:cid',
 ];
 
@@ -54,7 +56,7 @@ describe('competitions 功能開關（依建置期常數，不載入 asia 程式
     }
   });
 
-  it('開關打開後十三條路由都啟用，而且 /competitions/new 排在 :cid 前面', () => {
+  it('開關打開後十五條路由都啟用，而且 /competitions/new 排在 :cid 前面', () => {
     FEATURE_OVERRIDES.competitions = true;
     registerFeatures(ALL_FEATURES.map((f) => (f.id === 'competitions' ? { ...f, routes: competitionRoutes() } : f)));
     const paths = getActiveRoutes().map((route) => route.path).filter((path) => path.startsWith('/competitions'));

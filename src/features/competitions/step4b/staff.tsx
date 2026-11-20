@@ -1,6 +1,6 @@
 // A. 指派與邀請。主辦三頁是後台，平面卡片；受邀者與記分員沿用賽事頁卡片。
 
-import type { JSX } from 'preact';
+import type { ComponentChildren, JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
@@ -64,6 +64,8 @@ export interface StaffListRow {
   roleLabel: string;
   countLabel: string;
   removable: boolean;
+  /** 記分指派到期（有記分角色且有到期才給）。顯示在名字下一行。 */
+  expiresLabel?: string;
 }
 
 export interface StaffConfirm {
@@ -85,6 +87,11 @@ export function StaffListScreen(props: {
   onConfirm?: () => void;
   onDismiss?: () => void;
   confirmBusy?: boolean;
+  /** 有給才出現「邀請記分員」鈕（與指派並排）。 */
+  inviteLabel?: string;
+  onInvite?: () => void;
+  /** 按鈕下方的區塊（尚未使用的邀請）。 */
+  children?: ComponentChildren;
 } = {}): JSX.Element {
   const viewerRole = props.viewerRole ?? 'host';
   const controlled = props.rows != null;
@@ -106,11 +113,12 @@ export function StaffListScreen(props: {
         <ul class="cps-list s4b-staff-list">
           {rows.map((staff) => (
             <li key={staff.id} class="s4b-li">
-              <div class="s4b-staff">
+              <div class={staff.expiresLabel ? 's4b-staff s4b-staff--exp' : 's4b-staff'}>
                 <span class="s4b-staff__name">{staff.name}</span>
                 <Badge tone={roleTone(staff.role)} size="sm" label={staff.roleLabel} />
                 <span class="s4b-staff__meta">{staff.countLabel}</span>
                 <span class="s4b-staff__gap" />
+                {staff.expiresLabel ? <span class="s4b-staff__exp">{staff.expiresLabel}</span> : null}
                 {staff.removable ? (
                   <span class="s4b-mini">
                     <Button
@@ -132,7 +140,11 @@ export function StaffListScreen(props: {
       </S4bCard>
       <div class="s4b-pair">
         <Button variant="primary" onClick={props.onAssign}>{copy.assignScorer}</Button>
+        {props.onInvite ? (
+          <Button variant="secondary" onClick={props.onInvite}>{props.inviteLabel ?? copy.generateInvite}</Button>
+        ) : null}
       </div>
+      {props.children}
       {props.confirm ? (
         <Modal
           open
@@ -181,6 +193,10 @@ export function StaffAssignScreen(props: {
   error?: string;
   onSave?: () => void;
   onBack?: () => void;
+  /** false：不顯示人員下拉（邀請表單）。 */
+  showPerson?: boolean;
+  /** 外框標題旁的 data-screen。 */
+  screen?: string;
 } = {}): JSX.Element {
   const controlled = props.days != null;
   const [personState, setPersonState] = useState<string>(S4B_ASSIGN_PEOPLE[0].id);
@@ -220,10 +236,10 @@ export function StaffAssignScreen(props: {
   }
   const error = props.error ?? '';
   return (
-    <S4bFrame title={props.title ?? copy.assignTitle} admin screen="staff-assign" onBack={props.onBack}>
+    <S4bFrame title={props.title ?? copy.assignTitle} admin screen={props.screen ?? 'staff-assign'} onBack={props.onBack}>
       <S4bCard plain>
         <div class="s4b-gap">
-          <Select
+          {props.showPerson === false ? null : <Select
             label={props.personLabel ?? copy.person}
             value={person}
             onValueChange={(value) => {
@@ -231,7 +247,7 @@ export function StaffAssignScreen(props: {
               else setPersonState(value);
             }}
             options={people.map((item) => ({ value: item.id, label: item.name }))}
-          />
+          />}
           {days.map((group) => (
             <div key={group.key} class="s4b-daygroup">
               <p class="s4b-day">{group.heading}</p>
@@ -477,5 +493,75 @@ export function StaffDeniedScreen({
         <Button variant="secondary" onClick={onBack}>{backLabel}</Button>
       </div>
     </CpFrame>
+  );
+}
+
+/** 真資料的邀請列。roleLabel、countLabel、expiresLabel 由頁面組好。 */
+export interface OpenInviteRow {
+  id: string;
+  roleLabel: string;
+  countLabel: string;
+  expiresLabel: string;
+}
+
+export function OpenInviteList(props: {
+  title: string;
+  empty: string;
+  rows: readonly OpenInviteRow[];
+  revokeLabel: string;
+  onRevoke: (id: string) => void;
+}): JSX.Element {
+  return (
+    <S4bCard plain>
+      <h2 class="s4b-h s4b-inv__h">{props.title}</h2>
+      {props.rows.length === 0 ? <p class="s4b-foot">{props.empty}</p> : (
+        <ul class="cps-list s4b-inv-list">
+          {props.rows.map((row) => (
+            <li key={row.id} class="s4b-li" data-invite={row.id}>
+              <div class="s4b-gap s4b-inv">
+                <div class="s4b-m__top">
+                  <span class="s4b-k">{row.roleLabel}</span>
+                  <span class="s4b-k s4b-inv__n">{row.countLabel}</span>
+                  <span class="s4b-staff__gap" />
+                  <span class="s4b-mini">
+                    <Button variant="danger" size="sm" onClick={() => props.onRevoke(row.id)}>{props.revokeLabel}</Button>
+                  </span>
+                </div>
+                <p class="s4b-status">{row.expiresLabel}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </S4bCard>
+  );
+}
+
+/** 建立成功後的連結。連結只在這一頁的記憶體裡，離開就沒有。 */
+export function InviteLinkCard(props: {
+  title: string;
+  url: string;
+  once: string;
+  roleLine: string;
+  expiresLine: string;
+  copyLabel: string;
+  shareLabel: string;
+  onCopy: () => void;
+  onShare: () => void;
+}): JSX.Element {
+  return (
+    <S4bCard plain>
+      <div class="s4b-gap">
+        <h2 class="s4b-h">{props.title}</h2>
+        <Line text={props.roleLine} />
+        <Line text={props.expiresLine} />
+        <p class="s4b-inv__url" data-invite-url>{props.url}</p>
+        <p class="s4b-alert s4b-inv__once" role="note">{props.once}</p>
+        <div class="s4b-pair">
+          <Button variant="primary" size="sm" onClick={props.onCopy}>{props.copyLabel}</Button>
+          <Button variant="secondary" size="sm" onClick={props.onShare}>{props.shareLabel}</Button>
+        </div>
+      </div>
+    </S4bCard>
   );
 }
