@@ -17,6 +17,13 @@ function flatten(obj: Record<string, unknown>, prefix: string, out: Record<strin
 }
 const dict = flatten(zhTw as Record<string, unknown>, 'tournaments');
 
+// 本檔驗「開關關閉＝現行外部清單」的行為、讀取預算與快照；COMPETITIONS_ENABLED 改 true 上線後仍固定以關閉跑。
+// 開關打開的行為由 TournamentsPage.gate*.test.tsx 負責（賽事第 4 步第一次上線，取代原本依建置期常數實值跑）。
+vi.mock('@/feature-overrides', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/feature-overrides')>();
+  return { ...actual, COMPETITIONS_ENABLED: false };
+});
+
 vi.mock('@/i18n/i18n', () => ({
   useT: () => (key: string, params?: Record<string, unknown>) => {
     let text = dict[key] ?? key;
