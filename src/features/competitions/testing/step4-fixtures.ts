@@ -50,7 +50,6 @@ export const STEP4_SCREENS = [
   'invite-accept',
   'scorer-my-matches',
   // 3 觀眾
-  'live-detail',
   'live-match',
   'live-scorers',
   // 4 登錄連結
@@ -382,6 +381,15 @@ export const S4_SCENE_TIMEOUT: S4ScoreScene = {
   timeoutView: { side: 'home', leftSec: 47 },
 };
 
+/**
+ * 球隊暫停已超過規則次數（設計總監 04:20）：橫幅下方多一行「已超過規則次數（由主辦現場判斷）」。
+ * 只有非受控（預覽元件自己計次）才會出現；正式記分頁的 timeoutView 不帶 over，超過次數改為選隊鈕停用。
+ */
+export const S4_SCENE_TIMEOUT_OVER: S4ScoreScene = {
+  ...S4_SCENE_LIVE,
+  timeoutView: { side: 'home', leftSec: 47, over: true },
+};
+
 export const S4_SCENE_TIMEOUT_COLLAPSED: S4ScoreScene = {
   ...S4_SCENE_LIVE,
   timeoutView: { side: 'home', leftSec: 47, collapsed: true },
@@ -459,16 +467,10 @@ export const S4_SCORE_SCENES = {
   'score-undo-half': S4_SCENE_LIVE,
   'score-timeout': S4_SCENE_TIMEOUT,
   'score-timeout-collapsed': S4_SCENE_TIMEOUT_COLLAPSED,
+  'score-timeout-over': S4_SCENE_TIMEOUT_OVER,
   'score-pk-start': S4_SCENE_PK_START,
   'score-pk': S4_SCENE_PK,
 } as const;
-
-/** 詳情頁：兩場進行中、一場比分已更正。長隊名用來確認省略號仍看得出開頭。 */
-export const S4_DETAIL_ROWS = [
-  { id: 'd1', when: '09:00', home: '雷霆隊', away: '海風隊', score: '1:1', live: true, corrected: false },
-  { id: 'd2', when: '09:00', home: '山貓隊', away: '銀河隊', score: '0:2', live: true, corrected: false },
-  { id: 'd3', when: '08:00', home: '藍鯨隊', away: '一二三四五六七八九十示範隊', score: '2:1', live: false, corrected: true },
-] as const;
 
 /** U0a-fix3：紀錄在進球上方、球隊暫停、PK。名稱對齊 harness 與截圖腳本。 */
 export const S4A_SCREENS = [
@@ -490,9 +492,9 @@ export const S4A_SCREENS = [
   'score-undo-half',
   'score-timeout',
   'score-timeout-collapsed',
+  'score-timeout-over',
   'score-pk-start',
   'score-pk',
-  'live-detail',
   'live-match',
   'live-scorers',
 ] as const;

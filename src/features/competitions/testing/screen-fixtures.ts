@@ -923,6 +923,54 @@ const TIE_THREE_EXPLAINED = {
   marks: THREE_IDS.map((teamId, index) => ({ teamId, rank: index + 2, decidedBy: null })),
 };
 
+/**
+ * 三隊同分・對戰淨勝分出（real-tie-three-h2h；原名 real-tie-three，與整合分支卡 2-5 的同名狀態撞名後改名）：海風全勝，銀河、青鳥、雷霆對戰循環各一勝（對戰積分都是 3），
+ * 靠「對戰淨勝球」+1／0／-1 一次分成三段。數字同樣由 functions-cp 引擎實跑輸出抄入。
+ */
+const TIE_THREE_H2H_GAMES: readonly TieGame[] = [
+  ['mt_h1', 'en_b', 'en_c', 2, 0, 9, 9],
+  ['mt_h2', 'en_c', 'en_d', 1, 0, 9, 11],
+  ['mt_h3', 'en_d', 'en_b', 1, 0, 9, 13],
+  ['mt_h4', 'en_h', 'en_b', 1, 0, 10, 9],
+  ['mt_h5', 'en_h', 'en_c', 1, 0, 10, 11],
+  ['mt_h6', 'en_h', 'en_d', 1, 0, 10, 13],
+];
+
+function tieThreeH2hStandings(): StandingDoc {
+  return standingDoc({
+    rows: [
+      standingRow({ teamId: 'en_h', name: '海風隊', rank: 1, points: 9, played: 3, win: 3, draw: 0, loss: 0, goalsFor: 3, goalsAgainst: 0, goalDiff: 3 }),
+      standingRow({ teamId: 'en_b', name: '銀河隊', rank: 2, points: 3, played: 3, win: 1, draw: 0, loss: 2, goalsFor: 2, goalsAgainst: 2, goalDiff: 0 }),
+      standingRow({ teamId: 'en_d', name: '青鳥隊', rank: 3, points: 3, played: 3, win: 1, draw: 0, loss: 2, goalsFor: 1, goalsAgainst: 2, goalDiff: -1 }),
+      standingRow({ teamId: 'en_c', name: '雷霆隊', rank: 4, points: 3, played: 3, win: 1, draw: 0, loss: 2, goalsFor: 1, goalsAgainst: 3, goalDiff: -2 }),
+    ],
+  });
+}
+
+const THREE_H2H_IDS = ['en_b', 'en_d', 'en_c'];
+const threeH2hValues = (values: readonly number[]) => THREE_H2H_IDS.map((teamId, index) => ({ teamId, value: values[index] ?? null }));
+
+const TIE_THREE_H2H_EXPLAINED = {
+  dvId: 'dv_adult',
+  groupId: 'A',
+  naturalOrder: [...THREE_H2H_IDS],
+  steps: [
+    { teamIds: [...THREE_H2H_IDS], criterion: 'points', values: threeH2hValues([3, 3, 3]), split: false },
+    { teamIds: [...THREE_H2H_IDS], criterion: 'headToHeadPoints', values: threeH2hValues([3, 3, 3]), split: false },
+    { teamIds: [...THREE_H2H_IDS], criterion: 'headToHeadGoalDiff', values: threeH2hValues([1, 0, -1]), split: true },
+  ],
+  splits: [
+    { criterion: 'headToHeadGoalDiff', aboveTeamIds: ['en_b'], belowTeamIds: ['en_d'] },
+    { criterion: 'headToHeadGoalDiff', aboveTeamIds: ['en_d'], belowTeamIds: ['en_c'] },
+  ],
+  decidedCriterion: 'headToHeadGoalDiff',
+  pending: false,
+  pendingCriterion: null,
+  matchIds: ['mt_h1', 'mt_h2', 'mt_h3'],
+  decision: null,
+  marks: THREE_H2H_IDS.map((teamId, index) => ({ teamId, rank: index + 2, decidedBy: null })),
+};
+
 /** explainTie 假回傳：送來的隊伍與引擎跑的那一組不同就丟錯，避免畫面拿到對不上的數字。 */
 function tieExplainOf(expected: readonly string[], result: unknown) {
   return async (input: { teamIds: string[] }) => {
@@ -1447,6 +1495,16 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
         HOST_STAFF,
         { ...actions, explainTie: tieExplainOf(THREE_IDS, TIE_THREE_EXPLAINED) },
       );
+    case 'real-tie-three-h2h':
+      // 設計總監 04:20：三隊同分、在「對戰淨勝」分出（比較表較短的一種），對照 real-tie-three（比到公平競賽）。
+      return detailEnv(
+        hostActor,
+        DONE_NOW,
+        {},
+        { summary: tieGames(TIE_THREE_H2H_GAMES), standings: [tieThreeH2hStandings()] },
+        HOST_STAFF,
+        { ...actions, explainTie: tieExplainOf(THREE_H2H_IDS, TIE_THREE_H2H_EXPLAINED) },
+      );
     case 'real-tie-four':
       // 卡 2-5 補（設計總監 03:38）：四隊同分，比較表四欄，量 360 寬放不放得下。
       return detailEnv(
@@ -1515,6 +1573,8 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return detailEnv(clubRep(2), NOW, {}, { summary: [], standings: [] });
     case 'real-notice-delete':
     case 'real-notice-delete-sys':
+    // 設計總監 04:20：主辦點「發布公告」展開輸入框（底下取消／發布公告按鈕列）。
+    case 'real-notice-compose':
       return screenEnv('real-notices-host', actions);
     case 'real-load-failed':
       return repoDetailEnv(memberActor, NOW, failingDetailRepo(), actions);

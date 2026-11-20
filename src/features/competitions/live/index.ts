@@ -1,5 +1,4 @@
 export { CardFlash } from './CardFlash';
-export { LiveDetailList, type LiveDetailRow } from './LiveDetailList';
 export { LiveMatchView } from './LiveMatchView';
 export { LiveScoreBadge } from './LiveScoreBadge';
 export { ScorePad, type ScorePadProps, type ScorePick } from './ScorePad';

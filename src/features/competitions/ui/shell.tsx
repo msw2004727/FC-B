@@ -50,10 +50,10 @@ export function TrashIcon(): JSX.Element {
   );
 }
 
-/** 往右箭頭（文字入口、可點的隊名）：14px，顏色由所在的 class 給。 */
+/** 入口列與「全部賽程」鈕尾的「›」（新外觀卡 1b-5）。 */
 export function NextIcon(): JSX.Element {
   return (
-    <svg class="cps-ico" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+    <svg class="cps-ico cps-ico--next" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M9 5l7 7-7 7" />
     </svg>
   );

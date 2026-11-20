@@ -1784,7 +1784,9 @@ describe('顧問 R2 版面', () => {
     expect(screen.queryByRole('button', { name: '完成' })).toBeNull();
   });
 
-  it('主辦的公告文字佔滿整列，刪除在日期那一行；非主辦樣式不變', () => {
+  // 新外觀卡 1b-5（顧問 §3.465 同意兩種視角統一）：非主辦也是內文佔滿整列、「系統」標籤與時間在下一行；
+  // 刪除鈕換成垃圾桶圖示鈕，名稱（aria-label）仍是「刪除」。
+  it('主辦與非主辦的公告都是文字佔滿整列、標籤與時間在下一行；主辦的刪除在那一行最右邊', () => {
     draw(hostDetail([
       { id: 'nt_sys', text: '因雨延後一小時，請各隊留意集合時間', kind: 'system', at: 2, by: null },
       { id: 'nt_host', text: '領隊會議改在示範球場門口', kind: 'host', at: 1, by: null },
@@ -1799,7 +1801,7 @@ describe('顧問 R2 版面', () => {
       expect(row?.children).toHaveLength(1);
       expect(meta?.querySelector('.cpm-ann__time')).not.toBeNull();
       const del = meta?.querySelector('button');
-      expect(del?.textContent).toContain('刪除');
+      expect(del?.getAttribute('aria-label')).toBe('刪除');
       // 日期在前（靠左）、刪除在後（靠右）。
       expect(meta?.lastElementChild?.contains(del ?? null)).toBe(true);
     }
@@ -1810,11 +1812,11 @@ describe('顧問 R2 版面', () => {
     const memberItems = [...document.querySelectorAll('.cpm-ann li')];
     expect(memberItems.length).toBeGreaterThan(0);
     for (const item of memberItems) {
-      expect(item.querySelector('.cpm-ann__meta')).toBeNull();
+      expect(item.querySelector('.cpm-ann__meta > .cpm-ann__when > .cpm-ann__time')).not.toBeNull();
+      expect(item.querySelector('.cpm-ann__row')?.children).toHaveLength(1);
       expect(item.querySelector('button')).toBeNull();
-      expect(item.querySelector(':scope > .cpm-ann__time')).not.toBeNull();
     }
-    // 非主辦的系統標籤仍在文字前面。
-    expect(memberItems[0]?.querySelector('.cpm-ann__row > .ui-badge')?.textContent).toContain('系統');
+    // 非主辦的系統標籤也在時間那一行。
+    expect(memberItems[0]?.querySelector('.cpm-ann__when > .ui-badge')?.textContent).toContain('系統');
   });
 });

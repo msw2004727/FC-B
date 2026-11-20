@@ -43,6 +43,7 @@ function audienceMatch(partial: Partial<AudienceMatch> & Pick<AudienceMatch, 'st
     away: { teamId: 'en_a', name: '海風隊', logo: null },
     penaltyScore: null,
     scoreCorrectedAt: null,
+    cancelReason: null,
     ...partial,
   };
 }
@@ -78,7 +79,7 @@ export const P3_LIVE_MATCHES: Record<string, AudienceMatch | null> = {
     penaltyScore: { home: 4, away: 3 },
     scoreCorrectedAt: P3_NOW - 10 * 60 * 1000,
   }),
-  cancelled: audienceMatch({ status: 'cancelled', score: { home: 0, away: 0 } }),
+  cancelled: audienceMatch({ status: 'cancelled', score: { home: 0, away: 0 }, cancelReason: '大雨，場地積水無法使用，改期另行公告' }),
   postponed: audienceMatch({
     status: 'postponed',
     score: { home: 0, away: 0 },

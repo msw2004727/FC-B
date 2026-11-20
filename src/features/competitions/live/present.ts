@@ -109,6 +109,8 @@ export interface EventLine {
   pkRound?: number;
   pkScored?: boolean;
   team: string;
+  /** 哪一隊的紀錄（記分頁紀錄列照主客隊上色）。 */
+  side: MatchSideName;
   number: number | null;
   name: string;
   voided: boolean;
@@ -289,6 +291,7 @@ export function eventLines(options: {
         pkRound: event.round,
         pkScored: event.scored,
         team,
+        side,
         number: player?.number ?? null,
         name: player?.displayName ?? '',
         voided: isVoided,
@@ -319,6 +322,7 @@ export function eventLines(options: {
       kind,
       secondYellow,
       team,
+      side,
       number,
       name,
       voided: isVoided,

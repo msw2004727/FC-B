@@ -1,6 +1,5 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
 import { Modal } from '@/ui/Modal';
@@ -23,7 +22,7 @@ import {
   pauseRemain,
   pausedFor,
   pkKickLine,
-  pkScoreLabel,
+  pkRoundText,
   restedFor,
   teamAction,
   teamTimeoutText,
@@ -175,6 +174,8 @@ export interface ScoreFeedRow {
   secondYellow: boolean;
   pkScored?: boolean;
   voided: boolean;
+  /** 哪一隊的紀錄；有才照主客隊上色，沒有維持中性。 */
+  side?: MatchSideName;
 }
 
 type Phase = 'pre' | 'play' | 'ht' | 'undo' | 'locked';
@@ -725,9 +726,6 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     : '';
 
   const alerts: JSX.Element[] = [];
-  if (props.topBanner) {
-    alerts.push(<p key="tab" class="s4-banner" role="status">{props.topBanner}</p>);
-  }
   const hasQueuedLine = (props.heldLines ?? []).some((line) => line.key === 'queued');
   for (const line of props.heldLines ?? []) {
     // 顧問 §3.459 (a)：紅色那行整行可點，點了開同一個「未套用的動作」面板（360×640 紀錄多時原本那顆鈕會被擠出畫面）。
@@ -762,7 +760,6 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     alerts.push(<p key="pause" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.pauseReserved}</p>);
   }
   if (nearCap) alerts.push(<p key="near" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.nearCap}</p>);
-  if (reserved) alerts.push(<p key="cap" class="s4-banner s4-banner--saved" role="status">{LIVE_COPY.atCap}</p>);
   if (notice) alerts.push(<p key="notice" class="s4-banner s4-banner--saved" role="alert">{notice}</p>);
   const storageDanger = props.storageBanner === true || (!link.online && link.storageUnavailable);
   if (storageDanger) {
@@ -772,27 +769,55 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   }
   if (!link.wakeLock) alerts.push(<p key="wake" class="s4-wake">{LIVE_COPY.wakeLock}</p>);
 
+  // PK 期間板上不放時鐘，右邊是「第 N 輪」：N＝兩隊都踢完的輪數＋1，用畫面上那一份事件列算（正式頁含待送），與 PK 比分同步。
+  const pkRound = !pk
+    ? 0
+    : props.feed
+      ? Math.min(
+        props.feed.filter((row) => row.kind === 'pk' && !row.voided && row.side === 'home').length,
+        props.feed.filter((row) => row.kind === 'pk' && !row.voided && row.side === 'away').length,
+      ) + 1
+      : Math.min(nextPkRound(events, voids, 'home'), nextPkRound(events, voids, 'away'));
+  const stageCell = showStage || phase === 'undo' || phase === 'locked' || holdText ? (
+    <div class="s4-stagecell">
+      {showStage ? <span class="s4-stage">{stageLabel(stageClock)}</span> : null}
+      {phase === 'undo' || phase === 'locked' ? <span class="s4-stage">{LIVE_COPY.fulltime}</span> : null}
+      {holdText ? <p class="s4-hold">{holdText}</p> : null}
+    </div>
+  ) : null;
   const top = (
-    <header key="top" class="s4-top">
+    <header key="top" class={`s4-top${holdText ? ' s4-top--held' : ''}${pk ? ' s4-top--pk' : ''}`}>
       <div class="s4-board">
-        <TeamLockup entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" place="board" />
+        <TeamLockup entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" place="board" split />
         <span class="s4-scoreline">
-          <span class="s4-score">{match.score.home}:{match.score.away}</span>
-          {pk ? <span class="s4-pk">{pkScoreLabel(shoot.home, shoot.away)}</span> : null}
+          {pk ? (
+            <span class="s4-score">
+              <span class="s4-score__n">{match.score.home}</span>
+              <span class="s4-score__c">:</span>
+              <span class="s4-score__n">{match.score.away}</span>
+            </span>
+          ) : (
+            <span class="s4-score">{match.score.home}:{match.score.away}</span>
+          )}
         </span>
-        <TeamLockup entryId={match.away.teamId} name={match.away.name} crests={crests} align="away" place="board" />
+        <TeamLockup entryId={match.away.teamId} name={match.away.name} crests={crests} align="away" place="board" split />
       </div>
       <div class="s4-clockrow">
-        <span class="s4-clock">{formatMatchClock(reading.elapsedSec)}</span>
-        {showStage ? <span class="s4-stage">{stageLabel(stageClock)}</span> : null}
-        {phase === 'undo' || phase === 'locked' ? <span class="s4-stage">{LIVE_COPY.fulltime}</span> : null}
-        <Badge
-          size="sm"
-          tone={link.online ? 'success' : 'warning'}
-          label={link.online ? LIVE_COPY.connected : offlineChip(link.pendingCount)}
-        />
+        {pk ? (
+          <span class="s4-pk">
+            <span class="s4-pk__tag">PK</span>
+            <span class="s4-pk__n s4-pk__n--home">{shoot.home}</span>
+            <span class="s4-pk__c">:</span>
+            <span class="s4-pk__n s4-pk__n--away">{shoot.away}</span>
+          </span>
+        ) : (
+          <span class="s4-clock">{formatMatchClock(reading.elapsedSec)}</span>
+        )}
+        {pk ? <span class="s4-round">{pkRoundText(pkRound)}</span> : stageCell}
+        <span class="s4-link" data-link={link.online ? 'on' : 'off'}>
+          {link.online ? LIVE_COPY.connected : offlineChip(link.pendingCount)}
+        </span>
       </div>
-      {holdText ? <p class="s4-hold">{holdText}</p> : null}
     </header>
   );
 
@@ -832,10 +857,10 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     <div key="pad" class="s4-pad">
       <div class="s4-tags" aria-hidden="true">
         <span class="s4-tag s4-tag--home">
-          <TeamLockup entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" place="column" />
+          <TeamLockup entryId={match.home.teamId} name={match.home.name} crests={crests} align="home" place="column" split />
         </span>
         <span class="s4-tag s4-tag--away">
-          <TeamLockup entryId={match.away.teamId} name={match.away.name} crests={crests} align="away" place="column" />
+          <TeamLockup entryId={match.away.teamId} name={match.away.name} crests={crests} align="away" place="column" split />
         </span>
       </div>
       {goals}
@@ -850,7 +875,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
         props.feed.length > 0 ? (
           <ul class="s4-events">
             {props.feed.map((row) => (
-              <li key={row.key} class={row.voided ? 's4-ev s4-ev--void' : 's4-ev'}>
+              <li key={row.key} class={`s4-ev${row.voided ? ' s4-ev--void' : ''}${row.side ? ` s4-ev--${row.side}` : ''}`}>
                 <Mark kind={row.kind} second={row.secondYellow} scored={row.pkScored} />
                 {row.pending || row.voided || !phaseOpen ? (
                   <>
@@ -877,7 +902,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       ) : lines.length > 0 ? (
         <ul class="s4-events">
           {lines.map((line) => (
-            <li key={line.seq} class={line.voided ? 's4-ev s4-ev--void' : 's4-ev'}>
+            <li key={line.seq} class={`s4-ev${line.voided ? ' s4-ev--void' : ''} s4-ev--${line.side}`}>
               <Mark kind={line.kind} second={line.secondYellow} scored={line.pkScored} />
               {line.voided || !phaseOpen ? (
                 <>
@@ -900,23 +925,33 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           ))}
         </ul>
       ) : null}
-      {pending.length > 0 || takeoverOffered ? (
+      {pending.length > 0 ? (
         <div class="s4-extra">
-          {pending.length > 0 ? (
-            <Button variant="secondary" disabled={padOff} onClick={() => setUnappliedOpen(true)}>{LIVE_COPY.unappliedTitle}</Button>
-          ) : null}
-          {takeoverOffered ? (
-            <Button variant="secondary" disabled={readerOff} onClick={() => setTakeoverOpen(true)}>
-              {props.takeoverSelf ? LIVE_COPY.takeoverAction : LIVE_COPY.takeoverEntry}
-            </Button>
-          ) : null}
+          <Button variant="secondary" disabled={padOff} onClick={() => setUnappliedOpen(true)}>{LIVE_COPY.unappliedTitle}</Button>
         </div>
       ) : null}
     </div>
   );
 
+  // 3.10：整區不能按的原因與出路放在隊名標籤正上方（紀錄區與按鈕區之間），由狀態決定，不比對文字。
+  const blockArea = props.topBanner || reserved || takeoverOffered ? (
+    <div key="block" class="s4-block">
+      {props.topBanner ? <p class="s4-banner s4-banner--block" role="status">{props.topBanner}</p> : null}
+      {reserved ? <p class="s4-banner s4-banner--block" role="status">{LIVE_COPY.atCap}</p> : null}
+      {takeoverOffered ? (
+        <Button disabled={readerOff} onClick={() => setTakeoverOpen(true)}>
+          {props.takeoverSelf ? LIVE_COPY.takeoverAction : LIVE_COPY.takeoverEntry}
+        </Button>
+      ) : null}
+    </div>
+  ) : null;
+
   const timeoutBanner = teamTimeout ? (
-    <div key="timeout" class={teamTimeout.collapsed ? 's4-timeout s4-timeout--mini' : 's4-timeout'} role="status">
+    <div
+      key="timeout"
+      class={`s4-timeout${teamTimeout.collapsed ? ' s4-timeout--mini' : ''} s4-timeout--${teamTimeout.side}`}
+      role="status"
+    >
       {teamTimeout.collapsed ? (
         <button
           type="button"
@@ -1014,7 +1049,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
             </Button>
           ) : null}
           {showPause ? (
-            <Button variant="secondary" disabled={pauseDisabled} onClick={togglePause}>
+            <Button variant="secondary" class={clockBase.running ? undefined : 's4-resume'} disabled={pauseDisabled} onClick={togglePause}>
               {clockBase.running ? pauseRemain(pauseLeft) : LIVE_COPY.resumeClock}
             </Button>
           ) : null}
@@ -1090,6 +1125,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       {alertBlock}
       {timeoutBanner}
       {log}
+      {blockArea}
       {pad}
       {bar}
 

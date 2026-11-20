@@ -23,6 +23,8 @@ export const OVERLAY_SCREENS = new Set([
   'a1-undo-confirm',
   'a1-amend-confirm',
   'u2-menu',
+  // 設計總監 04:20：選單開著、含停用的列（同 u2-menu 一類）
+  'u2-menu-disabled',
   'u2-timeout-sheet',
   'u2-amend-card',
   'score-pick-player',
@@ -46,6 +48,7 @@ export const NO_BOARD_SCREENS = new Set([
 export const NO_ROWS = {
   'u2-pre': '開賽前，畫面上 0 筆',
   'u2-pre-wake-off': '開賽前，畫面上 0 筆',
+  'u2-pre-disabled': '開賽前（開賽鈕停用），畫面上 0 筆',
   'score-pre': '開賽前，畫面上 0 筆',
 };
 

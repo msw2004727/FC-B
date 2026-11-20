@@ -147,10 +147,16 @@ export function filterTournamentCards(
 }
 
 /** 卡片日期：`YYYY/MM/DD～YYYY/MM/DD`；同一天只顯示一次。 */
+/**
+ * 外部賽事卡的日期。同一天只寫一次；同一年的結束日省略年份（`2027/03/12～03/14`，顧問 §3.496）；
+ * 跨年兩邊都寫年份（`2026/12/12～2027/02/27`）。
+ */
 export function formatCardDates(card: Pick<TournamentCard, 'startDate' | 'endDate'>): string {
   const start = card.startDate.replace(/-/g, '/');
   const end = card.endDate.replace(/-/g, '/');
-  return start === end ? start : `${start}～${end}`;
+  if (start === end) return start;
+  const sameYear = start.slice(0, 4) === end.slice(0, 4);
+  return `${start}～${sameYear ? end.slice(5) : end}`;
 }
 
 export interface TournamentCardFormInput {
