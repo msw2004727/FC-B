@@ -1,8 +1,10 @@
 // 第 4 步 A（顧問 11-20）：不能復原的確認框防連點、開賽確認、被拒擋住提示、看這張牌不被事件面板蓋住。
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installUi4TestLocale } from '@/ui/ui4-test-helpers';
-import { S4_SCENE_LIVE, S4_SCENE_PK_START, S4_SCENE_PRE, S4_SCENE_TAKEOVER } from '../testing/step4-fixtures';
+import { S4_SCENE_LIVE, S4_SCENE_PK_START, S4_SCENE_PRE, S4_SCENE_TAKEOVER, S4_SCENE_UNAPPLIED } from '../testing/step4-fixtures';
 import { blockedStep, heldQueued, heldRejected, LIVE_COPY } from './copy';
 import { ScorePad } from './ScorePad';
 import { CONFIRM_ARM_MS } from './score-states';
@@ -153,16 +155,49 @@ describe('顧問 §3.459 (a)：紅色提示整行可點', () => {
     expect(onReapply).not.toHaveBeenCalled();
     expect(onDiscard).not.toHaveBeenCalled();
   });
-  it('黃色那行不可點；排版類別不變（只多 s4-banner--tap，有黃色那行時另加 s4-banner--tapq）', () => {
+  it('黃色那行不可點；紅色那行只多 s4-banner--tap（方案 B 拿掉 s4-banner--tapq，有沒有第二行都一樣）', () => {
     const { rerender } = render(<ScorePad {...S4_SCENE_LIVE} heldLines={lines} />);
     const yellow = screen.getByText(heldQueued(2));
     expect(yellow.tagName).toBe('P');
     expect(yellow.querySelector('button')).toBeNull();
+    // 施工-第2批 3.11：第二行帶自己的 class，高度 700 以下用樣式藏（s4-banner--saved 留著）。
+    expect(yellow.className.split(' ')).toContain('s4-banner--queued');
+    expect(yellow.className.split(' ')).toContain('s4-banner--saved');
     const red = screen.getByRole('button', { name: heldRejected(1) }).closest('p') as HTMLElement;
-    expect(red.className.split(' ').sort()).toEqual(['s4-banner', 's4-banner--held', 's4-banner--tap', 's4-banner--tapq'].sort());
+    expect(red.className.split(' ').sort()).toEqual(['s4-banner', 's4-banner--held', 's4-banner--tap'].sort());
     rerender(<ScorePad {...S4_SCENE_LIVE} heldLines={[lines[0]]} />);
     const solo = screen.getByRole('button', { name: heldRejected(1) }).closest('p') as HTMLElement;
     expect(solo.className.split(' ').sort()).toEqual(['s4-banner', 's4-banner--held', 's4-banner--tap'].sort());
+  });
+  it('方案 B：有紅色列時紀錄區不再重複那顆「未套用的動作」，沒有紅色列時照舊', () => {
+    const { rerender } = render(<ScorePad {...S4_SCENE_UNAPPLIED} heldLines={lines} />);
+    expect(document.querySelector('.s4-extra')).toBeNull();
+    rerender(<ScorePad {...S4_SCENE_UNAPPLIED} />);
+    expect(document.querySelector('.s4-extra')?.textContent).toContain(LIVE_COPY.unappliedTitle);
+    rerender(<ScorePad {...S4_SCENE_UNAPPLIED} heldLines={[lines[1]]} />);
+    expect(document.querySelector('.s4-extra')?.textContent).toContain(LIVE_COPY.unappliedTitle);
+  });
+  it('提示區順序：離線紀錄無法保存在紅色列之上、鎖定提醒在最後', () => {
+    render(
+      <ScorePad
+        {...S4_SCENE_LIVE}
+        events={[]}
+        heldLines={lines}
+        link={{ online: false, pendingCount: 2, storageUnavailable: true, wakeLock: false }}
+      />,
+    );
+    const order = [...document.querySelector('.s4-alerts')!.children].map((node) => node.className.split(' ').slice(1).join(' ') || node.className);
+    expect(order[0]).toBe('s4-banner--danger');
+    expect(order[1]).toContain('s4-banner--held');
+    expect(order[2]).toContain('s4-banner--queued');
+    expect(order[order.length - 1]).toBe('s4-wake');
+  });
+  it('紅色列的樣式：44px 列、沒有往外延伸的 ::after；高度 700 以下藏第二行與讓位的一般級提示', () => {
+    const css = readFileSync(join(process.cwd(), 'src/features/competitions/live/live.css'), 'utf8');
+    expect(css).not.toMatch(/s4-banner__tap::after/);
+    expect(css).not.toMatch(/s4-banner--tapq/);
+    expect(css).toMatch(/\.s4-root \.s4-alerts \.s4-banner--tap\s*\{[^}]*min-height:\s*44px/);
+    expect(css).toMatch(/@media \(max-height: 700px\)\s*\{[^@]*\.s4-alerts \.s4-banner--queued[^{]*\{[^}]*display:\s*none/);
   });
   it('被接手（記分區停用）時紅色那行的按鈕停用，點了不開面板', () => {
     render(<ScorePad {...S4_SCENE_TAKEOVER} heldLines={lines} />);

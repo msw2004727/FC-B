@@ -449,39 +449,39 @@
   -webkit-mask-image: var(--d2-ico-alert);
   mask-image: var(--d2-ico-alert);
 }
-/* 紅色那一行的 ::after 可點延伸要露出 <p> 外面（記分小批的做法原樣留著，2-3(a) 改 44px 時拿掉） */
-.s4-root .s4-alerts .s4-banner--tap { overflow: visible; }
-/* 顧問 §3.459 (a)：紅色那行整行可點。外觀與行高不變；::after 相對 <p> 往上下延伸補可點範圍：
-   上方 8px（＝.s4-root 與記分板之間的 gap，不蓋到記分板）；下方沒有黃色那行時 8px（不蓋到紀錄列），
-   有黃色那行時 12px（4px 行距＋黃色那行 8px，蓋到黃色那行沒關係）。總高 24＋8＋8＝40 或 24＋8＋12＝44。 */
+/* 方案 B（施工-第2批 3.11）：紅色「沒送出／被擋」是 44px 的可點列（資料可能遺失級的顏色＋擋住級的尺寸）；
+   原生按鈕撐滿整個 <p>，可點範圍就是這一列，不往外延伸。 */
 .s4-banner--tap { position: relative; }
 .s4-banner__tap {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
+  min-height: 44px;
   margin: 0;
-  padding: 0;
+  padding: 0 12px 0 38px;
   border: 0;
+  border-radius: inherit;
   background: none;
   color: inherit;
   font: inherit;
   line-height: inherit;
   text-align: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
-.s4-banner__tap::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -8px;
-  bottom: -8px;
+.s4-root .s4-alerts .s4-banner--tap {
+  min-height: 44px;
+  padding: 0;
+  border-radius: 12px;
 }
-.s4-banner--tapq .s4-banner__tap::after { bottom: -12px; }
+.s4-alerts .s4-banner--tap::before { left: 12px; pointer-events: none; }
 .s4-banner__tap:disabled { cursor: default; }
+/* 紅底上的鍵盤焦點：往內縮的淺色框（青綠在紅底上看不清楚） */
 .s4-banner__tap:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 4px;
-  border-radius: var(--radius-sm);
+  outline: 2px solid var(--d2-alert-fg);
+  outline-offset: -4px;
 }
 /* 提醒級（請關閉手機自動鎖定）：沒有底、只有細框、手機圖示 */
 .s4-wake {
@@ -1553,6 +1553,10 @@ button.s4-ev__main:active { opacity: 0.7; }
    收合條的可點延伸跟著間距收，320×568 那一級收合條改 32px。 */
 @media (max-height: 700px) {
   .s4-root { gap: 7px; }
+  /* 3.11／Q4：紅色列出現時一般級提示讓位（之後記的 N 筆、停錶已停用、接近上限、離線已存）；
+     帶 role="alert" 的暫時訊息不讓位；深紅的「離線紀錄無法保存」排在紅色列前面，本來就選不到。 */
+  .s4-alerts .s4-banner--queued,
+  .s4-alerts .s4-banner--held ~ .s4-banner--saved:not([role="alert"]) { display: none; }
   .s4-timeout__mini::after { top: -7px; bottom: -7px; }
 }
 @media (max-height: 600px) {
