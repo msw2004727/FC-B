@@ -930,6 +930,8 @@
 .cpm-rules li:first-child { border-top: 0; padding-top: 0; }
 /* 賽事清單站內卡（清-4，第 1a 批 3.9）：玻璃卡第一行「狀態｜重點句」、名稱、最後一行「分類｜日期・場地」；
  * 卡板是一圈玻璃框（只有底、不疊光澤）包一塊記分板（.d2-sb 共用元件）。class 是清單才有的新名字，不帶根節點前綴。 */
+/* 站內清單容器最小高度：清單頁吃到舊站 .page 的 overflow，卡片少時展開的站內選單會被裁（規格 3.6：篩選列 36＋4＋選單 272＋16） */
+[data-inapp="competitions"] { min-height: 328px; }
 .cpl-card { margin-bottom: 10px; }
 .cpl-card__link { display: block; padding: 10px 14px 12px; color: var(--d2-text); text-decoration: none; }
 .cpl-card__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 20px; margin-bottom: 2px; }

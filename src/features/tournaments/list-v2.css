@@ -75,7 +75,8 @@
 
 /* 標題列：返回鈕＋標題。有切換時選中那顆分頁鈕就是標題（<h2> 視覺隱藏），沒選中那顆是右上小膠囊；
  * 沒有切換時 <h2>「賽事」看得見，長相與選中那顆相同。返回鈕不動（tournaments-glass.css）。 */
-#page-tournaments .cpl-head { display: flex; align-items: center; justify-content: flex-start; gap: 6px; padding: 4px 0 8px; }
+/* 最小高 56：有沒有切換（44px 的分頁鈕或 28px 的標題）頁首都一樣高，切換出現那一刻下面不跳 */
+#page-tournaments .cpl-head { display: flex; align-items: center; justify-content: flex-start; gap: 6px; min-height: 56px; padding: 4px 0 8px; }
 #page-tournaments .cpl-head .page-header-title {
   flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-family: inherit; font-size: 19px; line-height: 28px; font-weight: 700; color: var(--d2-text);
@@ -119,7 +120,9 @@
 /* 篩選列（站內、外部共用）：最後一個子項靠最右（建立賽事／＋ 新增賽事；沒有時是開關） */
 #page-tournaments .cpl-bar { display: flex; align-items: center; gap: 12px; min-height: 36px; margin: 0 0 10px; font-size: 13px; line-height: 20px; color: var(--d2-text-2); }
 #page-tournaments .cpl-bar > :last-child { margin-left: auto; }
-#page-tournaments .cpl-bar > .ui-button { flex: 0 0 auto; min-inline-size: 0; padding: 0 14px; }
+/* 選單鈕、按鈕外觀 36px、點擊區 44px：上下用負邊界不撐高篩選列。舊站 .legacy-ui button 會把字色蓋成繼承，這裡接回按鈕自己的字色 */
+#page-tournaments .cpl-bar > .d2-dd { margin-top: -4px; margin-bottom: -4px; }
+#page-tournaments .cpl-bar > .ui-button { flex: 0 0 auto; min-inline-size: 0; margin-top: -4px; margin-bottom: -4px; padding: 0 14px; color: var(--comp-button-foreground-default); }
 #page-tournaments .cpl-bar > .ui-button::before { top: 4px; bottom: 4px; }
 #page-tournaments.d2-ext .cpl-bar > .ui-button {
   --comp-button-background-default: var(--d2-graphite-switch);
@@ -168,7 +171,7 @@
 #page-tournaments .cpl-xrow__go { flex: 0 0 auto; width: 16px; height: 16px; color: var(--d2-text-3); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 #page-tournaments .cpl-xrow__name .cpl-xrow__go { display: inline-block; width: 14px; height: 14px; margin-left: 4px; vertical-align: -1px; }
 /* 編輯鈕長相是第 0 批圓形玻璃圖示鈕（.cps-iconbtn，在 competitions.css）；這裡只放位置 */
-#page-tournaments .cpl-xrow__edit { margin-right: -4px; }
+#page-tournaments .cpl-xrow__edit { margin-right: -10px; }
 
 /* 刪除外部賽事的危險確認框（清-5，第 1a 批 3.12）：旗標 class 與兩條樣式與站內賽事那份（competitions.css）逐字相同 */
 .cp-danger-confirm #app-confirm-modal .app-confirm-ok{background:var(--d2-field-bg);color:var(--d2-danger);box-shadow:inset 0 0 0 1.5px var(--d2-danger);font-weight:700}
