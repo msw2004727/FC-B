@@ -303,7 +303,8 @@ export function useScoring(cid: string, mtId: string, deps?: ScoringDeps): Scori
       } finally {
         booting = false;
       }
-      if (retryQueued && !session && !stopped) {
+      // 顧問 §3.472（Opus 審 P3-a）：結果是 Rules 拒讀（沒有權限）時不再重進，即使進場期間按過舊錯誤畫面的重試。
+      if (retryQueued && !session && !stopped && lastError !== 'denied') {
         retryQueued = false;
         void tryBoot();
       }

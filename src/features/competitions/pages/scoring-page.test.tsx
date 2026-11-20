@@ -427,6 +427,42 @@ describe('G-06 進場失敗不是沒有權限', () => {
     expect(open).toHaveBeenCalledTimes(1);
   });
 
+  it('顧問 §3.472 P3-a：進場期間按的重試，若這次結果是 Rules 拒讀（沒有權限），不再重進', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const made = await deps({ match: LIVE_MATCH, staffRoles: [], matchIds: [] });
+    const visible = { value: true };
+    withWatchers(made.deps, visible);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    // 第 1 次：網路錯誤（出現讀取失敗＋重試）；第 2 次：卡在 gate 後被 Rules 拒讀；之後若再呼叫就成功（不該發生）。
+    const real = made.deps.backend!.open.bind(made.deps.backend!);
+    const open = vi.fn(async (...args: Parameters<ScoringBackend['open']>) => {
+      const n = open.mock.calls.length;
+      if (n === 1) throw offline();
+      if (n === 2) {
+        await gate;
+        throw denied();
+      }
+      return real(...args);
+    });
+    made.deps.backend!.open = open;
+    draw(made.deps);
+    await settle();
+    expect(screen.getByText(LIVE_COPY.loadFailedAuto)).toBeTruthy();
+    const retry = screen.getByRole('button', { name: LIVE_COPY.retry });
+    fireEvent.click(retry);
+    await settle();
+    expect(open).toHaveBeenCalledTimes(2);
+    // 第 2 次進場還卡在 gate：舊錯誤畫面上的重試再按一次（會排隊）
+    fireEvent.click(retry);
+    release();
+    await settle(5_000);
+    expect(screen.getByText(LIVE_COPY.noScorePermission)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: LIVE_COPY.retry })).toBeNull();
+    await settle(300_000);
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
   it('重試鈕、online、回到前景、計時器同時觸發，只進場一次、佇列只送一次', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const log = await pendingLog();
