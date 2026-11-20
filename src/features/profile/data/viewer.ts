@@ -318,6 +318,8 @@ async function loadTeamsForUser(
 export async function loadViewer(
   uid: string,
   scanOut?: { current: ViewerTeamScan | null },
+  /** users 文件讀成功（含文件不存在＝一般用戶）後立刻通知角色；讀取失敗不通知。不影響讀取順序與次數。 */
+  onRole?: (role: string) => void,
 ): Promise<ViewerView> {
   if (!uid) return createGuestViewer();
 
@@ -326,11 +328,13 @@ export async function loadViewer(
   const { doc, getDoc } = fs;
 
   let userData: Record<string, unknown> | null = null;
+  let userDocRead = false;
   try {
     const userSnap = await getDoc(doc(db, 'users', uid));
     if (userSnap.exists()) {
       userData = (userSnap.data() as Record<string, unknown> | undefined) ?? null;
     }
+    userDocRead = true;
   } catch (err) {
     warnOnce('users', err);
   }
@@ -340,6 +344,14 @@ export async function loadViewer(
     ? { uid, teamIds: userData.teamIds, teamId: userData.teamId }
     : null;
   const role = userInfo.role;
+  if (userDocRead) {
+    // 通知端出錯不得讓完整 viewer 載入失敗（11-20 Opus 審 P3-1）。
+    try {
+      onRole?.(role);
+    } catch (err) {
+      warnOnce('onRole', err);
+    }
+  }
 
   const roleDocPromise: Promise<DocResult> = role === 'user'
     ? Promise.resolve({ ok: true, data: null })
@@ -476,7 +488,44 @@ let viewerLive: ViewerSubscription | null = null;
 function publishViewer(next: ViewerView): void {
   viewerSnapshot = next;
   viewerUid = next.uid;
+  // 換人（含登出）就清掉上一個人的「角色已確定」；同一人重讀時保留，等新結果覆蓋。
+  if (settledRole && settledRole.uid !== next.uid) publishSettledRole(null);
   for (const listener of [...viewerListeners]) listener(next);
+}
+
+/**
+ * 「users 文件已讀到、角色已確定」的訊號（賽事站內閘門用，11-20 顧問：閘門只等角色確定、不等球隊掃描）。
+ * 獨立於 viewerSnapshot：發出時不換 viewer 快照、不通知 useViewer，其他頁面看到的 viewer 與時機完全不變。
+ * 只記目前這個 uid 的角色；完整 viewer 到了以後以 viewer.role 為準。
+ */
+type SettledRole = { uid: string; role: string };
+type SettledRoleListener = (value: SettledRole | null) => void;
+const settledRoleListeners = new Set<SettledRoleListener>();
+let settledRole: SettledRole | null = null;
+
+function publishSettledRole(next: SettledRole | null): void {
+  settledRole = next;
+  for (const listener of [...settledRoleListeners]) listener(next);
+}
+
+/** 目前登入者已確定的角色；不是這個 uid、或 users 文件還沒讀到時回 null。 */
+export function getSettledViewerRole(uid: string | null | undefined): string | null {
+  if (!uid || !settledRole || settledRole.uid !== uid) return null;
+  return settledRole.role;
+}
+
+/** getSettledViewerRole 的 hook 版；角色確定時重畫。不會啟動或改變 viewer 的讀取。 */
+export function useSettledViewerRole(uid: string | null | undefined): string | null {
+  const [value, setValue] = useState<SettledRole | null>(() => settledRole);
+  useEffect(() => {
+    settledRoleListeners.add(setValue);
+    setValue(settledRole);
+    return () => {
+      settledRoleListeners.delete(setValue);
+    };
+  }, []);
+  if (!uid || !value || value.uid !== uid) return null;
+  return value.role;
 }
 
 function settleViewerInflight(run: Promise<void>): void {
@@ -511,7 +560,13 @@ function beginViewerLoad(uid: string | null, force: boolean): void {
   viewerLoadFailed = false;
   // 晚到的上一個人的查詢不得寫進這次的 scan。序號對不上就丟掉。
   const scanOut: { current: ViewerTeamScan | null } = { current: null };
-  const run = loadViewer(uid, scanOut).then(
+  const onRole = (role: string): void => {
+    // 同 generation、同一個仍在看的 uid 才收，晚到的上一個人的角色丟掉。
+    if (generation !== viewerGeneration) return;
+    if (!viewerLive || viewerLive.knownUid !== uid || viewerUid !== uid) return;
+    publishSettledRole({ uid, role });
+  };
+  const run = loadViewer(uid, scanOut, onRole).then(
     (next) => {
       settleViewerInflight(run);
       if (generation !== viewerGeneration) return;
@@ -612,6 +667,7 @@ function resetViewerIdle(): void {
   viewerUid = null;
   viewerLoadFailed = false;
   clearViewerTeamScan();
+  if (settledRole) publishSettledRole(null);
 }
 
 function releaseViewerSubscription(): void {
