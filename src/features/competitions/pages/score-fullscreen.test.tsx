@@ -26,10 +26,10 @@ describe('記分頁全幅', () => {
   it('全幅時不渲染底部導覽、頂欄、搶先試用角標與診斷浮層，主區不留上下空白', () => {
     const css = readFileSync(resolve(__dirname, '../live/score-fullscreen.css'), 'utf8');
     const hide = css.slice(0, css.indexOf('display: none !important;'));
-    for (const sel of ['#top-bar', '#bottom-tabs', '.internal-test-badge', '.fcb-diag-loads']) {
+    for (const sel of ['#top-bar', '#bottom-tabs', '.internal-test-badge', '.fcb-diag-loads', '.sync-bar']) {
       expect(hide).toContain(`html.${SCORE_FULLSCREEN_CLASS} ${sel}`);
     }
-    expect(css).toMatch(/html\.cp-score-full \.ui-app-shell \.app-main \{\s*padding-top: 0;\s*padding-bottom: 0;/);
+    expect(css).toMatch(/html\.cp-score-full \.ui-app-shell \.app-main \{\s*padding-top: var\(--qa-banner-h, 0px\);\s*padding-bottom: 0;/);
   });
 
   it('套用後 jsdom 計算樣式：底部導覽 display:none', () => {

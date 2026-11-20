@@ -81,11 +81,22 @@ export function ScoringScreen({
     );
   }
   return (
-    <ScorePad
-      {...scorePadPropsFrom(view, now)}
-      onLeave={() => route(`/competitions/${cid}/matches`)}
-    />
+    <FullscreenPad>
+      <ScorePad
+        {...scorePadPropsFrom(view, now)}
+        onLeave={() => route(`/competitions/${cid}/matches`)}
+      />
+    </FullscreenPad>
   );
+}
+
+/**
+ * 只有記分板真的出現時才全幅（顧問審 a7026243 P2-1）：未登入、無權限、載入中、錯誤時保留 App 外框，
+ * 登入鈕等頂欄功能仍可用（取代「整個記分路由都全幅」）。
+ */
+function FullscreenPad({ children }: { children: JSX.Element }): JSX.Element {
+  useScoreFullscreen();
+  return children;
 }
 
 function SignedOut({ cid }: { cid: string }): JSX.Element {
@@ -108,7 +119,6 @@ function SignedOut({ cid }: { cid: string }): JSX.Element {
 }
 
 export default function ScoringPage(): JSX.Element {
-  useScoreFullscreen();
   const routed = useRoute();
   const cid = routed.params?.cid ?? '';
   const mtId = routed.params?.mtId ?? '';
