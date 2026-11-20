@@ -3,7 +3,8 @@
 
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { useLocation, useRoute } from 'preact-iso';
+import { useRoute } from 'preact-iso';
+import { useGoBack } from '@/core/back-guard';
 import { ctOrKey, useCompetitionsT } from '../i18n';
 import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
@@ -38,7 +39,9 @@ function codePoints(value: string): number {
 function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: string }): JSX.Element {
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
-  const { route } = useLocation();
+  // 三個出口（成功、返回、取消）都回上一頁；直開網址時才導到名單頁。原本 route() 再推一筆名單頁，
+  // 名單頁的「<」（history.back）又回到這裡，形成循環（11-20 模擬器預演；取代 route(名單頁)）。
+  const backToRoster = useGoBack(`/competitions/${cid}/entries/${enId}`);
   const prefill = env.preview?.prefillForm === true;
   const adultSeed = env.preview?.repAdult === true || env.preview?.repNick === true;
   const nickSeed = env.preview?.repNick === true;
@@ -134,7 +137,7 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
         guardianConsent: guardian,
         birthday,
       }));
-      route(`/competitions/${cid}/entries/${enId}`);
+      backToRoster();
     } catch (err) {
       setError(errorOf(err));
     } finally {
@@ -162,7 +165,7 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
   if (block) return <RosterBlocked reason={block} cid={cid} enId={enId} />;
 
   return (
-    <CpFrame title={ct('addTitle')} onBack={() => route(`/competitions/${cid}/entries/${enId}`)}>
+    <CpFrame title={ct('addTitle')} onBack={backToRoster}>
       <CpCard>
         <h2 class="cps-title">{entry?.name ?? ''}</h2>
         {division ? <p class="cps-sub">{division.name}　{ct('formatN', { n: division.playersOnField })}</p> : null}
@@ -193,7 +196,7 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
         </div>
       </CpCard>
       <div class="cps-actions">
-        <Button variant="secondary" onClick={() => route(`/competitions/${cid}/entries/${enId}`)}>{ct('cancel')}</Button>
+        <Button variant="secondary" onClick={backToRoster}>{ct('cancel')}</Button>
         <Button variant="primary" loading={busy} onClick={() => { void submit(); }}>{ct('addSubmit')}</Button>
       </div>
     </CpFrame>

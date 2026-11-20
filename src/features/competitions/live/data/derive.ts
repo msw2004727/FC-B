@@ -223,10 +223,14 @@ function overlayEntries(
   const ahead = entries
     .filter((entry) => fresh(entry) && entry.state === 'applied' && entry.seq != null && entry.seq > match.rev)
     .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0) || compareEntries(a, b));
+  // 已排定序號、且快照 rev 已涵蓋的待送／送出中項目不再疊加：離線時 Firestore SDK 的延遲補償會先推出
+  // 含這一筆的本機快照（rev＝seq），commit 卻還沒回來，原本會重複加一次（預演：離線記一球 1:2 顯示成 1:3）。
+  // pendingCount 仍算全部待送（「離線・N 筆待送」要照實顯示），只有疊加順序排除已被快照涵蓋的。
   const pending = entries
     .filter((entry) => fresh(entry) && (entry.state === 'pending' || entry.state === 'sending'))
     .sort(compareEntries);
-  return { ordered: [...ahead, ...pending], pendingCount: pending.length };
+  const uncovered = pending.filter((entry) => entry.seq == null || entry.seq > match.rev);
+  return { ordered: [...ahead, ...uncovered], pendingCount: pending.length };
 }
 
 /**
