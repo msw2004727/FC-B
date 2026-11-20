@@ -7,7 +7,7 @@ import '../styles/base.css';
 import '@/features/competitions/live/live.css';
 import { setLocale } from '@/i18n/i18n';
 import { loadCompetitionsDict } from '@/features/competitions/i18n';
-import { ScoringScreen } from '@/features/competitions/pages/ScoringPage';
+import { ScoringScreen, SignedOut } from '@/features/competitions/pages/ScoringPage';
 import { MemoryActionLog, type ActionLog } from '@/features/competitions/live/data/action-log';
 import { applyPlanLocal } from '@/features/competitions/live/data/batch';
 import type { ScoringBackend } from '@/features/competitions/live/data/live-repo';
@@ -47,6 +47,8 @@ export const U2_SCREENS = [
   // 第 4 步 A（顧問 11-20）：被拒擋住送出、階段動作被擋、不能復原的確認框、看這張牌。
   'a1-held',
   'a1-held-many',
+  // 卡 2-7（顧問 §3.504）：兩位數筆數的紅色列，量 360 寬一行與列尾箭頭。
+  'a1-held-12',
   'a1-held-sheet',
   'a1-blocked-ht',
   'a1-resumed',
@@ -91,6 +93,8 @@ export const U2_SCREENS = [
   'u2-timeout-away-collapsed',
   // 設計總監 05:38（卡 2-4 面板新外觀）：暫停選隊時主隊次數用完（主隊鈕停用、客隊剩 1 次）、客隊選球員面板、PK 那一腳只有「復原」。
   'u2-timeout-picks-used',
+  // 卡 2-7：未登入（卡 2-6 的版面），只畫 SignedOut。
+  'u2-signed-out',
   'u2-pick-away',
   'u2-pk-kick-sheet',
   'u2-menu-disabled',
@@ -133,7 +137,8 @@ const ANCHORS: Record<string, string> = {
   'a1-takeover-confirm': '接手後，另一支裝置記的動作會送不出去',
   'a1-showcard': '點一下關閉',
   'a1-undo-confirm': '會一併復原第二張黃牌',
-  'a1-blocked-ht-before': '前一筆沒送出，請點「未套用的動作」處理',
+  'a1-blocked-ht-before': '前一筆沒送出，點這裡處理',
+  'a1-held-12': '有 12 筆沒送出，點這裡處理',
   'a1-pk-blocked': '先處理沒送出的紀錄，才能開始 PK',
   'u2-fulltime-undo': '撤回終場',
   'u2-fulltime-undo-blocked': '先處理沒送出的紀錄，才能撤回終場',
@@ -158,6 +163,7 @@ const ANCHORS: Record<string, string> = {
   'u2-timeout-away': '海風隊暫停 0:47',
   'u2-timeout-away-collapsed': '海風隊',
   'u2-timeout-picks-used': '每半場重新計算',
+  'u2-signed-out': '你沒有這場的記分權限',
   'u2-pick-away': '不指定球員',
   'u2-pk-kick-sheet': '復原',
   'u2-menu-disabled': '球隊暫停',
@@ -489,6 +495,18 @@ function seedOf(name: string): Seed {
     return {
       match: match({ status: 'live', score: { home: 0, away: 0 }, clockBase: clock(20 * 60, 'h1', true) }),
       reader: true,
+    };
+  }
+  if (name === 'a1-held-12') {
+    return {
+      ...seedOf('a1-held-many'),
+      pending: Array.from({ length: 12 }, (_, i) => rejectedEntry(
+        `rej-goal-away-${String(100 + i).padStart(5, '0')}`,
+        { kind: 'goal', side: 'away', plId: 'pl_hf10', goalKind: 'normal', matchSecond: 1500 + i },
+        5 + i,
+        'conflict',
+        NOW - 60_000 + i * 1000,
+      )),
     };
   }
   if (name === 'a1-held-many') {
@@ -991,7 +1009,9 @@ async function start(): Promise<void> {
     }
     const screenDeps = await makeDeps(screenName);
     if (framed) await import('@/ui/app-shell.css');
-    const pad = <ScoringScreen cid={CID} mtId={MT} deps={screenDeps} nowMs={NOW} />;
+    const pad = screenName === 'u2-signed-out'
+      ? <SignedOut cid={CID} />
+      : <ScoringScreen cid={CID} mtId={MT} deps={screenDeps} nowMs={NOW} />;
     render(
       <LocationProvider>
         {framed ? (

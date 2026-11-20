@@ -23,7 +23,7 @@ const ANCHORS = {
   'a1-takeover-confirm': '接手後，另一支裝置記的動作會送不出去',
   'a1-showcard': '點一下關閉',
   'a1-undo-confirm': '會一併復原第二張黃牌',
-  'a1-blocked-ht-before': '前一筆沒送出，請點「未套用的動作」處理',
+  'a1-blocked-ht-before': '前一筆沒送出，點這裡處理',
   'a1-pk-blocked': '先處理沒送出的紀錄，才能開始 PK',
 };
 const SCREENS = [

@@ -471,7 +471,8 @@
   text-overflow: ellipsis;
   cursor: pointer;
 }
-.s4-root .s4-alerts .s4-banner--tap {
+/* 多一層 class：要蓋過 359 寬以下提示列的左右內距（同權重時那一條排在後面會贏，320 寬文字被擠成省略） */
+.s4-root .s4-alerts .s4-banner.s4-banner--tap {
   min-height: 44px;
   padding: 0;
   border-radius: 12px;
@@ -1120,7 +1121,9 @@ button.s4-ev__main:active { opacity: 0.7; }
 }
 .s4-sheet .s4-timeout-picks .ui-button + .ui-button { --s4-hue: var(--d2-away); }
 .s4-timeout-picks .ui-button::before { top: 0; bottom: 0; }
-.s4-sheet .s4-timeout-picks .ui-button.ui-button--primary { color: #fff; }
+.s4-sheet .s4-timeout-picks .ui-button.ui-button--primary:not([aria-disabled="true"]) { color: #fff; }
+/* 卡 2-7（設計總監 05:49）：次數用完的停用鈕＝停用底＋底緣隊色、字 --d2-text-3（含第二行「剩 0 次」；原本留著白字，淺色幾乎看不到） */
+.s4-sheet .s4-timeout-picks .ui-button.ui-button--primary[aria-disabled="true"] { color: var(--d2-text-3); }
 .s4-sheet .s4-timeout-picks .ui-button.ui-button--primary:not([aria-disabled="true"])::before { background: var(--s4-hue); }
 .s4-sheet .s4-timeout-picks .ui-button__label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .s4-timeout-picks .s4-tp__left { font-size: 15px; line-height: 20px; font-weight: 600; white-space: nowrap; }
@@ -1226,6 +1229,10 @@ button.s4-ev__main:active { opacity: 0.7; }
 }
 .s4-sheet.d2-panel .ui-button:focus-visible,
 .s4-dialog.d2-panel .ui-button:focus-visible { outline-color: var(--d2-text); }
+/* 卡 2-7：停用與剛跳出 0.6 秒的字色和控制列停用同一個變數（深色 #8892a4，原本吃到 --d2-text-3 #a3adbd），記分頁的停用樣子一致 */
+.s4-sheet.d2-panel .ui-button[aria-disabled="true"],
+.s4-dialog.d2-panel .ui-button[aria-disabled="true"],
+.s4-dialog.d2-panel .ui-button[data-confirm-armed="false"] { color: var(--d2-ctrl-off-fg); }
 .s4-sheet.d2-panel .ui-modal__body {
   display: flex;
   flex-direction: column;
@@ -1565,6 +1572,23 @@ button.s4-ev__main:active { opacity: 0.7; }
   .s4-timeout__mini::after { top: -6px; bottom: -6px; }
 }
 /* 提示列 359 寬以下 12px（3.9 的 11-21 實量門檻，取代原型的 340） */
+/* 卡 2-7（設計總監 05:52）：紅色列整列可點，列尾補一個「›」；360 寬以上才畫（359 以下字 12px，空間不夠） */
+@media (min-width: 360px) {
+  .s4-alerts .s4-banner--tap .s4-banner__tap { padding-right: 30px; }
+  .s4-alerts .s4-banner--tap::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 16px;
+    width: 7px;
+    height: 7px;
+    margin-top: -4px;
+    border-top: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    transform: rotate(45deg);
+    pointer-events: none;
+  }
+}
 @media (max-width: 359px) {
   .s4-root .s4-alerts .s4-banner,
   .s4-root .s4-alerts .s4-wake,
@@ -1592,4 +1616,7 @@ button.s4-ev__main:active { opacity: 0.7; }
     max-width: 480px;
     margin-inline: auto;
   }
+  /* 卡 2-7：記分頁的面板與確認框跟記分頁本體同寬（modal.css 在 800 以上是 640）；只選記分頁面板自己的 class */
+  .s4-sheet.d2-panel .ui-modal__panel,
+  .s4-dialog.d2-panel .ui-modal__panel { max-width: 480px; }
 }

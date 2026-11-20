@@ -206,6 +206,7 @@ function FullscreenPad({ children }: { children: JSX.Element }): JSX.Element {
   return children;
 }
 
+/** 未登入。匯出只給示範頁截圖用（u2-signed-out），正式路由照舊在 ScoringPage 裡用。 */
 export function SignedOut({ cid }: { cid: string }): JSX.Element {
   const cpDict = useCompetitionsT();
   const ct = cpDict.ct;

@@ -109,9 +109,12 @@ export function offlineSaved(pending: number): string {
   return `離線中，已存 ${pending} 筆，恢復網路會自動送出`;
 }
 
-/** 有被拒項目擋住送出時的常駐提示（第 4 步 A F5-3，顧問 11-20）。12px 一行，360 寬不斷行。 */
+/**
+ * 有被拒項目擋住送出時的常駐提示（第 4 步 A F5-3，顧問 11-20）。360 寬不斷行。
+ * 顧問 §3.504（卡 2-7）：整列可點、畫面上已沒有同名的鈕，改成「點這裡處理」（取代「請點「未套用的動作」處理」）。
+ */
 export function heldRejected(rejected: number): string {
-  return `${rejected > 1 ? `有 ${rejected} 筆` : '前一筆'}沒送出，請點「未套用的動作」處理`;
+  return `${rejected > 1 ? `有 ${rejected} 筆` : '前一筆'}沒送出，點這裡處理`;
 }
 
 export function heldQueued(queued: number): string {
