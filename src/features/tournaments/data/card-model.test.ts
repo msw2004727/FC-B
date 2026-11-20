@@ -187,8 +187,20 @@ describe('排序、已結束、篩選', () => {
 });
 
 describe('formatCardDates', () => {
-  it('同一天只顯示一次', () => {
-    expect(formatCardDates({ startDate: '2026-10-09', endDate: '2026-10-11' })).toBe('2026/10/09～2026/10/11');
+  it('同一年：結束日省略年份', () => {
+    expect(formatCardDates({ startDate: '2026-10-09', endDate: '2026-10-11' })).toBe('2026/10/09～10/11');
+    expect(formatCardDates({ startDate: '2027-03-12', endDate: '2027-03-14' })).toBe('2027/03/12～03/14');
+  });
+
+  it('跨年：兩邊都寫年份', () => {
+    expect(formatCardDates({ startDate: '2026-12-12', endDate: '2027-02-27' })).toBe('2026/12/12～2027/02/27');
+  });
+
+  it('單日：只顯示一次', () => {
+    expect(formatCardDates({ startDate: '2026-12-06', endDate: '2026-12-06' })).toBe('2026/12/06');
+  });
+
+  it('起訖同一天：只顯示一次', () => {
     expect(formatCardDates({ startDate: '2026-11-15', endDate: '2026-11-15' })).toBe('2026/11/15');
   });
 });
