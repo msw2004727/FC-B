@@ -1265,6 +1265,20 @@ function longManageBundle(): CpBundle {
   };
 }
 
+/** 待審卡的長俱樂部名（俱樂部名稱上限 30 字）與長聯絡人（設計總監 05:19 補驗）。 */
+function longPendingBundle(): CpBundle {
+  const b = manageBundle();
+  const names: Record<string, string> = {
+    en_pa: '新北市三重區二〇二七年春季社區青年足球俱樂部一隊',
+    en_pb: LONG_TEAM_2,
+  };
+  return {
+    ...b,
+    entries: b.entries.map((row) => (names[row.id] ? { ...row, name: names[row.id] ?? row.name } : row)),
+    privates: b.privates.map((row) => (row.id === 'en_pa' ? { ...row, contactName: '歐陽示範一二三四五六七八九十' } : row)),
+  };
+}
+
 /** 建賽守門三態：未登入、內部期一般會員、讀開放設定失敗。 */
 function gateEnv(kind: 'guest' | 'member' | 'error', actions: CpActions): CpInjectedEnv {
   const repo = createFakeCpRepo({ launch: { isPublic: false, bannedWords: [] } });
@@ -1672,6 +1686,8 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return base(actions, hostActor, longManageBundle(), { manageTab: 'approved' });
     case 'host-long-pending':
       return base(actions, hostActor, longManageBundle(), { manageTab: 'pending' });
+    case 'host-pending-longclub':
+      return base(actions, hostActor, longPendingBundle(), { manageTab: 'pending' });
     case 'gate-guest':
       return gateEnv('guest', actions);
     case 'gate-member':

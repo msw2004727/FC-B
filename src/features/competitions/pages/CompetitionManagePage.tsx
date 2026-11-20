@@ -466,7 +466,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         </div>
       ) : null}
       {showUnlock ? (
-        <div class="cps-actions">
+        <div class="cph-end">
           <Button variant="secondary" onClick={() => { setUnlockError(null); setUnlockOpen(true); }}>{ct('unlock')}</Button>
         </div>
       ) : null}
