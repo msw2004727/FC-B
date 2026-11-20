@@ -186,12 +186,11 @@ export default function TournamentsPage(): JSX.Element {
   const [inAppReady, setInAppReady] = useState(false);
   const onInAppReady = useCallback(() => setInAppReady(true), []);
   const pendingIn = preferIn && source === 'in' && (gate === 'pending' || (gate === 'open' && !inAppReady));
-  // 閘門通過後站內清單 8 秒還沒好：骨架不無限留，這一次改看外部（切換列還在，可再點站內）；使用者自己選過就不動
+  // 閘門通過後站內清單 8 秒還沒好：骨架不無限留，這一次改看外部（切換列還在，可再點站內）；網址有 ?src（自己選過）時以網址為準，不受影響
   // （11-20 Opus 審 P2-2）。線索不清。
   useEffect(() => {
     if (!preferIn || gate !== 'open' || inAppReady) return undefined;
     const timer = setTimeout(() => {
-      if (new URLSearchParams(window.location.search).has('src')) return;
       setFallbackSource('ext');
     }, TOURNAMENTS_LOAD_TIMEOUT_MS);
     return () => clearTimeout(timer);
