@@ -30,12 +30,15 @@ export function S4bFrame({
   title,
   admin = false,
   screen,
+  context,
   onBack,
   children,
 }: {
   title: string;
   admin?: boolean;
   screen: string;
+  /** 頁名右邊的賽事名小字（與 CpFrame 的 context 同一個標記與 class）；沒有就不畫。 */
+  context?: string;
   onBack?: () => void;
   children: ComponentChildren;
 }): JSX.Element {
@@ -47,6 +50,7 @@ export function S4bFrame({
           <BackIcon />
         </button>
         <h1>{title}</h1>
+        {context ? <span class="cps-top__ctx">{context}</span> : null}
       </header>
       <div class="cps-stack">{children}</div>
     </div>

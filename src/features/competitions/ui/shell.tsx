@@ -50,6 +50,24 @@ export function TrashIcon(): JSX.Element {
   );
 }
 
+/** 往右箭頭（文字入口、可點的隊名）：14px，顏色由所在的 class 給。 */
+export function NextIcon(): JSX.Element {
+  return (
+    <svg class="cps-ico" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+/** 向下箭頭（可展開的小膠囊，展開時由樣式轉 180°）。 */
+export function DownIcon(): JSX.Element {
+  return (
+    <svg class="cps-ico" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
 /** 「一句話＋回去的鈕」的圖示：鎖頭（不公開）。 */
 export function LockIcon(): JSX.Element {
   return (

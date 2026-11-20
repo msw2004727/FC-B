@@ -138,13 +138,15 @@ export function PayButton(): JSX.Element {
   );
 }
 
-export function FeeLine({ amount }: { amount: number }): JSX.Element {
+/** tag：金額後面的節點（報隊管理放繳費標籤）；沒傳時標記與原本相同。 */
+export function FeeLine({ amount, tag }: { amount: number; tag?: JSX.Element | null }): JSX.Element {
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
+  const amountNode = <span class="cps-fee__amount">{formatFee(amount, ct('feeFree'))}</span>;
   return (
     <div class="cps-fee">
-      <span class="cps-fee__amount">{formatFee(amount, ct('feeFree'))}</span>
+      {tag ? <span class="cps-fee__lead">{amountNode}{tag}</span> : amountNode}
       <PayButton />
     </div>
   );
