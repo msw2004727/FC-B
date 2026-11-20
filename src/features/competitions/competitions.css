@@ -865,6 +865,26 @@
 .cph-decide .ui-button { flex: 0 0 auto; min-inline-size: 88px; }
 .cph-decide .ui-button--primary { min-inline-size: 168px; }
 
+/* 賽程管理（卡 4-B）：頁首那一片下半的工具列（整天順延、兩場對調，小顆次要鈕靠左） */
+.cph-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; min-height: 48px; padding: 0 10px; }
+.cph-tools .ui-button { min-inline-size: 0; }
+/* 矮板三格：單行高、可換行、超出的裁掉——格子不縮、標籤不省略，放不下時最後一格整格看不到 */
+.cph-sb .d2-cells { flex-wrap: wrap; height: 24px; overflow: hidden; }
+.cph-sb .d2-cell { flex: 1 0 auto; }
+/* 標籤旁的「重置」：中性文字鈕＋前置圖示；點擊區 44 用負邊界不撐高那一行 */
+.cp3-tags .cph-reset { --comp-button-foreground-default: var(--d2-text-2); min-inline-size: 0; margin: -10px -8px -10px 0; padding-inline: 8px; gap: 4px; }
+.cp3-tags .cph-reset .ui-button__icon { color: var(--d2-text-3); }
+/* 每天之間的距離由清單容器負責（取代原本的 12px 空白 div） */
+.cph-day + .cph-day { margin-top: 12px; }
+.cps-note + .cph-start { margin-top: 12px; }
+/* 整天順延、兩場對調展開的卡：欄位間距 12；「這次會動到什麼」左邊一條直線；撞期警示到按鈕列 16；底部取消窄、確認寬，撞期時「仍要…」排同一列最後（可換列） */
+.cph-flex { padding: 14px 16px 16px; }
+.cph-flex .cpm-h { margin-bottom: 10px; }
+.cph-flex .cps-fields { gap: 12px; }
+.cph-flex .cph-split { flex-wrap: wrap; }
+.cph-flex .cpm-warn + .cph-split { margin-top: 4px; }
+.cph-effect { padding-left: 10px; border-left: 2px solid var(--d2-line-strong); }
+
 /* 建立賽事（卡 4-E） */
 .cph-stepno { flex: 0 0 auto; margin-left: auto; font-size: 13px; line-height: 20px; font-weight: 400; color: var(--d2-text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cps-head-row > .cp3-sec-h { margin: 0; }
@@ -990,12 +1010,16 @@
 .cp3-jact .ui-button.ui-button--secondary { flex: 0 0 104px; }
 
 /* 主辦排賽程、賽程管理、比分面板。class 對照預覽 harness。 */
-.cp3-tags { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
-.cp3-tags .ui-badge { white-space: nowrap; }
-.cp3-tags .ui-button { min-width: 0; }
+.cp3-tags { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
 /* 顧問 §3.294 P2-1：窄螢幕三、四顆按鈕放不下時換行，不得被卡片裁掉（取代原本單行 nowrap 不換行） */
-.cp3-m__act { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
-.cp3-m__act .ui-button { white-space: nowrap; }
+/* 賽程管理每一場的動作列（卡 4-B）：一列排完、靠左；「取消這場」紅字推到最右，放不下整顆掉到下一列靠右 */
+.cp3-m__act { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; margin-top: 2px; }
+.cp3-m__act .ui-button { min-inline-size: 0; padding-inline: 12px; }
+.cp3-m__act .ui-button--danger { margin-left: auto; }
+@media (max-width: 340px) {
+  .cp3-m__act { gap: 0 6px; }
+  .cp3-m__act .ui-button { padding-inline: 8px; }
+}
 /* 排賽程（卡 4-C）：比賽日不加框、細線分段（第一天沒有上線）；標題列 24 高，垃圾桶 44×44 往上偏（下緣只伸出標題列下距 6px，不蓋到欄位標題；3.15），圖示右緣對齊卡片內容 */
 .cp3-dayform + .cp3-dayform { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--d2-line); }
 .cp3-dayform__h { display: flex; align-items: center; justify-content: space-between; min-height: 24px; margin-bottom: 6px; font-size: 13px; line-height: 24px; font-weight: 700; color: var(--d2-text); white-space: nowrap; }
@@ -1287,8 +1311,7 @@
   line-height: var(--line-height-caption);
   color: var(--d2-text-3);
 }
-.cpm-warn,
-.cpm-ok {
+.cpm-warn {
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
@@ -1304,13 +1327,18 @@
   word-break: keep-all; overflow-wrap: anywhere;
 }
 .cpm-warn::before { top: 12px; left: 12px; }
-.cpm-ok { background: var(--color-success-bg); color: var(--color-success-fg); }
 .cpm-swap {
   margin: 0;
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
+  padding-left: 10px;
+  border-left: 2px solid var(--d2-line-strong);
+  font-size: 13px;
+  line-height: 20px;
   font-weight: 600;
+  color: var(--d2-text);
+  white-space: nowrap;
 }
+/* 兩句對調結果緊接（欄位間距 12 收回、上內距 4，左邊直線連成一段） */
+.cpm-swap + .cpm-swap { margin-top: -12px; padding-top: 4px; }
 .cpm-meta {
   margin: 4px 0 0;
   min-width: 0;

@@ -68,6 +68,15 @@ export function DownIcon(): JSX.Element {
   );
 }
 
+/** 重置（賽程管理「重置」中性文字鈕的前置圖示）：14px。 */
+export function ResetIcon(): JSX.Element {
+  return (
+    <svg class="cps-ico" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4" />
+    </svg>
+  );
+}
+
 /** 加號（「新增比賽日」「新增場地」「新增組別」小鈕的前置圖示）。 */
 export function PlusIcon(): JSX.Element {
   return (
