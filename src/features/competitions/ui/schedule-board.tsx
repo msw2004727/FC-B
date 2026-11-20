@@ -1,7 +1,7 @@
 // 詳情的賽程、積分榜、預熱／進行中／已結束的分頁內容。class 對照預覽 harness 的 cp3-*。頂部在 detail-hero.tsx。
 
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { Button } from '@/ui/Button';
 import { Tabs } from '@/ui/Tabs';
 import type { CompetitionsT } from '../i18n';
@@ -202,62 +202,84 @@ export function StandingsTable({
   onDecision?: (doc: StandingDoc) => void;
 }): JSX.Element {
   const multiple = docs.length > 1;
+  // 排序規則預設收合（新外觀卡 3-4，已定案的行為變更）；每個組別各自一份
+  const [rulesOpen, setRulesOpen] = useState<Record<string, boolean>>({});
   return (
     <div class="cps-stack">
       {docs.map((doc, index) => {
         const lines = standingLines(doc);
         const heading = headingText(ct, standingHeading(doc, index, multiple));
+        const open = rulesOpen[doc.id] === true;
+        const rulesId = `cp-rules-${doc.id}`;
         return (
           <div key={doc.id}>
             {heading ? <h3 class="cp3-day">{heading}</h3> : null}
-            <CpCard class="cp3-st">
-              <div class="cp3-st__r cp3-st__r--h">
-                <span>{ct('colRank')}</span>
-                <span class="t">{ct('colTeam')}</span>
-                <span>{ct('colPlayed')}</span>
-                <span>{ct('colWon')}</span>
-                <span>{ct('colDrawn')}</span>
-                <span>{ct('colLost')}</span>
-                <span>{ct('colGoals')}</span>
-                <span>{ct('colDiff')}</span>
-                <span>{ct('colPoints')}</span>
-              </div>
-              {lines.map((line) => {
-                const shown = standingCrest(line.teamId, line.name, crests);
-                return (
-                  <div key={line.teamId} class={`cp3-st__r${line.top ? ' cp3-st__r--top' : ''}`}>
-                    <span class="rk">
-                      {line.rank}
-                      {line.samePoints && canExplain ? (
-                        <button type="button" class="cpm-tiebtn" onClick={() => onExplain?.(doc, line.teamId)}>{ct('tie')}</button>
-                      ) : line.tie ? <small>{ct('tie')}</small> : null}
-                      {/* 名次欄只有 28px：畫面顯示短標「裁定」，讀屏與提示用完整「主辦裁定」（顧問 §3.294 P3：360 寬四個字貼到隊徽） */}
-                      {line.decidedBy ? (
-                        <button type="button" class="cpm-tiebtn" aria-label={ct('hostRuling')} title={ct('hostRuling')} onClick={() => onDecision?.(doc)}>{ct('hostRulingShort')}</button>
-                      ) : null}
-                    </span>
-                    <span class="t">
-                      <span class="cp3-tn">
-                        <TeamCrest teamId={shown.teamId} name={shown.name} teamLogo={shown.teamLogo} size={20} />
-                        <em>{line.name}</em>
-                      </span>
-                    </span>
-                    <span>{line.played}</span>
-                    <span>{line.win}</span>
-                    <span>{line.draw}</span>
-                    <span>{line.loss}</span>
-                    <span>{line.goalsFor}/{line.goalsAgainst}</span>
-                    <span>{formatGoalDiff(line.goalDiff)}</span>
-                    <span class="pt">{line.points}</span>
-                  </div>
-                );
-              })}
-            </CpCard>
-            <CpCard>
-              <h3 class="cpm-sec cpm-sec--first">{ct('rulesTitle')}</h3>
-              <ol class="cpm-rules">
-                {rankingRuleKeys(rankingFor(doc, divisions)).map((key) => <li key={key}>{ct(key)}</li>)}
-              </ol>
+            {/* 新外觀卡 3-4：三張表共用 .cp-tbl；測試用到的 class（.cp3-st、.cp3-st__r、--h、--top、.rk、.t、.pt）留在對應元素上 */}
+            <CpCard class="cp-tblcard cp3-st">
+              <table class="cp-tbl cp-tbl--st">
+                <thead>
+                  <tr class="cp3-st__r cp3-st__r--h">
+                    <th scope="col" class="rk">{ct('colRank')}</th>
+                    <th scope="col" class="t">{ct('colTeam')}</th>
+                    <th scope="col">{ct('colPlayed')}</th>
+                    <th scope="col">{ct('colWon')}</th>
+                    <th scope="col">{ct('colDrawn')}</th>
+                    <th scope="col">{ct('colLost')}</th>
+                    <th scope="col">{ct('colGoals')}</th>
+                    <th scope="col">{ct('colDiff')}</th>
+                    <th scope="col" class="pt">{ct('colPoints')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line) => {
+                    const shown = standingCrest(line.teamId, line.name, crests);
+                    return (
+                      <tr key={line.teamId} class={`cp3-st__r${line.top ? ' cp3-st__r--top' : ''}`}>
+                        <td class="rk">
+                          {/* 名次固定在列中間；「同分／裁定」掛在數字下面、不把數字頂上去。已裁定的列只留「裁定」一顆（顧問 §3.466 第 7 題）。 */}
+                          <span class="cp3-rk">
+                            {line.rank}
+                            {line.decidedBy ? (
+                              // 名次欄窄：畫面顯示短標「裁定」，讀屏與提示用完整「主辦裁定」（顧問 §3.294 P3）
+                              <button type="button" class="cpm-tiebtn" aria-label={ct('hostRuling')} title={ct('hostRuling')} onClick={() => onDecision?.(doc)}>{ct('hostRulingShort')}</button>
+                            ) : line.samePoints && canExplain ? (
+                              <button type="button" class="cpm-tiebtn" onClick={() => onExplain?.(doc, line.teamId)}>{ct('tie')}</button>
+                            ) : line.tie ? <small>{ct('tie')}</small> : null}
+                          </span>
+                        </td>
+                        <td class="t">
+                          <span class="cp3-tn">
+                            <TeamCrest teamId={shown.teamId} name={shown.name} teamLogo={shown.teamLogo} size={24} />
+                            <em>{line.name}</em>
+                          </span>
+                        </td>
+                        <td>{line.played}</td>
+                        <td>{line.win}</td>
+                        <td>{line.draw}</td>
+                        <td>{line.loss}</td>
+                        <td>{line.goalsFor}/{line.goalsAgainst}</td>
+                        <td class="gd">{formatGoalDiff(line.goalDiff)}</td>
+                        <td class="pt">{line.points}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <button
+                type="button"
+                class={`cp3-fold cp-tbl__fold${open ? ' cp3-fold--open' : ''}`}
+                aria-expanded={open}
+                aria-controls={rulesId}
+                onClick={() => setRulesOpen((prev) => ({ ...prev, [doc.id]: !open }))}
+              >
+                <span>{ct('rulesTitle')}</span>
+                <ChevronIcon />
+              </button>
+              {open ? (
+                <ol id={rulesId} class="cpm-rules">
+                  {rankingRuleKeys(rankingFor(doc, divisions)).map((key) => <li key={key}>{ct(key)}</li>)}
+                </ol>
+              ) : null}
             </CpCard>
           </div>
         );
@@ -282,6 +304,52 @@ function scheduleGroups(
   );
 }
 
+/**
+ * 射手榜的組別切換（新外觀卡 3-4）：語意維持按鈕＋aria-pressed（不換成 Tabs），長相是小一號的分段切換。
+ * 整組單行、不折行、不平分寬度；每格最寬 8 個全形字（超過省略）；整組比一列寬時這一條自己橫向捲動（隱藏捲軸），
+ * 切換後把選中的那一格捲進看得到的範圍。
+ */
+function GroupSwitch({
+  choices,
+  current,
+  onPick,
+}: {
+  choices: readonly { id: string; name: string }[];
+  current: string | null;
+  onPick: (id: string) => void;
+}): JSX.Element {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    const on = el?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!el || !on) return;
+    const outer = el.getBoundingClientRect();
+    const inner = on.getBoundingClientRect();
+    if (inner.left < outer.left) el.scrollLeft -= outer.left - inner.left;
+    else if (inner.right > outer.right) el.scrollLeft += inner.right - outer.right;
+  }, [current]);
+  return (
+    <div class="cp-grp" ref={box}>
+      <div class="ui-tabs d2-seg-sm">
+        <div class="ui-tabs__list" role="group">
+          {choices.map((choice) => (
+            <button
+              key={choice.id}
+              type="button"
+              class="ui-tabs__tab"
+              aria-pressed={current === choice.id}
+              title={choice.name}
+              onClick={() => onPick(choice.id)}
+            >
+              <span class="ui-tabs__label">{choice.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ScorerBlock({
   ct,
   choices,
@@ -294,21 +362,11 @@ function ScorerBlock({
   onPick: (id: string) => void;
 }): JSX.Element {
   const tables = state?.tables ?? null;
+  const groups = choices.length > 1
+    ? <GroupSwitch choices={choices} current={state?.dvId ?? null} onPick={onPick} />
+    : null;
   return (
     <div style="margin-top:12px">
-      {choices.length > 1 ? (
-        <div class="cps-actions">
-          {choices.map((choice) => (
-            <Button
-              key={choice.id}
-              variant={state?.dvId === choice.id ? 'primary' : 'secondary'}
-              onClick={() => onPick(choice.id)}
-            >
-              {choice.name}
-            </Button>
-          ))}
-        </div>
-      ) : null}
       {tables ? (
         <ScorersTable
           scorers={tables.scorers}
@@ -318,8 +376,9 @@ function ScorerBlock({
           empty={tables.empty}
           emptyLabel={ct('scorersEmpty')}
           capNote={tables.capped ? ct('scorersCap') : null}
+          aside={groups}
         />
-      ) : null}
+      ) : groups ? <div class="cp-sc__bar">{groups}</div> : null}
     </div>
   );
 }

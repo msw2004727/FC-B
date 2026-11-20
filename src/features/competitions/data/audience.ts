@@ -39,6 +39,8 @@ export interface AudienceMatch {
   away: AudienceSide;
   penaltyScore: { home: number; away: number } | null;
   scoreCorrectedAt: number | null;
+  /** 已取消的原因（主辦填的；同一份場次文件，不另讀）。公開賽程列本來就顯示。 */
+  cancelReason: string | null;
 }
 
 export type AudienceMatchResult =
@@ -387,6 +389,7 @@ export function audienceMatchFromDoc(id: string, raw: unknown): AudienceMatch | 
     away,
     penaltyScore: penaltyOf(raw.penaltyScore),
     scoreCorrectedAt: timeMillis(raw.scoreCorrectedAt),
+    cancelReason: text(raw.cancelReason),
   };
 }
 

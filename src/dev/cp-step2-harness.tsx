@@ -1,5 +1,5 @@
 // 賽事第 2 步預覽。渲染正式頁面，資料是記憶體假資料，不連 Firestore、不呼叫 Functions。
-// ?screen= 與 ?theme=light|dark。截圖腳本等 window.__CPS_READY。
+// ?screen= 與 ?theme=light|dark；?frame=1 時包正式 App 的內容容器（app-shell 限寬與 app-main 內距，1280 寬截圖用）。截圖腳本等 window.__CPS_READY。
 // 要「畫完再點一下」的狀態（展開、確認框、表單錯誤）由下方 OPEN 點正式按鈕，點完才開就緒旗標。
 import { render } from 'preact';
 import type { ComponentType } from 'preact';
@@ -8,6 +8,7 @@ import '../styles/legacy-vars.css';
 import '../styles/tokens.css';
 import '../styles/base.css';
 import './cp-step2-harness.css';
+import '@/ui/app-shell.css';
 import { setLocale } from '@/i18n/i18n';
 import { AppConfirmHost } from '@/ui/AppConfirm';
 import { ToastHost } from '@/ui/ToastHost';
@@ -23,6 +24,7 @@ import RosterPage from '@/features/competitions/pages/RosterPage';
 const params = new URLSearchParams(location.search);
 const screenName = params.get('screen') || 'wizard-1';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
+const framed = params.get('frame') === '1';
 document.documentElement.setAttribute('data-theme', theme);
 
 const PAGES: Record<string, ComponentType> = {
@@ -129,9 +131,19 @@ async function start(): Promise<void> {
   if (!root) return;
   render(
     <LocationProvider>
-      <CpEnvProvider value={screenEnv(screenName)}>
-        <Page />
-      </CpEnvProvider>
+      {framed ? (
+        <div class="app-shell ui-app-shell">
+          <main class="app-main">
+            <CpEnvProvider value={screenEnv(screenName)}>
+              <Page />
+            </CpEnvProvider>
+          </main>
+        </div>
+      ) : (
+        <CpEnvProvider value={screenEnv(screenName)}>
+          <Page />
+        </CpEnvProvider>
+      )}
       <ToastHost />
       <AppConfirmHost />
     </LocationProvider>,

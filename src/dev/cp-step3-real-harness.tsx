@@ -246,7 +246,8 @@ const OPEN: Record<string, () => Promise<void>> = {
       return tab?.getAttribute('aria-selected') === 'true'
         && !!panel?.querySelector('.cp3-st')
         && (panel.textContent ?? '').includes('同分')
-        && (panel.textContent ?? '').includes('主辦裁定');
+        // 新外觀卡 3-4：排序規則預設收合，改等卡片底部的收合列（原本等規則清單裡的「主辦裁定」）
+        && !!panel.querySelector('.cp-tbl__fold');
     });
   },
   'real-done': async () => {

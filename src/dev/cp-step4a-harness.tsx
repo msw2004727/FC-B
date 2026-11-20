@@ -8,7 +8,6 @@ import '@/features/competitions/competitions.css';
 import '@/features/competitions/live/live.css';
 import './cp-step4a-harness.css';
 import { setLocale } from '@/i18n/i18n';
-import { LiveDetailList } from '@/features/competitions/live/LiveDetailList';
 import { LiveMatchView } from '@/features/competitions/live/LiveMatchView';
 import { ScorePad } from '@/features/competitions/live/ScorePad';
 import { ScorersTable } from '@/features/competitions/live/ScorersTable';
@@ -16,7 +15,6 @@ import { derivePublicTable } from '@/features/competitions/live/stats';
 import type { EntryDoc } from '@/features/competitions/data/types';
 import {
   S4_CONFIRMED,
-  S4_DETAIL_ROWS,
   S4_PEOPLE,
   S4_SCENE_LIVE,
   S4_SCORE_SCENES,
@@ -61,7 +59,6 @@ const ANCHORS: Record<string, string> = {
   'score-timeout-over': '已超過規則次數（由主辦現場判斷）',
   'score-pk-start': 'PK 大戰',
   'score-pk': 'PK3:2', // 卡 2-2：PK 比分搬到板子下排、小標與數字分開節點
-  'live-detail': '比分已更正',
   'live-match': '比賽紀錄',
   'live-scorers': '劉冠廷',
 };
@@ -86,7 +83,6 @@ function Screen() {
     const scene = S4_SCORE_SCENES[screenName as keyof typeof S4_SCORE_SCENES];
     return <ScorePad {...scene} crests={shotCrests(scene.crests)} />;
   }
-  if (screenName === 'live-detail') return <LiveDetailList rows={S4_DETAIL_ROWS} />;
   if (screenName === 'live-match') {
     const scene = S4_SCENE_LIVE;
     return (

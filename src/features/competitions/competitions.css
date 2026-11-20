@@ -55,6 +55,11 @@
   --d2-sb-sh-lit: inset 0 0 0 1px rgba(255,255,255,.07), inset 0 2px 3px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.95);
   --d2-sb-bar: 0 0 0 0 transparent;
   --d2-num: 'CP Score', 'DIN Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
+  /* 榜單主欄的底帶；黃牌、紅牌（第 3 批卡 3-4 加，第 2 批引用） */
+  --d2-band: rgba(15, 23, 42, .04);
+  --d2-card-y: #ffe14a;
+  --d2-card-y-edge: rgba(0, 0, 0, .4);
+  --d2-card-r: #ff2d2d;
   /* 記分頁（第 2 批卡 2-1）：隊色、當下該按的那一顆（go）、終場（ink）、矮板落影、提示列圖示（遮罩）；
    * PK 沒進的底與框寬、控制列停用的底與字、板上離線紅點改成變數，深淺色只換值。 */
   --d2-home: #0f766e;
@@ -70,10 +75,6 @@
   --d2-ctrl-off-bg: var(--d2-off-bg);
   --d2-ctrl-off-fg: #5e687c;
   --d2-sb-alarm: #ff6b6b;
-  --d2-band: rgba(15, 23, 42, .04); /* 3-4 合併時刪 */
-  --d2-card-y: #ffe14a; /* 3-4 合併時刪 */
-  --d2-card-y-edge: rgba(0, 0, 0, .4); /* 3-4 合併時刪 */
-  --d2-card-r: #ff2d2d; /* 3-4 合併時刪 */
   --d2-ico-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v6M12 7.4v.2'/%3E%3C/svg%3E");
   --d2-ico-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4 2.8 20h18.4z'/%3E%3Cpath d='M12 10v4.6M12 17.3v.2'/%3E%3C/svg%3E");
   --d2-ico-lock: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='2'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E");
@@ -126,6 +127,7 @@
   --d2-sb-sh: inset 0 0 0 1px rgba(255,255,255,.16), inset 0 2px 3px rgba(0,0,0,.6);
   --d2-sb-sh-lit: inset 0 0 0 1px rgba(52,211,153,.6);
   --d2-sb-bar: inset 3px 0 0 0 #34d399;
+  --d2-band: rgba(255, 255, 255, .045);
   --d2-home: #047857;
   --d2-away: #2563eb;
   --d2-go-btn: #f2f6f4;
@@ -138,7 +140,6 @@
   --d2-miss-w: 3px;
   --d2-ctrl-off-bg: transparent;
   --d2-ctrl-off-fg: #8892a4;
-  --d2-band: rgba(255, 255, 255, .045); /* 3-4 合併時刪 */
 }
 
 
@@ -276,17 +277,25 @@
   border-radius: 8px; background: transparent; box-shadow: none; pointer-events: none;
 }
 .cps-root .ui-tabs .ui-tabs__tab[aria-selected="true"]::after,
+.cps-root .ui-tabs .ui-tabs__tab[aria-pressed="true"]::after,
 .s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"]::after,
 .d2-panel .ui-tabs .ui-tabs__tab[aria-selected="true"]::after { background: var(--d2-seg-on); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
 .cps-root .ui-tabs .ui-tabs__label,
 .s4-page .ui-tabs .ui-tabs__label,
 .d2-panel .ui-tabs .ui-tabs__label { font-size: 13px; line-height: 20px; font-weight: 600; color: inherit; white-space: nowrap; }
 .cps-root .ui-tabs .ui-tabs__tab[aria-selected="true"],
+.cps-root .ui-tabs .ui-tabs__tab[aria-pressed="true"],
 .s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"],
 .d2-panel .ui-tabs .ui-tabs__tab[aria-selected="true"] { color: var(--d2-seg-fg); }
 .cps-root .ui-tabs .ui-tabs__tab[aria-selected="true"] .ui-tabs__label,
+.cps-root .ui-tabs .ui-tabs__tab[aria-pressed="true"] .ui-tabs__label,
 .s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"] .ui-tabs__label,
 .d2-panel .ui-tabs .ui-tabs__tab[aria-selected="true"] .ui-tabs__label { font-weight: 700; }
+/* 分段切換小一號（第 3 批卡 3-4：射手榜｜紅黃牌、組別切換）：只寫尺寸差異。外觀高 32、寬度跟著字、每格左右 16、點擊區 44（上下各外推 6） */
+.ui-tabs.d2-seg-sm .ui-tabs__list { display: inline-flex; height: 32px; border-radius: 10px; }
+.ui-tabs.d2-seg-sm .ui-tabs__tab { flex: 0 0 auto; height: 44px; margin: -6px 0; padding: 0 16px; }
+.ui-tabs.d2-seg-sm .ui-tabs__list .ui-tabs__tab::after { top: 9px; right: 3px; bottom: 9px; left: 3px; border-radius: 7px; }
+.ui-tabs.d2-seg-sm .ui-tabs__list .ui-tabs__tab + .ui-tabs__tab::before { top: 16px; bottom: 16px; }
 .cps-root .ui-badge,
 .s4-page .ui-badge,
 .d2-panel .ui-badge {
@@ -870,17 +879,62 @@
 .cp3-m--off .cp3-m__when b,
 .cp3-m--off .cp3-m__vs span { color: var(--d2-text-2); font-weight: 400; }
 
-.cp3-st { padding: var(--space-3) 10px; }
-.cp3-st__r { display: grid; grid-template-columns: 24px minmax(0, 1fr) 18px 18px 18px 18px 36px 28px 28px; column-gap: 0; align-items: center; padding: 8px 0; border-top: 1px solid var(--color-border-subtle); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-variant-numeric: tabular-nums; }
-.cp3-st__r > * { min-width: 0; text-align: center; white-space: nowrap; }
-.cp3-st__r .t { text-align: left; overflow: hidden; text-overflow: ellipsis; font-weight: 600; padding-left: 2px; }
-.cp3-st__r .rk { display: flex; flex-direction: column; align-items: center; font-weight: 700; }
-.cp3-st__r .rk small { font-size: var(--font-size-caption); line-height: 13px; font-weight: 600; color: var(--d2-text-2); }
-.cp3-st__r .pt { font-weight: 700; }
-.cp3-st__r--h { border-top: 0; padding: 0 0 6px; font-size: var(--font-size-caption); line-height: var(--line-height-caption); color: var(--color-text-muted); }
-.cp3-st__r--h .t { font-weight: 400; }
-.cp3-st__r--top .t, .cp3-st__r--top .rk { color: var(--color-brand-soft-fg); }
-[data-theme="dark"] .cp3-st__r--top .t, [data-theme="dark"] .cp3-st__r--top .rk { color: var(--palette-emerald-300); }
+/* 三張表共用（新外觀卡 3-4，取代 .cp3-st／.cp3-st__r 的格線與 live.css 的 .s4-table）：積分榜、射手榜、紅黃牌同一份。
+ * 卡片右、上、下內距 1px：主欄底帶不蓋到玻璃卡那一圈內框線。省略只加在一般格；名次格不裁（「同分／裁定」的點擊區往外擴）。 */
+.cps-card.cp-tblcard { padding: 1px 1px 1px 10px; overflow: hidden; }
+.cp-tbl { width: 100%; table-layout: fixed; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.cp-tbl th, .cp-tbl td { padding: 0 4px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp-tbl th { height: 36px; border-bottom: 1px solid var(--d2-line-strong); font-size: 12px; line-height: 16px; font-weight: 400; color: var(--d2-text-2); }
+.cp-tbl td { height: 48px; border-top: 1px solid var(--d2-line); font-size: 13px; line-height: 20px; color: var(--d2-text-2); }
+.cp-tbl tbody tr:first-child td { border-top: 0; }
+.cp-tbl .t, .cp-tbl .tm { text-align: left; }
+.cp-tbl td.t { font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
+.cp-tbl td.rk { overflow: visible; font-size: 15px; font-weight: 700; color: var(--d2-text); }
+.cp-tbl .rk { padding: 0; }
+.cp-tbl .pt { padding: 0 10px 0 0; background: var(--d2-band); box-shadow: inset 1px 0 0 var(--d2-line); }
+.cp-tbl th.pt { font-weight: 600; color: var(--d2-text); }
+.cp-tbl td.pt { font-family: var(--d2-num); font-size: 22px; line-height: 24px; font-weight: 700; letter-spacing: .03em; color: var(--d2-text); }
+/* 積分榜：列高 52；名次 24｜隊名（隊徽 24＋名稱 13/600）｜賽勝和負各 18｜進/失 36｜淨勝 28｜積分 34＋右 10 */
+.cp-tbl--st th, .cp-tbl--st td { padding: 0; }
+.cp-tbl--st td { height: 52px; }
+.cp-tbl--st .t { padding: 0 4px 0 2px; }
+.cp-tbl--st td.t { font-size: 13px; line-height: 20px; }
+.cp-tbl--st th:nth-child(1) { width: 24px; }
+.cp-tbl--st th:nth-child(3), .cp-tbl--st th:nth-child(4), .cp-tbl--st th:nth-child(5), .cp-tbl--st th:nth-child(6) { width: 18px; }
+.cp-tbl--st th:nth-child(7) { width: 36px; }
+.cp-tbl--st th:nth-child(8) { width: 28px; }
+.cp-tbl--st th:nth-child(9) { width: 44px; }
+.cp-tbl--st .gd { font-weight: 600; color: var(--d2-text); }
+/* 名次格：數字在列正中間；「同分／裁定」掛在數字下面、離列底 4px（絕對定位在格內那層容器，不以 td 當定位基準） */
+.cp3-rk { position: relative; display: flex; align-items: center; justify-content: center; height: 52px; }
+.cp3-rk > small, .cp3-rk > .cpm-tiebtn { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); font-size: 12px; line-height: 12px; white-space: nowrap; }
+.cp3-rk > small { font-weight: 400; color: var(--d2-text-2); }
+/* 射手榜：名次 28｜球員（左內距 8）｜隊 34%｜進球數 44＋右 10 */
+.cp-tbl--goals th:nth-child(1) { width: 28px; }
+.cp-tbl--goals .t { padding-left: 8px; }
+.cp-tbl--goals th:nth-child(3) { width: 34%; }
+.cp-tbl--goals th:nth-child(4) { width: 54px; }
+/* 紅黃牌：球員｜隊 28%｜黃牌數 64｜紅牌數 64（沒有主欄）；0 淡掉；表頭各一張小牌 */
+.cp-tbl--cards th:nth-child(2) { width: 28%; }
+.cp-tbl--cards th:nth-child(3), .cp-tbl--cards th:nth-child(4) { width: 64px; }
+.cp-tbl--cards td.n { font-size: 15px; font-weight: 700; color: var(--d2-text); }
+.cp-tbl--cards td.cp-tbl__zero { font-weight: 400; color: var(--d2-text-3); }
+.cp-cardic { display: inline-block; width: 8px; height: 11px; margin-right: 4px; border-radius: 2px; vertical-align: -1px; background: var(--d2-card-r); }
+.cp-cardic--y { background: var(--d2-card-y); box-shadow: inset 0 0 0 1px var(--d2-card-y-edge); }
+/* 積分表卡片最下面的「排序規則」收合列：左右貼齊卡片邊、上緣細線（長相是共用的 .cp3-fold） */
+.cp3-fold.cp-tbl__fold { width: calc(100% + 11px); margin: 0 -1px 0 -10px; padding: 0 14px 0 16px; border-top: 1px solid var(--d2-line); }
+/* 射手榜與紅黃牌：停更提示 → 切換列（兩組分段同一列、上緣對齊，放不下時右邊整組掉到下一行）→ 表格卡或空狀態 → 名額附註 */
+.cp-sc__stall { margin: 0 0 8px; padding: 0 4px; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
+.cp-sc__bar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; min-width: 0; }
+.cp-sc__bar > .ui-tabs { display: contents; }
+.cp-sc__bar > .ui-tabs > .ui-tabs__list { order: 1; }
+.cp-sc__bar > .ui-tabs > .ui-tabs__panel, .cp-sc__empty { order: 3; flex: 1 0 100%; min-width: 0; margin: 2px 0 0; }
+.cps-card.cp-sc__empty { padding: 20px 16px; text-align: center; font-size: 13px; line-height: 20px; color: var(--d2-text-2); }
+.cp-sc__cap { margin: 8px 0 0; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
+/* 組別切換：整組單行；每格最寬 8 個全形字；放不下時這一條自己橫向捲動（隱藏捲軸），整頁不捲 */
+.cp-grp { order: 2; min-width: 0; max-width: 100%; margin: -6px 0 -6px auto; padding: 6px 0; overflow-x: auto; scrollbar-width: none; }
+.cp-grp::-webkit-scrollbar { display: none; }
+.cp-grp .ui-tabs__label { display: block; max-width: 8em; overflow: hidden; text-overflow: ellipsis; }
 
 /* 收合列（共用，第 3 批引用）：卡片 .d2-foldcard＋收合鈕 .cp3-fold；收起來跟入口列一樣高，展開後鈕下緣一條細線、內容才撐開 */
 .cps-card.d2-foldcard { padding: 0 14px 0 16px; }
@@ -1049,21 +1103,9 @@
   font-weight: 600;
   color: var(--d2-text);
 }
-.cpm-tiebtn {
-  display: inline;
-  margin: 0 0 0 2px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--d2-text-2);
-  font: inherit;
-  font-size: var(--font-size-caption);
-  line-height: var(--line-height-caption);
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
+/* 名次格的「同分」「裁定」（卡 3-4）：共用的文字入口（青綠字、沒有底線、沒有框）；透明 ::after 往外擴成 44×52（上 36、下 4、左右各 10） */
+.cpm-tiebtn { padding: 0; border: 0; background: none; color: var(--d2-accent-ink); font: inherit; font-size: 12px; line-height: 12px; font-weight: 600; cursor: pointer; }
+.cpm-tiebtn::after { content: ''; position: absolute; top: -36px; right: -10px; bottom: -4px; left: -10px; }
 /* 同分裁定（新外觀卡 2-5）：比較表與裁定表單兩張卡接成一塊（.cpm-tie 容器）、左緣 3px 青綠＝正在處理這一組；下卡不疊光澤。 */
 .cpm-tie > .cps-card { border-left: 3px solid var(--d2-accent); }
 .cpm-tie > .cps-card:not(:last-child) { border-radius: 14px 14px 0 0; }
@@ -1196,14 +1238,8 @@
 .cpm-drag .cpm-drag__li .ui-button { flex: 0 0 auto; width: auto; min-inline-size: 0; white-space: nowrap; }
 /* 上移／下移是小顆玻璃鈕（次要鈕）；不能按的是平的淡灰、沒有框（新外觀卡 2-5 取代「停用不畫底色」：玻璃鈕旁的透明停用鈕看不出是鈕） */
 .cpm-drag .cpm-drag__li .ui-button[aria-disabled="true"]::before { background: var(--d2-off-bg); border-color: transparent; box-shadow: none; }
-.cpm-rules { margin: 0; padding: 0; list-style: decimal inside; }
-.cpm-rules li {
-  padding: 8px 0;
-  border-top: 1px solid var(--color-border-subtle);
-  font-size: var(--font-size-body-sm);
-  line-height: var(--line-height-body-sm);
-}
-.cpm-rules li:first-child { border-top: 0; padding-top: 0; }
+/* 排序規則（卡 3-4）：收合列展開後在同一張卡片裡，每條之間沒有線、維持編號 */
+.cp3-fold--open + .cpm-rules { margin: 0; padding: 0 6px 12px; list-style: decimal inside; font-size: 13px; line-height: 24px; color: var(--d2-text-2); }
 /* 賽事清單站內卡（清-4，第 1a 批 3.9）：玻璃卡第一行「狀態｜重點句」、名稱、最後一行「分類｜日期・場地」；
  * 卡板是一圈玻璃框（只有底、不疊光澤）包一塊記分板（.d2-sb 共用元件）。class 是清單才有的新名字，不帶根節點前綴。 */
 /* 站內清單容器最小高度：清單頁吃到舊站 .page 的 overflow，卡片少時展開的站內選單會被裁（規格 3.6：篩選列 36＋4＋選單 272＋16） */
