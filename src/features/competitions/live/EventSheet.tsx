@@ -20,6 +20,7 @@ export function EventSheet({
   blocked,
   undoOnly = false,
   goalLocked = false,
+  halftimeGoal = false,
   onGoalKind,
   onCardChoice,
   onPlayer,
@@ -41,6 +42,8 @@ export function EventSheet({
   undoOnly?: boolean;
   /** PK 已經開始時，一般進球不能復原或改判。 */
   goalLocked?: boolean;
+  /** 疊加狀態是中場時，進球只能復原（Rules 中場不收進球，改判會掉分）。 */
+  halftimeGoal?: boolean;
   onGoalKind: (kind: GoalKind) => void;
   onCardChoice: (choice: 'yellow' | 'red') => void;
   onPlayer: (plId: string) => void;
@@ -60,11 +63,13 @@ export function EventSheet({
     { id: 'red', label: LIVE_COPY.red },
   ];
   const lockGoal = goalLocked && kind === 'goal' && !undoOnly;
-  const showPick = !undoOnly && !lockGoal;
+  const restGoal = halftimeGoal && kind === 'goal' && !undoOnly && !lockGoal;
+  const showPick = !undoOnly && !lockGoal && !restGoal;
 
   return (
     <BottomSheet open class="s4-sheet" title={undoOnly ? LIVE_COPY.undo : LIVE_COPY.amend} onClose={onClose}>
       {showPick ? <p class="s4-note">{LIVE_COPY.amendNote}</p> : null}
+      {restGoal ? <p class="s4-note">{LIVE_COPY.halftimeGoalUndoOnly}</p> : null}
       <p class="s4-evsum">{summary}</p>
       <div class="s4-amend-act">
         <Button
@@ -77,7 +82,7 @@ export function EventSheet({
         </Button>
         {undoOnly ? null : (
           <Button
-            disabled={blocked || lockGoal || (kind === 'card' && playerId == null)}
+            disabled={blocked || lockGoal || restGoal || (kind === 'card' && playerId == null)}
             aria-label={withEvent(LIVE_COPY.amend, label)}
             onClick={onAmend}
           >

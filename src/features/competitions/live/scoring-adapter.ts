@@ -424,6 +424,7 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     pkCanStart: view.pk.canStart,
     confirmPk: true,
     lockRegularGoals: view.pk.started,
+    halftimeGoalUndoOnly: view.liveStatus === 'halftime',
     feed: feedOf(view, timeline, view.voids),
     pkDigits: view.pk.started ? (view.pk.score ?? { home: 0, away: 0 }) : null,
   };

@@ -173,19 +173,11 @@ export function overlayScore(
   pendingCount: number;
   penalty: { home: number; away: number } | null;
 } {
-  const resetRev = match.resetRev ?? 0;
-  const fresh = (entry: LogEntry) => entryInEpoch(entry, resetRev);
   const score = { home: match.score.home, away: match.score.away };
   let clockBase: ServerClock = { ...match.clockBase };
   let penalty = match.penaltyScore ? { home: match.penaltyScore.home, away: match.penaltyScore.away } : null;
-  // 快照 rev 還沒追上的已套用項目仍要疊加，避免比分或時鐘先退回去。
-  const ahead = entries
-    .filter((entry) => fresh(entry) && entry.state === 'applied' && entry.seq != null && entry.seq > match.rev)
-    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0) || compareEntries(a, b));
-  const pending = entries
-    .filter((entry) => fresh(entry) && (entry.state === 'pending' || entry.state === 'sending'))
-    .sort(compareEntries);
-  for (const entry of [...ahead, ...pending]) {
+  const { ordered, pendingCount } = overlayEntries(match, entries);
+  for (const entry of ordered) {
     if (entry.intent.kind === 'goal') score[entry.intent.side] += 1;
     if (entry.intent.kind === 'void') {
       const side = goalSideOf(entry, events, entries);
@@ -214,7 +206,45 @@ export function overlayScore(
       clockBase = { ...entry.intent.clock };
     }
   }
-  return { score, clockBase, pendingCount: pending.length, penalty };
+  return { score, clockBase, pendingCount, penalty };
+}
+
+/**
+ * 疊加用的日誌順序：快照 rev 還沒追上的已套用項目（依 seq），再接待送與送出中（依建立順序）。
+ * 被拒與已捨棄的不算。overlayScore 與 overlayStatus 共用，兩邊順序不會分岔。
+ */
+function overlayEntries(
+  match: { rev: number; resetRev?: number },
+  entries: readonly LogEntry[],
+): { ordered: LogEntry[]; pendingCount: number } {
+  const resetRev = match.resetRev ?? 0;
+  const fresh = (entry: LogEntry) => entryInEpoch(entry, resetRev);
+  // 快照 rev 還沒追上的已套用項目仍要疊加，避免比分或時鐘先退回去。
+  const ahead = entries
+    .filter((entry) => fresh(entry) && entry.state === 'applied' && entry.seq != null && entry.seq > match.rev)
+    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0) || compareEntries(a, b));
+  const pending = entries
+    .filter((entry) => fresh(entry) && (entry.state === 'pending' || entry.state === 'sending'))
+    .sort(compareEntries);
+  return { ordered: [...ahead, ...pending], pendingCount: pending.length };
+}
+
+/**
+ * 伺服器狀態加上還沒反映到快照的階段動作（P1-A：中場改判進球會被 Rules 拒）。
+ * 開賽、續賽、撤回終場 → live；半場 → halftime；終場 → finished。
+ */
+export function overlayStatus(
+  match: Pick<ServerMatch, 'status' | 'rev'> & { resetRev?: number },
+  entries: readonly LogEntry[],
+): string {
+  let status = match.status;
+  for (const entry of overlayEntries(match, entries).ordered) {
+    const kind = entry.intent.kind;
+    if (kind === 'kickoff' || kind === 'resume' || kind === 'undoFinish') status = 'live';
+    else if (kind === 'halftime') status = 'halftime';
+    else if (kind === 'fulltime') status = 'finished';
+  }
+  return status;
 }
 
 export function scoreView(match: ServerMatch, events: readonly ServerEvent[], entries: readonly LogEntry[]): ScoreView {
