@@ -13,6 +13,7 @@ import { LiveMatchView } from '@/features/competitions/live/LiveMatchView';
 import { ScorePad } from '@/features/competitions/live/ScorePad';
 import { ScorersTable } from '@/features/competitions/live/ScorersTable';
 import { derivePublicTable } from '@/features/competitions/live/stats';
+import type { EntryDoc } from '@/features/competitions/data/types';
 import {
   S4_CONFIRMED,
   S4_DETAIL_ROWS,
@@ -21,6 +22,16 @@ import {
   S4_SCORE_SCENES,
   S4A_SCREENS,
 } from '@/features/competitions/testing/step4-fixtures';
+
+/**
+ * 截圖隊徽：16×16 內嵌 PNG（同 cp-step4-u4-harness）。假資料的 S4_CREST_URL 指向正式 Storage 網域，
+ * 截圖時被擋會多一筆 console 錯誤；單元測試仍用那個網址驗 Storage 檢查，所以只在 harness 換掉。
+ */
+const SHOT_CREST = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAANElEQVR4nGNgoBDwFeehIdJU49ODSzV2PfhVo+shRjWKnhGpgeRgJSfiyEkauPTgU00MAADYspGlcL3zwAAAAABJRU5ErkJggg==';
+
+function shotCrests(crests: readonly EntryDoc[]): EntryDoc[] {
+  return crests.map((row) => (row.teamLogo ? { ...row, teamLogo: SHOT_CREST } : row));
+}
 
 const params = new URLSearchParams(location.search);
 const screenName = params.get('screen') || 'score-live';
@@ -61,6 +72,7 @@ function Screen() {
     return (
       <ScorePad
         {...S4_SCENE_LIVE}
+        crests={shotCrests(S4_SCENE_LIVE.crests)}
         onUndo={() => {
           undoHalfCalls += 1;
           return undoHalfCalls === 1;
@@ -70,7 +82,7 @@ function Screen() {
   }
   if (screenName in S4_SCORE_SCENES) {
     const scene = S4_SCORE_SCENES[screenName as keyof typeof S4_SCORE_SCENES];
-    return <ScorePad {...scene} />;
+    return <ScorePad {...scene} crests={shotCrests(scene.crests)} />;
   }
   if (screenName === 'live-detail') return <LiveDetailList rows={S4_DETAIL_ROWS} />;
   if (screenName === 'live-match') {
@@ -83,7 +95,7 @@ function Screen() {
         voids={scene.voids}
         homeRoster={scene.homeRoster}
         awayRoster={scene.awayRoster}
-        crests={scene.crests}
+        crests={shotCrests(scene.crests)}
       />
     );
   }
