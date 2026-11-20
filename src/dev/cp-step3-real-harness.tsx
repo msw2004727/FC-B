@@ -57,6 +57,39 @@ const PAGES: Record<string, ComponentType> = {
   'real-clear-schedule': HostSchedulePage,
   'real-tie-exists': CompetitionDetailPage,
   'real-tie-decision': CompetitionDetailPage,
+  // 新外觀第 1b 批第 7 節「要補示範狀態」（截圖拍正式版現況；面板類由下方 OPEN 點正式按鈕打開）。
+  'real-live-twin-next': CompetitionDetailPage,
+  'real-live-no-today': CompetitionDetailPage,
+  'real-warm-no-schedule': CompetitionDetailPage,
+  'real-recruit-nocap': CompetitionDetailPage,
+  'real-recruit-nodiv': CompetitionDetailPage,
+  'real-done-five': CompetitionDetailPage,
+  'real-done-nochamp': CompetitionDetailPage,
+  'real-done-pending': CompetitionDetailPage,
+  'real-long': CompetitionDetailPage,
+  'real-long-recruit': CompetitionDetailPage,
+  'real-draft-host': CompetitionDetailPage,
+  'real-scorer': CompetitionDetailPage,
+  'real-admin-menu': CompetitionDetailPage,
+  'real-club-entry-one': CompetitionDetailPage,
+  'real-club-entry-two': CompetitionDetailPage,
+  'real-club-entry-error': CompetitionDetailPage,
+  'real-notice-delete': CompetitionDetailPage,
+  'real-notice-delete-sys': CompetitionDetailPage,
+  'real-load-failed': CompetitionDetailPage,
+  // u4-detail-live／u4-detail-corrected-pk 外層沒有 .cps-root：改在這裡用正式詳情頁畫同樣的列（即時、已更正、PK、內嵌隊徽）。
+  'real-crest-live': CompetitionDetailPage,
+  'real-corrected-pk': CompetitionDetailPage,
+  // 新外觀第 4 批第 7 節「要補」：賽程管理、排賽程。
+  'real-swap-open': HostMatchesPage,
+  'real-shift-clash': HostMatchesPage,
+  'real-pending-fresh': HostMatchesPage,
+  'real-host-matches-empty': HostMatchesPage,
+  'real-host-matches-denied': HostMatchesPage,
+  'real-schedule-preview': HostSchedulePage,
+  'real-schedule-unplaced': HostSchedulePage,
+  'real-schedule-too-many': HostSchedulePage,
+  'real-schedule-replace': HostSchedulePage,
 };
 
 /** 正式賽事頁的上方來源切換與分類頁籤在 TournamentsPage，且要等開賽閘門。這裡只畫站內清單，外層套上同一頁的版面鉤子，封面色才吃得到。 */
@@ -239,7 +272,79 @@ const OPEN: Record<string, () => Promise<void>> = {
     tag()?.click();
     await until('裁定卡', () => buttonsNamed('撤銷裁定').length > 0);
   },
+  // ── 新外觀第 1b 批 ──
+  'real-live-twin-next': () => until('兩場下一場', () => hasText('綠洲隊') && hasText('晨光隊')),
+  'real-done-five': () => until('五組冠軍', () => hasText('赤焰隊') && hasText('組別 5')),
+  'real-done-pending': () => until('冠軍待裁定', () => hasText('冠軍待主辦裁定')),
+  'real-scorer': () => until('我的場次', () => buttonsNamed('我的場次').length > 0),
+  'real-admin-menu': () => until('右上選單', () => !!document.querySelector('.cps-menu') && hasText('下架')),
+  'real-club-entry-one': async () => {
+    clickButton('以俱樂部報隊');
+    await until('報隊面板', () => buttonsNamed('送出報名').length > 0);
+  },
+  'real-club-entry-two': async () => {
+    clickButton('以俱樂部報隊');
+    await until('報隊面板（兩個俱樂部）', () => buttonsNamed('送出報名').length > 0 && !!document.querySelector('.cps-sheet-body select'));
+  },
+  'real-club-entry-error': async () => {
+    clickButton('以俱樂部報隊');
+    await until('報隊面板（兩個俱樂部）', () => buttonsNamed('送出報名').length > 0);
+    clickButton('送出報名');
+    await until('必填錯誤', () => hasText('還有必填項目沒填'));
+  },
+  'real-notice-delete': () => openNoticeDelete('領隊會議改在示範球場門口', '確定要刪除這則公告？'),
+  'real-notice-delete-sys': () => openNoticeDelete('因雨延後一小時', '這是系統公告，確定要刪除？'),
+  'real-load-failed': () => until('讀取失敗', () => hasText('讀取失敗') && buttonsNamed('重試').length > 0),
+  'real-crest-live': () => until('即時列', () => hasText('雷霆隊') && hasText('藍鯨隊')),
+  'real-corrected-pk': () => until('已更正列', () => hasText('藍鯨隊')),
+  // ── 新外觀第 4 批 ──
+  'real-swap-open': async () => {
+    clickButton('兩場對調');
+    await until('兩場對調表單', () => buttonsNamed('確認對調').length > 0 && document.querySelectorAll('.cpm-swap').length === 2);
+  },
+  'real-shift-clash': async () => {
+    clickButton('整天順延');
+    await until('整天順延表單', () => buttonsNamed('確認順延').length > 0);
+    setField('#cp-shift-date', '2027-01-10');
+    setField('textarea', '場地整修，整天往後延');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    clickButton('確認順延');
+    await until('仍要順延', () => buttonsNamed('仍要順延').length > 0 && !!document.querySelector('.cpm-warn')?.textContent?.includes('藍鯨隊'));
+  },
+  'real-pending-fresh': () => until('待確認列', () => buttonsNamed('確認').length > 0 && buttonsNamed('記分').length > 0),
+  'real-host-matches-empty': () => until('沒有場次', () => hasText('請先排賽程')),
+  'real-host-matches-denied': () => until('沒有權限', () => !document.querySelector('.cp3-ml') && !!document.querySelector('[role="alert"]')),
+  'real-schedule-preview': async () => {
+    await until('預覽鈕', () => buttonsNamed('預覽').length > 0);
+    clickButton('預覽');
+    await until('預覽結果', () => hasText('共 12 場、需 2 天、每隊 3 場'));
+  },
+  'real-schedule-unplaced': async () => {
+    await until('預覽鈕', () => buttonsNamed('預覽').length > 0);
+    clickButton('預覽');
+    await until('排不下', () => !!document.querySelector('.cp3-result--bad'));
+  },
+  'real-schedule-too-many': async () => {
+    await until('預覽鈕', () => buttonsNamed('預覽').length > 0);
+    clickButton('預覽');
+    await until('場次太多', () => hasText('場次太多，請調整賽制'));
+  },
+  'real-schedule-replace': async () => {
+    await until('預覽鈕', () => buttonsNamed('預覽').length > 0);
+    clickButton('預覽');
+    await until('清除賽程鈕', () => buttonsNamed('清除賽程').length > 0);
+  },
 };
+
+/** 主辦公告：點指定那一則的「刪除」，等確認框出現。 */
+async function openNoticeDelete(text: string, confirm: string): Promise<void> {
+  await until('公告', () => hasText(text));
+  const row = [...document.querySelectorAll('.cpm-ann > li')].find((li) => (li.textContent ?? '').includes(text));
+  const btn = row ? [...row.querySelectorAll('button')].find((node) => (node.textContent ?? '').trim() === '刪除') : undefined;
+  if (!btn) throw new Error(`找不到公告刪除鈕：${text}`);
+  btn.click();
+  await until('刪除確認框', () => hasText(confirm));
+}
 
 void start();
 

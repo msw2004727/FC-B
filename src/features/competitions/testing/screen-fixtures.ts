@@ -822,6 +822,211 @@ function clashActions(actions: CpActions): CpActions {
   };
 }
 
+// ── 新外觀第 1b／4 批與第 3 批留下的示範狀態（只給 harness 截圖；不改上面既有 screen 的資料）──
+
+/** 截圖隊徽：16×16 內嵌 PNG（TeamCrest 只收這種 data URI），不連正式儲存網域。 */
+export const SHOT_CREST = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAANElEQVR4nGNgoBDwFeehIdJU49ODSzV2PfhVo+shRjWKnhGpgeRgJSfiyEkauPTgU00MAADYspGlcL3zwAAAAABJRU5ErkJggg==';
+/** 22 字賽事名（同 cp-delete 的 ?long=1）、14 字場地、12 字隊名。 */
+export const LONG_COMP_NAME = '新北市三重區二〇二七年春季社區五人制足球聯賽';
+export const LONG_VENUE = '三重區示範運動公園第一足球場';
+export const LONG_TEAM = '三重示範青年足球俱樂部隊';
+
+export const scorerActor = actor({
+  uid: 'uid_scorer',
+  displayName: '陳示範',
+});
+
+/** 同一時間（14:30）兩場「下一場」。 */
+function twinNextBoard(): { summary: SummaryEntry[]; standings: StandingDoc[] } {
+  const board = liveBoard();
+  return {
+    summary: [
+      ...board.summary,
+      summaryEntry({
+        id: 'nx2',
+        k: taipeiMs(2027, 1, 9, 14, 30),
+        st: 'scheduled',
+        no: 5,
+        v: '1號場',
+        h: { id: 'en_i', n: '綠洲隊' },
+        a: { id: 'en_j', n: '黃沙隊' },
+      }),
+    ],
+    standings: board.standings,
+  };
+}
+
+/** 進行中、另有已更正＋PK；有內嵌隊徽（詳情列 24／28 兩種尺寸都看得到）。 */
+function crestLiveBoard(pkOnly: boolean): { summary: SummaryEntry[]; standings: StandingDoc[] } {
+  const corrected = summaryEntry({
+    id: 'cx_pk',
+    k: taipeiMs(2027, 1, 9, 8, 0),
+    st: 'confirmed',
+    s: pkOnly ? [2, 2] : [2, 1],
+    no: 1,
+    h: { id: 'en_whale', n: '藍鯨隊', l: SHOT_CREST },
+    a: { id: 'en_h', n: '海風隊' },
+    cx: LIVE_NOW,
+    ...(pkOnly ? { p: [4, 3] as [number, number] } : {}),
+  });
+  if (pkOnly) return { summary: [corrected], standings: [] };
+  return {
+    summary: [
+      corrected,
+      summaryEntry({
+        id: 'lv1', k: taipeiMs(2027, 1, 9, 11, 0), st: 'live', s: [1, 1], no: 2,
+        h: { id: 'en_c', n: '雷霆隊', l: SHOT_CREST }, a: { id: 'en_h2', n: '海風隊' },
+      }),
+      summaryEntry({
+        id: 'lv2', k: taipeiMs(2027, 1, 9, 11, 0), st: 'halftime', s: [0, 2], no: 3, v: '2號場',
+        h: { id: 'en_cat', n: '山貓隊' }, a: { id: 'en_gal', n: '銀河隊', l: SHOT_CREST },
+      }),
+      summaryEntry({
+        id: 'nx', k: taipeiMs(2027, 1, 9, 14, 30), st: 'scheduled', no: 4,
+        h: { id: 'en_f', n: '晨光隊' }, a: { id: 'en_g', n: '北風隊' },
+      }),
+    ],
+    standings: [],
+  };
+}
+
+/** 五個組別各一份積分（各有冠軍）。組別名稱要在 bundle.divisions 裡才標得出來。 */
+const FIVE_DIVISIONS: DivisionDoc[] = ['成人組', '壯年組', 'U15', 'U12', '女子組'].map((name, index) => division({
+  dvId: `dv_${index + 1}`,
+  name,
+  order: index,
+  approvedCount: 4,
+  entryCount: 4,
+}));
+
+function fiveChampionBoard(): { summary: SummaryEntry[]; standings: StandingDoc[] } {
+  const teams = ['海風隊', '銀河隊', '雷霆隊', '青鳥隊', '赤焰隊'];
+  return {
+    summary: [summaryEntry({ id: 'final', k: LAST_MATCH, st: 'confirmed', s: [1, 0], no: 1 })],
+    standings: FIVE_DIVISIONS.map((dv, index) => standingDoc({
+      id: `${dv.dvId}__group__A`,
+      divisionId: dv.dvId,
+      rows: [
+        standingRow({ teamId: `en_c${index}`, name: teams[index] ?? '海風隊', points: 9, rank: 1, win: 3, draw: 0, loss: 1 }),
+        standingRow({ teamId: `en_r${index}`, name: '山貓隊', points: 4, rank: 2 }),
+      ],
+    })),
+  };
+}
+
+/** 冠軍待裁定：第 1 名兩隊同分未裁定。 */
+function pendingChampionBoard(): { summary: SummaryEntry[]; standings: StandingDoc[] } {
+  return {
+    summary: [summaryEntry({ id: 'final', k: LAST_MATCH, st: 'confirmed', s: [1, 1], no: 1 })],
+    standings: [standingDoc({
+      hasUnresolvedTie: true,
+      rows: [
+        standingRow({ teamId: 'en_h', name: '海風隊', points: 7, rank: 1, hasUnresolvedTie: true, tiedWith: ['en_a'] }),
+        standingRow({ teamId: 'en_a', name: '山貓隊', points: 7, rank: 1, hasUnresolvedTie: true, tiedWith: ['en_h'] }),
+        standingRow({ teamId: 'en_b', name: '銀河隊', points: 3, rank: 3 }),
+      ],
+    })],
+  };
+}
+
+/** 長名稱：賽程列用 12 字隊名與 14 字場地。 */
+function longBoard(): { summary: SummaryEntry[]; standings: StandingDoc[] } {
+  return {
+    summary: [
+      summaryEntry({ id: 'l1', k: taipeiMs(2027, 1, 9, 9, 0), st: 'finished', s: [2, 1], no: 1, v: LONG_VENUE, h: { id: 'en_l1', n: LONG_TEAM }, a: { id: 'en_l2', n: '海風隊' } }),
+      summaryEntry({ id: 'l2', k: taipeiMs(2027, 1, 9, 14, 30), st: 'scheduled', no: 2, v: LONG_VENUE, h: { id: 'en_l3', n: '銀河隊' }, a: { id: 'en_l4', n: LONG_TEAM } }),
+    ],
+    standings: [standingDoc({
+      rows: [
+        standingRow({ teamId: 'en_l1', name: LONG_TEAM, points: 3, rank: 1, played: 1, win: 1, draw: 0, loss: 0 }),
+        standingRow({ teamId: 'en_l2', name: '海風隊', points: 0, rank: 2, played: 1, win: 0, draw: 0, loss: 1 }),
+      ],
+    })],
+  };
+}
+
+/** 以俱樂部報隊：一個或兩個代表俱樂部。 */
+function clubRep(count: 1 | 2): CpActor {
+  const clubs = count === 1
+    ? [{ id: 'club_x', name: '示範隊X' }]
+    : [{ id: 'club_x', name: '示範隊X' }, { id: 'club_y', name: '示範隊Y' }];
+  return actor({ uid: 'uid_rep2', displayName: '王示範', repClubs: clubs, memberClubIds: clubs.map((club) => club.id) });
+}
+
+/** 詳情不注入 bundle、改走假資料庫（記分員要讀自己的指派；讀取失敗要讓 getCompetition 丟錯）。 */
+function repoDetailEnv(who: CpActor, now: number, repo: ReturnType<typeof createFakeCpRepo>, actions: CpActions): CpInjectedEnv {
+  return { actor: who, repo, actions, now, route: { cid: 'cup', enId: 'en_a' } };
+}
+
+function scorerRepo(): ReturnType<typeof createFakeCpRepo> {
+  const board = liveBoard();
+  return createFakeCpRepo({
+    competitions: [competition({ category: 'cup' })],
+    divisions: { cup: [adultDivision, youthDivision] },
+    entries: { cup: detailBundle().entries },
+    staff: { cup: [{ uid: 'uid_host', roles: ['host'] }] },
+    assignments: { cup: [{ uid: 'uid_scorer', roles: ['scorer'], matchIds: ['nx'], expiresAt: null, memberNo: 3 }] },
+    summary: { cup: [{ id: summaryShardIdOf(LIVE_NOW), entries: board.summary }] },
+    standings: { cup: board.standings },
+  });
+}
+
+function failingDetailRepo(): ReturnType<typeof createFakeCpRepo> {
+  const repo = createFakeCpRepo();
+  // 沒有 code＝網路或其他錯誤（不是權限被拒），正式頁給「讀取失敗＋重試」。
+  return { ...repo, getCompetition: async () => { throw new Error('offline'); } };
+}
+
+/** 賽程管理・待確認 3 分鐘內（撤回時鐘還在跑，多一顆「記分」）。 */
+function freshPendingMatches(): MatchDoc[] {
+  return [
+    matchDoc({
+      id: 'mt_fresh', status: 'finished', matchNo: 1, kickoffAt: taipeiMs(2027, 1, 9, 10, 30),
+      score: { home: 2, away: 1 }, finishedAt: LIVE_NOW - 60 * 1000,
+      home: { teamId: 'en_b', name: '銀河隊' }, away: { teamId: 'en_c', name: '晨光隊' }, teamIds: ['en_b', 'en_c'],
+    }),
+    matchDoc({ id: 'mt_next', status: 'scheduled', matchNo: 2, kickoffAt: taipeiMs(2027, 1, 9, 14, 0) }),
+  ];
+}
+
+function shiftClashActions(actions: CpActions): CpActions {
+  let times = 0;
+  return {
+    ...actions,
+    shiftMatchDay: async () => {
+      times += 1;
+      // 1/9 整天順延到 1/10，跟 1/10 11:00 第二球場那場撞期
+      if (times === 1) throw new CpCallError('SCHEDULE_CONFLICT', { mtId: 'mt_2', type: 'venue' });
+      return {};
+    },
+  };
+}
+
+/** 報隊管理・長名稱：賽事名 22 字、隊名 12 字以上。 */
+function longManageBundle(): CpBundle {
+  const b = manageBundle();
+  const names: Record<string, string> = {
+    en_pa: LONG_TEAM,
+    en_c: `${LONG_TEAM}二`,
+    en_e: '一二三四五六七八九十示範隊',
+  };
+  return {
+    ...b,
+    competition: competition({ name: LONG_COMP_NAME }),
+    entries: b.entries.map((row) => (names[row.id] ? { ...row, name: names[row.id] ?? row.name } : row)),
+  };
+}
+
+/** 建賽守門三態：未登入、內部期一般會員、讀開放設定失敗。 */
+function gateEnv(kind: 'guest' | 'member' | 'error', actions: CpActions): CpInjectedEnv {
+  const repo = createFakeCpRepo({ launch: { isPublic: false, bannedWords: [] } });
+  const who = kind === 'guest' ? { ...memberActor, uid: null } : memberActor;
+  const gateRepo = kind === 'error'
+    ? { ...repo, getLaunch: async () => { throw new Error('offline'); } }
+    : repo;
+  return { ...base(actions, who, undefined, { wizardStep: 1 }, wizardSeed()), repo: gateRepo };
+}
+
 const REPO = createFakeCpRepo();
 
 function base(actions: CpActions, who: CpActor, bundle?: CpBundle, preview?: CpPreview, seed?: WizardSeed): CpInjectedEnv {
@@ -1057,6 +1262,123 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       })], actions);
     case 'real-wizard-personal':
       return base(actions, wizardActor, undefined, { wizardStep: 1 }, wizardSeed());
+    // ── 新外觀第 1b 批第 7 節「要補示範狀態」（截圖拍正式版現況）──
+    case 'real-live-twin-next':
+      return detailEnv(memberActor, LIVE_NOW, { category: 'cup' }, twinNextBoard());
+    case 'real-live-no-today':
+      // 1/10 進行中，賽程只有 1/9（今天沒有任何場次）。
+      return detailEnv(memberActor, taipeiMs(2027, 1, 10, 12, 0), { category: 'cup' }, liveBoard());
+    case 'real-warm-no-schedule':
+      return detailEnv(memberActor, WARM_NOW, {}, { summary: [], standings: [] });
+    case 'real-recruit-nocap': {
+      // 組別沒有隊數上限（maxTeams 0）。
+      const env = detailEnv(memberActor, NOW, {}, { summary: [], standings: [] });
+      const b = env.bundle;
+      return b ? { ...env, bundle: { ...b, divisions: b.divisions.map((dv) => ({ ...dv, maxTeams: 0 })) } } : env;
+    }
+    case 'real-recruit-nodiv': {
+      const env = detailEnv(memberActor, NOW, {}, { summary: [], standings: [] });
+      return env.bundle ? { ...env, bundle: { ...env.bundle, divisions: [], entries: [] } } : env;
+    }
+    case 'real-done-five': {
+      const env = detailEnv(memberActor, DONE_NOW, {}, fiveChampionBoard());
+      return env.bundle ? { ...env, bundle: { ...env.bundle, divisions: FIVE_DIVISIONS } } : env;
+    }
+    case 'real-done-nochamp':
+      return detailEnv(memberActor, DONE_NOW, {}, { summary: [summaryEntry({ id: 'final', k: LAST_MATCH, st: 'confirmed', s: [1, 0], no: 1 })], standings: [] });
+    case 'real-done-pending':
+      return detailEnv(memberActor, DONE_NOW, {}, pendingChampionBoard());
+    case 'real-long':
+      return detailEnv(memberActor, LIVE_NOW, { name: LONG_COMP_NAME, venues: [{ name: LONG_VENUE, address: '示範路 1 號' }] }, longBoard());
+    case 'real-long-recruit': {
+      const env = detailEnv(memberActor, NOW, { name: LONG_COMP_NAME, venues: [{ name: LONG_VENUE, address: '示範路 1 號' }] }, { summary: [], standings: [] });
+      const b = env.bundle;
+      return b ? { ...env, bundle: { ...b, entries: b.entries.map((row, index) => (index === 0 ? { ...row, name: LONG_TEAM } : row)) } } : env;
+    }
+    case 'real-draft-host':
+      return detailEnv(hostActor, NOW, { status: 'draft' }, { summary: [], standings: [] }, HOST_STAFF);
+    case 'real-scorer':
+      return repoDetailEnv(scorerActor, LIVE_NOW, scorerRepo(), actions);
+    case 'real-admin-menu':
+      return { ...detailEnv(adminActor, NOW, {}, { summary: [], standings: [] }), preview: { menuOpen: true } };
+    case 'real-club-entry-one':
+      return detailEnv(clubRep(1), NOW, {}, { summary: [], standings: [] });
+    case 'real-club-entry-two':
+    case 'real-club-entry-error':
+      return detailEnv(clubRep(2), NOW, {}, { summary: [], standings: [] });
+    case 'real-notice-delete':
+    case 'real-notice-delete-sys':
+      return screenEnv('real-notices-host', actions);
+    case 'real-load-failed':
+      return repoDetailEnv(memberActor, NOW, failingDetailRepo(), actions);
+    case 'real-crest-live':
+      return detailEnv(memberActor, LIVE_NOW, { category: 'cup' }, crestLiveBoard(false));
+    case 'real-corrected-pk':
+      return detailEnv(memberActor, LIVE_NOW, { category: 'cup' }, crestLiveBoard(true));
+    // ── 新外觀第 4 批第 7 節「要補」（賽程管理、排賽程）──
+    case 'real-swap-open':
+      return hostEnv(clashMatches(), actions);
+    case 'real-shift-clash':
+      return withSecondVenue(hostEnv(clashMatches(), shiftClashActions(actions)));
+    case 'real-pending-fresh':
+      return hostEnv(freshPendingMatches(), actions);
+    case 'real-host-matches-empty':
+      return hostEnv([], actions);
+    case 'real-host-matches-denied':
+      return { ...base(actions, memberActor, manageBundle(null)), now: LIVE_NOW, matches: [] };
+    case 'real-schedule-preview':
+      return {
+        ...base({
+          ...actions,
+          generateSchedule: async () => ({ dvId: 'dv_adult', seed: 7, matchCount: 12, unplacedCount: 0, daysUsed: ['2027-01-09', '2027-01-10'], perTeam: 3, teamCount: 8, dryRun: true }),
+        }, hostActor, manageBundle(HOST_STAFF)),
+        now: NOW,
+      };
+    case 'real-schedule-unplaced':
+      return {
+        ...base({
+          ...actions,
+          generateSchedule: async () => { throw new CpCallError('SCHEDULE_UNPLACED', { unplacedCount: 4 }); },
+        }, hostActor, manageBundle(HOST_STAFF)),
+        now: NOW,
+      };
+    case 'real-schedule-too-many':
+      return {
+        ...base({
+          ...actions,
+          generateSchedule: async () => { throw new CpCallError('TOO_MANY_MATCHES', {}); },
+        }, hostActor, manageBundle(HOST_STAFF)),
+        now: NOW,
+      };
+    case 'real-schedule-replace':
+      // 與 real-clear-schedule 同一個錯誤，但不打開確認框：看「清除賽程」紅框鈕本身。
+      return screenEnv('real-clear-schedule', actions);
+    // ── 新外觀第 4 批第 7 節「要補」（報隊管理、建賽守門）──
+    case 'host-locked':
+      return base(actions, hostActor, manageBundle({ uid: 'uid_host', roles: ['host'] }, true), { manageTab: 'approved' });
+    case 'host-edit-open':
+      return base(actions, hostActor, manageBundle(), { manageTab: 'approved' });
+    case 'host-long':
+      return base(actions, hostActor, longManageBundle(), { manageTab: 'approved' });
+    case 'host-long-pending':
+      return base(actions, hostActor, longManageBundle(), { manageTab: 'pending' });
+    case 'gate-guest':
+      return gateEnv('guest', actions);
+    case 'gate-member':
+      return gateEnv('member', actions);
+    case 'gate-error':
+      return gateEnv('error', actions);
+    // ── 第 3 批留下的狀態（名單隊員視角、移除確認框、表單錯誤／自訂位置／資格不符）──
+    case 'roster-member':
+      return base(actions, memberActor, rosterBundle(SHORT_PLAYERS, false));
+    case 'roster-remove':
+      return base(actions, repActor, rosterBundle(SHORT_PLAYERS, false));
+    case 'form-error':
+    case 'form-custom-pos':
+      return base(actions, memberActor, rosterBundle(SHORT_PLAYERS, false), { prefillForm: true });
+    case 'form-ineligible':
+      // 不是這支俱樂部的成員：rosterFormBlock 回 NOT_CLUB_MEMBER，畫「一句話＋回名單」。
+      return base(actions, hostActor, rosterBundle(SHORT_PLAYERS, false), { prefillForm: true });
     default:
       return base(actions, wizardActor, undefined, { wizardStep: 1 }, wizardSeed());
   }
