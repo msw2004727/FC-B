@@ -48,7 +48,7 @@ import { TieWorkspace } from '../ui/tie-panel';
 import { AdminPanel, HiddenNotice } from '../ui/admin-moderation';
 import { DeleteCompetition, teamCountOf } from '../ui/delete-competition';
 import { PublicBoard } from '../ui/public-board';
-import { CpCard, CpFrame, CpI18nPending, CpRow, MoreIcon } from '../ui/shell';
+import { CpCard, CpFrame, CpI18nPending, CpRow, AlertIcon, MoreIcon } from '../ui/shell';
 import { TeamCrest } from '../ui/TeamCrest';
 
 const REPORTS: ReportReason[] = ['impersonation', 'fake', 'inappropriate', 'privacy', 'other'];
@@ -761,33 +761,31 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     </>
   );
 
-  const manageActions = (
-    <>
-      {frozen ? null : hostButtons}
-      {showDelete ? (
-        <DeleteCompetition
-          ct={ct}
-          cid={cid}
-          name={competition.name}
-          teams={divisions.length > 0 ? teamCountOf(divisions) : null}
-          loadTeams={async () => teamCountOf(await env.repo.listDivisions(cid))}
-          resume={deletingAt != null}
-          actions={env.actions}
-          reload={() => env.repo.getCompetition(cid)}
-          onDeleted={() => {
-            toast.show({ message: ct('deleteDone') });
-            env.repo.invalidateCrests(cid);
-            // 取代目前這筆歷史：返回不會回到已刪除的賽事。列表每次進入都重讀公開清單與 cpMine。
-            route('/tournaments', true);
-          }}
-          onStuck={(doc) => {
-            setBundle((current) => (current ? { ...current, competition: doc } : current));
-          }}
-          previewOpen={env.preview?.deleteDialog}
-        />
-      ) : null}
-    </>
-  );
+  const manageActions = frozen ? null : hostButtons;
+  // 刪除賽事（新外觀卡 1b-7）：從主辦按鈕拆出來，固定畫在頁面內容最後、管理員區之前（各階段同一個位置）。
+  // 卡住前後是同一個位置，確認框不會被重掛關掉。
+  const deleteBlock = showDelete ? (
+    <DeleteCompetition
+      ct={ct}
+      cid={cid}
+      name={competition.name}
+      teams={divisions.length > 0 ? teamCountOf(divisions) : null}
+      loadTeams={async () => teamCountOf(await env.repo.listDivisions(cid))}
+      resume={deletingAt != null}
+      actions={env.actions}
+      reload={() => env.repo.getCompetition(cid)}
+      onDeleted={() => {
+        toast.show({ message: ct('deleteDone') });
+        env.repo.invalidateCrests(cid);
+        // 取代目前這筆歷史：返回不會回到已刪除的賽事。列表每次進入都重讀公開清單與 cpMine。
+        route('/tournaments', true);
+      }}
+      onStuck={(doc) => {
+        setBundle((current) => (current ? { ...current, competition: doc } : current));
+      }}
+      previewOpen={env.preview?.deleteDialog}
+    />
+  ) : null;
 
   return (
     <CpFrame
@@ -823,7 +821,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       {competition.hidden && deletingAt == null ? <HiddenNotice ct={ct} reason={competition.hiddenReason} /> : null}
       {/* 刪到一半：後端也寫了 hidden，但不是管理員下架。能續刪的人看到續刪提示，其他人（共同主辦）只看到刪除中。 */}
       {deletingAt != null ? (
-        <p class="cpa-hidden" role="status" style="white-space:pre-line">{stuckText}</p>
+        <p class="cpa-hidden" role="status"><AlertIcon /><span>{stuckText}</span></p>
       ) : null}
       <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
       {showHostEnd ? (
@@ -987,6 +985,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           {manageActions}
         </>
       )}
+
+      {deleteBlock}
 
       {isAdmin && !frozen ? (
         <AdminPanel

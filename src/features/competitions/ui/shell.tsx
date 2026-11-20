@@ -50,6 +50,36 @@ export function TrashIcon(): JSX.Element {
   );
 }
 
+/** 「一句話＋回去的鈕」的圖示：鎖頭（不公開）。 */
+export function LockIcon(): JSX.Element {
+  return (
+    <svg class="cps-ico" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
+/** 「一句話＋回去的鈕」的圖示：圓圈 i（讀取失敗）。 */
+export function InfoIcon(): JSX.Element {
+  return (
+    <svg class="cps-ico" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5M12 8h.01" />
+    </svg>
+  );
+}
+
+/** 三角驚嘆號：頁面層級紅色提示、刪除確認框的警告句。不帶任何文字節點。 */
+export function AlertIcon(): JSX.Element {
+  return (
+    <svg class="cps-ico" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 4L2.5 20h19z" />
+      <path d="M12 10v4M12 17h.01" />
+    </svg>
+  );
+}
+
 export function CpFrame({
   title,
   userTitle = false,
