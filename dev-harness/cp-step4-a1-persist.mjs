@@ -159,7 +159,15 @@ try {
   const took = await until('原頁面出現被拒或被標已送出', async () => ['rejected', 'applied'].includes((await goalRow())?.state ?? ''), 90000);
   const finalRow = await goalRow();
   step('結果', { row: finalRow, tookMs: took });
-  await pause(1500);
+  // 被拒後畫面比分要回到伺服器的 0:0（快照回滾）。每 500ms 記一次，最多 10 秒。
+  const uiScores = [];
+  for (let i = 0; i < 20; i += 1) {
+    const shown = await page.evaluate(() => document.querySelector('.s4-score')?.textContent ?? null);
+    uiScores.push(shown);
+    if (shown === '0:0' && i >= 2) break;
+    await pause(500);
+  }
+  step('被拒後畫面比分（每 500ms）', { uiScores });
   const match = await read(`competitions/${CID}/matches/${MT}`);
   const timeline = await list(`competitions/${CID}/matches/${MT}/timeline`);
   const ui = await page.evaluate(() => ({
@@ -177,7 +185,7 @@ try {
     await page.screenshot({ path: join(OUT, 'p4-rejected-sheet.png') });
   }
   // 要的是「出現被拒、不默默當成已送出」。原因多半是 takenOver；恢復連線瞬間讀到的 control 還是舊快取時會重送一次、分類成 rules，一樣是被拒紅列。
-  report.ok = finalRow?.state === 'rejected'
+  report.ok = finalRow?.state === 'rejected' && uiScores.at(-1) === '0:0'
     && match?.score?.home === 0 && match?.score?.away === 0 && timeline.length === 0;
   report.rejectReason = finalRow?.rejectReason ?? null;
   report.blockedHosts = [...new Set(blocked)];
