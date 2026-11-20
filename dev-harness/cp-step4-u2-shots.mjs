@@ -23,6 +23,7 @@ const ANCHORS = {
   'u2-reader-tab': '這場已在另一個分頁記分',
   'u2-no-permission': '你沒有這場的記分權限',
   'u2-storage-unavailable': '離線紀錄無法保存',
+  'u2-long-name': '34:00',
 };
 // [畫面, 寬度組, 主題組, 是否可往下補截（面板／亮牌不補）]
 const SCREENS = [
@@ -37,6 +38,7 @@ const SCREENS = [
   ['u2-reader-tab', ALL, THEMES, true],
   ['u2-no-permission', ALL, THEMES, true],
   ['u2-storage-unavailable', ALL, THEMES, true],
+  ['u2-long-name', ALL, THEMES, true],
 ];
 
 const SELECTORS = '.s4-team, .s4-col__name, .s4-clock, .s4-stage, .s4-hold, .s4-banner, .s4-wake, .s4-ev__main, .s4-ev__tag, .s4-evsum, .s4-flash__no, .s4-flash__name, .s4-flash__kind, .s4-flash__close, .s4-sent__st, .s4-sent__cd, .s4-hint, .s4-note, .s4-log__intent, .s4-log__st, .s4-pl__name, .s4-dlist__when, .s4-vs__score, .cpm-drag__n, .cpm-drag__li > *, .cpl-src button, .cpl-select, .cpl-st, .tc-chip, .tc-tab, .cpl-line, .tc-card-name, .tc-card-dates, button, .ui-badge, .ui-chip, dt, .cp3-name, .cp3-meta, .cp3-strip__txt, .cp3-day, .cp3-m__when, .cp3-m__vs span, .cp3-st__r > *, .cp3-champ span, .cp3-fold span, .cp3-result, .cp3-result--bad, .cp3-judge, .cp3-sec-h, .cp3-ctx, .cp3-score__name, .cp3-modal-p, .ui-input label, .ui-checkbox label, .ui-radio label, h1, h2, h3, .cps-sub, th';
@@ -198,9 +200,9 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
   }
 }
 // 第一屏：控制列或開賽鈕的底邊要在視窗內。u2-crowded 是暫停列加兩條提示，360×640 也要過。
-const FIRST = ['u2-pre', 'u2-live', 'u2-pending', 'u2-pk-live', 'u2-timeout-stop', 'u2-crowded', 'u2-reader-tab', 'u2-storage-unavailable'];
+const FIRST = ['u2-pre', 'u2-live', 'u2-pending', 'u2-pk-live', 'u2-timeout-stop', 'u2-crowded', 'u2-reader-tab', 'u2-storage-unavailable', 'u2-long-name'];
 for (const name of FIRST) {
-  for (const [w, h] of ALL) {
+  for (const [w, h] of [...ALL, [375, 812]]) {
     for (const theme of THEMES) {
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 }); await ctx.route(/googleapis\.com|firebaseio\.com|firebaseapp\.com/, (r) => { report.consoleErrors.push('BLOCKED ' + r.request().url()); return r.abort(); });
     const page = await ctx.newPage();

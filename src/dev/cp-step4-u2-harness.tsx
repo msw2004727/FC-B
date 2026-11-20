@@ -40,6 +40,7 @@ export const U2_SCREENS = [
   'u2-reader-tab',
   'u2-no-permission',
   'u2-storage-unavailable',
+  'u2-long-name',
 ] as const;
 
 const ANCHORS: Record<string, string> = {
@@ -54,6 +55,7 @@ const ANCHORS: Record<string, string> = {
   'u2-reader-tab': '這場已在另一個分頁記分',
   'u2-no-permission': '你沒有這場的記分權限',
   'u2-storage-unavailable': '離線紀錄無法保存',
+  'u2-long-name': '34:00',
 };
 
 const HOME: RosterPublicDoc[] = [
@@ -176,6 +178,19 @@ function seedOf(name: string): Seed {
         rev: 2,
         score: { home: 1, away: 1 },
         clockBase: clock(34 * 60, 'h1', true),
+      }),
+      events: [goalAt(1, 'home', 12), goalAt(2, 'away', 28)],
+    };
+  }
+  if (name === 'u2-long-name') {
+    return {
+      match: match({
+        status: 'live',
+        rev: 2,
+        score: { home: 1, away: 1 },
+        clockBase: clock(34 * 60, 'h1', true),
+        home: { teamId: 'en_c', name: '台北市信義區青年足球聯隊', logo: null },
+        away: { teamId: 'en_h', name: '高雄市前鎮區海風足球隊', logo: null },
       }),
       events: [goalAt(1, 'home', 12), goalAt(2, 'away', 28)],
     };
