@@ -3,6 +3,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
+import { useGoBack } from '@/core/back-guard';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { Button } from '@/ui/Button';
 import { PageSpinner } from '@/ui/PageSpinner';
@@ -28,6 +29,11 @@ async function loadRoster(env: CpInjectedEnv, cid: string, enId: string): Promis
     uid ? env.repo.getStaff(cid, uid) : Promise.resolve(null),
   ]);
   return { competition, divisions, entries, roster, privates: [], staff };
+}
+
+/** 照背號排，同號再比 id（與記分頁選人同一套；live/ 不能動，這裡另寫一份）。 */
+function byNumber(a: RosterPublicDoc, b: RosterPublicDoc): number {
+  return a.number - b.number || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
 /** 報隊狀態的字。新外觀卡 3-2：四種都是中性標籤（3.0.5），不再分色。 */
@@ -78,6 +84,8 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
   const { route } = useLocation();
+  // 直接開名單頁時「<」退到賽事詳情，不跳出賽事。
+  const back = useGoBack(`/competitions/${cid}`);
   const [bundle, setBundle] = useState<CpBundle | null>(env.bundle ?? null);
   const [phase, setPhase] = useState<'loading' | 'ready' | CpLoadFail>(env.bundle ? 'ready' : 'loading');
   const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
@@ -108,7 +116,7 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
     return <CpLoadFailed title={ct('rosterTitle')} fail={phase === 'hidden' ? 'hidden' : 'error'} />;
   }
 
-  const players = bundle?.roster.filter((row) => row.enId === enId) ?? [];
+  const players = (bundle?.roster.filter((row) => row.enId === enId) ?? []).sort(byNumber);
   const now = env.now ?? Date.now();
   const locked = competition.rostersLockedAt != null;
   const started = now >= competition.firstMatchAt;
@@ -169,7 +177,7 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   }
 
   return (
-    <CpFrame title={ct('rosterTitle')} context={competition.name}>
+    <CpFrame title={ct('rosterTitle')} context={competition.name} onBack={back}>
       {/* 新外觀卡 3-2：隊伍卡順序改成 隊徽＋隊名 → 兩顆標籤 → 人數 → 進度條 → 說明句（標記順序＝讀螢幕順序） */}
       <CpCard>
         <div class="cp3-roster-head">
@@ -210,7 +218,7 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
       </CpCard>
       {canAdd ? (
         <div class="cps-actions cp3-roster-act">
-          <Button variant="primary" disabled={short || entry.status !== 'approved'} onClick={() => { void confirm(); }}>{ct('confirmRoster')}</Button>
+          <Button variant={entry.rosterConfirmed ? 'secondary' : 'primary'} disabled={short || entry.status !== 'approved'} onClick={() => { void confirm(); }}>{ct('confirmRoster')}</Button>
         </div>
       ) : null}
       {canJoin ? (

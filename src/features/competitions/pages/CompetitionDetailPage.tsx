@@ -919,7 +919,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </CpRow>
           <CpRow k={ct('matchPeriod')}>
             <span class="cps-line">
-              {formatTaipeiDate(competition.firstMatchAt)} {ct('until')} {formatTaipeiDate(competition.lastMatchAt)}
+              {/* 與抬頭同一支：同一天只寫一次，分隔符也一致。 */}
+              {formatInAppDates(competition)}
             </span>
           </CpRow>
           <CpRow k={ct('venue')}>

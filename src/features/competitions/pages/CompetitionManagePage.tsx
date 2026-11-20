@@ -164,10 +164,12 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const rejected = entries.filter((entry) => entry.status === 'rejected');
   // 與名單頁一致：主辦鎖定名單後一律算已確認（只是標示，不改資料）。
   const unconfirmed = approved.filter((entry) => !entry.rosterConfirmed && !locked).length;
+  // 全部已確認時不再寫「還有 0 隊尚未確認」。
+  const lockKey = unconfirmed === 0 ? 'lockConfirmAll' : 'lockConfirm';
 
   useEffect(() => {
     if (!env.preview?.lockDialog || !cpDict.ct) return;
-    void dangerConfirm(cpDict.ct('lockConfirm', { n: unconfirmed }), {
+    void dangerConfirm(cpDict.ct(lockKey, { n: unconfirmed }), {
       okText: cpDict.ct('lock'),
       danger: true,
     });
@@ -285,7 +287,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   async function lock(): Promise<void> {
     if (!manage || busy || locked) return;
     // 危險確認框：「鎖定」紅框，預設焦點在「取消」（顧問 §3.465）。
-    const ok = await dangerConfirm(ct('lockConfirm', { n: unconfirmed }), {
+    const ok = await dangerConfirm(ct(lockKey, { n: unconfirmed }), {
       okText: ct('lock'),
       danger: true,
     });
@@ -415,6 +417,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </CpCard>
         );
       })}
+      {pending.length === 0 ? <p class="cps-note cps-nowrap">{ct('pendingEmpty')}</p> : null}
     </div>
   );
 
@@ -460,6 +463,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </CpCard>
         );
       })}
+      {approved.length === 0 ? <p class="cps-note cps-nowrap">{ct('approvedEmpty')}</p> : null}
       {manage && !locked ? (
         <div class="cph-end">
           <Button variant="danger" onClick={() => { void lock(); }}>{ct('lockAll')}</Button>
@@ -491,6 +495,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           </CpCard>
         );
       })}
+      {rejected.length === 0 ? <p class="cps-note cps-nowrap">{ct('rejectedEmpty')}</p> : null}
     </div>
   );
 

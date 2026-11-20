@@ -698,11 +698,65 @@ describe('賽事第 2 步畫面', () => {
     open.unmount();
 
     mount(CompetitionManagePage, { ...screenEnv('host-lock'), bundle: lockedBundle });
-    expect((await screen.findByRole('alertdialog')).textContent ?? '').toContain('還有 0 隊尚未確認名單');
+    // 顧問 §3.505 第 3 項：全部已確認時換一句，不寫「還有 0 隊」。
+    const allDone = (await screen.findByRole('alertdialog')).textContent ?? '';
+    expect(allDone).toContain('鎖定後各隊不能再改名單，確定？');
+    expect(allDone).not.toContain('還有 0 隊');
     cleanup();
     _resetAppConfirmForTest();
     mount(CompetitionManagePage, screenEnv('host-lock'));
     expect((await screen.findByRole('alertdialog')).textContent ?? '').toContain('還有 1 隊尚未確認名單');
+  });
+
+  it('報隊管理三個分頁沒有隊伍時顯示空狀態，有隊伍時不顯示（顧問 §3.505 第 2 項）', () => {
+    const empty = { ...manageBundle(), entries: [], privates: [] };
+    for (const [tab, text] of [['pending', '目前沒有待審的隊伍'], ['approved', '目前沒有已核准的隊伍'], ['rejected', '目前沒有已拒絕的隊伍']] as const) {
+      const none = mount(CompetitionManagePage, { ...screenEnv(`host-${tab}`), bundle: empty });
+      expect(none.container.textContent ?? '').toContain(text);
+      none.unmount();
+      const some = mount(CompetitionManagePage, screenEnv(`host-${tab}`));
+      expect(some.container.textContent ?? '').not.toContain(text);
+      some.unmount();
+    }
+  });
+
+  it('本隊名單照背號排，同號再比 id（顧問 §3.505 第 4 項）', () => {
+    const env = screenEnv('roster');
+    const roster = env.bundle!.roster;
+    env.bundle = { ...env.bundle!, roster: [...roster, { ...roster[0]!, id: 'pl_0', number: 10, displayName: '同號示範' }] };
+    const view = mount(RosterPage, env);
+    const nums = [...view.container.querySelectorAll('[data-roster-row] .cps-num')].map((node) => node.textContent);
+    expect(nums).toEqual(['7', '8', '9', '10', '10', '11']);
+    const names = [...view.container.querySelectorAll('[data-roster-row] .cps-player__name')].map((node) => node.textContent);
+    expect(names.slice(3, 5)).toEqual(['同號示範', '王示範']);
+  });
+
+  it('名單已確認時「確認名單」降成次要鈕、仍可按（顧問 §3.505 第 5 項）', () => {
+    const open = mount(RosterPage, screenEnv('roster-ready'));
+    expect(screen.getByRole('button', { name: '確認名單' }).className).toContain('ui-button--primary');
+    open.unmount();
+
+    const env = screenEnv('roster-ready');
+    env.bundle = { ...env.bundle!, entries: env.bundle!.entries.map((row) => ({ ...row, rosterConfirmed: true })) };
+    mount(RosterPage, env);
+    const button = screen.getByRole('button', { name: '確認名單' });
+    expect(button.className).toContain('ui-button--secondary');
+    expect(button).toHaveProperty('disabled', false);
+  });
+
+  it('詳情頁比賽期間與抬頭同一種寫法，同一天只寫一次（顧問 §3.505 第 6 項）', () => {
+    const periodOf = (root: Element): string => {
+      const dt = [...root.querySelectorAll('.cps-row dt')].find((node) => node.textContent === '比賽期間');
+      return (dt?.nextElementSibling?.textContent ?? '').trim();
+    };
+    const twoDays = mount(CompetitionDetailPage, screenEnv('detail-rep'));
+    expect(periodOf(twoDays.container)).toBe('2027/01/09 – 01/10');
+    twoDays.unmount();
+
+    const env = screenEnv('detail-rep');
+    env.bundle = { ...env.bundle!, competition: { ...env.bundle!.competition!, lastMatchAt: FIRST_MATCH + 4 * 60 * 60 * 1000 } };
+    const oneDay = mount(CompetitionDetailPage, env);
+    expect(periodOf(oneDay.container)).toBe('2027/01/09');
   });
 
   it('我的賽事併入俱樂部主辦的草稿；有名稱不再讀文件；單筆失敗不藏整區', async () => {

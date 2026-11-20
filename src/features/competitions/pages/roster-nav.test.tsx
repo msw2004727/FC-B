@@ -56,6 +56,7 @@ beforeAll(async () => {
   await loadCompetitionsDict('zh-TW');
 });
 
+const DETAIL = '/competitions/cup';
 const MANAGE = '/competitions/cup/manage';
 const ROSTER = '/competitions/cup/entries/en_a';
 const ADD = `${ROSTER}/add`;
@@ -76,6 +77,11 @@ function ManageStub(): JSX.Element {
       <button type="button" onClick={() => route(ROSTER)}>示範隊A</button>
     </div>
   );
+}
+
+/** 賽事詳情替身：只要看得出退到了詳情頁。 */
+function DetailStub(): JSX.Element {
+  return <h1>賽事詳情</h1>;
 }
 
 /** 名單資料可變：送出成功時 action 把新球員寫進來，名單頁重新讀取時看得到。 */
@@ -109,6 +115,7 @@ function mountApp(env: CpInjectedEnv) {
     <CpEnvProvider value={env}>
       <LocationProvider>
         <Router>
+          <Route path="/competitions/:cid" component={DetailStub} />
           <Route path="/competitions/:cid/manage" component={ManageStub} />
           <Route path="/competitions/:cid/entries/:enId/add" component={AddRosterPage} />
           <Route path="/competitions/:cid/entries/:enId/join" component={JoinRosterPage} />
@@ -281,5 +288,31 @@ describe('自行登錄名單（JoinRosterPage）導頁', () => {
     fireEvent.click(backButton());
     await onRoster();
     expect(history.length).toBe(before);
+  });
+});
+
+describe('本隊名單頁「<」（顧問 §3.505 第 7 項）', () => {
+  it('直開名單頁網址：「<」取代成賽事詳情（history.length 不變），詳情仍是起點', async () => {
+    history.replaceState(null, '', ROSTER);
+    markHistoryRoot();
+    const { env } = makeWorld(repActor, {});
+    mountApp(env);
+    await onRoster();
+    await screen.findByText('王示範');
+    const before = history.length;
+    fireEvent.click(backButton());
+    await screen.findByRole('heading', { level: 1, name: '賽事詳情' });
+    expect(location.pathname).toBe(DETAIL);
+    expect(history.length).toBe(before);
+    expect((history.state as Record<string, unknown> | null)?.['__fcbRoot']).toBe(true);
+  });
+
+  it('從報隊管理點進來：「<」照舊退回報隊管理', async () => {
+    const { env } = makeWorld(repActor, {});
+    mountApp(env);
+    await screen.findByRole('heading', { level: 1, name: '報隊管理' });
+    fireEvent.click(screen.getByRole('button', { name: '示範隊A' }));
+    await onRoster();
+    await rosterBackReachesManage();
   });
 });
