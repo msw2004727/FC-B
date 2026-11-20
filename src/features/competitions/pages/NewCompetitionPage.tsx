@@ -583,7 +583,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
               <Badge tone={form.hostType === 'club' ? 'info' : 'neutral'} label={form.hostType === 'club' ? ct('hostClub') : ct('hostPersonal')} size="sm" />
               <Badge tone="warning" label={ct('draft')} size="sm" />
             </div>
-            <h2 class="cps-title" style="margin-bottom:12px">{form.name.trim()}</h2>
+            <h2 class="cps-title cps-title--user" style="margin-bottom:12px">{form.name.trim()}</h2>
             <dl class="cps-rows">
               <CpRow k={ct('category')}>{categoryText(ct, form.category)}</CpRow>
               <CpRow k={ct('host')}>{hostName}</CpRow>

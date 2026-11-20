@@ -27,3 +27,13 @@ describe('公告輸入區底列與我的場次對戰列不擠壓（11-20 外框�
     expect(css).toMatch(/\.s4b-between > \.s4b-k \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;[^}]*text-overflow: ellipsis;/);
   });
 });
+
+describe('使用者取的賽事名稱標題（顧問 §3.460）', () => {
+  it('名稱標題最多兩行、超過才省略；共用 .cps-title 與頂列 h1 仍不換行', () => {
+    const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');
+    expect(css).toMatch(/\.cps-title \{[^}]*white-space: nowrap;/);
+    expect(css).toMatch(/\.cps-title\.cps-title--user \{[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;[^}]*-webkit-line-clamp: 2;[^}]*overflow: hidden;/);
+    expect(css).toMatch(/\.cps-top h1 \{[^}]*white-space: nowrap;[^}]*text-overflow: ellipsis;/);
+    expect(css).toMatch(/\.cps-top h1\.cps-top__user \{[^}]*white-space: normal;[^}]*-webkit-line-clamp: 2;/);
+  });
+});

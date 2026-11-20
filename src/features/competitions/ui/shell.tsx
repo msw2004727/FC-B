@@ -52,11 +52,14 @@ export function TrashIcon(): JSX.Element {
 
 export function CpFrame({
   title,
+  userTitle = false,
   onBack,
   menu,
   children,
 }: {
   title: string;
+  /** 標題是使用者取的名稱（賽事名稱）：最多兩行、超過才省略。 */
+  userTitle?: boolean;
   onBack?: () => void;
   menu?: ComponentChildren;
   children: ComponentChildren;
@@ -71,7 +74,7 @@ export function CpFrame({
         <button type="button" class="cps-iconbtn" aria-label={ct('back')} onClick={onBack ?? goBack}>
           <BackIcon />
         </button>
-        <h1>{title}</h1>
+        <h1 class={userTitle ? 'cps-top__user' : undefined}>{title}</h1>
         {menu}
       </header>
       <div class="cps-stack">{children}</div>

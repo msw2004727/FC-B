@@ -542,8 +542,8 @@ function hostEnv(
   };
 }
 
-/** 站內清單：進行中有今天場數、預熱、招募，三種分類色封面。 */
-function listInEnv(actions: CpActions): CpInjectedEnv {
+/** 站內清單：進行中有今天場數、預熱、招募，三種分類色封面。nameOverride：長名稱截圖用，三張卡都換成同一個名稱（不給時資料不變）。 */
+export function listInEnv(actions: CpActions = idleActions(), nameOverride?: string): CpInjectedEnv {
   const liveAt = NOW - 60 * 60 * 1000;
   const repo = createFakeCpRepo({
     launch: { isPublic: true, bannedWords: [] },
@@ -581,7 +581,7 @@ function listInEnv(actions: CpActions): CpInjectedEnv {
         feeNote: null,
         venues: [{ name: '示範國小' }],
       }),
-    ],
+    ].map((doc) => (nameOverride ? { ...doc, name: nameOverride } : doc)),
     summary: {
       live_cup: [{
         id: summaryShardIdOf(NOW),
