@@ -99,18 +99,6 @@ export function pushOverlay(onBack: () => boolean): () => void {
   };
 }
 
-/**
- * 等已關閉彈窗的同網址紀錄退完：沒有待退（pendingRelease）、也沒有等著被略過的 popstate（ignorePops）。
- * 先讓出一輪，讓剛卸載的彈窗登記待退。最多等 maxMs，逾時就直接 resolve（歷史紀錄受限時不卡住）。
- * 用途：關掉彈窗後要「取代」目前頁面時，先等這筆退掉，取代才會蓋到頁面本身那筆。
- */
-export async function whenOverlaysReleased(maxMs = 500): Promise<void> {
-  // 寫得精簡：這支跟著 overlay-back 在首頁入口包（入口預算吃緊）。
-  const end = Date.now() + maxMs;
-  do await new Promise((resolve) => setTimeout(resolve, 16));
-  while ((pendingRelease || ignorePops) && Date.now() < end);
-}
-
 /** 測試用：清掉堆疊與待退紀錄。 */
 export function _resetOverlayBackForTest(): void {
   stack.length = 0;

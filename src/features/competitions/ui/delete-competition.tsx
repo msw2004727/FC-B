@@ -10,7 +10,6 @@ import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Modal } from '@/ui/Modal';
-import { whenOverlaysReleased } from '@/core/overlay-back';
 import type { CpActions } from '../actions';
 import type { CompetitionDoc } from '../data/types';
 import type { CompetitionsT } from '../i18n';
@@ -40,6 +39,25 @@ export function useArmed(on: boolean, ms: number = DELETE_ARM_MS): boolean {
     return () => window.clearTimeout(id);
   }, [on, ms]);
   return armed;
+}
+
+/**
+ * core/overlay-back 寫進 history.state 的鍵名（它沒有匯出；為了首頁入口預算不在那邊加匯出，顧問裁定）。
+ * 鍵名耦合由 ui/delete-competition.test.ts「overlay-back 的 history.state 鍵名」鎖住：overlay-back 改鍵名，那條測試會紅。
+ */
+export const OVERLAY_STATE_KEY = '__overlay';
+
+/**
+ * 等確認框那筆同網址歷史紀錄退掉（overlay-back：彈窗卸載後下一刻 history.back）。
+ * 先退掉再換頁，換頁的「取代」才會蓋掉賽事詳情那筆，返回鍵不會回到已刪除的賽事。最多等 maxMs。
+ */
+export async function waitOverlayReleased(maxMs = 500): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const state: unknown = history.state;
+    if (!(state && typeof state === 'object' && OVERLAY_STATE_KEY in state)) return;
+    await new Promise((resolve) => setTimeout(resolve, 16));
+  }
 }
 
 /** 報隊數（pending＋approved）。組別的 entryCount 由伺服器維護，不受報隊清單上限影響。 */
@@ -82,7 +100,7 @@ export function DeleteCompetition(props: DeleteCompetitionProps): JSX.Element {
           onDeleted={async () => {
             setOpen(false);
             // 先等確認框那筆同網址歷史紀錄退掉，頁面的「取代」才會蓋到賽事詳情那筆，返回不會回到已刪除的賽事。
-            await whenOverlaysReleased();
+            await waitOverlayReleased();
             props.onDeleted();
           }}
         />
