@@ -240,7 +240,8 @@ const OPEN: Record<string, () => Promise<void>> = {
   'real-done': async () => {
     // 首屏資料還在補讀時按展開可能被擋（正式畫面會出「再試一次」）；截圖這邊最多重按 5 次
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const fold = document.querySelector<HTMLButtonElement>('button.cp3-fold[aria-expanded="false"]');
+      // 只點「賽程」那張收合卡；積分表卡底部的「排序規則」也是 .cp3-fold，預設收合、不要點開（設計審查 05:12）
+      const fold = document.querySelector<HTMLButtonElement>('.d2-foldcard > button.cp3-fold[aria-expanded="false"]');
       fold?.click();
       try {
         await until('展開賽程', () => hasText('18:00') && hasText('海風隊'));

@@ -1053,7 +1053,12 @@ describe('賽事第 2 步畫面', () => {
     stranger.actor = { ...memberActor, memberClubIds: [] };
     const blocked = mount(JoinRosterPage, stranger);
     expect(blocked.container.textContent ?? '').toContain('只有俱樂部成員可以做這個操作');
-    expect(screen.getByRole('link', { name: '返回名單' }).getAttribute('href')).toBe('/competitions/cup/entries/en_a');
+    // 第 3 批小修（設計總監 05:08）：「返回名單」從連結改成整列寬次要鈕、句子中性色（原本斷言 role=link 與 href）
+    const back = screen.getByRole('button', { name: '返回名單' });
+    expect(back.className).toContain('ui-button--secondary');
+    expect(screen.getByRole('alert').className).not.toContain('cps-warn');
+    fireEvent.click(back);
+    expect(window.location.pathname).toBe('/competitions/cup/entries/en_a');
     expect(screen.queryByLabelText('背號')).toBeNull();
     blocked.unmount();
 

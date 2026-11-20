@@ -411,10 +411,11 @@
   content: ''; position: absolute; z-index: -1; top: 4px; right: 0; bottom: 4px; left: 0; border-radius: 10px;
   background: var(--d2-field-bg); box-shadow: inset 0 0 0 1px var(--d2-switch-edge);
 }
+/* --d2-seg-on 本身是「漸層, 顏色」兩層，後面不能再接一個顏色層（整條會失效、選中沒有淡青綠底）；直接用它（設計總監 05:08） */
 .cps-root .ui-radio--checked .ui-radio__label::before,
 .cps-root .ui-chip--selected::before,
 .d2-panel .ui-radio--checked .ui-radio__label::before,
-.d2-panel .ui-chip--selected::before { background: var(--d2-seg-on), var(--d2-field-bg); box-shadow: inset 0 0 0 2px var(--d2-accent); }
+.d2-panel .ui-chip--selected::before { background: var(--d2-seg-on); box-shadow: inset 0 0 0 2px var(--d2-accent); }
 .cps-root .ui-radio__label:focus-within::before,
 .d2-panel .ui-radio__label:focus-within::before { box-shadow: inset 0 0 0 2px var(--d2-accent); }
 .cps-root .ui-radio input,
@@ -1013,15 +1014,21 @@
 .cp-tbl .pt { padding: 0 10px 0 0; background: var(--d2-band); box-shadow: inset 1px 0 0 var(--d2-line); }
 .cp-tbl th.pt { font-weight: 600; color: var(--d2-text); }
 .cp-tbl td.pt { font-family: var(--d2-num); font-size: 22px; line-height: 24px; font-weight: 700; letter-spacing: .03em; color: var(--d2-text); }
-/* 積分榜：列高 52；名次 24｜隊名（隊徽 24＋名稱 13/600）｜賽勝和負各 18｜進/失 36｜淨勝 28｜積分 34＋右 10 */
+/* 積分榜：列高 52；名次 24｜隊名（隊徽 24＋名稱 13/600）｜賽勝和負各 20｜進/失 36｜淨勝 28｜積分 34＋右 10。
+ * 這一組有人進球、失球或淨勝絕對值 ≥ 100 時表格多帶 .cp-tbl--st-wide，進/失 46、淨勝 34（設計總監 05:12；同一張表欄寬一致） */
 .cp-tbl--st th, .cp-tbl--st td { padding: 0; }
 .cp-tbl--st td { height: 52px; }
-.cp-tbl--st .t { padding: 0 4px 0 2px; }
+.cp-tbl--st .t { padding: 0 2px 0 0; }
+/* 數字被截＝顯示錯的資料：積分榜的數字格不省略（設計總監 05:05）；只有隊名格省略 */
+.cp-tbl--st th, .cp-tbl--st td { overflow: visible; text-overflow: clip; }
+.cp-tbl--st .t { overflow: hidden; text-overflow: ellipsis; }
 .cp-tbl--st td.t { font-size: 13px; line-height: 20px; }
 .cp-tbl--st th:nth-child(1) { width: 24px; }
-.cp-tbl--st th:nth-child(3), .cp-tbl--st th:nth-child(4), .cp-tbl--st th:nth-child(5), .cp-tbl--st th:nth-child(6) { width: 18px; }
+.cp-tbl--st th:nth-child(3), .cp-tbl--st th:nth-child(4), .cp-tbl--st th:nth-child(5), .cp-tbl--st th:nth-child(6) { width: 20px; }
 .cp-tbl--st th:nth-child(7) { width: 36px; }
 .cp-tbl--st th:nth-child(8) { width: 28px; }
+.cp-tbl--st-wide th:nth-child(7) { width: 46px; }
+.cp-tbl--st-wide th:nth-child(8) { width: 34px; }
 .cp-tbl--st th:nth-child(9) { width: 44px; }
 .cp-tbl--st .gd { font-weight: 600; color: var(--d2-text); }
 /* 名次格：數字在列正中間；「同分／裁定」掛在數字下面、離列底 4px（絕對定位在格內那層容器，不以 td 當定位基準） */
@@ -1050,9 +1057,15 @@
 .cp-sc__bar > .ui-tabs > .ui-tabs__panel, .cp-sc__empty { order: 3; flex: 1 0 100%; min-width: 0; margin: 2px 0 0; }
 .cps-card.cp-sc__empty { padding: 20px 16px; text-align: center; font-size: 13px; line-height: 20px; color: var(--d2-text-2); }
 .cp-sc__cap { margin: 8px 0 0; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
+/* 射手榜區塊（ScorerBlock）：在分頁裡與上面隔 12；在已結束的入口列卡裡緊接細線、線下留 8（設計總監 04:56：按鈕上方那一段空白收掉） */
+.cp-scb { margin-top: 12px; }
+.d2-rows > .cp-scb { margin-top: 0; padding-top: 8px; }
 /* 組別切換：整組單行；每格最寬 8 個全形字；放不下時這一條自己橫向捲動（隱藏捲軸），整頁不捲 */
 .cp-grp { order: 2; min-width: 0; max-width: 100%; margin: -6px 0 -6px auto; padding: 6px 0; overflow-x: auto; scrollbar-width: none; }
 .cp-grp::-webkit-scrollbar { display: none; }
+/* 可以往右捲時右緣 20px 淡出；捲動內容最後多留 20px，捲到底時最後一格不被淡掉（設計總監 05:12） */
+.cp-grp--scroll { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent); }
+.cp-grp--scroll > .ui-tabs { display: flex; width: max-content; padding-right: 20px; }
 .cp-grp .ui-tabs__label { display: block; max-width: 8em; overflow: hidden; text-overflow: ellipsis; }
 
 /* 收合列（共用，第 3 批引用）：卡片 .d2-foldcard＋收合鈕 .cp3-fold；收起來跟入口列一樣高，展開後鈕下緣一條細線、內容才撐開 */
@@ -1104,7 +1117,8 @@
 .cp3-pos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 8px; }
 .cp3-pos .ui-chip { min-width: 0; }
 .cp3-pos .ui-chip__select { justify-content: center; min-width: 0; min-height: 44px; overflow: hidden; text-overflow: ellipsis; }
-.cp3-pubname { margin-top: -8px; line-height: 20px; color: var(--d2-text-2); }
+/* 「公開顯示：…」是介面文字、不換行（規格 3.8）；長姓名單行省略，完整姓名在上面的輸入框 */
+.cp3-pubname { margin-top: -8px; line-height: 20px; color: var(--d2-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cp3-cap { display: block; margin: 6px 0 0; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
 .cp3-jform > .ui-checkbox + .ui-checkbox { margin-top: -12px; }
 .cps-actions.cp3-jact { gap: 8px; margin-top: 4px; }
