@@ -10,10 +10,11 @@ import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Modal } from '@/ui/Modal';
+import { whenOverlaysReleased } from '@/core/overlay-back';
 import type { CpActions } from '../actions';
 import type { CompetitionDoc } from '../data/types';
 import type { CompetitionsT } from '../i18n';
-import { CpError, errorOf } from './feedback';
+import { errorOf, reasonText } from './feedback';
 
 export const DELETE_ARM_MS = 600;
 
@@ -39,19 +40,6 @@ export function useArmed(on: boolean, ms: number = DELETE_ARM_MS): boolean {
     return () => window.clearTimeout(id);
   }, [on, ms]);
   return armed;
-}
-
-/**
- * 等確認框那筆同網址歷史紀錄退掉（core/overlay-back：彈窗卸載後下一刻 history.back）。
- * 先退掉再換頁，換頁的「取代」才會蓋掉賽事詳情那筆，返回鍵不會回到已刪除的賽事。最多等 maxMs。
- */
-export async function waitOverlayReleased(maxMs = 500): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < maxMs) {
-    const state: unknown = history.state;
-    if (!(state && typeof state === 'object' && '__overlay' in state)) return;
-    await new Promise((resolve) => setTimeout(resolve, 16));
-  }
 }
 
 /** 報隊數（pending＋approved）。組別的 entryCount 由伺服器維護，不受報隊清單上限影響。 */
@@ -93,7 +81,8 @@ export function DeleteCompetition(props: DeleteCompetitionProps): JSX.Element {
           onClose={() => setOpen(false)}
           onDeleted={async () => {
             setOpen(false);
-            await waitOverlayReleased();
+            // 先等確認框那筆同網址歷史紀錄退掉，頁面的「取代」才會蓋到賽事詳情那筆，返回不會回到已刪除的賽事。
+            await whenOverlaysReleased();
             props.onDeleted();
           }}
         />
@@ -127,6 +116,8 @@ function DeleteDialog({
   const armed = previewOpen?.armed ?? timed;
   const lock = useRef(false);
   const alive = useRef(true);
+  // 最後一次勾選的時間。useArmed 在「勾掉再勾回」時會晚一個畫面才變回 false，送出前再用時間戳擋一次。
+  const ackAt = useRef(previewOpen?.ack ? 0 : Number.POSITIVE_INFINITY);
 
   useEffect(() => {
     alive.current = true;
@@ -153,6 +144,7 @@ function DeleteDialog({
 
   async function confirm(): Promise<void> {
     if (lock.current || !ack || !armed) return;
+    if (Date.now() - ackAt.current < DELETE_ARM_MS) return;
     lock.current = true;
     setBusy(true);
     setError(null);
@@ -215,8 +207,19 @@ function DeleteDialog({
           <p class="cps-note cps-nowrap">{ct('deleteTeams', { n: count == null ? '…' : count })}</p>
         </div>
         <p class="cps-note cps-warn cps-nowrap">{ct('deleteWarn')}</p>
-        <Checkbox label={ct('deleteAck')} checked={ack} disabled={busy} onCheckedChange={setAck} />
-        {error ? <CpError reason={error.reason} params={error.params} /> : null}
+        <Checkbox
+          label={ct('deleteAck')}
+          checked={ack}
+          disabled={busy}
+          onCheckedChange={(next) => {
+            if (next) ackAt.current = Date.now();
+            setAck(next);
+          }}
+        />
+        {/* 文案在分號處帶換行（360 寬放不下一行時不拆字）；pre-line 只用在這裡，共用的 CpError 不動。 */}
+        {error ? (
+          <p class="cps-note cps-warn" role="alert" style="white-space:pre-line">{reasonText(ct, error.reason, error.params)}</p>
+        ) : null}
       </div>
     </Modal>
   );

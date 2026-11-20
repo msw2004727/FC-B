@@ -11,7 +11,9 @@ const OUT = resolve(process.argv[2] || 'cp-delete-shots');
 const BASE = process.argv[3] || 'http://localhost:5199';
 const SIZES = [[360, 640], [1280, 800]];
 const THEMES = ['light', 'dark'];
-const SCREENS = ['detail-host', 'dialog-unchecked', 'dialog-arming', 'dialog-ready', 'dialog-error-started', 'dialog-error-hidden', 'detail-stuck'];
+const ONLY = process.argv[4] ? process.argv[4].split(',') : null;
+const ALL = ['detail-host', 'dialog-unchecked', 'dialog-arming', 'dialog-ready', 'dialog-error-started', 'dialog-error-hidden', 'detail-stuck', 'detail-stuck-late'];
+const SCREENS = ONLY ?? ALL;
 // 介面文字（賽事名是使用者內容，可以換行，不列）
 const SELECTORS = 'button, .ui-checkbox label, .cpa-hidden, dialog .cps-note, dialog h2';
 
