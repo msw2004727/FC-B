@@ -31,7 +31,9 @@ const repoBox = vi.hoisted(() => ({
   listByHostTeam: vi.fn(async (_teamId: string, _publicOnly: boolean) => []),
 }));
 
-vi.mock('@/features/profile/data/viewer', () => ({
+// createMinimalViewer 保留真的：live.tsx 用它辨認「角色還沒讀到」的最小 viewer。
+vi.mock('@/features/profile/data/viewer', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/profile/data/viewer')>()),
   useViewer: () => viewerBox.current,
 }));
 
@@ -115,5 +117,85 @@ describe('站內賽事閘門才查代表俱樂部', () => {
     await waitFor(() => expect(loadBox.load).toHaveBeenCalledWith('uid_next'));
     expect(view.container.textContent ?? '').not.toContain('舊人賽事');
     repoBox.listMine.mockImplementation(async () => []);
+  });
+});
+
+// 顧問 11-20 方案 2：賽事頁只在伺服器明確判定看不到時清「上次有過」線索（reason='denied'），
+// 讀取失敗不帶 reason；清單讀好才 onReady，賽事頁把站內骨架留到這時。
+describe('閘門結果帶原因、清單讀好才 onReady', () => {
+  function drawWith(onGate: (open: boolean, reason?: string) => void, onReady: () => void) {
+    return render(
+      <LocationProvider>
+        <InAppSection onGate={onGate} onReady={onReady} />
+      </LocationProvider>,
+    );
+  }
+
+  it('未公開又不是測試員：onGate(false, denied)，不 onReady', async () => {
+    const onGate = vi.fn();
+    const onReady = vi.fn();
+    drawWith(onGate, onReady);
+    await waitFor(() => expect(onGate).toHaveBeenCalledWith(false, 'denied'));
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
+  it('已公開：先 onGate(true)，清單讀好才 onReady 一次', async () => {
+    gateBox.isPublic = true;
+    let release!: () => void;
+    repoBox.listPublic.mockImplementationOnce(() => new Promise((resolve) => {
+      release = () => resolve([]);
+    }));
+    const onGate = vi.fn();
+    const onReady = vi.fn();
+    drawWith(onGate, onReady);
+    await waitFor(() => expect(onGate).toHaveBeenCalledWith(true, undefined));
+    expect(onReady).not.toHaveBeenCalled();
+    release();
+    await waitFor(() => expect(onReady).toHaveBeenCalledTimes(1));
+  });
+
+  it('讀 launch 失敗：onGate(false) 不帶 denied', async () => {
+    repoBox.getLaunch.mockImplementationOnce(async () => {
+      throw new Error('offline');
+    });
+    const onGate = vi.fn();
+    drawWith(onGate, vi.fn());
+    await waitFor(() => expect(onGate).toHaveBeenCalled());
+    expect(onGate).toHaveBeenCalledWith(false, undefined);
+    expect(onGate).not.toHaveBeenCalledWith(false, 'denied');
+  });
+});
+
+// 11-20 Opus 審 P2-1：登入後先拿到最小 viewer（role 暫為 'user'），真正角色晚到。
+// 這段空檔不得判成看不到（否則賽事頁清掉線索又跳回外部），等角色讀到再判。
+describe('角色還沒讀到不判定閘門', () => {
+  it('最小 viewer 期間不送 onGate；角色讀到是管理員才判定通過', async () => {
+    const { createMinimalViewer } = await import('@/features/profile/data/viewer');
+    const minimalSources = createMinimalViewer('uid_user').permissionSources;
+    const saved = viewerBox.current;
+    viewerBox.current = { ...saved, role: 'user', permissionSources: minimalSources } as typeof saved;
+    const onGate = vi.fn();
+    try {
+      const view = render(
+        <LocationProvider>
+          <InAppSection onGate={onGate} />
+        </LocationProvider>,
+      );
+      await waitFor(() => expect(repoBox.getLaunch).toHaveBeenCalled());
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(onGate).not.toHaveBeenCalled();
+      expect(repoBox.getLaunchTester).not.toHaveBeenCalled();
+
+      viewerBox.current = { ...saved, role: 'admin', permissionSources: { rolePermissions: null, userGrants: [], customRoles: [] } } as typeof saved;
+      view.rerender(
+        <LocationProvider>
+          <InAppSection onGate={onGate} />
+        </LocationProvider>,
+      );
+      await waitFor(() => expect(onGate).toHaveBeenCalledWith(true, undefined));
+      expect(onGate).not.toHaveBeenCalledWith(false, 'denied');
+    } finally {
+      viewerBox.current = saved;
+    }
   });
 });

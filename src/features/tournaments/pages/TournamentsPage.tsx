@@ -14,6 +14,7 @@ import { useLocation } from 'preact-iso';
 import { shouldLeaveAnchorClick } from '@/core/open-external';
 import { lt, useT } from '@/i18n/i18n';
 import { getLastKnownAuthUid } from '@/data/auth';
+import { readAuthHint } from '@/data/auth-hint';
 import { useViewer } from '@/features/profile/data/viewer';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
@@ -46,6 +47,7 @@ import {
   tournamentsSourcePath,
   type CompetitionSource,
 } from '../source';
+import { readInAppHint, writeInAppHint } from '../inapp-hint';
 
 /** 讀取超過這麼久沒回來就走既有的錯誤＋重試；晚到的結果照常收尾。 */
 export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
@@ -76,7 +78,8 @@ interface InAppSlotProps {
   tab: TournamentCardTab;
   /** 閘門開著且目前選站內時才畫卡。外部來源時元件留著，避免重讀。 */
   active: boolean;
-  onGate: (open: boolean) => void;
+  onGate: (open: boolean, reason?: 'denied') => void;
+  onReady?: () => void;
 }
 
 /** 站內賽事整區。字面常數關閉時，打包器連 InAppSection 的 chunk 一起刪。 */
@@ -138,24 +141,31 @@ export default function TournamentsPage(): JSX.Element {
   const [gate, setGate] = useState<'pending' | 'open' | 'closed'>(COMPETITIONS_ENABLED ? 'pending' : 'closed');
   const gateRef = useRef(gate);
   gateRef.current = gate;
+  // 非法 ?src 只影響畫面預設，這裡不改網址。
+  const rawSrc = location.query?.src;
+  // 這台裝置上次閘門有過、上次是登入狀態、網址沒有指定外部：一進來就先畫站內（顧問 11-20 選方案 2，
+  // 取代 §3.373「預設一律停在外部」）。只在進頁當下判斷一次。沒有線索的人走原本的路徑，一個字都不變。
+  const [preferIn] = useState(() => COMPETITIONS_ENABLED && rawSrc !== 'ext' && readAuthHint() && readInAppHint());
   // 沒有 ?src 時的來源。閘門先定案沒過（逾時、未登入定案前）之後才通過，使用者已經在看外部清單，
   // 這時預設留在外部、只補切換，不把畫面整個換成站內。使用者點選後改回點選的那一側。
-  const [fallbackSource, setFallbackSource] = useState<CompetitionSource>(COMPETITIONS_DEFAULT_SOURCE);
+  const [fallbackSource, setFallbackSource] = useState<CompetitionSource>(preferIn ? 'in' : COMPETITIONS_DEFAULT_SOURCE);
   const inAppOpen = gate === 'open';
-  const onGate = useCallback((open: boolean) => {
+  const onGate = useCallback((open: boolean, reason?: 'denied') => {
     if (open && gateRef.current === 'closed') setFallbackSource('ext');
+    // 通過就記下；只有伺服器明確判定看不到才清。逾時與讀取失敗不清（只讓這一次退回外部）。
+    if (open) writeInAppHint(true);
+    else if (reason === 'denied') writeInAppHint(false);
     gateRef.current = open ? 'open' : 'closed';
     setGate(open ? 'open' : 'closed');
   }, []);
-  // 非法 ?src 只影響畫面預設，這裡不改網址。
-  const rawSrc = location.query?.src;
   // 閘門延後開始（顧問 §3.377）：外部清單讀取結束（成功、失敗、8 秒逾時都算，即 state 離開 loading）之後，
   // 才掛站內區塊、才 import 它的程式檔、才讀 cpConfig/launch；2 秒逾時從那時起算。網址帶 ?src=in 也一樣先等。
   // 有本機快取時也一樣等伺服器結果（顧問 §3.381：快取畫出時伺服器讀取與 8 秒逾時仍在進行，
   // 此時啟動閘門又會搶資源；取代「有快取就在下一個 idle 開始」）。
   // 在那之前開關開或關走同一條路徑。（11-20 staging 冷開實測：閘門同時載入 chunk＋第二條連線，
   // 把外部清單既有的 8 秒逾時推過界；取代「進頁立刻開始」。）
-  const [gateArmed, setGateArmed] = useState(false);
+  // 有線索（preferIn）時一進頁就開始，2 秒逾時也從進頁起算；逾時就這一次退回外部。
+  const [gateArmed, setGateArmed] = useState(preferIn);
   useEffect(() => {
     if (!COMPETITIONS_ENABLED || gateArmed) return;
     if (state !== 'loading') setGateArmed(true);
@@ -171,6 +181,20 @@ export default function TournamentsPage(): JSX.Element {
   }, [gateArmed]);
   const source: CompetitionSource = rawSrc === 'in' || rawSrc === 'ext' ? rawSrc : fallbackSource;
   const showInApp = inAppOpen && source === 'in';
+  // 有線索、停在站內、閘門判定中或已通過但站內清單還沒讀好：先畫切換列與站內的載入骨架，不畫外部清單，
+  // 避免先閃外部再切站內；骨架留到站內卡出現，中間不空白（11-20 實測骨架消失到卡片出現之間有一段空白）。
+  const [inAppReady, setInAppReady] = useState(false);
+  const onInAppReady = useCallback(() => setInAppReady(true), []);
+  const pendingIn = preferIn && source === 'in' && (gate === 'pending' || (gate === 'open' && !inAppReady));
+  // 閘門通過後站內清單 8 秒還沒好：骨架不無限留，這一次改看外部（切換列還在，可再點站內）；網址有 ?src（自己選過）時以網址為準，不受影響
+  // （11-20 Opus 審 P2-2）。線索不清。
+  useEffect(() => {
+    if (!preferIn || gate !== 'open' || inAppReady) return undefined;
+    const timer = setTimeout(() => {
+      setFallbackSource('ext');
+    }, TOURNAMENTS_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [preferIn, gate, inAppReady]);
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -363,7 +387,7 @@ export default function TournamentsPage(): JSX.Element {
           <h2 class="page-header-title">{t('tournaments.heading')}</h2>
         </div>
 
-        {inAppOpen ? (
+        {inAppOpen || pendingIn ? (
           <div class="cpl-src" role="tablist" aria-label={t('tournaments.sourceLabel')}>
             <button
               id="tournaments-source-in"
@@ -406,9 +430,19 @@ export default function TournamentsPage(): JSX.Element {
             </button>
           ))}
         </div>
-        <div class="tc-panel" role="tabpanel" id={inAppOpen ? 'tournaments-source-panel' : undefined}>
-          {gateArmed ? <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} /> : null}
-          {showInApp ? null : (
+        <div class="tc-panel" role="tabpanel" id={inAppOpen || pendingIn ? 'tournaments-source-panel' : undefined}>
+          {gateArmed ? <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} onReady={onInAppReady} /> : null}
+          {pendingIn ? (
+            <div aria-busy="true" data-cp-pending-in="1">
+              <div class="reg-loading" role="status" style="white-space:nowrap">{t('tournaments.loading')}</div>
+              <div class="reg-loading-skeleton" aria-hidden="true">
+                <div class="reg-loading-skeleton-row" />
+                <div class="reg-loading-skeleton-row" />
+                <div class="reg-loading-skeleton-row" />
+              </div>
+            </div>
+          ) : null}
+          {showInApp || pendingIn ? null : (
           <>
           {/* 「＋ 新增賽事」搬進外部清單框內，位置與樣式比照站內「建立賽事」（.cpl-create），切換分頁不跳動
               （站長 11-20：取代原本放在分類分頁列、與「建立賽事」同時出現兩顆新增鈕）。 */}

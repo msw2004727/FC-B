@@ -20,17 +20,19 @@ describe('賽事來源網址', () => {
     expect(competitionSourceFromQuery('in')).toBe('in');
   });
 
-  it('選到外部就拿掉 src，選站內才寫 ?src=in，其餘參數保留', () => {
-    expect(withCompetitionSource('', 'ext')).toBe('');
-    expect(withCompetitionSource('?src=in', 'ext')).toBe('');
-    expect(withCompetitionSource('?src=ext', 'ext')).toBe('');
-    expect(withCompetitionSource('?src=in&keep=1', 'ext')).toBe('?keep=1');
-    expect(withCompetitionSource('?src=ext&keep=1', 'ext')).toBe('?keep=1');
+  // 改寫：顧問 11-20 方案 2 條件 3 取代 §3.373「選到外部就拿掉 src」——點選後兩側都明確寫 ?src，
+  // 預設改成因人而異後，點了外部重新整理或返回才不會被帶回站內。
+  it('點選後兩側都明確寫 ?src，其餘參數保留', () => {
+    expect(withCompetitionSource('', 'ext')).toBe('?src=ext');
+    expect(withCompetitionSource('?src=in', 'ext')).toBe('?src=ext');
+    expect(withCompetitionSource('?src=ext', 'ext')).toBe('?src=ext');
+    expect(withCompetitionSource('?src=in&keep=1', 'ext')).toBe('?src=ext&keep=1');
+    expect(withCompetitionSource('?keep=1', 'ext')).toBe('?keep=1&src=ext');
     expect(withCompetitionSource('', 'in')).toBe('?src=in');
     expect(withCompetitionSource('?keep=1', 'in')).toBe('?keep=1&src=in');
     expect(withCompetitionSource('?src=ext&keep=1', 'in')).toBe('?src=in&keep=1');
     expect(withCompetitionSource('src=nope&keep=1', 'in')).toBe('?src=in&keep=1');
-    expect(tournamentsSourcePath('/tournaments', '?src=in', 'ext')).toBe('/tournaments');
+    expect(tournamentsSourcePath('/tournaments', '?src=in', 'ext')).toBe('/tournaments?src=ext');
     expect(tournamentsSourcePath('/tournaments', '?keep=1', 'in')).toBe('/tournaments?keep=1&src=in');
   });
 });

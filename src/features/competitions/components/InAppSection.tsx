@@ -74,9 +74,16 @@ export interface InAppSectionProps {
   tab?: InAppTab;
   /** false：資料照留，不畫卡（正在看外部賽事）。 */
   active?: boolean;
-  /** 閘門結果。正式頁用來決定要不要畫來源切換，也用來決定要不要查代表俱樂部。 */
-  onGate?: (open: boolean) => void;
+  /**
+   * 閘門結果。正式頁用來決定要不要畫來源切換，也用來決定要不要查代表俱樂部。
+   * reason='denied'：伺服器明確判定看不到（不含讀取失敗）。賽事頁只在這時清「上次有過」的本機線索。
+   */
+  onGate?: (open: boolean, reason?: CpGateReason) => void;
+  /** 閘門通過後清單也讀好、即將畫卡時通知一次。賽事頁用來把站內骨架留到卡片出現，中間不空白。 */
+  onReady?: () => void;
 }
+
+export type CpGateReason = 'denied';
 
 function SectionBody({
   actor,
@@ -85,13 +92,15 @@ function SectionBody({
   tab,
   active,
   onGate,
+  onReady,
 }: {
   actor: CpActor;
   repo: CompetitionsRepo;
   now: number;
   tab: InAppTab;
   active: boolean;
-  onGate?: (open: boolean) => void;
+  onGate?: (open: boolean, reason?: CpGateReason) => void;
+  onReady?: () => void;
 }): JSX.Element | null {
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
@@ -112,6 +121,8 @@ function SectionBody({
   const uidStale = appliedUid.current !== actor.uid;
   const onGateRef = useRef(onGate);
   onGateRef.current = onGate;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
   const repKey = representativeClubs(actor).map((club) => club.id).join('\n');
 
   useEffect(() => {
@@ -132,15 +143,17 @@ function SectionBody({
       const launch = await repo.getLaunch();
       const isPublic = launch ? launch.isPublic : null;
       const isAdmin = isCpAdmin(actor.role);
-      // 登入者尚未定案、又不是已公開：先不要判成「看不到」，也不要開始查俱樂部。
-      if (actor.authPending && !isAdmin && isPublic !== true) return;
+      // 登入者尚未定案、或已登入但角色還沒讀到（暫用最小 viewer 的 'user'），又不是已公開：
+      // 先不要判成「看不到」，也不要開始查俱樂部。角色讀到後 effect 依 role／rolePending 重跑
+      // （11-20 Opus 審 P2-1：管理員角色晚到時先被判 denied，清掉賽事頁線索又跳回外部）。
+      if ((actor.authPending || actor.rolePending) && !isAdmin && isPublic !== true) return;
       let isTester = false;
       if (isPublic === false && actor.uid && !isAdmin) {
         isTester = await repo.getLaunchTester(actor.uid);
       }
       if (!canSeeInAppSection({ isPublic, isTester, isAdmin })) {
         if (!alive) return;
-        onGateRef.current?.(false);
+        onGateRef.current?.(false, 'denied');
         setHostQuery(null);
         setPhase('hidden');
         return;
@@ -159,6 +172,7 @@ function SectionBody({
       setPublicDocs(listed.filter((doc) => doc.name));
       setHostQuery({ publicOnly: !isTester && !isAdmin });
       setPhase('ready');
+      onReadyRef.current?.();
     })().catch(() => {
       if (!alive) return;
       onGateRef.current?.(false);
@@ -170,7 +184,7 @@ function SectionBody({
     };
     // onGate 走 ref。repKey 不在這裡，避免俱樂部到了就重讀。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actor.authPending, actor.role, actor.uid, repo]);
+  }, [actor.authPending, actor.rolePending, actor.role, actor.uid, repo]);
 
   useEffect(() => {
     if (!hostQuery) return;
@@ -287,9 +301,9 @@ function LiveInApp(props: InAppSectionProps): JSX.Element {
     clubsUid.current = viewer.uid;
     setLoadClubs(false);
   }, [viewer.uid]);
-  const report = (open: boolean): void => {
+  const report = (open: boolean, reason?: CpGateReason): void => {
     setLoadClubs(open);
-    props.onGate?.(open);
+    props.onGate?.(open, reason);
   };
   return (
     <LiveBoundary loadClubs={!uidStale && loadClubs}>
@@ -301,6 +315,7 @@ function LiveInApp(props: InAppSectionProps): JSX.Element {
           tab={props.tab ?? 'all'}
           active={props.active !== false}
           onGate={report}
+          onReady={props.onReady}
         />
       )}
     </LiveBoundary>
@@ -319,6 +334,7 @@ export function InAppSection(props: InAppSectionProps): JSX.Element | null {
         tab={props.tab ?? 'all'}
         active={props.active !== false}
         onGate={props.onGate}
+        onReady={props.onReady}
       />
     );
   }
