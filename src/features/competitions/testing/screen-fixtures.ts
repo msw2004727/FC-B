@@ -797,6 +797,9 @@ function tieRankedStandings(): StandingDoc {
   });
 }
 
+/** 總收尾示範缺口：分出高下之後，引擎仍帶回同一群、沒有再拆開的條件列（比較表的跳過列 .cpm-cmp__r--skip）。 */
+const TIE_SKIP_STEP = { teamIds: ['en_b', 'en_c'], criterion: 'goalDiff', values: [{ teamId: 'en_b', value: 2 }, { teamId: 'en_c', value: 2 }], split: false };
+
 const TIE_RANKED_EXPLAINED = {
   dvId: 'dv_adult',
   groupId: 'A',
@@ -1410,6 +1413,21 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
           notice('nt_sys2', '賽程摘要已更新', 'system', taipeiMs(2026, 12, 8, 12, 0)),
         ],
       }, { summary: [], standings: [] });
+    case 'real-notices-more':
+      // 總收尾示範缺口：公告超過預設顯示的 3 則，最後出現「更多」文字鈕。
+      return detailEnv(memberActor, NOW, {
+        hostType: 'personal',
+        hostTeamId: null,
+        hostDisplay: '王示範',
+        feeNote: null,
+        contactNote: null,
+        notices: [
+          notice('nt_sys', '因雨延後一小時，請各隊留意集合時間', 'system', taipeiMs(2026, 12, 10, 9, 0)),
+          notice('nt_host', '領隊會議改在示範球場門口', 'host', taipeiMs(2026, 12, 9, 18, 0)),
+          notice('nt_sys2', '賽程摘要已更新', 'system', taipeiMs(2026, 12, 8, 12, 0)),
+          notice('nt_host2', '球員請攜帶身分證件備查', 'host', taipeiMs(2026, 12, 7, 20, 0)),
+        ],
+      }, { summary: [], standings: [] });
     case 'real-notices-host':
       // 主辦視角的詳情頁（公告輸入框在最上方）。比照 real-notices 的公告，換成主辦身分。
       return detailEnv(hostActor, NOW, {
@@ -1515,6 +1533,16 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
         { summary: tieGames(TIE_RANKED_GAMES), standings: [tieRankedStandings()] },
         HOST_STAFF,
         { ...actions, explainTie: tieExplainOf(['en_b', 'en_c'], TIE_RANKED_EXPLAINED) },
+      );
+    case 'real-tie-skip':
+      // 總收尾示範缺口：同 real-tie-ranked，分出高下的「對戰積分」後面多一列引擎仍帶回的「淨勝球」（跳過列）。
+      return detailEnv(
+        hostActor,
+        DONE_NOW,
+        {},
+        { summary: tieGames(TIE_RANKED_GAMES), standings: [tieRankedStandings()] },
+        HOST_STAFF,
+        { ...actions, explainTie: tieExplainOf(['en_b', 'en_c'], { ...TIE_RANKED_EXPLAINED, steps: [...TIE_RANKED_EXPLAINED.steps, TIE_SKIP_STEP] }) },
       );
     case 'real-tie-three':
       // 三隊同分（設計總監 04:20）：比較表三隊以上直排，最長的項目名「公平競賽（行為分）」。

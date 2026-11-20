@@ -145,6 +145,8 @@ const SCREENS: Record<string, Screen> = {
   'in-live-noline': { seed: { comps: BASIC, summary: {} } },
   'in-recruit-board': { seed: { comps: [recruit('rec_fr', '新春迎新友誼賽'), recruit('rec_cup', '春季盃', { category: 'cup' })] } },
   'in-marks': { seed: { comps: [warm('warm_lg', '冬季聯賽'), warm('pp_lg', '延期聯賽', { status: 'postponed' }), recruit('cc_fr', '取消友誼賽', { status: 'cancelled' })] } },
+  // 總收尾示範缺口：整場取消的賽事卡（狀態選「已結束」才看得到，紅字「已取消」膠囊）。
+  'in-cancelled': { seed: { comps: [...BASIC, done('done_a', '秋季聯賽'), recruit('cc_fr', '取消友誼賽', { status: 'cancelled' })] } },
   'in-noboard': { seed: { comps: [], summary: {}, mine: NAMED } },
   'in-long': { seed: { comps: [live('live_long', LONG_COMP_NAME, 'cup', LONG_VENUE), warm('warm_long', LONG_COMP_NAME, { venues: [{ name: LONG_VENUE }] })], summary: { live_long: todayShard() } } },
   'in-guest': { seed: { guest: true }, viewer: 'guest' },
@@ -160,6 +162,8 @@ const SCREENS: Record<string, Screen> = {
   'ext-empty': { seed: {}, cards: [] },
   'ext-error': { seed: {}, ext: 'error' },
   'ext-delete': { seed: {}, viewer: 'manager' },
+  // 總收尾示範缺口：編輯已有封面圖的外部卡（表單的封面預覽圖）。圖用本機開發伺服器的 /og.png（表單只收 http(s) 網址）。
+  'ext-edit-image': { seed: {}, viewer: 'manager', cards: [ext('tc_img', '2027 全國青年足球公開賽', 'cup', '2027-03-12', '2027-03-14', `${location.origin}/og.png`)] },
   // 沒有切換（閘門沒過；與功能開關關閉、閘門不回應的標記相同，見 TournamentsPage.no-switch-parity.test.tsx）
   'gate-off': { seed: OFF },
   'gate-off-admin': { seed: OFF, viewer: 'manager' },

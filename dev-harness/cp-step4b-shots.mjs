@@ -12,10 +12,6 @@ const ALL = [[390, 844], [360, 780]];
 const THEMES = ['light', 'dark'];
 // 每個畫面必須拍到的文字（至少一段截圖的視窗內要看得到）
 const ANCHORS = {
-  'staff-list-cohost': '李共同',
-  'invite-accept': '接受',
-  'invite-accept-invalid': '這個邀請已過期',
-  'scorer-my-matches': '進入記分',
   'link-rep': '使用次數',
   'link-join': '已有生日資料',
   'link-join-minor': '我已取得監護人同意',

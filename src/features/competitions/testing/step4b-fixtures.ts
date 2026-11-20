@@ -16,13 +16,10 @@ export const S4B_CLAIM_NUMBER = 9;
 export const S4B_LINK_PATH = '…/?competition=cp_demo#join=k7m2…';
 export const S4B_INVITE_PATH = '…/?competition=cp_demo#invite=s4b9…';
 
-// 'staff-list'／'staff-assign'／'staff-invite' 三個舊長相示範（demo-staff-*）總收尾已刪：
-// 正式頁示範 cp-k1112（staff-list 等、invite-form、invite-link）與 cp-step4-u3（u3-staff-*、u3-assign）取代。
+// 指派與邀請一組（staff-list／staff-list-cohost／staff-assign／staff-invite／invite-accept（＋invalid）／scorer-my-matches）
+// 總收尾已刪：正式頁示範 cp-k1112（staff-list 等、invite-form、invite-link、accept-*）與
+// cp-step4-u3（u3-staff-host／cohost、u3-assign、u3-my-matches）取代。
 export const STEP4B_SCREENS = [
-  'staff-list-cohost',
-  'invite-accept',
-  'invite-accept-invalid',
-  'scorer-my-matches',
   'link-rep',
   'link-join',
   'link-join-minor',
