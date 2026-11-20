@@ -6,14 +6,19 @@ import { useContext } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import type { CpActions } from './actions';
 import type { CpClub } from './access';
+import type { AudiencePorts } from './data/audience';
 import type { CompetitionsRepo } from './data/cp-repo';
 import type {
+  CompetitionCategory,
   CompetitionDoc,
   DivisionDoc,
   EntryDoc,
   EntryPrivateDoc,
   RosterPublicDoc,
   StaffDoc,
+  MatchDoc,
+  StandingDoc,
+  SummaryEntry,
 } from './data/types';
 import type { DivisionDraft, VenueDraft } from './payload';
 
@@ -62,11 +67,20 @@ export interface CpPreview {
   manageTab?: 'pending' | 'approved' | 'rejected';
 }
 
+export interface CpScheduleSnapshot {
+  summary: SummaryEntry[];
+  standings: StandingDoc[];
+}
+
 export interface WizardSeed {
   name: string;
   hostType: 'personal' | 'club';
   hostTeamId: string;
   feeNote: string;
+  /** 公開聯絡文字。省略當空白。 */
+  contactNote?: string;
+  /** 省略＝聯賽。 */
+  category?: CompetitionCategory;
   regOpen: string;
   regClose: string;
   firstMatch: string;
@@ -81,8 +95,14 @@ export interface CpInjectedEnv {
   actions: CpActions;
   /** 權限判斷用的現在。省略則用 Date.now()。 */
   now?: number;
-  route?: { cid?: string; enId?: string };
+  route?: { cid?: string; enId?: string; uid?: string; mtId?: string };
+  /** 觀眾監聽與射手榜。省略且沒有 bundle 時，正式頁才連 Firestore。 */
+  audience?: AudiencePorts;
   bundle?: CpBundle;
+  /** 注入時詳情不打網路，賽程與積分榜用這份。省略當空。 */
+  schedule?: CpScheduleSnapshot;
+  /** 主辦賽程管理。有注入就不打 listMatches。 */
+  matches?: readonly MatchDoc[];
   preview?: CpPreview;
   wizardSeed?: WizardSeed;
 }

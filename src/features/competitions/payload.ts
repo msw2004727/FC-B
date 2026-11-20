@@ -9,7 +9,7 @@ import type {
   CpReportInput,
   CpReviewEntryInput,
 } from './data/cp-callables';
-import type { DivisionInput, PaymentStatusWrite, ReportReason, RosterPositionCode, Venue } from './data/types';
+import type { CompetitionCategory, DivisionInput, PaymentStatusWrite, ReportReason, RosterPositionCode, Venue } from './data/types';
 
 export type PositionChoice = 'none' | RosterPositionCode;
 
@@ -37,6 +37,7 @@ export interface DivisionDraft {
 
 export interface WizardDraft {
   name: string;
+  category: CompetitionCategory;
   hostType: 'personal' | 'club';
   hostTeamId: string;
   hostDisplay: string;
@@ -47,6 +48,8 @@ export interface WizardDraft {
   lastMatchAt: number;
   venues: VenueDraft[];
   divisions: DivisionDraft[];
+  /** 公開聯絡文字。空白不送。 */
+  contactNote?: string;
 }
 
 function venueOf(draft: VenueDraft): Venue {
@@ -83,6 +86,7 @@ function divisionOf(draft: DivisionDraft): DivisionInput {
 
 /** 個人不送 hostTeamId／feeNote；俱樂部不送 hostDisplay。liveLinks 這期畫面沒有，送空陣列。 */
 export function buildCreateInput(draft: WizardDraft): CpHostCreateInput {
+  const contactNote = draft.contactNote?.trim() ?? '';
   const common = {
     name: draft.name.trim(),
     sport: 'football' as const,
@@ -94,6 +98,8 @@ export function buildCreateInput(draft: WizardDraft): CpHostCreateInput {
     venues: draft.venues.map(venueOf),
     liveLinks: [] as string[],
     divisions: draft.divisions.map(divisionOf),
+    category: draft.category,
+    ...(contactNote ? { contactNote } : {}),
   };
   if (draft.hostType === 'club') {
     const feeNote = draft.feeNote.trim();
@@ -102,7 +108,8 @@ export function buildCreateInput(draft: WizardDraft): CpHostCreateInput {
       : { ...common, hostType: 'club', hostTeamId: draft.hostTeamId };
   }
   // 個人主辦不送 hostDisplay。後端用主站顯示名，並自己處理長度與禁用字。
-  return { ...common, hostType: 'personal' };
+  // 報名費只限俱樂部主辦（顧問 §3.257）：個人主辦一律送 0
+  return { ...common, hostType: 'personal', divisions: common.divisions.map((d) => ({ ...d, feePerTeam: 0 })) };
 }
 
 function positionFields(choice: PositionChoice, positionText: string): {

@@ -2,6 +2,9 @@
   "title": "Giải đấu",
   "nav": "Giải đấu",
   "heading": "賽事",
+  "sourceLabel": "Nguồn giải đấu",
+  "sourceIn": "Giải trong trang",
+  "sourceOut": "Giải bên ngoài",
   "add": "＋ 新增賽事",
   "tab": {
     "all": "全部",

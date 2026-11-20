@@ -3,9 +3,10 @@ import type { ComponentChildren, ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import { AppConfirmHost, _resetAppConfirmForTest } from '@/ui/AppConfirm';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { FEATURE_OVERRIDES } from '@/feature-overrides';
+import { COMPETITIONS_ENABLED, FEATURE_OVERRIDES } from '@/feature-overrides';
 import { ALL_FEATURES } from '@/features.config';
 import { _resetForTest, getActiveRoutes, registerFeatures } from '@/core/feature-registry';
+import { competitionRoutes } from '../index';
 import coreZh from '@/i18n/messages/zh-TW.json';
 import { CpCallError } from '../data/cp-callables';
 import { CpEnvProvider, type CpActor, type CpInjectedEnv } from '../env';
@@ -96,6 +97,26 @@ function spyActions() {
     unlockRosters: vi.fn(actions.unlockRosters),
     setPaymentStatus: vi.fn(actions.setPaymentStatus),
     report: vi.fn(actions.report),
+    update: vi.fn(actions.update),
+    generateSchedule: vi.fn(actions.generateSchedule),
+    clearSchedule: vi.fn(actions.clearSchedule),
+    rescheduleMatch: vi.fn(actions.rescheduleMatch),
+    shiftMatchDay: vi.fn(actions.shiftMatchDay),
+    swapMatches: vi.fn(actions.swapMatches),
+    postNotice: vi.fn(actions.postNotice),
+    deleteNotice: vi.fn(actions.deleteNotice),
+    recordResult: vi.fn(actions.recordResult),
+    confirmMatchResult: vi.fn(actions.confirmMatchResult),
+    setWalkover: vi.fn(actions.setWalkover),
+    resetMatch: vi.fn(actions.resetMatch),
+    cancelMatch: vi.fn(actions.cancelMatch),
+    endCompetition: vi.fn(actions.endCompetition),
+    restoreCompetition: vi.fn(actions.restoreCompetition),
+    resolveTie: vi.fn(actions.resolveTie),
+    clearTieDecision: vi.fn(actions.clearTieDecision),
+    explainTie: vi.fn(actions.explainTie),
+    assignStaff: vi.fn(actions.assignStaff),
+    removeStaff: vi.fn(actions.removeStaff),
   };
 }
 
@@ -148,9 +169,15 @@ afterEach(() => {
 });
 
 describe('賽事第 2 步畫面', () => {
-  it('關閉開關時沒有啟用中的 /competitions 路由', () => {
+  it('建置期開關決定 /competitions 路由是否啟用', () => {
+    FEATURE_OVERRIDES.competitions = COMPETITIONS_ENABLED;
     registerFeatures(ALL_FEATURES);
-    expect(getActiveRoutes().some((route) => route.path.startsWith('/competitions'))).toBe(false);
+    const paths = getActiveRoutes().map((route) => route.path).filter((path) => path.startsWith('/competitions'));
+    if (COMPETITIONS_ENABLED) {
+      expect(paths).toEqual(competitionRoutes().map((route) => route.path));
+    } else {
+      expect(paths).toEqual([]);
+    }
   });
 
   it('每個預覽畫面都畫得出標題，而且不出現英文 reason 代碼', () => {
@@ -198,6 +225,40 @@ describe('賽事第 2 步畫面', () => {
     mount(CompetitionDetailPage, { ...screenEnv('detail-member') });
     expect(screen.queryByRole('button', { name: '以俱樂部報隊' })).toBeNull();
     expect(screen.getByRole('menuitem', { name: '檢舉' })).toBeTruthy();
+  });
+
+  it('報名費只限俱樂部主辦（顧問 §3.257）：個人主辦不顯示費用欄、線上支付鈕、繳費標籤與開關', () => {
+    const wizard = mount(NewCompetitionPage, screenEnv('wizard-2'));
+    expect(wizard.container.textContent ?? '').not.toContain('每隊報名費');
+    cleanup();
+    mount(CompetitionDetailPage, { ...screenEnv('detail-personal') });
+    expect(screen.queryAllByRole('button', { name: '線上支付' })).toHaveLength(0);
+    cleanup();
+    mount(CompetitionManagePage, { ...screenEnv('host-approved-personal') });
+    expect(screen.queryAllByRole('button', { name: '線上支付' })).toHaveLength(0);
+    expect(screen.queryAllByRole('switch', { name: '標示已繳費' })).toHaveLength(0);
+    expect(document.body.textContent ?? '').not.toMatch(/未繳費|已繳費/);
+  });
+
+  it('聯絡文字（顧問 §3.292）：個人主辦建賽提示「沒填的話觀眾無法聯絡你」，俱樂部主辦不提示；都註明會公開顯示', () => {
+    const personal = mount(NewCompetitionPage, screenEnv('wizard-1'));
+    expect(personal.container.textContent ?? '').toContain('會公開顯示');
+    expect(personal.container.textContent ?? '').toContain('沒填的話觀眾無法聯絡你');
+    cleanup();
+    const club = mount(NewCompetitionPage, screenEnv('wizard-1-club'));
+    expect(club.container.textContent ?? '').toContain('會公開顯示');
+    expect(club.container.textContent ?? '').not.toContain('沒填的話觀眾無法聯絡你');
+  });
+
+  it('整場取消、沒有冠軍時不出現「冠軍」卡；已結束有冠軍時照常顯示', async () => {
+    const cancelled = mount(CompetitionDetailPage, screenEnv('real-cancelled-comp'));
+    expect(await screen.findByText(/報名隊伍不足/)).toBeTruthy();
+    expect(cancelled.container.textContent ?? '').not.toContain('冠軍');
+    // 上方原因卡已標「已取消」，下面不再多一張只剩標籤的空卡（顧問 §3.294 P3）
+    expect(screen.getAllByText('已取消')).toHaveLength(1);
+    cleanup();
+    mount(CompetitionDetailPage, screenEnv('real-done'));
+    expect(await screen.findByText('冠軍')).toBeTruthy();
   });
 
   it('線上支付鈕沒有行為；標示已繳費才呼叫 setPaymentStatus', async () => {
@@ -380,6 +441,7 @@ describe('賽事第 2 步畫面', () => {
       </CpEnvProvider>,
     );
     expect(first.container.textContent ?? '').not.toContain('站內賽事');
+    expect(first.container.textContent ?? '').not.toContain('只看我的');
     expect(first.container.textContent ?? '').not.toContain('尚未對外');
     first.unmount();
 
@@ -389,13 +451,14 @@ describe('賽事第 2 步畫面', () => {
         <InAppSection />
       </CpEnvProvider>,
     );
-    expect(await screen.findByText('站內賽事')).toBeTruthy();
+    expect(await screen.findByText('內部示範盃')).toBeTruthy();
+    expect(screen.getByText('只看我的')).toBeTruthy();
     expect(await screen.findByRole('button', { name: '建立賽事' })).toBeTruthy();
 
     cleanup();
     const publicRepo = createFakeCpRepo({
       launch: { isPublic: true, bannedWords: [] },
-      mine: { uid_rep: [{ id: 'mine_cup', cid: 'cup', roles: ['rep'], host: false }] },
+      mine: { uid_rep: [{ id: 'mine_cup', cid: 'cup', roles: ['rep'], host: false, category: 'league' }] },
       competitions: [
         competition({ id: 'cup', name: '示範盃' }),
         competition({ id: 'open_cup', name: '公開示範盃', hostType: 'personal', hostTeamId: null, hostDisplay: '王示範', feeNote: null }),
@@ -406,13 +469,16 @@ describe('賽事第 2 步畫面', () => {
         <InAppSection />
       </CpEnvProvider>,
     );
-    expect(await screen.findByText('我的賽事')).toBeTruthy();
-    expect(await screen.findByText('公開清單')).toBeTruthy();
+    expect(await screen.findByText('示範盃')).toBeTruthy();
+    expect(screen.getByText('公開示範盃')).toBeTruthy();
     const mineLink = listed.container.querySelector('a[href="/competitions/cup"]');
     const publicLink = listed.container.querySelector('a[href="/competitions/open_cup"]');
     expect(mineLink?.textContent).toContain('示範盃');
     expect(publicLink?.textContent).toContain('公開示範盃');
     expect(listed.container.querySelectorAll('a[href="/competitions/cup"]').length).toBe(1);
+    fireEvent.click(screen.getByRole('checkbox', { name: '只看我的' }));
+    expect(listed.container.textContent ?? '').toContain('示範盃');
+    expect(listed.container.textContent ?? '').not.toContain('公開示範盃');
   });
 
   it('只有一個俱樂部、從空白開始會帶入那個俱樂部；沒有俱樂部不顯示選項；晚到也會補', async () => {
@@ -513,14 +579,17 @@ describe('賽事第 2 步畫面', () => {
         <InAppSection />
       </CpEnvProvider>,
     );
-    expect((await screen.findByText('我的賽事')).parentElement?.textContent ?? '').toContain('草稿盃');
-    expect(screen.getByText('公開清單').parentElement?.textContent ?? '').not.toContain('草稿盃');
-    expect(screen.getByText('公開清單').parentElement?.textContent ?? '').toContain('公開示範盃');
+    expect(await screen.findByText('草稿盃')).toBeTruthy();
+    expect(screen.getByText('公開示範盃')).toBeTruthy();
+    expect(drafted.container.querySelectorAll('a[href="/competitions/draft_cup"]').length).toBe(1);
+    fireEvent.click(screen.getByRole('checkbox', { name: '只看我的' }));
+    expect(drafted.container.textContent ?? '').toContain('草稿盃');
+    expect(drafted.container.textContent ?? '').not.toContain('公開示範盃');
     drafted.unmount();
 
     const namedBase = createFakeCpRepo({
       launch: { isPublic: true, bannedWords: [] },
-      mine: { uid_rep: [{ id: 'm1', cid: 'named', roles: ['host'], host: true, name: '已有名稱盃' }] },
+      mine: { uid_rep: [{ id: 'm1', cid: 'named', roles: ['host'], host: true, name: '已有名稱盃', category: 'league' }] },
     });
     let reads = 0;
     const namedRepo = {
@@ -543,8 +612,8 @@ describe('賽事第 2 步畫面', () => {
       launch: { isPublic: true, bannedWords: [] },
       mine: {
         uid_rep: [
-          { id: 'a', cid: 'good', roles: ['player'], host: false },
-          { id: 'b', cid: 'bad', roles: ['player'], host: false },
+          { id: 'a', cid: 'good', roles: ['player'], host: false, category: 'league' },
+          { id: 'b', cid: 'bad', roles: ['player'], host: false, category: 'league' },
         ],
       },
       competitions: [competition({ id: 'good', name: '存活盃' })],
@@ -562,7 +631,7 @@ describe('賽事第 2 步畫面', () => {
       </CpEnvProvider>,
     );
     expect(await screen.findByText('存活盃')).toBeTruthy();
-    expect(mixed.container.textContent ?? '').toContain('站內賽事');
+    expect(mixed.container.textContent ?? '').toContain('只看我的');
     expect(mixed.container.textContent ?? '').not.toContain('bad');
   });
 
@@ -610,7 +679,7 @@ describe('賽事第 2 步畫面', () => {
         <InAppSection />
       </CpEnvProvider>,
     );
-    expect(await screen.findByText('站內賽事')).toBeTruthy();
+    expect(await screen.findByText('公開示範盃')).toBeTruthy();
     await waitFor(() => expect(counts.launch).toBe(1));
     expect(counts.mine).toBe(1);
     expect(counts.public).toBe(1);
@@ -625,7 +694,9 @@ describe('賽事第 2 步畫面', () => {
         </CpEnvProvider>
       </LocationProvider>,
     );
-    expect((await screen.findByText('我的賽事')).parentElement?.textContent ?? '').toContain('草稿盃');
+    expect(await screen.findByText('草稿盃')).toBeTruthy();
+    expect(view.container.querySelectorAll('a[href="/competitions/draft_cup"]').length).toBe(1);
+    expect(view.container.textContent ?? '').toContain('公開示範盃');
     expect(counts.launch).toBe(1);
     expect(counts.mine).toBe(1);
     expect(counts.public).toBe(1);
@@ -669,6 +740,7 @@ describe('賽事第 2 步畫面', () => {
     await waitFor(() => expect(saw).toBe(true));
     await expect(screen.findByText('內部盃', {}, { timeout: 400 })).rejects.toThrow();
     expect(outsider.container.textContent ?? '').not.toContain('站內賽事');
+    expect(outsider.container.textContent ?? '').not.toContain('只看我的');
 
     cleanup();
     draw(
@@ -686,7 +758,7 @@ describe('賽事第 2 步畫面', () => {
       entries: {
         cup: [{
           id: 'en_pa', name: '示範隊A', status: 'pending', dvId: 'dv_adult', teamId: 'club_1',
-          rosterCount: 0, rosterConfirmed: false,
+          rosterCount: 0, rosterConfirmed: false, teamLogo: null,
         }],
       },
       entryPrivate: {
@@ -903,8 +975,8 @@ describe('賽事第 2 步畫面', () => {
     const repo = createFakeCpRepo({
       launch: { isPublic: true, bannedWords: [] },
       mine: {
-        uid_a: [{ id: 'mine_a', cid: 'cup_a', roles: ['host'], host: true, name: '甲的賽事' }],
-        uid_b: [{ id: 'mine_b', cid: 'cup_b', roles: ['host'], host: true, name: '乙的賽事' }],
+        uid_a: [{ id: 'mine_a', cid: 'cup_a', roles: ['host'], host: true, name: '甲的賽事', category: 'league' }],
+        uid_b: [{ id: 'mine_b', cid: 'cup_b', roles: ['host'], host: true, name: '乙的賽事', category: 'league' }],
       },
       competitions: [
         competition({ id: 'cup_a', name: '甲的賽事', visibility: 'unlisted' }),

@@ -37,6 +37,61 @@ describe('cpReasonKey（契約 §5 全覆蓋）', () => {
     expect(parsed.reason.BIRTHDAY_REQUIRED).toBe('請先補上生日');
   });
 
+  it('指派錯誤沿用既有句子或新規格句子', () => {
+    const parsed = JSON.parse(readLocale('zh-TW')) as { reason: Record<string, string> };
+    expect(parsed.reason.STAFF_NOT_FOUND).toBe('找不到這位成員');
+    expect(parsed.reason.STAFF_PROTECTED).toBe('主辦不能被移除');
+    expect(parsed.reason.FORBIDDEN).toBe('你沒有權限調整這位成員');
+    expect(parsed.reason.COMPETITION_CLOSED).toBe(parsed.reason.STATUS_NOT_EDITABLE);
+    expect(parsed.reason.COMPETITION_ENDED).toBe('賽事已結束，不能再改比分');
+    expect(parsed.reason.COMPETITION_HIDDEN).toBe('這場賽事目前不公開');
+    for (const code of ['STAFF_NOT_FOUND', 'STAFF_PROTECTED', 'FORBIDDEN', 'COMPETITION_CLOSED']) {
+      expect(CP_REASON_CODES, code).toContain(code);
+      expect(cpReasonKey(code)).toBe(`competitions.reason.${code}`);
+    }
+  });
+
+  it('賽程彈性與公告的錯誤代碼都有對照', () => {
+    const expected: Record<string, string> = {
+      SCHEDULE_CONFLICT: '這個時間與其他場次撞期',
+      SCHEDULE_DAY_TOO_LARGE: '這一天的場次太多，無法檢查撞期',
+      NOTHING_TO_SHIFT: '這一天沒有可以順延的場次',
+      NOTICE_LIMIT: '公告已達 {max} 則上限',
+      NOTICE_NOT_FOUND: '找不到這則公告',
+      FIELD_TYPE: '欄位型別不正確',
+    };
+    const parsed = JSON.parse(readLocale('zh-TW')) as { reason: Record<string, string> };
+    for (const [code, text] of Object.entries(expected)) {
+      expect(CP_REASON_CODES, code).toContain(code);
+      expect(cpReasonKey(code)).toBe(`competitions.reason.${code}`);
+      expect(parsed.reason[code], code).toBe(text);
+    }
+  });
+
+  it('match-host 每個錯誤代碼都有對照', () => {
+    const expected: Record<string, string> = {
+      RESULTS_EXIST: '已有比賽結果，不能重排賽程',
+      ROSTERS_NOT_LOCKED: '名單還沒鎖定，請先鎖定名單',
+      MATCH_STATE: '這場比賽目前的狀態不能這樣操作',
+      MATCH_NOT_STARTED: '比賽還沒開始',
+      MATCH_NOT_SCHEDULED: '這場比賽還沒排定',
+      TEAMS_RANGE: '隊伍數不符合賽制（每組 2～16 隊）',
+      TOO_MANY_MATCHES: '場次太多，請調整賽制',
+      SCHEDULE_OUT_OF_RANGE: '時間要在賽事期間內',
+      NOTHING_TO_RESET: '沒有可以重置的比分',
+      SCHEDULE_REQUIRED: '請先排賽程',
+      STATUS_NOT_EDITABLE: '賽事目前的狀態不能修改',
+      MATCH_NOT_FOUND: '找不到這場比賽',
+      DIVISION_NOT_FOUND: '找不到這個組別',
+    };
+    const parsed = JSON.parse(readLocale('zh-TW')) as { reason: Record<string, string> };
+    for (const [code, text] of Object.entries(expected)) {
+      expect(CP_REASON_CODES, code).toContain(code);
+      expect(cpReasonKey(code)).toBe(`competitions.reason.${code}`);
+      expect(parsed.reason[code], code).toBe(text);
+    }
+  });
+
   it('站長已同意的文案逐字存在，禁用字錯誤不寫死任何字', () => {
     const text = readLocale('zh-TW');
     const exact = [

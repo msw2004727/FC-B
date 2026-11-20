@@ -1,0 +1,52 @@
+/* 賽事分類色與隊徽底色。
+ * 只由賽事頁 TournamentsPage 與站內賽事 competitions.css 匯入。
+ * 不得從 main.tsx 或 tokens.css 匯入（首頁入口包沒有餘裕）。
+ * 色值照預覽 src/dev/cp-step3-list-harness.css 與 src/dev/cp-step3-harness.css 逐值抄。
+ * 深色預覽沒有改封面漸層，這裡把同一組 -from／-to 再寫一次，深色卡片才不會掉回透明。
+ */
+:root {
+  --cat-league: #2563eb;
+  --cat-league-bg: rgba(37, 99, 235, .12);
+  --cat-league-from: #1e3a8a;
+  --cat-league-to: #3b82f6;
+  --cat-cup: #b45309;
+  --cat-cup-bg: rgba(245, 158, 11, .16);
+  --cat-cup-from: #92400e;
+  --cat-cup-to: #f59e0b;
+  --cat-friendly: #7c3aed;
+  --cat-friendly-bg: rgba(124, 58, 237, .12);
+  --cat-friendly-from: #4c1d95;
+  --cat-friendly-to: #8b5cf6;
+  --crest-0: #0f766e;
+  --crest-1: #0e7490;
+  --crest-2: #c2410c;
+  --crest-3: #be123c;
+  --crest-4: #475569;
+  --crest-5: #4d7c0f;
+  --crest-6: #57534e;
+  --crest-7: #047857;
+  --crest-fg: #fff;
+}
+[data-theme="dark"] {
+  --cat-league: #93c5fd;
+  --cat-league-bg: rgba(96, 165, 250, .18);
+  --cat-cup: #fcd34d;
+  --cat-cup-bg: rgba(251, 191, 36, .18);
+  --cat-friendly: #c4b5fd;
+  --cat-friendly-bg: rgba(167, 139, 250, .2);
+  --cat-league-from: #1e3a8a;
+  --cat-league-to: #3b82f6;
+  --cat-cup-from: #92400e;
+  --cat-cup-to: #f59e0b;
+  --cat-friendly-from: #4c1d95;
+  --cat-friendly-to: #8b5cf6;
+  --crest-0: #2dd4bf;
+  --crest-1: #22d3ee;
+  --crest-2: #fb923c;
+  --crest-3: #fb7185;
+  --crest-4: #94a3b8;
+  --crest-5: #a3e635;
+  --crest-6: #a8a29e;
+  --crest-7: #34d399;
+  --crest-fg: #0b0f16;
+}

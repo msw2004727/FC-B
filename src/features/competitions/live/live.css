@@ -1,0 +1,1047 @@
+/* 賽事第 4 步預覽。只用既有 token；亮牌與大按鈕的黃／紅是固定亮色，深色模式也不改暗。 */
+
+.s4-root,
+.s4-page {
+  box-sizing: border-box;
+  background: var(--color-bg-root);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+.s4-root *,
+.s4-page *,
+.s4-flash *,
+.s4-sheet *,
+.s4-dialog * { box-sizing: border-box; }
+
+.s4-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 8px 8px 12px;
+}
+.s4-root {
+  /* 一屏記分。提示列只壓縮 .s4-feed，進球、牌、底欄不縮小。 */
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 8px 0;
+  overflow: hidden;
+}
+.s4-root,
+.s4-page {
+  --crest-0: #0f766e;
+  --crest-1: #0e7490;
+  --crest-2: #c2410c;
+  --crest-3: #be123c;
+  --crest-4: #475569;
+  --crest-5: #4d7c0f;
+  --crest-6: #57534e;
+  --crest-7: #047857;
+  --crest-fg: #fff;
+}
+[data-theme="dark"] .s4-root,
+[data-theme="dark"] .s4-page {
+  --crest-0: #2dd4bf;
+  --crest-1: #22d3ee;
+  --crest-2: #fb923c;
+  --crest-3: #fb7185;
+  --crest-4: #94a3b8;
+  --crest-5: #a3e635;
+  --crest-6: #a8a29e;
+  --crest-7: #34d399;
+  --crest-fg: #0b0f16;
+}
+
+.s4-top {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 96px;
+  min-width: 0;
+}
+.s4-board {
+  height: 28px;
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.s4-team {
+  min-width: 0;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.s4-team--away { text-align: end; }
+.s4-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.s4-board .s4-team {
+  font-size: 14px;
+  line-height: 20px;
+}
+.s4-board .s4-side { width: 100%; }
+.s4-side--away { flex-direction: row-reverse; }
+.s4-side--col { justify-content: center; }
+.s4-side .s4-team,
+.s4-side .s4-col__name { flex: 1 1 auto; min-width: 0; }
+.s4-side--col .s4-col__name { flex: 0 1 auto; }
+.s4-root .cp3-crest,
+.s4-page .cp3-crest {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  overflow: hidden;
+  font-weight: 700;
+  line-height: 1;
+}
+.s4-root .cp3-crest--txt,
+.s4-page .cp3-crest--txt {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  color: var(--crest-fg);
+}
+.s4-root .cp3-crest--c0, .s4-page .cp3-crest--c0 { background: var(--crest-0); }
+.s4-root .cp3-crest--c1, .s4-page .cp3-crest--c1 { background: var(--crest-1); }
+.s4-root .cp3-crest--c2, .s4-page .cp3-crest--c2 { background: var(--crest-2); }
+.s4-root .cp3-crest--c3, .s4-page .cp3-crest--c3 { background: var(--crest-3); }
+.s4-root .cp3-crest--c4, .s4-page .cp3-crest--c4 { background: var(--crest-4); }
+.s4-root .cp3-crest--c5, .s4-page .cp3-crest--c5 { background: var(--crest-5); }
+.s4-root .cp3-crest--c6, .s4-page .cp3-crest--c6 { background: var(--crest-6); }
+.s4-root .cp3-crest--c7, .s4-page .cp3-crest--c7 { background: var(--crest-7); }
+.s4-scoreline {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.s4-score {
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.s4-pk {
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.s4-clockrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
+  height: 32px;
+  min-height: 32px;
+  min-width: 0;
+}
+/* 時間固定在中欄。節次貼時間右側，連線或「比分已更正」靠左。未開賽只有節次時整列置中。 */
+.s4-clockrow > .s4-clock {
+  grid-column: 2;
+  grid-row: 1;
+}
+.s4-clockrow > .s4-stage {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: start;
+}
+.s4-clockrow > .ui-badge,
+.s4-clockrow > .s4-live {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.s4-clockrow > .s4-stage:only-child {
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+.s4-clock {
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.s4-stage {
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.s4-hold {
+  margin: 0;
+  height: 16px;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+/* 壓過 :root:lang .ui-text 與 badge 的兩行裁切，短標籤維持一行。 */
+.s4-root .ui-badge,
+.s4-page .ui-badge {
+  max-width: none;
+  white-space: nowrap;
+}
+.s4-root .ui-badge__label.ui-text,
+.s4-page .ui-badge__label.ui-text {
+  display: inline;
+  overflow: visible;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  -webkit-line-clamp: unset;
+}
+
+.s4-alerts {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.s4-banner,
+.s4-wake {
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  /* 12px：長句在 360 寬要整句落在一行，不能省略。 */
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.s4-banner--saved {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
+}
+/* 停更橫幅：沿用 s4-banner 的 12px，次要色、一般字重。不加字級、不寫死色碼。 */
+.s4-banner.s4-banner--quiet {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-regular);
+}
+/* 儲存不可用：固定亮紅＋黑字，深色模式也維持對比，不跟主題走暗。 */
+.s4-banner--danger {
+  background: #ff2d2d;
+  color: #141414;
+}
+.s4-wake {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+}
+
+.s4-goals,
+.s4-cards,
+.s4-ctrl,
+.s4-sent,
+.s4-dock {
+  flex: 0 0 auto;
+}
+.s4-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.s4-goals {
+  height: 104px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+.s4-cards {
+  height: 56px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+.s4-cardpair,
+.s4-pkpair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+.s4-cardpair { height: 56px; }
+.s4-pkpair { height: 104px; }
+.s4-feed {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.s4-col__name {
+  min-width: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.s4-hit {
+  appearance: none;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.s4-hit:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.s4-hit:active { transform: scale(0.98); filter: brightness(0.92); }
+.s4-hit:disabled,
+.s4-kickoff:disabled {
+  cursor: not-allowed;
+  opacity: 1;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  box-shadow: inset 0 0 0 2px var(--color-border), inset 0 -6px 0 0 var(--s4-hue, var(--color-border));
+}
+.s4-hit--goal,
+.s4-hit--pk {
+  height: 104px;
+  min-height: 104px;
+  max-height: 104px;
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 22px;
+  line-height: 1;
+}
+/* 兩隊進球鈕用固定色，避免深色 token 把白字對比打穿。停用時尺寸不變。 */
+.s4-hit--home { background: #0b6b4e; color: #fff; }
+.s4-hit--away { background: #1d4ed8; color: #fff; }
+.s4-hit--card {
+  width: 100%;
+  height: 56px;
+  min-height: 56px;
+  max-height: 56px;
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 16px;
+  line-height: 1;
+}
+.s4-hit--yellow { background: #ffe14a; color: #141414; }
+.s4-hit--red { background: #ff2d2d; color: #141414; }
+.s4-hit--miss {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  box-shadow: inset 0 0 0 2px var(--color-border);
+}
+/* 停用色條沿用按鈕本體的寫死色。進球鈕沒有色票變數。 */
+.s4-hit--home:disabled,
+.s4-kickoff:disabled { --s4-hue: #0b6b4e; }
+.s4-hit--away:disabled { --s4-hue: #1d4ed8; }
+.s4-hit--yellow:disabled { --s4-hue: #ffe14a; }
+.s4-hit--red:disabled { --s4-hue: #ff2d2d; }
+.s4-hit--miss:disabled { --s4-hue: var(--color-border); }
+.s4-kickoff {
+  appearance: none;
+  width: 100%;
+  height: 104px;
+  min-height: 104px;
+  max-height: 104px;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: #0b6b4e;
+  color: #fff;
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.s4-kickoff:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.s4-kickoff:active { transform: scale(0.98); filter: brightness(0.92); }
+
+.s4-events {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.s4-ev {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 48px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--color-border);
+}
+.s4-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.s4-mark {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+.s4-mark--goal { border-radius: 50%; background: #0b6b4e; }
+.s4-mark--miss {
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--color-text-muted);
+}
+.s4-mark--yellow { background: #ffe14a; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4); }
+.s4-mark--red { background: #ff2d2d; }
+.s4-ev__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  line-height: 48px;
+  font-weight: 600;
+  text-align: start;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+.s4-page .s4-ev,
+.s4-page .s4-ev__main {
+  height: 40px;
+  min-height: 40px;
+  line-height: 40px;
+}
+button.s4-ev__main { cursor: pointer; }
+button.s4-ev__main:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+button.s4-ev__main:active { opacity: 0.7; }
+.s4-ev--void .s4-ev__main { text-decoration: line-through; }
+.s4-ev__tag {
+  flex: 0 0 auto;
+  font-size: var(--font-size-caption);
+  line-height: 1;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+}
+.s4-ev .ui-button {
+  flex: 0 0 auto;
+  width: auto;
+  min-inline-size: 0;
+  min-block-size: 44px;
+  padding-inline: 10px;
+  white-space: nowrap;
+}
+.s4-ev .ui-button__label { white-space: nowrap; overflow-wrap: normal; }
+
+.s4-extra,
+.s4-ctrl {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.s4-extra { flex: 0 0 auto; flex-direction: column; }
+.s4-extra .ui-button { min-height: 48px; min-block-size: 48px; }
+.s4-root .ui-button .ui-text,
+.s4-page .ui-button .ui-text,
+.s4-sheet .ui-button .ui-text,
+.s4-dialog .ui-button .ui-text {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+.s4-root .ui-button,
+.s4-page .ui-button {
+  min-inline-size: 0;
+  max-width: 100%;
+}
+.s4-ctrl {
+  height: 56px;
+  align-items: center;
+  gap: 8px;
+}
+.s4-ctrl .ui-button {
+  flex: 0 1 auto;
+  height: 48px;
+  min-height: 48px;
+  min-block-size: 48px;
+  min-inline-size: 0;
+  padding-inline: 10px;
+}
+.s4-ctrl__gap {
+  flex: 1 1 16px;
+  min-width: 16px;
+  height: 1px;
+}
+.s4-ctrl .s4-end {
+  --comp-button-background-default: #ff2d2d;
+  --comp-button-background-hover: #ff4d4d;
+  --comp-button-background-active: #e02626;
+  --comp-button-foreground-default: #141414;
+  --comp-button-border-default: #ff2d2d;
+}
+.s4-ctrl .s4-end[aria-disabled="true"] {
+  --comp-button-background-default: var(--color-bg-elevated);
+  --comp-button-foreground-default: var(--color-text-muted);
+  --comp-button-border-default: var(--color-border-strong);
+  opacity: 1;
+  color: var(--comp-button-foreground-default);
+}
+.s4-ctrl .s4-end[aria-disabled="true"]::before {
+  background: var(--comp-button-background-default);
+  border-color: var(--comp-button-border-default);
+}
+.s4-ctrl .s4-menu-btn {
+  --comp-button-border-default: var(--color-border-strong);
+  --comp-button-foreground-default: var(--color-text-primary);
+  flex: 0 0 auto;
+  min-width: 48px;
+  height: 48px;
+}
+/* ghost 的 ::before 把框線寫成透明，變數單獨改不到。 */
+.s4-ctrl .s4-menu-btn.ui-button--ghost:not([aria-disabled="true"])::before {
+  border-color: var(--comp-button-border-default);
+}
+.s4-menu-wrap { position: relative; flex: 0 0 auto; }
+.s4-menu {
+  position: absolute;
+  right: 0;
+  bottom: 60px;
+  z-index: 5;
+  min-width: 128px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-md);
+}
+.s4-menu .ui-button { width: 100%; min-height: 44px; }
+
+/* 球隊暫停：在紀錄上方佔一列，不蓋住進球、牌、底欄與紀錄。 */
+.s4-timeout {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
+}
+.s4-timeout--mini {
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+}
+.s4-timeout__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  min-width: 0;
+}
+.s4-timeout__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+.s4-timeout__over {
+  margin: 0 0 4px;
+  height: 16px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.s4-timeout__btn,
+.s4-timeout__mini {
+  appearance: none;
+  margin: 0;
+  border: 0;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.s4-timeout__btn {
+  flex: 0 0 auto;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1;
+}
+.s4-timeout__mini {
+  width: 100%;
+  height: 24px;
+  padding: 0 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  line-height: 24px;
+  font-weight: 700;
+  text-align: start;
+}
+.s4-timeout__btn:focus-visible,
+.s4-timeout__mini:focus-visible,
+.s4-kickoff:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.s4-timeout-picks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.s4-timeout-picks .ui-button {
+  width: 100%;
+  min-height: 56px;
+}
+
+.s4-sent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.s4-sent__st,
+.s4-sent__cd {
+  margin: 0;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.s4-sent__st { font-size: var(--font-size-body); line-height: var(--line-height-body); }
+.s4-sent__cd { font-size: var(--font-size-title); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.s4-sent .ui-button { width: 100%; min-height: 56px; }
+
+/* 亮牌：整屏固定亮黃／亮紅，字用近黑，淺色與深色對比都過 4.5。 */
+.s4-flash {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 28px;
+  border: 0;
+  cursor: pointer;
+  text-align: center;
+}
+.s4-flash--yellow { background: #ffe14a; color: #141414; }
+.s4-flash--red { background: #ff2d2d; color: #141414; }
+.s4-flash:focus-visible { outline: 3px solid #141414; outline-offset: -6px; }
+.s4-flash:active { filter: brightness(0.96); }
+.s4-flash__body {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.s4-flash__no {
+  font-size: 112px;
+  line-height: 1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.s4-flash__name {
+  max-width: 100%;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.s4-flash__kind {
+  max-width: 100%;
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.s4-flash__close {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.s4-sheet .ui-modal__title,
+.s4-sheet .ui-modal__title .ui-text,
+.s4-dialog .ui-modal__title,
+.s4-dialog .ui-modal__title .ui-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+.s4-sheet .ui-button,
+.s4-dialog .ui-button,
+.s4-kinds .ui-chip__select {
+  white-space: nowrap;
+}
+.s4-kinds .ui-chip__label.ui-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  -webkit-line-clamp: unset;
+}
+.s4-sheet .ui-button,
+.s4-dialog .ui-button { min-inline-size: 0; max-width: 100%; }
+.s4-sheet .ui-button[aria-disabled="true"] {
+  --comp-button-background-default: var(--color-bg-elevated);
+  --comp-button-foreground-default: var(--color-text-muted);
+  --comp-button-border-default: var(--color-border-strong);
+  opacity: 1;
+  color: var(--comp-button-foreground-default);
+}
+.s4-sheet .ui-button[aria-disabled="true"]::before {
+  background: var(--comp-button-background-default);
+  border-color: var(--comp-button-border-default);
+}
+.s4-kinds {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.s4-kinds .ui-chip { flex: 1 1 0; min-width: 0; justify-content: center; }
+.s4-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.s4-pl {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 72px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.s4-pl:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.s4-pl:active { transform: scale(0.97); background: var(--color-bg-active); }
+.s4-pl--on { box-shadow: inset 0 0 0 3px var(--color-focus-ring); }
+.s4-pl__no {
+  display: block;
+  font-size: 40px;
+  line-height: 48px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.s4-pl__name {
+  display: block;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.s4-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* 超過 8 人時把面板頂住，內容才會在既有的捲動區裡捲。8 人內容較矮，不受這條影響。 */
+.s4-sheet--long.ui-bottom-sheet .ui-modal__panel {
+  max-height: 58vh;
+  max-height: 58dvh;
+}
+.s4-unspecified { width: 100%; min-height: 56px; margin-top: 0; }
+.s4-amend-act {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+.s4-amend-act .ui-button { flex: 1 1 0; min-height: 56px; min-inline-size: 0; }
+.s4-evsum {
+  margin: 4px 0 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.s4-hint {
+  margin: 0 0 8px;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+.s4-log {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+.s4-log__intent,
+.s4-log__st {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+}
+.s4-log__intent { font-weight: 700; }
+.s4-log__st { color: var(--color-text-secondary); font-weight: 600; }
+.s4-log__act { display: flex; gap: 8px; }
+.s4-log__act .ui-button { flex: 1 1 0; min-height: 44px; }
+.s4-note {
+  margin: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+.s4-dialog .ui-modal__footer {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.s4-dialog .ui-modal__footer .ui-button { flex: 1 1 0; min-height: 56px; }
+
+.s4-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.s4-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-danger);
+  animation: s4-pulse 2.8s ease-in-out infinite;
+}
+@keyframes s4-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.s4-dlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.s4-dlist__li {
+  min-width: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+.s4-dlist__li:first-child { border-top: 0; padding-top: 0; }
+.s4-dlist__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.s4-dlist__when {
+  min-width: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.s4-vs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.s4-vs__score {
+  font-size: var(--font-size-title);
+  line-height: 1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.s4-fold {
+  width: 100%;
+  min-height: 56px;
+  margin-top: 12px;
+}
+
+.s4-page .ui-tabs__tab { white-space: nowrap; }
+.s4-page .ui-tabs__label.ui-text {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+.s4-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.s4-table th,
+.s4-table td {
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 600;
+  text-align: start;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.s4-table th { color: var(--color-text-muted); font-weight: 700; }
+.s4-table--scorers th:nth-child(1),
+.s4-table--scorers td:nth-child(1) { width: 3em; text-align: center; }
+.s4-table--scorers th:nth-child(4),
+.s4-table--scorers td:nth-child(4),
+.s4-table--cards th:nth-child(3),
+.s4-table--cards td:nth-child(3),
+.s4-table--cards th:nth-child(4),
+.s4-table--cards td:nth-child(4) {
+  width: 4.5em;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .s4-dot { animation: none; }
+  .s4-hit:active,
+  .s4-pl:active,
+  .s4-flash:active { transform: none; }
+}
+
+/* 待送小標。名字仍由 .s4-ev__main 省略。 */
+.s4-pending {
+  flex: 0 0 auto;
+  margin-inline-start: 2px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface-2, var(--color-bg-elevated));
+  color: var(--text-muted, var(--color-text-muted));
+  font-size: var(--font-size-caption);
+  line-height: 1;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* PK 期間一般進球不能復原或改判。不改既有 .s4-note 的顏色。 */
+.s4-goal-lock {
+  margin: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+/* 寬螢幕：記分板限寬置中，頁面背景仍由外側滿版。 */
+@media (min-width: 600px) {
+  .s4-root {
+    max-width: 480px;
+    margin-inline: auto;
+  }
+}

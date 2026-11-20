@@ -1,0 +1,62 @@
+/* 賽事列表 v2 預覽（本機截圖用）。分類專屬色先寫成 token 草案，正式施工收進 tokens.css。 */
+html, body { margin: 0; }
+body { background: #eef1f6; }
+html[data-theme="dark"], html[data-theme="dark"] body { background: #0b0f16; }
+:root {
+  --cat-league: #2563eb; --cat-league-bg: rgba(37, 99, 235, .12); --cat-league-from: #1e3a8a; --cat-league-to: #3b82f6;
+  --cat-cup: #b45309; --cat-cup-bg: rgba(245, 158, 11, .16); --cat-cup-from: #92400e; --cat-cup-to: #f59e0b;
+  --cat-friendly: #7c3aed; --cat-friendly-bg: rgba(124, 58, 237, .12); --cat-friendly-from: #4c1d95; --cat-friendly-to: #8b5cf6;
+}
+[data-theme="dark"] {
+  --cat-league: #93c5fd; --cat-league-bg: rgba(96, 165, 250, .18);
+  --cat-cup: #fcd34d; --cat-cup-bg: rgba(251, 191, 36, .18);
+  --cat-friendly: #c4b5fd; --cat-friendly-bg: rgba(167, 139, 250, .2);
+}
+.legacy-ui .tc-page { padding: 0 16px 24px; max-width: 560px; margin: 0 auto; }
+
+/* 來源切換（站內／外部）：膠囊分段，放在分類頁籤上方 */
+.cpl-src { display: flex; gap: 4px; padding: 4px; margin: 2px 0 12px; border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255,255,255,.6) 0%, rgba(255,255,255,.15) 46%, rgba(255,255,255,0) 54%), #dfe3ea;
+  box-shadow: inset 0 1px 2px rgba(15,23,42,.12); }
+[data-theme="dark"] .cpl-src { background: #1c2331; box-shadow: inset 0 1px 2px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.06); }
+.cpl-src button { flex: 1 1 0; min-height: 40px; border: 0; border-radius: 999px; background: none; color: var(--text-muted);
+  font: inherit; font-size: .9rem; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.cpl-src button.on { background: #fff; color: var(--accent); box-shadow: 0 2px 6px rgba(15,23,42,.14), inset 0 1px 0 #fff; }
+[data-theme="dark"] .cpl-src button.on { background: #3e4555; color: var(--accent); box-shadow: 0 2px 6px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.14); }
+
+/* 站內篩選列：左狀態、右「只看我的」 */
+.cpl-toolbar { justify-content: space-between; }
+.cpl-select { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); font-weight: 600; white-space: nowrap; }
+.cpl-select svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* 封面：與外部賽事卡同比例 8:3；沒上傳時用分類色預設封面 */
+.cpl-cover-wrap { position: relative; }
+.cpl-cover { position: relative; overflow: hidden; }
+.cpl-cover--league { background: linear-gradient(120deg, var(--cat-league-from), var(--cat-league-to)); }
+.cpl-cover--cup { background: linear-gradient(120deg, var(--cat-cup-from), var(--cat-cup-to)); }
+.cpl-cover--friendly { background: linear-gradient(120deg, var(--cat-friendly-from), var(--cat-friendly-to)); }
+.cpl-cover::before { content: ''; position: absolute; inset: 0;
+  background: repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 14px, rgba(255,255,255,0) 14px 28px); }
+.cpl-cover__glyph { position: absolute; right: 6%; top: 50%; transform: translateY(-50%); width: 34%; max-width: 120px; aspect-ratio: 1; }
+.cpl-cover__glyph svg { width: 100%; height: 100%; fill: none; stroke: rgba(255,255,255,.55); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+
+/* 封面左上角狀態（深色玻璃膠囊＋狀態色點），不與分類色搶 */
+.cpl-st { position: absolute; left: 10px; top: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px;
+  border-radius: 999px; background: rgba(15,23,42,.62); color: #fff; font-size: .72rem; font-weight: 700; white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22); backdrop-filter: blur(4px); }
+.cpl-st i { width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; }
+.cpl-st--recruit i { background: #34d399; }
+.cpl-st--warm i { background: #7dd3fc; }
+.cpl-st--live i { background: #f87171; box-shadow: 0 0 0 3px rgba(248,113,113,.3); }
+
+.cpl-line { margin-top: 2px; font-size: .75rem; color: var(--text-secondary, var(--text-muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cpl-line--hl { color: var(--accent); font-weight: 600; }
+.legacy-ui .tc-card-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.legacy-ui .tc-card-dates { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 分類專屬色：站內、外部卡片的分類小標一律套同一組顏色 */
+#page-tournaments .tc-chip.cpl-chip { font-weight: 700; }
+html .legacy-ui #page-tournaments .tc-chip.cpl-chip--league, html[data-theme="dark"] .legacy-ui #page-tournaments .tc-chip.cpl-chip--league { color: var(--cat-league); background: var(--cat-league-bg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cat-league) 35%, transparent); }
+html .legacy-ui #page-tournaments .tc-chip.cpl-chip--cup, html[data-theme="dark"] .legacy-ui #page-tournaments .tc-chip.cpl-chip--cup { color: var(--cat-cup); background: var(--cat-cup-bg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cat-cup) 35%, transparent); }
+html .legacy-ui #page-tournaments .tc-chip.cpl-chip--friendly, html[data-theme="dark"] .legacy-ui #page-tournaments .tc-chip.cpl-chip--friendly { color: var(--cat-friendly); background: var(--cat-friendly-bg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cat-friendly) 35%, transparent); }

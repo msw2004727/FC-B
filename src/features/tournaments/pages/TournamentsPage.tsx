@@ -1,6 +1,10 @@
 import '../tournaments.css';
 // 液態光澤（2026-11-13，與活動頁同一風格；只套 #page-tournaments）
 import '../legacy/tournaments-glass.css';
+// 分類色與隊徽底色。只在賽事頁這個 chunk，不進首頁入口。
+import '@/styles/category-tokens.css';
+// 列表 v2（來源切換、封面、分類色小標）。開關關閉時沒有這些 class，既有卡片不受影響。
+import '../list-v2.css';
 import '@/styles/legacy/reg-loading.css';
 import type { ComponentType, JSX } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -36,32 +40,68 @@ import {
 } from '../data/cards-repo';
 import { openCardLink } from '../data/open-card-link';
 import { readCardsCache, writeCardsCache } from '../data/cards-cache';
+import {
+  COMPETITIONS_DEFAULT_SOURCE,
+  tournamentsSourcePath,
+  type CompetitionSource,
+} from '../source';
 
 /** 讀取超過這麼久沒回來就走既有的錯誤＋重試；晚到的結果照常收尾。 */
 export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
 
-/** 站內賽事整區。字面常數關閉時，打包器連 InAppSection 的 chunk 一起刪。 */
-function InAppCompetitionsSlot(): JSX.Element | null {
-  if (!COMPETITIONS_ENABLED) return null;
-  return <InAppCompetitionsLoader />;
+/**
+ * 站內賽事閘門（載入站內區塊程式檔＋讀 cpConfig/launch）多久沒回就先當作沒過（顧問 §3.368 P2-1）。
+ * 外部清單從頭到尾不等閘門；逾時只是先定案「不顯示切換」，晚到的通過仍會補上切換。
+ */
+export const COMPETITIONS_GATE_TIMEOUT_MS = 2_000;
+
+const EXTERNAL_CHIP = {
+  league: 'cpl-chip--league',
+  cup: 'cpl-chip--cup',
+  friendly: 'cpl-chip--friendly',
+} as const;
+
+/**
+ * 外部卡分類 class。只接受 league／cup／friendly。
+ * 其他類型不加分類 class，原字串不進 class。
+ */
+export function externalChipClass(type: unknown, themed: boolean): string {
+  if (!themed) return 'tc-chip';
+  if (type !== 'league' && type !== 'cup' && type !== 'friendly') return 'tc-chip cpl-chip';
+  return `tc-chip cpl-chip ${EXTERNAL_CHIP[type]}`;
 }
 
-function InAppCompetitionsLoader(): JSX.Element | null {
-  const [Slot, setSlot] = useState<ComponentType | null>(null);
+interface InAppSlotProps {
+  tab: TournamentCardTab;
+  /** 閘門開著且目前選站內時才畫卡。外部來源時元件留著，避免重讀。 */
+  active: boolean;
+  onGate: (open: boolean) => void;
+}
+
+/** 站內賽事整區。字面常數關閉時，打包器連 InAppSection 的 chunk 一起刪。 */
+function InAppCompetitionsSlot(props: InAppSlotProps): JSX.Element | null {
+  if (!COMPETITIONS_ENABLED) return null;
+  return <InAppCompetitionsLoader {...props} />;
+}
+
+function InAppCompetitionsLoader(props: InAppSlotProps): JSX.Element | null {
+  const [Slot, setSlot] = useState<ComponentType<InAppSlotProps> | null>(null);
   useEffect(() => {
     let alive = true;
     void import('@/features/competitions/components/InAppSection').then((mod) => {
       if (alive) setSlot(() => mod.InAppSection);
     }).catch(() => {
-      // 這個 chunk 載入失敗時整區不顯示，賽事頁其餘卡片照常。
-      if (alive) setSlot(null);
+      // 這個 chunk 載入失敗時整區不顯示，賽事頁其餘卡片照常。閘門視為沒過，避免一直空白。
+      if (!alive) return;
+      setSlot(null);
+      props.onGate?.(false);
     });
     return () => {
       alive = false;
     };
   }, []);
   if (!Slot) return null;
-  return <Slot />;
+  return <Slot {...props} />;
 }
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -92,6 +132,33 @@ export default function TournamentsPage(): JSX.Element {
   const canManage = state === 'ready' && canManageTournamentCards(viewer);
   const [tab, setTab] = useState<TournamentCardTab>('all');
   const [showEnded, setShowEnded] = useState(true);
+  // 開關打開時閘門在背景判定；判定中、逾時、沒過都照開關關閉時的樣子畫外部清單（含本機快取）。
+  // 通過才補上「站內／外部」切換與站內區塊（顧問 §3.368 P2-1，取代「判定中先顯示骨架、不畫外部清單」）。
+  const [gate, setGate] = useState<'pending' | 'open' | 'closed'>(COMPETITIONS_ENABLED ? 'pending' : 'closed');
+  const gateRef = useRef(gate);
+  gateRef.current = gate;
+  // 沒有 ?src 時的來源。閘門先定案沒過（逾時、未登入定案前）之後才通過，使用者已經在看外部清單，
+  // 這時預設留在外部、只補切換，不把畫面整個換成站內。使用者點選後改回點選的那一側。
+  const [fallbackSource, setFallbackSource] = useState<CompetitionSource>(COMPETITIONS_DEFAULT_SOURCE);
+  const inAppOpen = gate === 'open';
+  const onGate = useCallback((open: boolean) => {
+    if (open && gateRef.current === 'closed') setFallbackSource('ext');
+    gateRef.current = open ? 'open' : 'closed';
+    setGate(open ? 'open' : 'closed');
+  }, []);
+  useEffect(() => {
+    if (!COMPETITIONS_ENABLED) return undefined;
+    const timer = setTimeout(() => {
+      if (gateRef.current !== 'pending') return;
+      gateRef.current = 'closed';
+      setGate('closed');
+    }, COMPETITIONS_GATE_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  // 非法 ?src 只影響畫面預設，這裡不改網址。
+  const rawSrc = location.query?.src;
+  const source: CompetitionSource = rawSrc === 'in' || rawSrc === 'ext' ? rawSrc : fallbackSource;
+  const showInApp = inAppOpen && source === 'in';
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -243,8 +310,24 @@ export default function TournamentsPage(): JSX.Element {
     openCardLink(url);
   };
 
+  const chooseSource = (next: CompetitionSource): void => {
+    const path = tournamentsSourcePath(window.location.pathname, window.location.search, next);
+    const go = location.route as undefined | ((url: string, replace?: boolean) => void);
+    setFallbackSource(next);
+    if (typeof go === 'function') go(path, true);
+  };
+
+  const onSourceKey = (event: JSX.TargetedKeyboardEvent<HTMLButtonElement>): void => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const next: CompetitionSource = source === 'in' ? 'ext' : 'in';
+    chooseSource(next);
+    const nextId = next === 'in' ? 'tournaments-source-in' : 'tournaments-source-ext';
+    queueMicrotask(() => document.getElementById(nextId)?.focus());
+  };
+
   return (
-    <div class="legacy-ui tournaments-root">
+    <div class="legacy-ui tournaments-root" data-v2={inAppOpen ? '1' : undefined} data-cp-gate={COMPETITIONS_ENABLED ? gate : undefined}>
       <section class="page active tc-page" id="page-tournaments">
         <div class="page-header">
           <button
@@ -268,7 +351,34 @@ export default function TournamentsPage(): JSX.Element {
           <h2 class="page-header-title">{t('tournaments.heading')}</h2>
         </div>
 
-        <InAppCompetitionsSlot />
+        {inAppOpen ? (
+          <div class="cpl-src" role="tablist" aria-label={t('tournaments.sourceLabel')}>
+            <button
+              id="tournaments-source-in"
+              type="button"
+              role="tab"
+              aria-selected={source === 'in'}
+              aria-controls="tournaments-source-panel"
+              class={source === 'in' ? 'on' : ''}
+              onClick={() => chooseSource('in')}
+              onKeyDown={onSourceKey}
+            >
+              {t('tournaments.sourceIn')}
+            </button>
+            <button
+              id="tournaments-source-ext"
+              type="button"
+              role="tab"
+              aria-selected={source === 'ext'}
+              aria-controls="tournaments-source-panel"
+              class={source === 'ext' ? 'on' : ''}
+              onClick={() => chooseSource('ext')}
+              onKeyDown={onSourceKey}
+            >
+              {t('tournaments.sourceOut')}
+            </button>
+          </div>
+        ) : null}
 
         <div class="tc-tabs" role="tablist">
           {TOURNAMENT_CARD_TABS.map((value) => (
@@ -294,7 +404,10 @@ export default function TournamentsPage(): JSX.Element {
             </button>
           ) : null}
         </div>
-        <div class="tc-panel" role="tabpanel">
+        <div class="tc-panel" role="tabpanel" id={inAppOpen ? 'tournaments-source-panel' : undefined}>
+          <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} />
+          {showInApp ? null : (
+          <>
           <div class="tc-toolbar">
             <label>
               <span>{t('tournaments.showEnded')}</span>
@@ -351,7 +464,7 @@ export default function TournamentsPage(): JSX.Element {
                       <div class="tc-card-name">{card.name}</div>
                       <div class="tc-card-dates">{formatCardDates(card)}</div>
                     </div>
-                    <span class="tc-chip">{t(`tournaments.tab.${card.type}`)}</span>
+                    <span class={externalChipClass(card.type, inAppOpen)}>{t(`tournaments.tab.${card.type}`)}</span>
                   </div>
                 </a>
                 {canManage ? (
@@ -370,6 +483,8 @@ export default function TournamentsPage(): JSX.Element {
               </div>
             );
           })}
+          </>
+          )}
         </div>
 
         {editing ? (

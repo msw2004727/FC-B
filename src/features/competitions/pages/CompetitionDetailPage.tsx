@@ -1,10 +1,11 @@
 // 賽事詳情。報隊鈕只給代表且在報名期間；檢舉在右上選單。
 
 import type { JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { openHttpAnchor } from '@/core/open-external';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
+import { appConfirm } from '@/ui/AppConfirm';
 import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
@@ -12,20 +13,44 @@ import { PageSpinner } from '@/ui/PageSpinner';
 import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
-import { canManageCompetition, canRegisterClubEntry, isCpAdmin } from '../access';
+import { toast } from '@/ui/Toast';
+import { canHostOrCo, canManageCompetition, canRegisterClubEntry, canRestoreCompetition, isCpAdmin } from '../access';
 import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
+import { HOST_NOTICE_MAX, hostNoticeCount, noticeTextProblem } from '../data/flex-schedule';
+import { boundedReason } from '../data/host-write';
 import { formatTaipeiDate, formatTaipeiShort, taipeiParts, venueMapUrl } from '../format';
 import { LiveBoundary } from '../live';
 import { buildRegisterInput, buildReportInput } from '../payload';
-import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason } from '../data/types';
-import { CpError, errorOf } from '../ui/feedback';
+import { competitionPhase, type CompetitionPhase } from '../data/present';
+import { hasPendingTie } from '../data/tie-present';
+import { hasScoreRole } from '../data/staff-assign';
+import {
+  bindVisible,
+  hasLiveOnMatchDay,
+  mergeSummaryShard,
+  scorerTables,
+  teamNameByEnId,
+  type ScorerTables,
+} from '../data/audience';
+import { createAudiencePorts } from '../data/audience-watch';
+import { matchDayOf } from '../data/match-day';
+import { loadFullSchedule, loadScheduleDetail } from '../data/schedule-load';
+import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason, StaffAssignment, StandingDoc, SummaryEntry } from '../data/types';
+import { CpError, errorOf, reasonText } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
+import { CategoryCover, categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
+import { TieWorkspace } from '../ui/tie-panel';
+import { PublicBoard } from '../ui/public-board';
 import { CpCard, CpFrame, CpI18nPending, CpRow, MoreIcon } from '../ui/shell';
+import { TeamCrest } from '../ui/TeamCrest';
 
 const REPORTS: ReportReason[] = ['impersonation', 'fake', 'inappropriate', 'privacy', 'other'];
+
+/** 回前景重讀的最短間隔。未滿這段不讀。已結束不重讀。 */
+export const FOREGROUND_RELOAD_MIN_MS = 60_000;
 
 function statusBadge(
   ct: CompetitionsT,
@@ -33,11 +58,24 @@ function statusBadge(
   now: number,
 ): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
   if (competition.status === 'draft') return { label: ct('draft'), tone: 'warning' };
-  if (competition.status === 'postponed') return { label: ct('postponed'), tone: 'warning' };
+  if (competition.status === 'postponed') return { label: ct('compPostponed'), tone: 'warning' };
   if (competition.status === 'cancelled') return { label: ct('cancelled'), tone: 'danger' };
   if (now < competition.regOpenAt) return { label: ct('reason.REG_NOT_OPEN'), tone: 'neutral' };
   if (now > competition.regCloseAt) return { label: ct('reason.REG_CLOSED'), tone: 'neutral' };
   return { label: ct('recruiting'), tone: 'success' };
+}
+
+function phaseBadge(
+  ct: CompetitionsT,
+  competition: CompetitionDoc,
+  phase: Exclude<CompetitionPhase, 'recruit'>,
+): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' | 'info' } {
+  if (competition.status === 'draft') return { label: ct('draft'), tone: 'warning' };
+  if (competition.status === 'postponed') return { label: ct('compPostponed'), tone: 'warning' };
+  if (competition.status === 'cancelled') return { label: ct('cancelled'), tone: 'danger' };
+  if (phase === 'warm') return { label: ct('phaseWarm'), tone: 'info' };
+  if (phase === 'live') return { label: ct('phaseLive'), tone: 'warning' };
+  return { label: ct('phaseDone'), tone: 'neutral' };
 }
 
 function hostName(competition: CompetitionDoc, env: CpInjectedEnv): string {
@@ -47,15 +85,101 @@ function hostName(competition: CompetitionDoc, env: CpInjectedEnv): string {
   return known?.name ?? '';
 }
 
-async function loadDetail(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
+interface DetailData {
+  bundle: CpBundle;
+  summary: SummaryEntry[];
+  standings: StandingDoc[];
+  /** 登入者自己的指派。未登入是 null，而且不讀。 */
+  myAssignment: StaffAssignment | null;
+}
+
+/**
+ * 自己的 staff 指派。同一個 cid＋uid 在這次開頁只打一次 getStaffAssignment。
+ * 重新渲染、切分頁、回前景、重試都不重讀。換賽事或換登入者才再讀。
+ */
+interface MineReadCache {
+  readyKey: string;
+  value: StaffAssignment | null;
+  flight: { key: string; task: Promise<StaffAssignment | null> } | null;
+  token: number;
+}
+
+function mineKey(cid: string, uid: string): string {
+  return `${cid}\0${uid}`;
+}
+
+async function readMyAssignment(
+  env: CpInjectedEnv,
+  cid: string,
+  cache: MineReadCache,
+): Promise<StaffAssignment | null> {
   const uid = env.actor.uid;
-  const [competition, divisions, entries, staff] = await Promise.all([
-    env.repo.getCompetition(cid),
-    env.repo.listDivisions(cid),
-    env.repo.listEntries(cid),
-    uid ? env.repo.getStaff(cid, uid) : Promise.resolve(null),
-  ]);
-  return { competition, divisions, entries, roster: [], privates: [], staff };
+  if (!uid) return null;
+  const key = mineKey(cid, uid);
+  if (cache.readyKey === key) {
+    // 作廢還在飛的另一個 cid／uid，避免晚到的結果蓋掉目前這筆。
+    cache.token += 1;
+    cache.flight = null;
+    return cache.value;
+  }
+  if (cache.flight?.key === key) return cache.flight.task;
+  const token = cache.token + 1;
+  cache.token = token;
+  const task = env.repo.getStaffAssignment(cid, uid).then((row) => {
+    if (cache.token === token) {
+      cache.readyKey = key;
+      cache.value = row;
+      cache.flight = null;
+    }
+    return row;
+  }, (err: unknown) => {
+    if (cache.flight?.task === task) cache.flight = null;
+    throw err;
+  });
+  cache.flight = { key, task };
+  return task;
+}
+
+async function loadDetail(env: CpInjectedEnv, cid: string, mine: MineReadCache): Promise<DetailData> {
+  // 隊徽走 listEntriesForCrest（repo 頁內快取，不監聽）。摘要每次呼叫都重讀。
+  // ASSUMPTION: 詳情的隊伍圖示用隊徽查詢（上限 32），不用 listEntries（上限 100）。
+  // ASSUMPTION: 內部期 3 筆由列表閘門負責，詳情頁不重讀。
+  // 不傳 internal，所以這裡不會打 getLaunch、getLaunchTester、listMine。
+  const view = await loadScheduleDetail(env.repo, {
+    cid,
+    uid: env.actor.uid,
+    now: env.now ?? Date.now(),
+  });
+  // 登入才多讀自己的 staff（保留 scorer／referee）。未登入不讀。同一次開頁只讀一次。
+  const myAssignment = await readMyAssignment(env, cid, mine);
+  return {
+    bundle: {
+      competition: view.competition,
+      divisions: view.divisions,
+      entries: view.crests,
+      roster: [],
+      privates: [],
+      staff: view.staff,
+    },
+    summary: view.summary,
+    standings: view.standings,
+    myAssignment,
+  };
+}
+
+function applyDetail(
+  next: DetailData,
+  setBundle: (value: CpBundle | null) => void,
+  setSummary: (value: SummaryEntry[]) => void,
+  setStandings: (value: StandingDoc[]) => void,
+  setLoadState: (value: 'loading' | 'ready' | 'error') => void,
+  setMine: (value: StaffAssignment | null) => void,
+): void {
+  setBundle(next.bundle);
+  setSummary(next.summary);
+  setStandings(next.standings);
+  setMine(next.myAssignment);
+  setLoadState(next.bundle.competition ? 'ready' : 'error');
 }
 
 function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Element {
@@ -63,7 +187,10 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   const [bundle, setBundle] = useState<CpBundle | null>(env.bundle ?? null);
-  const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>(env.bundle ? 'ready' : 'loading');
+  const [summary, setSummary] = useState<SummaryEntry[]>(env.schedule?.summary ?? []);
+  const [standings, setStandings] = useState<StandingDoc[]>(env.schedule?.standings ?? []);
+  const [myAssignment, setMyAssignment] = useState<StaffAssignment | null>(null);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>(env.bundle ? 'ready' : 'loading');
   const [menuOpen, setMenuOpen] = useState(env.preview?.menuOpen === true);
   const [reportOpen, setReportOpen] = useState(env.preview?.reportOpen === true);
   const [reportReason, setReportReason] = useState<ReportReason>('fake');
@@ -75,6 +202,21 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [registerError, setRegisterError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [reportError, setReportError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
+  // 全部賽程只在按下後讀，結果留在這一頁。換賽事 id 才清掉。
+  const [fullSchedule, setFullSchedule] = useState<SummaryEntry[] | null>(null);
+  const [scorerState, setScorerState] = useState<{ dvId: string; tables: ScorerTables | null } | null>(null);
+  const scorerToken = useRef(0);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreReason, setRestoreReason] = useState('');
+  const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
+  const fullCache = useRef<SummaryEntry[] | null>(null);
+  const fullInflight = useRef<Promise<boolean> | null>(null);
+  const mineCache = useRef<MineReadCache>({ readyKey: '', value: null, flight: null, token: 0 });
+  const mounted = useRef(true);
+  // 公告發送與刪除共用這把鎖。busy 要等重繪才擋得住，連點會在那之前重入。
+  const noticeLock = useRef(false);
+  const pageCid = useRef(cid);
+  pageCid.current = cid;
   const now = env.now ?? Date.now();
   const clubs = representativeClubs(env.actor);
 
@@ -84,16 +226,81 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     if (first) setTeamId(first);
   }, [clubs, teamId]);
 
+  useEffect(() => () => {
+    mounted.current = false;
+  }, []);
+
+  // 只在換賽事時清全部賽程快取。首次掛載不清：effect 晚於第一次繪製，
+  // 使用者若在那之前就按展開，剛讀到的全集會被清掉、展開後一片空白（截圖驗收抓到）。
+  const fullCid = useRef(cid);
+  useEffect(() => {
+    if (fullCid.current === cid) return;
+    fullCid.current = cid;
+    fullCache.current = null;
+    fullInflight.current = null;
+    setFullSchedule(null);
+  }, [cid]);
+
+  // 排序說明：積分文件有 ranking 就用；沒有才看組別 schedule.ranking；都沒有用對戰優先。
+  // 進行中首屏不讀組別。已結束會補讀一次。進行中改在切到積分頁時讀。
+  useEffect(() => {
+    if (env.bundle) return undefined;
+    const doc = bundle?.competition;
+    if (!doc || (bundle?.divisions.length ?? 0) > 0) return undefined;
+    if (competitionPhase(doc, now) !== 'done') return undefined;
+    if (standings.length > 0 && standings.every((row) => row.ranking)) return undefined;
+    let alive = true;
+    void env.repo.listDivisions(cid).then((rows) => {
+      if (!alive) return;
+      setBundle((current) => (current ? { ...current, divisions: rows } : current));
+    }).catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+    // now 來自這次渲染。已結束的補讀只在賽事或積分文件變了才重跑。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cid, env.bundle, env.repo, bundle?.competition?.id, bundle?.competition?.endedAt, bundle?.divisions.length, standings]);
+
+  function requestFullSchedule(): boolean | Promise<boolean> {
+    if (fullCache.current) {
+      setFullSchedule(fullCache.current);
+      return true;
+    }
+    if (fullInflight.current) return fullInflight.current;
+    // 注入的賽程（harness、畫面測試）不打網路。正式頁按下才讀全集。
+    if (env.bundle && env.schedule) {
+      const rows = [...env.schedule.summary];
+      fullCache.current = rows;
+      setFullSchedule(rows);
+      return true;
+    }
+    const requested = cid;
+    const task = loadFullSchedule(env.repo, requested).then((rows) => {
+      if (!mounted.current || pageCid.current !== requested) return false;
+      fullCache.current = rows;
+      setFullSchedule(rows);
+      return true;
+    }).catch(() => {
+      if (pageCid.current === requested) fullInflight.current = null;
+      return false;
+    });
+    fullInflight.current = task;
+    return task;
+  }
+
   useEffect(() => {
     if (env.bundle) return;
+    // ASSUMPTION: 審核在管理頁，詳情頁沒有審核成功處可呼叫 invalidateCrests。
+    // 進入詳情頁先讓這個 cid 的隊徽快取失效，這次讀到新的。同頁回前景不走這裡。
+    // 主辦在別頁核准後，要再進一次詳情才看得到新隊徽。
+    env.repo.invalidateCrests(cid);
     let alive = true;
-    setPhase('loading');
-    void loadDetail(env, cid).then((next) => {
+    setLoadState('loading');
+    void loadDetail(env, cid, mineCache.current).then((next) => {
       if (!alive) return;
-      setBundle(next);
-      setPhase(next.competition ? 'ready' : 'error');
+      applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
     }).catch(() => {
-      if (alive) setPhase('error');
+      if (alive) setLoadState('error');
     });
     return () => {
       alive = false;
@@ -102,21 +309,109 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, env.actor.uid, env.bundle]);
 
+  const phaseNow = bundle?.competition ? competitionPhase(bundle.competition, now) : null;
+  const phaseRef = useRef(phaseNow);
+  phaseRef.current = phaseNow;
+  const lastForegroundAt = useRef(0);
+
+  useEffect(() => {
+    if (env.bundle) return undefined;
+    let alive = true;
+    // 進頁這次讀取算一次。未滿 60 秒回到前景不再讀。
+    lastForegroundAt.current = Date.now();
+    const reload = () => {
+      if (!alive || document.visibilityState === 'hidden') return;
+      if (phaseRef.current === 'done') return;
+      const at = Date.now();
+      if (at - lastForegroundAt.current < FOREGROUND_RELOAD_MIN_MS) return;
+      lastForegroundAt.current = at;
+      void loadDetail(env, cid, mineCache.current).then((next) => {
+        if (!alive || !next.bundle.competition) return;
+        applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
+      }).catch(() => {
+        // 回前景重讀失敗就留著目前畫面，不把詳情打成錯誤頁。
+      });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') reload();
+    };
+    const onPageShow = (event: Event) => {
+      if ((event as PageTransitionEvent).persisted === true) reload();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+    // 回前景重讀摘要。隊徽快取不在這裡失效。已結束不重讀。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cid, env.actor.uid, env.bundle]);
+
+  // 今天比賽日有 live／halftime 才監聽當日摘要片。隱藏時解除，回前景重掛。
+  // 依賴用布林與片 id，摘要內容更新不會拆掉監聽。注入 bundle 不打網路。
+  const liveToday = hasLiveOnMatchDay(summary, now);
+  const liveShard = matchDayOf(now).shardId;
+  useEffect(() => {
+    if (env.bundle || !liveToday) return undefined;
+    const nowMs = env.now ?? Date.now();
+    const ports = env.audience ?? createAudiencePorts();
+    return bindVisible(() => ports.watchSummary({ cid, shardId: liveShard }, (rows) => {
+      if (!mounted.current || pageCid.current !== cid) return;
+      setSummary((current) => mergeSummaryShard(current, rows, nowMs));
+      setFullSchedule((current) => {
+        if (!current) return current;
+        const next = mergeSummaryShard(current, rows, nowMs);
+        fullCache.current = next;
+        return next;
+      });
+    }));
+  }, [cid, env.audience, env.bundle, env.now, liveShard, liveToday]);
+
+  function openScorers(dvId: string): void {
+    if (!dvId) return;
+    const token = scorerToken.current + 1;
+    scorerToken.current = token;
+    setScorerState({ dvId, tables: null });
+    if (env.bundle && !env.audience) {
+      setScorerState({
+        dvId,
+        tables: { scorers: [], cards: [], empty: true, capped: false, stalled: false },
+      });
+      return;
+    }
+    const ports = env.audience ?? createAudiencePorts();
+    const entries = bundle?.entries ?? [];
+    void ports.getStats(cid, dvId).then((stats) => {
+      if (!mounted.current || scorerToken.current !== token || pageCid.current !== cid) return;
+      setScorerState({
+        dvId,
+        tables: scorerTables(stats, (enId) => teamNameByEnId(enId, entries)),
+      });
+    }).catch(() => {
+      if (!mounted.current || scorerToken.current !== token) return;
+      setScorerState({
+        dvId,
+        tables: { scorers: [], cards: [], empty: true, capped: false, stalled: false },
+      });
+    });
+  }
+
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const competition = bundle?.competition ?? null;
-  if (phase === 'loading') {
+  if (loadState === 'loading') {
     return <div class="cps-root"><PageSpinner /></div>;
   }
-  if (!competition || phase === 'error') {
+  if (!competition || loadState === 'error') {
     return (
       <CpFrame title={ct('detailTitle')}>
         <p class="cps-note" role="alert">{ct('loadFailed')}</p>
         <Button variant="secondary" onClick={() => {
-          setPhase('loading');
-          void loadDetail(env, cid).then((next) => {
-            setBundle(next);
-            setPhase(next.competition ? 'ready' : 'error');
-          }).catch(() => setPhase('error'));
+          setLoadState('loading');
+          void loadDetail(env, cid, mineCache.current).then((next) => {
+            applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
+          }).catch(() => setLoadState('error'));
         }}
         >{ct('retry')}</Button>
       </CpFrame>
@@ -130,6 +425,11 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     repClubIds: clubs.map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
   });
+  const hostOps = canHostOrCo({
+    staffRoles: bundle?.staff?.roles ?? [],
+    isAdmin: isCpAdmin(env.actor.role),
+  });
+  const showMyMatches = hasScoreRole(myAssignment?.roles ?? []);
   const showRegister = canRegisterClubEntry({
     repClubIds: clubs.map((club) => club.id),
     status: competition.status,
@@ -138,7 +438,16 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     regCloseAt: competition.regCloseAt,
     now,
   });
-  const badge = statusBadge(ct, competition, now);
+  const phase: CompetitionPhase = competitionPhase(competition, now);
+  const badge = phase === 'recruit' ? statusBadge(ct, competition, now) : phaseBadge(ct, competition, phase);
+  const clock: ScheduleClock = competition.status === 'cancelled'
+    ? 'cancelled'
+    : competition.status === 'postponed'
+      ? 'tbd'
+      : 'keep';
+  // 手動結束與自動結束都顯示結束狀態卡（Flash 初審 P3：自動結束時管理員要看得到結束來源）
+  const showHostEnd = competition.endedAt != null && (competition.endedBy === 'host' || competition.endedBy === 'auto');
+  const allowRestore = canRestoreCompetition(competition, isCpAdmin(env.actor.role));
   const divisions = bundle?.divisions ?? [];
   const entries = bundle?.entries ?? [];
   const sameYear = taipeiParts(competition.regOpenAt).year === taipeiParts(competition.regCloseAt).year;
@@ -149,12 +458,15 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     setError(null);
     try {
       await env.actions.publish({ cid });
-      const next = await loadDetail(env, cid);
-      setBundle((prev) => {
-        if (next.competition) return next;
-        if (!prev?.competition) return next;
-        return { ...prev, competition: { ...prev.competition, status: 'published' } };
-      });
+      const next = await loadDetail(env, cid, mineCache.current);
+      if (next.bundle.competition) {
+        applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
+      } else {
+        setBundle((prev) => {
+          if (!prev?.competition) return next.bundle;
+          return { ...prev, competition: { ...prev.competition, status: 'published' } };
+        });
+      }
     } catch (err) {
       setError(errorOf(err));
     } finally {
@@ -180,6 +492,129 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     }
   }
 
+  function needRanking(): void {
+    if (env.bundle || (bundle?.divisions.length ?? 0) > 0) return;
+    if (standings.length > 0 && standings.every((row) => row.ranking)) return;
+    void env.repo.listDivisions(cid).then((rows) => {
+      setBundle((current) => (current ? { ...current, divisions: rows } : current));
+    }).catch(() => undefined);
+  }
+
+  async function sendRestore(): Promise<void> {
+    const problem = boundedReason(restoreReason, 2, 100);
+    if (problem) {
+      const params = problem === 'FIELD_LENGTH' ? { min: 2, max: 100 } : undefined;
+      const text = reasonText(ct, problem, params);
+      toast.show({ message: text, tone: 'error' });
+      setRestoreMessage(text);
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    setRestoreMessage(null);
+    try {
+      const reason = restoreReason.trim();
+      await env.actions.restoreCompetition({ cid, reason });
+      if (env.bundle) {
+        setBundle((current) => {
+          if (!current?.competition) return current;
+          return {
+            ...current,
+            competition: { ...current.competition, endedAt: null, endedBy: null, endReason: null },
+          };
+        });
+      } else {
+        const next = await loadDetail(env, cid, mineCache.current);
+        applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
+      }
+      setRestoreOpen(false);
+      setRestoreReason('');
+    } catch (err) {
+      const info = errorOf(err);
+      const text = reasonText(ct, info.reason, info.params);
+      toast.show({ message: text, tone: 'error' });
+      setRestoreMessage(text);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function publishNotice(text: string): Promise<boolean> {
+    // 閉包抓不到外層的縮小，這裡再確認一次賽事還在。
+    if (!competition) return false;
+    const problem = noticeTextProblem(text);
+    if (problem) {
+      const params = problem === 'FIELD_LENGTH' ? { min: 1, max: 300 } : undefined;
+      toast.show({ message: reasonText(ct, problem, params), tone: 'error' });
+      return false;
+    }
+    if (hostNoticeCount(competition.notices) >= HOST_NOTICE_MAX) {
+      toast.show({ message: reasonText(ct, 'NOTICE_LIMIT', { max: HOST_NOTICE_MAX }), tone: 'error' });
+      return false;
+    }
+    if (noticeLock.current) return false;
+    noticeLock.current = true;
+    setBusy(true);
+    try {
+      const trimmed = text.trim();
+      const result = await env.actions.postNotice({ cid, text: trimmed });
+      // 成功當下再取時間。渲染時的 now 可能較舊，新公告會被排到舊公告後面。
+      const at = env.now ?? Date.now();
+      const notice = {
+        id: result.noticeId,
+        text: trimmed,
+        kind: 'host' as const,
+        at,
+        by: null,
+      };
+      setBundle((current) => (current?.competition ? {
+        ...current,
+        competition: { ...current.competition, notices: [...current.competition.notices, notice] },
+      } : current));
+      return true;
+    } catch (err) {
+      const info = errorOf(err);
+      toast.show({ message: reasonText(ct, info.reason, info.params), tone: 'error' });
+      return false;
+    } finally {
+      noticeLock.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function removeNotice(noticeId: string): Promise<void> {
+    if (noticeLock.current) return;
+    noticeLock.current = true;
+    setBusy(true);
+    try {
+      // 系統公告後端也允許刪。確認文字要讓主辦知道這則是系統發的。
+      const kind = competition?.notices.find((notice) => notice.id === noticeId)?.kind;
+      const ok = await appConfirm(
+        kind === 'system' ? ct('noticeDeleteSystem') : ct('noticeDeleteConfirm'),
+        { okText: ct('noticeDelete'), danger: true },
+      );
+      if (!ok) return;
+      await env.actions.deleteNotice({ cid, noticeId });
+      setBundle((current) => (current?.competition ? {
+        ...current,
+        competition: {
+          ...current.competition,
+          notices: current.competition.notices.filter((notice) => notice.id !== noticeId),
+        },
+      } : current));
+    } catch (err) {
+      const info = errorOf(err);
+      toast.show({ message: reasonText(ct, info.reason, info.params), tone: 'error' });
+    } finally {
+      noticeLock.current = false;
+      setBusy(false);
+    }
+  }
+
+  function openClub(teamId: string): void {
+    route(`/teams/${encodeURIComponent(teamId)}`);
+  }
+
   async function sendRegister(): Promise<void> {
     const chosenTeam = teamId || clubs[0]?.id || '';
     if (!chosenTeam || !dvId) {
@@ -192,8 +627,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       await env.actions.registerEntry(buildRegisterInput({ cid, dvId, teamId: chosenTeam }));
       setRegisterOpen(false);
       setRegisterError(null);
-      const next = await loadDetail(env, cid);
-      setBundle(next);
+      const next = await loadDetail(env, cid, mineCache.current);
+      applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
     } catch (err) {
       setRegisterError(errorOf(err));
     } finally {
@@ -209,9 +644,43 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     other: ct('reportOther'),
   };
 
+  const manageActions = (
+    <>
+      {error ? <CpError reason={error.reason} params={error.params} /> : null}
+      {showRegister ? (
+        <div class="cps-actions">
+          <Button variant="primary" onClick={() => { setDvId(divisions[0]?.dvId ?? ''); setRegisterError(null); setRegisterOpen(true); }}>
+            {ct('registerClub')}
+          </Button>
+        </div>
+      ) : null}
+      {manage ? (
+        <div class="cps-actions">
+          {competition.status === 'draft' ? (
+            <Button variant="primary" loading={busy} onClick={() => { void publish(); }}>
+              {ct('publish')}
+            </Button>
+          ) : null}
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/manage`)}>{ct('manageLink')}</Button>
+        </div>
+      ) : null}
+      {hostOps ? (
+        <div class="cps-actions">
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/matches`)}>{ct('hostListTitle')}</Button>
+        </div>
+      ) : null}
+      {showMyMatches ? (
+        <div class="cps-actions">
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/my-matches`)}>{ct('myMatches')}</Button>
+        </div>
+      ) : null}
+    </>
+  );
+
   return (
     <CpFrame
-      title={ct('detailTitle')}
+      title={phase === 'recruit' ? ct('detailTitle') : competition.name}
       menu={(
         <>
           <button
@@ -233,6 +702,68 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         </>
       )}
     >
+      <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
+      {showHostEnd ? (
+        <CpCard>
+          <p class="cpm-ended">{ct(competition.endedBy === 'auto' ? 'endedAutoLine' : 'endedLine', { date: formatTaipeiDate(competition.endedAt ?? now) })}</p>
+          {competition.endReason ? <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{competition.endReason}</p> : null}
+          {hasPendingTie(standings) ? <p class="cpm-hint">{ct('endTieHint')}</p> : null}
+          {allowRestore ? (
+            <div class="cpm-endact">
+              <Button variant="secondary" disabled={busy} onClick={() => { setRestoreReason(''); setRestoreMessage(null); setRestoreOpen(true); }}>
+                {ct('restore')}
+              </Button>
+            </div>
+          ) : null}
+        </CpCard>
+      ) : null}
+      {restoreOpen ? (
+        <CpCard>
+          <h2 class="cpm-h">{ct('restore')}</h2>
+          <div class="cps-sheet-body">
+            <Textarea
+              label={ct('restoreReason')}
+              required
+              value={restoreReason}
+              maxLength={100}
+              rows={2}
+              variant="fixed"
+              onValueChange={setRestoreReason}
+            />
+            {restoreMessage ? <p class="cps-note cps-warn" role="alert">{restoreMessage}</p> : null}
+            <div class="cps-footer">
+              <Button variant="secondary" disabled={busy} onClick={() => setRestoreOpen(false)}>{ct('cancel')}</Button>
+              <Button variant="primary" disabled={busy} onClick={() => { void sendRestore(); }}>{ct('restore')}</Button>
+            </div>
+          </div>
+        </CpCard>
+      ) : null}
+      {(competition.status === 'postponed' || competition.status === 'cancelled') && competition.statusReason ? (
+        <CpCard>
+          <div class="cp3-row">
+            <p class="cpm-reason"><b>{ct('reasonPrefix')}</b>　{competition.statusReason}</p>
+            <Badge
+              tone={competition.status === 'cancelled' ? 'danger' : 'warning'}
+              label={competition.status === 'cancelled' ? ct('cancelled') : ct('compPostponed')}
+              size="sm"
+            />
+          </div>
+        </CpCard>
+      ) : null}
+      <PublicBoard
+        ct={ct}
+        notices={competition.notices}
+        contactNote={competition.contactNote}
+        hostName={hostName(competition, env)}
+        hostOps={hostOps}
+        busy={busy}
+        clubTeamId={competition.hostType === 'club' ? competition.hostTeamId : null}
+        onOpenClub={openClub}
+        onPost={publishNotice}
+        onDelete={removeNotice}
+      />
+      {phase === 'recruit' ? (
+      <>
       <CpCard>
         <div class="cps-badges" style="margin-bottom:8px">
           <Badge tone={badge.tone} label={badge.label} size="sm" />
@@ -283,29 +814,56 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
             </CpRow>
           ) : null}
         </dl>
-        {error ? <CpError reason={error.reason} params={error.params} /> : null}
-        {showRegister ? (
-          <div class="cps-actions">
-            <Button variant="primary" onClick={() => { setDvId(divisions[0]?.dvId ?? ''); setRegisterError(null); setRegisterOpen(true); }}>
-              {ct('registerClub')}
-            </Button>
-          </div>
-        ) : null}
-        {manage ? (
-          <div class="cps-actions">
-            {competition.status === 'draft' ? (
-              <Button variant="primary" loading={busy} onClick={() => { void publish(); }}>
-                {ct('publish')}
-              </Button>
-            ) : null}
-            <Button variant="secondary" onClick={() => route(`/competitions/${cid}/manage`)}>{ct('manageLink')}</Button>
-          </div>
-        ) : null}
+        {manageActions}
       </CpCard>
 
       {divisions.map((division) => (
         <DivisionBlock key={division.dvId} division={division} entries={entries} cid={cid} competition={competition} now={now} />
       ))}
+      </>
+      ) : (
+        <>
+          <DetailPhaseBody
+            ct={ct}
+            phase={phase}
+            firstMatchAt={competition.firstMatchAt}
+            divisions={divisions}
+            crests={entries}
+            summary={summary}
+            standings={standings}
+            now={now}
+            badge={badge}
+            statusShownAbove={(competition.status === 'postponed' || competition.status === 'cancelled') && !!competition.statusReason}
+            fullSchedule={fullSchedule}
+            onRequestFull={requestFullSchedule}
+            clock={clock}
+            onOpenStandings={needRanking}
+            venues={competition.venues}
+            onOpenMatch={(mtId) => route(`/competitions/${cid}/matches/${mtId}/live`)}
+            scorerState={scorerState}
+            onOpenScorers={openScorers}
+            renderStandings={(docs) => (
+              <TieWorkspace
+                ct={ct}
+                docs={docs}
+                crests={entries}
+                divisions={divisions}
+                canHost={hostOps}
+                cid={cid}
+                actions={env.actions}
+                summary={fullSchedule ?? summary}
+                injected={env.bundle != null}
+                now={now}
+                onStandings={setStandings}
+                reload={async () => {
+                  setStandings(await env.repo.listStandings(cid));
+                }}
+              />
+            )}
+          />
+          {manageActions}
+        </>
+      )}
 
       {registerOpen ? (
         <BottomSheet
@@ -410,7 +968,8 @@ function DivisionBlock({
         <Badge tone={statusBadge(ct, competition, now).tone} label={statusBadge(ct, competition, now).label} size="sm" />
       </div>
       <p class="cps-sub cps-nowrap" style="margin-top:4px">{meta}</p>
-      <FeeLine amount={division.feePerTeam} />
+      {/* 報名費與停用的線上支付鈕只限俱樂部主辦（顧問 §3.257） */}
+      {competition.hostType === 'club' ? <FeeLine amount={division.feePerTeam} /> : null}
       <div class="cps-bar" aria-hidden="true"><i style={`width:${width}%`} /></div>
       <p class="cps-cap" style="margin-bottom:8px">{ct('approvedTeams', { teams: division.approvedCount, max: division.maxTeams })}</p>
       <ul class="cps-list">
@@ -418,7 +977,10 @@ function DivisionBlock({
           <li class="cps-li" key={entry.id}>
             <div class="cps-li__main">
               <a class="cps-li__name cps-link" href={`/competitions/${cid}/entries/${entry.id}`} onClick={(event) => { event.preventDefault(); route(`/competitions/${cid}/entries/${entry.id}`); }}>
-                {entry.name}
+                <span class="cp3-tn">
+                  <TeamCrest teamId={entry.teamId} name={entry.name} teamLogo={entry.teamLogo} size={48} />
+                  <em>{entry.name}</em>
+                </span>
               </a>
             </div>
             <Badge tone="success" label={ct('approved')} size="sm" />

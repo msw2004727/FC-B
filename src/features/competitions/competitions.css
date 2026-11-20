@@ -1,4 +1,6 @@
+@import '../../styles/category-tokens.css';
 /* 賽事第 2 步前台。玻璃色值照活動卡液態光澤與賽事頁；其餘只用 tokens。字級只用字級 token。
+ * 分類色與隊徽底色從 category-tokens 進來（站內賽事 chunk），不從 tokens.css 進首頁。
  * 手機輸入框字級用 max(16px, 1rem)，避免聚焦時被瀏覽器放大。 */
 
 .cps-root {
@@ -149,3 +151,421 @@
 .cps-inapp { margin: 0 0 var(--space-4); }
 .cps-head-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .cps-head-row .cps-h { margin: 0; }
+
+/* 第 3 步詳情：class 對照預覽 harness 的 cp3-*。字級只用字級 token。
+ * 隊徽底色與分類漸層用 category-tokens，不在這裡重抄色值。 */
+.cps-root .ui-radio__text,
+.cps-root .ui-radio-group__label,
+.cps-root .ui-tabs__label { white-space: nowrap; }
+
+.cp3-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; }
+.cp3-strip { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.cp3-strip__txt { font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cp3-strip .ui-badge { flex: 0 0 auto; white-space: nowrap; }
+
+.cp3-champ { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.cp3-champ svg { flex: 0 0 auto; width: 36px; height: 36px; fill: none; stroke: var(--color-warning); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cp3-champ__t { min-width: 0; }
+.cp3-champ__k { display: block; font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--color-text-muted); white-space: nowrap; }
+.cp3-champ__v { display: block; font-size: var(--font-size-title); line-height: var(--line-height-title); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.cp3-day { margin: 0 0 var(--space-2); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-weight: 700; color: var(--color-text-secondary); white-space: nowrap; }
+.cp3-ml { list-style: none; margin: 0 0 var(--space-4); padding: 0; }
+.cp3-ml:last-child { margin-bottom: 0; }
+.cp3-m { padding: 10px 0; border-top: 1px solid var(--color-border); min-width: 0; }
+.cp3-m:first-child { border-top: 0; padding-top: 0; }
+.cp3-m:last-child { padding-bottom: 0; }
+.cp3-m__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 22px; }
+.cp3-m__when { font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cp3-m__when b { color: var(--color-text-primary); font-weight: 700; }
+.cp3-m__top .ui-badge { flex: 0 0 auto; white-space: nowrap; }
+.cp3-m__vs { display: grid; grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr); align-items: center; margin-top: 2px; }
+/* 有 PK 時中欄跟內容走，比分與 PK 用既有間距，避免 56px 把「2：1 PK 4:3」裁掉。 */
+.cp3-m__vs--pk { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.cp3-m__vs span { min-width: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp3-m__vs .h { text-align: right; }
+.cp3-m__vs .s { text-align: center; font-size: var(--font-size-body-lg); font-weight: 700; font-variant-numeric: tabular-nums; overflow: visible; }
+.cp3-m__vs .s--pk { display: inline-flex; align-items: baseline; justify-content: center; gap: var(--space-1); width: max-content; max-width: none; }
+.cp3-m__vs--pk .s4-pk { flex: 0 0 auto; overflow: visible; }
+.cp3-m__vs .s.vs { font-size: var(--font-size-body-sm); font-weight: 400; color: var(--color-text-muted); }
+/* PK 在比分欄下一行、置中。沒有 PK 不渲染，不佔高度。比分欄仍走上面的 56px。 */
+.cp3-m__vs .cp3-m__pk {
+  grid-column: 2;
+  margin-top: 2px;
+  overflow: visible;
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-text-secondary);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.cp3-st { padding: var(--space-3) 10px; }
+.cp3-st__r { display: grid; grid-template-columns: 28px minmax(0, 1fr) 20px 20px 20px 20px 40px 30px 30px; column-gap: 2px; align-items: center; padding: 8px 0; border-top: 1px solid var(--color-border-subtle); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-variant-numeric: tabular-nums; }
+.cp3-st__r > * { min-width: 0; text-align: center; white-space: nowrap; }
+.cp3-st__r .t { text-align: left; overflow: hidden; text-overflow: ellipsis; font-weight: 600; padding-left: 4px; }
+.cp3-st__r .rk { display: flex; flex-direction: column; align-items: center; font-weight: 700; }
+.cp3-st__r .rk small { font-size: var(--font-size-caption); line-height: 13px; font-weight: 600; color: var(--color-warning-fg); }
+.cp3-st__r .pt { font-weight: 700; }
+.cp3-st__r--h { border-top: 0; padding: 0 0 6px; font-size: var(--font-size-caption); line-height: var(--line-height-caption); color: var(--color-text-muted); }
+.cp3-st__r--h .t { font-weight: 400; }
+.cp3-st__r--top .t, .cp3-st__r--top .rk { color: var(--color-brand-soft-fg); }
+[data-theme="dark"] .cp3-st__r--top .t, [data-theme="dark"] .cp3-st__r--top .rk { color: var(--palette-emerald-300); }
+
+.cp3-fold { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: var(--color-text-primary); font: inherit; font-size: var(--font-size-body); font-weight: 600; white-space: nowrap; cursor: pointer; }
+.cp3-fold svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cp3-fold--open svg { transform: rotate(180deg); }
+
+.cps-card--ok { border-left: 3px solid var(--color-success); }
+
+.cp3-crest { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; border-radius: 50%; object-fit: cover; overflow: hidden; }
+.cp3-crest--txt { font-weight: 700; line-height: 1; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); color: var(--crest-fg); }
+.cp3-crest--c0 { background: var(--crest-0); }
+.cp3-crest--c1 { background: var(--crest-1); }
+.cp3-crest--c2 { background: var(--crest-2); }
+.cp3-crest--c3 { background: var(--crest-3); }
+.cp3-crest--c4 { background: var(--crest-4); }
+.cp3-crest--c5 { background: var(--crest-5); }
+.cp3-crest--c6 { background: var(--crest-6); }
+.cp3-crest--c7 { background: var(--crest-7); }
+.cp3-tn { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; vertical-align: middle; }
+.cp3-tn em { font-style: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp3-tn--h { justify-content: flex-end; width: 100%; }
+.cp3-m__vs .cp3-tn { overflow: hidden; }
+
+.cp3-cover { position: relative; border-radius: var(--radius-lg, 14px); overflow: hidden; aspect-ratio: 8 / 3; }
+.cp3-cover__def { position: relative; display: block; width: 100%; height: 100%; }
+.cp3-cover__def--league { background: linear-gradient(120deg, var(--cat-league-from), var(--cat-league-to)); }
+.cp3-cover__def--cup { background: linear-gradient(120deg, var(--cat-cup-from), var(--cat-cup-to)); }
+.cp3-cover__def--friendly { background: linear-gradient(120deg, var(--cat-friendly-from), var(--cat-friendly-to)); }
+.cp3-cover__def::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 14px, rgba(255,255,255,0) 14px 28px); }
+.cp3-cover__def svg { position: absolute; right: 6%; top: 50%; transform: translateY(-50%); height: 80%; fill: none; stroke: rgba(255,255,255,.55); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.cp3-cover__cat { position: absolute; left: 10px; bottom: 10px; padding: 3px 10px; border-radius: 999px; background: rgba(15,23,42,.62); box-shadow: inset 0 1px 0 rgba(255,255,255,.22); color: #fff; font-size: var(--font-size-caption); font-weight: 700; white-space: nowrap; }
+
+.cp3-roster-head { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.cp3-roster-head__t { min-width: 0; flex: 1 1 auto; }
+.cp3-roster-head__t .cps-title { overflow: hidden; text-overflow: ellipsis; }
+
+/* 主辦排賽程、賽程管理、比分面板。class 對照預覽 harness。 */
+.cp3-tags { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.cp3-tags .ui-badge { white-space: nowrap; }
+.cp3-tags .ui-button { min-width: 0; }
+/* 顧問 §3.294 P2-1：窄螢幕三、四顆按鈕放不下時換行，不得被卡片裁掉（取代原本單行 nowrap 不換行） */
+.cp3-m__act { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+.cp3-m__act .ui-button { white-space: nowrap; }
+.cp3-dayform { padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.cp3-dayform + .cp3-dayform { margin-top: var(--space-3); }
+.cp3-dayform__h { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); font-size: var(--font-size-body-sm); font-weight: 700; white-space: nowrap; }
+.cp3-dayform__h .ui-button { white-space: nowrap; }
+.cp3-checks { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+.cp3-result { margin: 0; font-size: var(--font-size-body-lg); line-height: var(--line-height-body-lg); font-weight: 700; white-space: nowrap; }
+.cp3-result--bad { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 700; color: var(--color-warning-fg); white-space: nowrap; }
+.cp3-sec-h { margin: 0 0 var(--space-3); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-weight: 700; color: var(--color-text-secondary); white-space: nowrap; }
+.cp3-ctx { margin: 0; text-align: center; font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); color: var(--color-text-muted); white-space: nowrap; }
+.cp3-score { display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr); align-items: start; }
+.cp3-score__team { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); min-width: 0; }
+.cp3-score__name { max-width: 100%; font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp3-score__num { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--font-size-display); line-height: var(--line-height-display); font-weight: 700; font-variant-numeric: tabular-nums; background: var(--color-bg-surface); }
+.cp3-score__btns { display: flex; gap: var(--space-2); }
+.cp3-score__colon { align-self: center; margin-top: 28px; text-align: center; font-size: var(--font-size-title); font-weight: 700; color: var(--color-text-muted); }
+.cp3-stepbtn { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-surface); color: var(--color-text-primary); font-size: var(--font-size-title); line-height: 1; cursor: pointer; }
+.cp3-stepbtn:disabled { opacity: 0.45; cursor: default; }
+.cp3-stack-btns { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; }
+.cp3-stack-btns .ui-button { width: 100%; white-space: nowrap; }
+.cp3-textlink { align-self: center; min-height: 44px; padding: 0 var(--space-3); border: 0; background: none; color: var(--color-text-secondary); font: inherit; font-size: var(--font-size-body-sm); text-decoration: underline; white-space: nowrap; cursor: pointer; }
+.cp3-textlink:disabled { opacity: 0.45; cursor: default; }
+.cp3-judge { margin: 0; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--color-warning-bg); color: var(--color-warning-fg); font-size: var(--font-size-body-sm); line-height: var(--line-height-body-sm); font-weight: 600; white-space: nowrap; }
+.cp3-modal-p { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: nowrap; }
+.cps-card--warn { border-left: 3px solid var(--color-warning); }
+.cps-actions .ui-button:disabled, .cps-actions .ui-button[aria-disabled="true"] { color: var(--color-text-secondary); }
+
+/* 卡 G 第一批：取消、結束、同分、排序說明。公告與聯絡留給下一批。 */
+.cpm-h {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 700;
+}
+.cpm-sec {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+.cpm-sec--first { margin-top: 0; }
+.cpm-reason {
+  margin: 4px 0 0;
+  min-width: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  color: var(--color-text-secondary);
+}
+.cpm-reason b { color: var(--color-text-muted); font-weight: 600; }
+.cp3-row .cpm-reason { margin: 0; flex: 1 1 auto; }
+.cpm-ended {
+  margin: 0;
+  font-size: var(--font-size-body-lg);
+  line-height: var(--line-height-body-lg);
+  font-weight: 700;
+}
+.cpm-endact { margin-top: var(--space-3); }
+.cpm-hint {
+  margin: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  color: var(--color-warning-fg);
+}
+.cpm-preview {
+  margin: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+}
+.cpm-tiebtn {
+  display: inline;
+  margin: 0 0 0 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-warning-fg);
+  font: inherit;
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.cpm-cmp { min-width: 0; }
+.cpm-cmp__r {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4.5em 4.5em;
+  column-gap: var(--space-2);
+  align-items: center;
+  min-height: 28px;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-variant-numeric: tabular-nums;
+}
+.cpm-cmp__r > span { min-width: 0; white-space: nowrap; }
+.cpm-cmp__r > span:nth-child(n + 2) { text-align: right; font-weight: 700; }
+.cpm-cmp__k { font-weight: 600; }
+.cpm-cmp__r--h { min-height: 22px; color: var(--color-text-muted); }
+.cpm-cmp__r--h > span:nth-child(n + 2) { font-weight: 600; }
+.cpm-cmp__r--hit {
+  border-radius: var(--radius-sm);
+  background: var(--color-success-bg);
+  color: var(--color-success-fg);
+}
+.cpm-cmp__r--skip { color: var(--color-text-muted); }
+.cpm-mark {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  color: var(--color-success-fg);
+}
+.cpm-mark--wait { color: var(--color-warning-fg); }
+.cpm-rels { list-style: none; margin: 0; padding: 0; }
+.cpm-rel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--color-border-subtle);
+  background: none;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cpm-rel__t {
+  flex: 0 0 auto;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  color: var(--color-text-muted);
+}
+.cpm-rel__n {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 600;
+}
+.cpm-rel svg {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cpm-drag { list-style: none; margin: 0; padding: 0; }
+.cpm-drag__li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+.cpm-drag__li:first-child { border-top: 0; }
+.cpm-grip { flex: 0 0 auto; display: inline-flex; color: var(--color-text-muted); }
+.cpm-grip svg { width: 16px; height: 16px; fill: currentColor; }
+.cpm-drag__i {
+  flex: 0 0 auto;
+  width: 1.5em;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.cpm-drag__n {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 600;
+  /* 補拍同分面板發現：隊名被擠成一字一行；改成一行、太長省略 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 上移／下移用內容寬度：全站按鈕最小 120px，這列放兩顆會把隊名擠成一字一行、按鈕超出卡片（補拍發現） */
+.cpm-drag .cpm-drag__li .ui-button { flex: 0 0 auto; width: auto; min-inline-size: 0; white-space: nowrap; }
+/* 停用的上移／下移不畫底色，免得比可按的更像按鈕（Opus 終審 P3；只限這一列，不動全站 token） */
+.cpm-drag .cpm-drag__li .ui-button[aria-disabled="true"]::before { background: transparent; border-color: transparent; }
+.cpm-rules { margin: 0; padding: 0; list-style: decimal inside; }
+.cpm-rules li {
+  padding: 8px 0;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+}
+.cpm-rules li:first-child { border-top: 0; padding-top: 0; }
+#page-tournaments .cpl-card .cpl-st--postponed i { background: #fbbf24; }
+#page-tournaments .cpl-card .cpl-st--cancelled i { background: #f87171; }
+
+.cpm-cap {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  color: var(--color-text-muted);
+}
+.cpm-warn,
+.cpm-ok {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+}
+.cpm-warn { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+/* 撞期句由「原因　時間　對戰」三段以空白分開；窄螢幕只在段落之間換行，不把隊名拆成兩行 */
+.cpm-warn { word-break: keep-all; overflow-wrap: anywhere; }
+.cpm-ok { background: var(--color-success-bg); color: var(--color-success-fg); }
+.cpm-swap {
+  margin: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 600;
+}
+.cpm-meta {
+  margin: 4px 0 0;
+  min-width: 0;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  color: var(--color-text-secondary);
+}
+.cpm-ann { list-style: none; margin: 0; padding: 0; }
+.cpm-ann li {
+  min-width: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+.cpm-ann li:first-child { border-top: 0; padding-top: 0; }
+.cpm-ann__row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cpm-ann__txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 600;
+  /* 公告可換行；長網址在 390px 寬不要撐出卡片。 */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cpm-ann__time {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  color: var(--color-text-muted);
+}
+.cpm-ann__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.cpm-ann__foot .ui-button { flex: 0 0 auto; }
+/* 顧問 §3.294 P3：深色停用的「發布公告」幾乎看不見；只在公告列提高對比，不動全站按鈕 token */
+[data-theme="dark"] .cpm-ann__foot .ui-button[aria-disabled="true"] { opacity: 1; color: var(--color-text-muted); }
+[data-theme="dark"] .cpm-ann__foot .ui-button[aria-disabled="true"]::before { background: var(--color-bg-hover); border-color: var(--color-border); }
+.cpm-ann__foot .cpm-meta { margin: 0; }
+.cpm-contact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  min-width: 0;
+}
+.cpm-host {
+  min-width: 0;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cpm-public {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+.cpm-pm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid var(--color-info);
+  border-radius: 999px;
+  background: var(--color-info-bg);
+  color: var(--color-info-fg);
+  font: inherit;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.cpm-pm svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}

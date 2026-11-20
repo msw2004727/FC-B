@@ -1,4 +1,4 @@
-// 賽事第 2 步 Callable。三支：cpHost、cpEntry、cpParticipant。每個動作一支有型別的函式。
+// 賽事第 2 步與第 3 步 Callable。三支：cpHost、cpEntry、cpParticipant。每個動作一支有型別的函式。
 // 欄位照契約 §2、§6。多送的鍵伺服器會回 UNKNOWN_FIELD，所以這裡只組契約列出的鍵，略過 undefined。
 // 錯誤從 details.reason 轉成 { reason, params }；沒有 reason 時 reason 為 UNKNOWN。
 //
@@ -7,7 +7,7 @@
 // 「emulator 一律禁止」擋板。那道擋板是為了避免打到正式 Functions；這裡的實例在模擬器模式已接到本機。
 // ASSUMPTION: 更新的四個時間在型別裡包成 schedule，送出時攤成四個欄位，不送 schedule 這個鍵。
 
-import type { DivisionInput, PaymentStatusWrite, ReportReason, Venue } from './types';
+import type { CompetitionCategory, DivisionInput, PaymentStatusWrite, ReportReason, Venue } from './types';
 import { getCpFirebase } from './cp-firebase';
 
 export type CpCallableName = 'cpHost' | 'cpEntry' | 'cpParticipant';
@@ -124,6 +124,10 @@ interface CpHostCommon {
   venues: Venue[];
   liveLinks: string[];
   divisions: DivisionInput[];
+  /** 建賽精靈步驟 1 會送。不送時伺服器把缺值當 league。 */
+  category?: CompetitionCategory;
+  /** 公開聯絡文字。空白不送，伺服器寫 null。 */
+  contactNote?: string;
 }
 
 export type CpHostCreateInput = CpHostCommon & (
@@ -149,6 +153,8 @@ export function cpHostCreate(input: CpHostCreateInput): Promise<CpHostCreateResu
     venues: input.venues,
     liveLinks: input.liveLinks,
     divisions: input.divisions,
+    category: input.category,
+    contactNote: input.contactNote,
   };
   if (input.hostType === 'club') {
     return callAction('cpHost', payload('create', {
@@ -164,8 +170,10 @@ export function cpHostCreate(input: CpHostCreateInput): Promise<CpHostCreateResu
   }));
 }
 
-// 後端 update 只收 name／hostDisplay／四個時間／venues／feeNote／liveLinks／divisions；
+// 後端 update 只收 name／hostDisplay／四個時間／venues／feeNote／liveLinks／divisions／category／contactNote。
 // 主辦類型、俱樂部、運動、時區建立後不能改，多帶會被整筆拒絕（Flash 交叉審 P2）。
+// category 是卡 A 新增的欄位；不送時不帶這個鍵。
+// contactNote 送 null 或空字串，伺服器寫 null。不送這個鍵就不動原本的文字。
 export interface CpHostUpdateInput {
   cid: string;
   name?: string;
@@ -175,6 +183,8 @@ export interface CpHostUpdateInput {
   feeNote?: string;
   liveLinks?: string[];
   divisions?: DivisionInput[];
+  category?: CompetitionCategory;
+  contactNote?: string | null;
 }
 
 export interface CpCidResult {
@@ -329,3 +339,265 @@ export type CpReportInput = {
 export function cpParticipantReport(input: CpReportInput): Promise<unknown> {
   return callAction('cpParticipant', payload('reportCompetition', { ...input }));
 }
+
+export type CpRanking = 'h2hFirst' | 'goalDiffFirst';
+export type CpForfeitSide = 'home' | 'away';
+
+export interface CpScheduleDay {
+  date: string;
+  start: string;
+  end: string;
+}
+
+/** generateSchedule。dryRun 只預覽，不寫。seed 相同則伺服器排出的賽程相同。 */
+export interface CpGenerateScheduleInput {
+  cid: string;
+  dvId: string;
+  legs: 1 | 2;
+  ranking?: CpRanking;
+  matchMinutes: number;
+  bufferMinutes?: number;
+  minRestMinutes?: number;
+  days: CpScheduleDay[];
+  venueIdx: number[];
+  seed?: number;
+  dryRun?: boolean;
+}
+
+/** dryRun 回預覽（場數、天數、未排數）。正式寫入的其他欄位由呼叫端另外看。 */
+/** 與後端 match-host.ts generateSchedule 回傳一致（預覽與正式都回同一形狀，dryRun 標示是否寫入）。 */
+export interface CpGenerateScheduleResult {
+  dvId: string;
+  /** 正式產生時帶回這個 seed，結果與預覽相同 */
+  seed: number;
+  matchCount: number;
+  unplacedCount: number;
+  /** 用到的日期（YYYY-MM-DD）。後端是字串陣列，不是天數。 */
+  daysUsed: string[];
+  perTeam: number;
+  teamCount: number;
+  dryRun: boolean;
+}
+
+export function cpHostGenerateSchedule(input: CpGenerateScheduleInput): Promise<CpGenerateScheduleResult> {
+  return callAction('cpHost', payload('generateSchedule', {
+    cid: input.cid,
+    dvId: input.dvId,
+    legs: input.legs,
+    ranking: input.ranking,
+    matchMinutes: input.matchMinutes,
+    bufferMinutes: input.bufferMinutes,
+    minRestMinutes: input.minRestMinutes,
+    days: input.days,
+    venueIdx: input.venueIdx,
+    seed: input.seed,
+    dryRun: input.dryRun,
+  }));
+}
+
+export function cpHostClearSchedule(input: { cid: string; dvId: string }): Promise<unknown> {
+  return callAction('cpHost', payload('clearSchedule', { cid: input.cid, dvId: input.dvId }));
+}
+
+/** kickoffAt 為 null 時伺服器把場次改成 postponed。force 只在真的要略過撞期時送 true。 */
+export function cpHostRescheduleMatch(input: {
+  cid: string;
+  mtId: string;
+  expectedRev: number;
+  kickoffAt: number | null;
+  venueIdx: number | null;
+  force?: boolean;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('rescheduleMatch', {
+    cid: input.cid,
+    mtId: input.mtId,
+    expectedRev: input.expectedRev,
+    kickoffAt: input.kickoffAt,
+    venueIdx: input.venueIdx,
+    force: input.force ? true : undefined,
+  }));
+}
+
+/** 整天順延。fromDate／toDate 是台北 YYYY-MM-DD。原因只進稽核。 */
+export function cpHostShiftMatchDay(input: {
+  cid: string;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  force?: boolean;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('shiftMatchDay', {
+    cid: input.cid,
+    fromDate: input.fromDate,
+    toDate: input.toDate,
+    reason: input.reason,
+    force: input.force ? true : undefined,
+  }));
+}
+
+/** 兩場對調開賽時間與場地。同一場不送，由畫面先擋。 */
+export function cpHostSwapMatches(input: {
+  cid: string;
+  mtIdA: string;
+  mtIdB: string;
+  expectedRevA: number;
+  expectedRevB: number;
+  reason: string;
+  force?: boolean;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('swapMatches', {
+    cid: input.cid,
+    mtIdA: input.mtIdA,
+    mtIdB: input.mtIdB,
+    expectedRevA: input.expectedRevA,
+    expectedRevB: input.expectedRevB,
+    reason: input.reason,
+    force: input.force ? true : undefined,
+  }));
+}
+
+export interface CpPostNoticeResult {
+  noticeId: string;
+}
+
+/** 主辦公告。純文字，伺服器上限 300 個碼位。系統公告不走這支。 */
+export function cpHostPostNotice(input: { cid: string; text: string }): Promise<CpPostNoticeResult> {
+  return callAction('cpHost', payload('postNotice', { cid: input.cid, text: input.text }));
+}
+
+/** 依 id 刪除。手動與系統都可以刪。 */
+export function cpHostDeleteNotice(input: { cid: string; noticeId: string }): Promise<unknown> {
+  return callAction('cpHost', payload('deleteNotice', { cid: input.cid, noticeId: input.noticeId }));
+}
+
+export function cpHostRecordResult(input: {
+  cid: string;
+  mtId: string;
+  expectedRev: number;
+  score: { home: number; away: number };
+  confirm: boolean;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('recordResult', { ...input }));
+}
+
+export function cpHostConfirmMatchResult(input: {
+  cid: string;
+  mtId: string;
+  expectedRev: number;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('confirmMatchResult', { ...input }));
+}
+
+export function cpHostSetWalkover(input: {
+  cid: string;
+  mtId: string;
+  expectedRev: number;
+  forfeitSide: CpForfeitSide;
+  reason: string;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('setWalkover', { ...input }));
+}
+
+export function cpHostResetMatch(input: {
+  cid: string;
+  mtId: string;
+  expectedRev: number;
+  reason: string;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('resetMatch', { ...input }));
+}
+
+export function cpHostRecalcStandings(input: { cid: string; dvId: string }): Promise<unknown> {
+  return callAction('cpHost', payload('recalcStandings', { cid: input.cid, dvId: input.dvId }));
+}
+
+/** 原因 2～100。可取消：scheduled、postponed、finished。 */
+export function cpHostCancelMatch(input: {
+  cid: string;
+  mtId: string;
+  expectedRev: number;
+  reason: string;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('cancelMatch', { ...input }));
+}
+
+/** 原因 2～100。不改場次。已有 endedAt 時伺服器拒絕。 */
+export function cpHostEndCompetition(input: { cid: string; reason: string }): Promise<unknown> {
+  return callAction('cpHost', payload('endCompetition', { cid: input.cid, reason: input.reason }));
+}
+
+/** 只有管理員。原因 2～100。 */
+export function cpHostRestoreCompetition(input: { cid: string; reason: string }): Promise<unknown> {
+  return callAction('cpHost', payload('restoreCompetition', { cid: input.cid, reason: input.reason }));
+}
+
+export type TieMethod = 'host' | 'drawLots';
+
+/** 原因 1～200。order 必須剛好是目前某一群待裁定。 */
+export function cpHostResolveTie(input: {
+  cid: string;
+  dvId: string;
+  groupId?: string;
+  order: string[];
+  method: TieMethod;
+  reason: string;
+  expectedVersion: number;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('resolveTie', { ...input }));
+}
+
+export function cpHostClearTieDecision(input: {
+  cid: string;
+  dvId: string;
+  groupId?: string;
+  reason: string;
+  expectedVersion: number;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('clearTieDecision', { ...input }));
+}
+
+/** 唯讀。teamIds 至少兩隊，而且積分必須相同。 */
+export function cpHostExplainTie(input: {
+  cid: string;
+  dvId: string;
+  groupId?: string;
+  teamIds: string[];
+}): Promise<unknown> {
+  return callAction('cpHost', payload('explainTie', { ...input }));
+}
+
+export type StaffScoreRole = 'scorer' | 'referee';
+
+/** 指派記分員或裁判。roles 為 1～2 個記分角色。省略 expiresAt 由伺服器給到期。 */
+export function cpHostAssignStaff(input: {
+  cid: string;
+  uid: string;
+  roles: readonly StaffScoreRole[];
+  matchIds: readonly string[];
+  expiresAt?: number;
+}): Promise<unknown> {
+  return callAction('cpHost', payload('assignStaff', {
+    cid: input.cid,
+    uid: input.uid,
+    roles: input.roles,
+    matchIds: input.matchIds,
+    expiresAt: input.expiresAt,
+  }));
+}
+
+/** 移除記分角色。省略 roles 時伺服器拿掉 scorer 與 referee，主辦身分留著。 */
+export function cpHostRemoveStaff(input: {
+  cid: string;
+  uid: string;
+  roles?: readonly string[];
+}): Promise<unknown> {
+  return callAction('cpHost', payload('removeStaff', {
+    cid: input.cid,
+    uid: input.uid,
+    roles: input.roles,
+  }));
+}
+
+/** 規格上的動作名稱。與 cpHostAssignStaff／cpHostRemoveStaff 同一支。 */
+export const assignStaff = cpHostAssignStaff;
+export const removeStaff = cpHostRemoveStaff;

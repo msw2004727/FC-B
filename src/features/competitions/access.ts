@@ -39,6 +39,15 @@ export interface ManageInput {
   isAdmin: boolean;
 }
 
+/**
+ * 排賽程、賽程管理、登錄比分。對齊後端 assertHostOrCo：staff 的 host／coHost，或管理員。
+ * 俱樂部代表若不是 staff，不能進。這和 canManageCompetition 不同。
+ */
+export function canHostOrCo(input: { staffRoles: readonly StaffRole[]; isAdmin: boolean }): boolean {
+  if (input.isAdmin) return true;
+  return input.staffRoles.includes('host') || input.staffRoles.includes('coHost');
+}
+
 /** 審核、鎖定、解鎖、編輯、發布、標示繳費。 */
 export function canManageCompetition(input: ManageInput): boolean {
   if (input.isAdmin) return true;
@@ -56,6 +65,41 @@ export interface RegisterInput {
   regOpenAt: number;
   regCloseAt: number;
   now: number;
+}
+
+/**
+ * 結束賽事。只有 status 為 published、而且還沒寫 endedAt 才顯示。
+ * 草稿、延期、整場取消都不顯示。主辦賽程頁還要已有場次。
+ * 前端只藏按鈕，伺服器仍會拒絕。
+ */
+export function canEndCompetition(doc: { status: CompetitionStatus; endedAt: number | null }): boolean {
+  if (doc.endedAt != null) return false;
+  return doc.status === 'published';
+}
+
+/**
+ * 整天順延與兩場對調。比照結束賽事：只有已發布才顯示。
+ * 還沒結束時主辦看得到；已結束只留管理員。賽程頁還要已有場次。
+ * 前端只藏卡片，伺服器仍會拒絕。
+ */
+export function canShowFlexSchedule(
+  doc: { status: CompetitionStatus; endedAt: number | null },
+  isAdmin: boolean,
+): boolean {
+  if (doc.status !== 'published') return false;
+  return doc.endedAt == null || isAdmin;
+}
+
+/**
+ * 恢復賽事只給管理員，而且結束方式是主辦或自動。
+ * endedBy 為 confirm 時不顯示（伺服器回 RESTORE_NOT_ALLOWED）。
+ */
+export function canRestoreCompetition(
+  doc: { endedAt: number | null; endedBy: 'confirm' | 'host' | 'auto' | null },
+  isAdmin: boolean,
+): boolean {
+  if (!isAdmin || doc.endedAt == null) return false;
+  return doc.endedBy === 'host' || doc.endedBy === 'auto';
 }
 
 /** 「以俱樂部報隊」：我是某俱樂部代表，且賽事公開招募中、正在報名期間。 */

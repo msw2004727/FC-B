@@ -1,25 +1,29 @@
 // 主辦管理：待審／已核准／已拒絕。審核、繳費、鎖定只給主辦方或管理員。
 
 import type { JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { appConfirm } from '@/ui/AppConfirm';
 import { Badge } from '@/ui/Badge';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
+import { Input } from '@/ui/Input';
 import { PageSpinner } from '@/ui/PageSpinner';
+import { RadioGroup } from '@/ui/RadioGroup';
 import { Switch } from '@/ui/Switch';
 import { Tabs } from '@/ui/Tabs';
 import { Textarea } from '@/ui/Textarea';
-import { canManageCompetition, canUnlockRosters, isCpAdmin } from '../access';
+import { canHostOrCo, canManageCompetition, canUnlockRosters, isCpAdmin } from '../access';
+import { contactNoteProblem } from '../data/flex-schedule';
+import { clipCodePoints } from '../format';
 import { liveCpActions } from '../actions';
 import { representativeClubs } from '../rep-clubs';
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { buildPaymentInput, buildReviewInput } from '../payload';
-import type { DivisionDoc, EntryDoc, EntryPrivateDoc, PaymentStatus } from '../data/types';
+import type { CompetitionCategory, DivisionDoc, EntryDoc, EntryPrivateDoc, PaymentStatus } from '../data/types';
 import { CpError, errorOf } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
@@ -71,6 +75,10 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [rejectError, setRejectError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [unlockError, setUnlockError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
+  // 聯絡文字儲存用 lock。只看 busy 的話，連點會在重繪前再送一次。
+  const contactLock = useRef(false);
+  const [category, setCategory] = useState<CompetitionCategory>(env.bundle?.competition?.category ?? 'league');
+  const [contactDraft, setContactDraft] = useState(env.bundle?.competition?.contactNote ?? '');
   const now = env.now ?? Date.now();
   const repKey = representativeClubs(env.actor).map((club) => club.id).join('\n');
 
@@ -91,6 +99,15 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, env.actor.uid, env.actor.role, env.bundle, repKey]);
 
+  useEffect(() => {
+    const next = bundle?.competition?.category;
+    if (next) setCategory(next);
+  }, [bundle?.competition?.category]);
+
+  useEffect(() => {
+    setContactDraft(bundle?.competition?.contactNote ?? '');
+  }, [bundle?.competition?.contactNote]);
+
   const competition = bundle?.competition;
   const manage = competition ? canManageCompetition({
     staffRoles: bundle?.staff?.roles ?? [],
@@ -99,6 +116,10 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     repClubIds: representativeClubs(env.actor).map((club) => club.id),
     isAdmin: isCpAdmin(env.actor.role),
   }) : false;
+  const hostOps = canHostOrCo({
+    staffRoles: bundle?.staff?.roles ?? [],
+    isAdmin: isCpAdmin(env.actor.role),
+  });
   const locked = competition?.rostersLockedAt != null;
   const entries = bundle?.entries ?? [];
   const pending = entries.filter((entry) => entry.status === 'pending');
@@ -278,6 +299,51 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     }
   }
 
+  async function saveContact(): Promise<void> {
+    if (!hostOps || contactLock.current) return;
+    const problem = contactNoteProblem(contactDraft);
+    if (problem) {
+      setError({ reason: problem, params: problem === 'FIELD_LENGTH' ? { min: 1, max: 60 } : undefined });
+      return;
+    }
+    const text = contactDraft.trim();
+    contactLock.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await env.actions.update({ cid, contactNote: text ? text : null });
+      setBundle((current) => (current?.competition ? {
+        ...current,
+        competition: { ...current.competition, contactNote: text || null },
+      } : current));
+    } catch (err) {
+      setError(errorOf(err));
+    } finally {
+      contactLock.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function saveCategory(next: CompetitionCategory): Promise<void> {
+    if (!manage || busy || next === category) return;
+    const prev = category;
+    setCategory(next);
+    setBusy(true);
+    setError(null);
+    try {
+      await env.actions.update({ cid, category: next });
+      setBundle((current) => current?.competition ? {
+        ...current,
+        competition: { ...current.competition, category: next },
+      } : current);
+    } catch (err) {
+      setCategory(prev);
+      setError(errorOf(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const showUnlock = canUnlockRosters({
     locked,
     canManage: manage,
@@ -331,12 +397,13 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                 : <Badge tone="warning" label={ct('rosterUnconfirmed')} size="sm" />}
             </div>
             <p class="cps-sub" style="margin:4px 0 8px">{divisionName(entry.dvId)}</p>
-            {division ? <FeeLine amount={division.feePerTeam} /> : null}
+            {/* 報名費、繳費標籤、標示已繳費只限俱樂部主辦（顧問 §3.257） */}
+            {division && competition?.hostType === 'club' ? <FeeLine amount={division.feePerTeam} /> : null}
             <div class="cps-kv">
               <span>{ct('rosterPeople')}</span>
               <span>{ct('rosterCount', { n: entry.rosterCount, max: division?.rosterMax ?? 0, min: division?.rosterMin ?? 0 })}</span>
             </div>
-            {manage ? (
+            {manage && competition?.hostType === 'club' ? (
               <div class="cps-pay">
                 <Badge tone={pay.tone} label={pay.label} size="sm" />
                 <Switch
@@ -384,6 +451,49 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   return (
     <CpFrame title={ct('manageTitle')}>
+      {hostOps ? (
+        <div class="cps-actions" style="margin-top:0">
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/matches`)}>{ct('hostListTitle')}</Button>
+          <Button variant="secondary" onClick={() => route(`/competitions/${cid}/staff`)}>{ct('assignScorer')}</Button>
+        </div>
+      ) : null}
+      {manage ? (
+        <CpCard>
+          {/* ASSUMPTION: 沒有獨立的編輯賽事路由。分類改在報隊管理；建立仍走精靈步驟 1。 */}
+          <RadioGroup
+            label={ct('category')}
+            orientation="horizontal"
+            value={category}
+            onValueChange={(value) => {
+              if (value === 'league' || value === 'cup' || value === 'friendly') void saveCategory(value);
+            }}
+            options={[
+              { value: 'league', label: ct('categoryLeague') },
+              { value: 'cup', label: ct('categoryCup') },
+              { value: 'friendly', label: ct('categoryFriendly') },
+            ]}
+          />
+        </CpCard>
+      ) : null}
+      {hostOps ? (
+        <CpCard>
+          <div class="cps-fields">
+            <Input
+              label={ct('contactField')}
+              hint={ct('publicHint')}
+              value={contactDraft}
+              maxLength={60}
+              disabled={busy}
+              onValueChange={(value) => setContactDraft(clipCodePoints(value.replace(/[\r\n]/g, ''), 60))}
+            />
+            {competition?.hostType === 'personal' ? <p class="cps-cap">{ct('contactEmptyHint')}</p> : null}
+            <div class="cps-actions">
+              <Button variant="secondary" disabled={busy} onClick={() => { void saveContact(); }}>{ct('contactSave')}</Button>
+            </div>
+          </div>
+        </CpCard>
+      ) : null}
       <div>
         <p class="cps-sub" style="margin-bottom:8px">{competition.name}</p>
         {(bundle?.divisions ?? []).map((division) => (

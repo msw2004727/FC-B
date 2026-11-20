@@ -19,7 +19,10 @@ import { liveCpActions } from '../actions';
 import { useInjectedEnv, type CpInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { clipCodePoints, fromDatetimeLocalValue, formatTaipeiDateTime } from '../format';
+import { contactNoteProblem } from '../data/flex-schedule';
 import { buildCreateInput, type DivisionDraft, type VenueDraft, type WizardDraft } from '../payload';
+import type { CompetitionCategory } from '../data/types';
+import { categoryText } from '../ui/schedule-board';
 import { representativeClubs } from '../rep-clubs';
 import { CpError, errorOf, reasonText } from '../ui/feedback';
 import { DateTimeField, FeeLine } from '../ui/fields';
@@ -48,9 +51,11 @@ function emptyVenue(): VenueDraft {
 
 interface FormState {
   name: string;
+  category: CompetitionCategory;
   hostType: 'personal' | 'club';
   hostTeamId: string;
   feeNote: string;
+  contactNote: string;
   regOpen: string;
   regClose: string;
   firstMatch: string;
@@ -62,9 +67,11 @@ interface FormState {
 function blankForm(): FormState {
   return {
     name: '',
+    category: 'league',
     hostType: 'personal',
     hostTeamId: '',
     feeNote: '',
+    contactNote: '',
     regOpen: '',
     regClose: '',
     firstMatch: '',
@@ -79,9 +86,11 @@ function formFromEnv(env: CpInjectedEnv): FormState {
   if (!seed) return blankForm();
   return {
     name: seed.name,
+    category: seed.category ?? 'league',
     hostType: env.preview?.wizardClub ? 'club' : seed.hostType,
     hostTeamId: seed.hostTeamId,
     feeNote: seed.feeNote,
+    contactNote: seed.contactNote ?? '',
     regOpen: seed.regOpen,
     regClose: seed.regClose,
     firstMatch: seed.firstMatch,
@@ -99,10 +108,12 @@ function toDraft(form: FormState, hostDisplay: string): WizardDraft | null {
   if (regOpenAt == null || regCloseAt == null || firstMatchAt == null || lastMatchAt == null) return null;
   return {
     name: form.name,
+    category: form.category,
     hostType: form.hostType,
     hostTeamId: form.hostTeamId,
     hostDisplay,
     feeNote: form.feeNote,
+    contactNote: form.contactNote,
     regOpenAt,
     regCloseAt,
     firstMatchAt,
@@ -161,7 +172,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   const [done, setDone] = useState(preview?.wizardStep === 'done');
   const [cid, setCid] = useState('');
   const [form, setForm] = useState<FormState>(() => formFromEnv(env));
-  const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(
+  const [error, setError] = useState<{ reason: string; params?: Record<string, unknown>; field?: 'contactNote' } | null>(
     preview?.wizardError ? { reason: 'BANNED_WORD' } : null,
   );
   const [busy, setBusy] = useState(false);
@@ -253,6 +264,17 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   }
 
   async function create(): Promise<void> {
+    // 輸入框會去掉換行並截斷。預填或其他路徑仍可能帶進不合法聯絡文字，送出前再驗一次。
+    const noteProblem = contactNoteProblem(form.contactNote);
+    if (noteProblem) {
+      setStep(1);
+      setError({
+        reason: noteProblem,
+        field: 'contactNote',
+        params: noteProblem === 'FIELD_LENGTH' ? { min: 1, max: 60 } : undefined,
+      });
+      return;
+    }
     const problem = step1Reason() ?? step2Reason();
     const draft = toDraft(form, env.actor.displayName ?? '');
     if (problem || !draft || busy) {
@@ -266,7 +288,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
       setCid(result.cid);
       setDone(true);
     } catch (err) {
-      setError(errorOf(err));
+      const info = errorOf(err);
+      // 後端把禁用字標在 contactNote 時，錯誤要落在聯絡欄，並回到第 1 步才看得到。
+      if (info.params.field === 'contactNote') {
+        setStep(1);
+        setError({ reason: info.reason, params: info.params, field: 'contactNote' });
+        return;
+      }
+      setError(info);
     } finally {
       setBusy(false);
     }
@@ -331,10 +360,23 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 required
                 value={form.name}
                 maxLength={60}
-                error={error?.reason === 'BANNED_WORD' || (error?.reason === 'FIELD_LENGTH' && step === 1)
+                error={error?.field !== 'contactNote' && (error?.reason === 'BANNED_WORD' || (error?.reason === 'FIELD_LENGTH' && step === 1))
                   ? reasonText(ct, error.reason, error.params)
                   : undefined}
                 onValueChange={(name) => { patch({ name }); setError(null); }}
+              />
+              <RadioGroup
+                label={ct('category')}
+                orientation="horizontal"
+                value={form.category}
+                onValueChange={(value) => {
+                  if (value === 'league' || value === 'cup' || value === 'friendly') patch({ category: value });
+                }}
+                options={[
+                  { value: 'league', label: ct('categoryLeague') },
+                  { value: 'cup', label: ct('categoryCup') },
+                  { value: 'friendly', label: ct('categoryFriendly') },
+                ]}
               />
               <RadioGroup
                 label={ct('hostKind')}
@@ -374,6 +416,18 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   </p>
                 </div>
               ) : null}
+              <Input
+                label={ct('contactField')}
+                hint={ct('publicHint')}
+                value={form.contactNote}
+                maxLength={60}
+                error={error?.field === 'contactNote' ? reasonText(ct, error.reason, error.params) : undefined}
+                onValueChange={(value) => {
+                  patch({ contactNote: clipCodePoints(value.replace(/[\r\n]/g, ''), 60) });
+                  setError((current) => (current?.field === 'contactNote' ? null : current));
+                }}
+              />
+              {form.hostType === 'personal' ? <p class="cps-cap">{ct('contactEmptyHint')}</p> : null}
             </div>
           </CpCard>
           <CpCard>
@@ -494,18 +548,21 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   checked={division.requireRealName}
                   onCheckedChange={(requireRealName) => patchDivision(index, { requireRealName })}
                 />
-                <Input
-                  label={ct('feePerTeam')}
-                  type="number"
-                  value={String(division.feePerTeam)}
-                  min={0}
-                  max={1000000}
-                  onValueChange={(raw) => {
-                    const parsed = Number(raw);
-                    const feePerTeam = Number.isFinite(parsed) ? Math.max(0, Math.min(1_000_000, Math.trunc(parsed))) : 0;
-                    patchDivision(index, { feePerTeam });
-                  }}
-                />
+                {/* 報名費只限俱樂部主辦（顧問 §3.257，站長親口）：個人主辦不顯示費用欄 */}
+                {form.hostType === 'club' ? (
+                  <Input
+                    label={ct('feePerTeam')}
+                    type="number"
+                    value={String(division.feePerTeam)}
+                    min={0}
+                    max={1000000}
+                    onValueChange={(raw) => {
+                      const parsed = Number(raw);
+                      const feePerTeam = Number.isFinite(parsed) ? Math.max(0, Math.min(1_000_000, Math.trunc(parsed))) : 0;
+                      patchDivision(index, { feePerTeam });
+                    }}
+                  />
+                ) : null}
               </div>
             </CpCard>
           ))}
@@ -524,6 +581,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
             </div>
             <h2 class="cps-title" style="margin-bottom:12px">{form.name.trim()}</h2>
             <dl class="cps-rows">
+              <CpRow k={ct('category')}>{categoryText(ct, form.category)}</CpRow>
               <CpRow k={ct('host')}>{hostName}</CpRow>
               <CpRow k={ct('regPeriod')}>
                 <span class="cps-line">{formatTaipeiDateTime(draftTimes.regOpenAt)}</span>
@@ -556,7 +614,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                         {division.limitAge ? `　${ct('ageLimit', { min: division.minAge, max: division.maxAge })}` : ''}
                       </span>
                     </div>
-                    <FeeLine amount={division.feePerTeam} />
+                    {form.hostType === 'club' ? <FeeLine amount={division.feePerTeam} /> : null}
                   </div>
                 </li>
               ))}
@@ -566,7 +624,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         </>
       ) : null}
 
-      {error && !(step === 1 && (error.reason === 'BANNED_WORD' || error.reason === 'FIELD_LENGTH'))
+      {error && error.field !== 'contactNote' && !(step === 1 && (error.reason === 'BANNED_WORD' || error.reason === 'FIELD_LENGTH'))
         ? <CpError reason={error.reason} params={error.params} />
         : null}
 

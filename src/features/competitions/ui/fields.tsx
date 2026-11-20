@@ -44,12 +44,17 @@ export function DateField({
   value,
   onValueChange,
   required = false,
+  disabled = false,
+  min,
 }: {
   id: string;
   label: string;
   value: string;
   onValueChange: (value: string) => void;
   required?: boolean;
+  disabled?: boolean;
+  /** YYYY-MM-DD。整天順延只能選更晚的日期。 */
+  min?: string;
 }): JSX.Element {
   const t = useT();
   return (
@@ -63,7 +68,11 @@ export function DateField({
         type="date"
         value={value}
         required={required}
-        onInput={(event) => onValueChange(event.currentTarget.value)}
+        disabled={disabled}
+        min={min}
+        onInput={(event) => {
+          if (!disabled) onValueChange(event.currentTarget.value);
+        }}
       />
     </div>
   );

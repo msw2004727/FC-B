@@ -1,0 +1,10 @@
+/* 第 4 步預覽截圖底。元件樣式在 live.css。 */
+
+html, body { margin: 0; background: var(--color-bg-root); }
+#app { min-height: 100vh; }
+
+.s4a-miss {
+  margin: 16px;
+  font: 700 14px/1.4 sans-serif;
+  color: var(--color-text-primary);
+}

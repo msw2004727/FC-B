@@ -1,0 +1,338 @@
+@import '../competitions.css';
+
+/* 第 4 步預覽。字級只用字級 token。360／390 短語不從中間拆。
+ * 主辦後台用平面卡片（s4b-admin），不套賽事頁液態玻璃。 */
+
+.s4b { min-width: 0; min-height: 100vh; }
+.s4b * { box-sizing: border-box; }
+.s4b .cps-stack,
+.s4b .cps-card,
+.s4b .s4b-plain { min-width: 0; max-width: 100%; }
+
+.s4b-admin.cps-root,
+[data-theme="dark"] .s4b-admin.cps-root {
+  background: var(--color-bg-root);
+  color: var(--color-text-primary);
+}
+
+.s4b-plain {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+
+.s4b .ui-button,
+.s4b .ui-button__label,
+.s4b .ui-badge,
+.s4b .ui-checkbox__text,
+.s4b .ui-input label,
+.s4b .ui-select label,
+.s4b .ui-textarea label,
+.s4b .ui-radio__text,
+.s4b .ui-radio label,
+.s4b .ui-switch__label,
+.s4b h1,
+.s4b h2,
+.s4b h3 {
+  white-space: nowrap;
+}
+
+.s4b .ui-checkbox__text,
+.s4b .ui-radio__text { font-size: var(--font-size-body-sm); }
+
+.s4b-pair { display: flex; gap: var(--space-2); min-width: 0; }
+.s4b-pair .ui-button { flex: 1 1 0; width: auto; min-inline-size: 0; }
+.s4b-mini .ui-button { flex: 0 0 auto; width: auto; min-inline-size: 0; padding-inline: 10px; }
+.s4b-blockbtn .ui-button { width: 100%; min-inline-size: 0; }
+
+.s4b-h {
+  margin: 0;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--color-text-primary);
+}
+h2.s4b-h {
+  font-size: var(--font-size-body-lg);
+  line-height: var(--line-height-body-lg);
+}
+h3.s4b-h {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+
+.s4b-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.s4b-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  color: var(--color-text-primary);
+}
+.s4b-k, .s4b-v { white-space: nowrap; }
+.s4b-strong { font-weight: 700; }
+.s4b-line--fit {
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+}
+.s4b-age-no,
+.s4b-age-no .s4b-k,
+.s4b-age-no .s4b-v {
+  color: var(--color-warning-fg);
+  font-weight: 700;
+}
+
+.s4b-gap { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.s4b-gap > * { min-width: 0; max-width: 100%; }
+
+.s4b-li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-border);
+}
+.s4b-li:first-child { border-top: 0; padding-top: 0; }
+.s4b-li:last-child { padding-bottom: 0; }
+
+/* 只套人員清單。邀請列也用 .s4b-li，但是兩行，不進這個選擇器。 */
+.s4b-staff-list > .s4b-li {
+  min-height: 56px;
+  height: 56px;
+  padding-block: 0;
+  align-items: center;
+}
+.s4b-staff-list > .s4b-li:first-child,
+.s4b-staff-list > .s4b-li:last-child {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.s4b-staff {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) 4.5em 64px;
+  column-gap: 8px;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+}
+.s4b-staff__name { font-weight: 700; white-space: nowrap; font-size: var(--font-size-body); }
+.s4b-staff .s4b-staff__name {
+  grid-column: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.s4b-staff > .ui-badge { grid-column: 2; justify-self: start; }
+.s4b-staff__meta {
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body-sm);
+}
+.s4b-staff .s4b-staff__meta {
+  grid-column: 4;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.s4b-staff__gap { flex: 1 1 auto; min-width: 0; }
+.s4b-staff > .s4b-staff__gap { grid-column: 3; }
+/* PM 收件修正：gap（第 3 欄）在 DOM 裡排在 meta（第 4 欄）之後，自動排位會把它和移除鈕推到第二列；全部固定在第一列。 */
+.s4b-staff > * { grid-row: 1; }
+.s4b-staff > .s4b-mini { grid-column: 5; justify-self: end; min-width: 0; max-width: 100%; }
+.s4b-staff .ui-badge { justify-self: start; }
+
+.s4b-day {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+.s4b-day:first-child { margin-top: 0; }
+
+.s4b-m {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border-strong);
+}
+.s4b-m:first-child { border-top: 0; padding-top: 0; }
+/* 日期標題是第一個子元素，:first-child 選不到第一場。 */
+.s4b-day + .s4b-m { border-top: 0; padding-top: 0; }
+/* 兩天之間。每一天包在 .s4b-daygroup 裡；不用 :has()（顧問預審：不支援的瀏覽器會整條丟掉，取代原 div:has() 寫法）。 */
+.s4b-m + .s4b-day,
+.s4b-daygroup + .s4b-daygroup > .s4b-day {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-strong);
+}
+.s4b-m__top, .s4b-between {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.s4b-m__top span, .s4b-between span { white-space: nowrap; }
+.s4b-between { justify-content: space-between; }
+.s4b-between .ui-button { flex: 0 0 auto; min-inline-size: 0; }
+.s4b-m__top .ui-badge { flex: 0 0 auto; }
+
+.s4b-warn {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.s4b-alert {
+  margin: 0;
+  color: var(--color-danger-fg);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.s4b-err {
+  margin: 0;
+  color: var(--color-danger-fg);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.s4b-status {
+  margin: 0;
+  color: var(--color-info-fg);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.s4b-foot {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  white-space: nowrap;
+}
+
+.s4b-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--font-size-body-lg);
+  line-height: var(--line-height-body-lg);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.s4b-fold svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.s4b-fold--open svg { transform: rotate(180deg); }
+.s4b-sub {
+  min-width: 0;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.s4b-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.s4b-bday { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; min-width: 0; }
+.s4b-bday select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: max(16px, 1rem);
+}
+
+.s4b-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.s4b-table th, .s4b-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--color-text-primary);
+}
+.s4b-table th { color: var(--color-text-secondary); font-weight: 600; }
+.s4b-sign {
+  display: block;
+  height: 28px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 2px;
+}
+
+[data-theme="dark"] .s4b .ui-checkbox input,
+[data-theme="dark"] .s4b .ui-radio input { color-scheme: dark; }
+
+.s4b-num {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-brand-soft-bg);
+  color: var(--color-brand-soft-fg);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media print {
+  .s4b-noprint { display: none !important; }
+  .s4b, .s4b * {
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  .s4b-plain, .s4b .cps-card { border-color: #000 !important; }
+  .s4b-sign { border-color: #000 !important; }
+}

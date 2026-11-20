@@ -2,6 +2,9 @@
   "title": "大会",
   "nav": "大会",
   "heading": "賽事",
+  "sourceLabel": "大会の掲載元",
+  "sourceIn": "サイト内大会",
+  "sourceOut": "外部大会",
   "add": "＋ 新增賽事",
   "tab": {
     "all": "全部",

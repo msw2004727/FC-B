@@ -17,6 +17,13 @@ function flatten(obj: Record<string, unknown>, prefix: string, out: Record<strin
 }
 const dict = flatten(zhTw as Record<string, unknown>, 'tournaments');
 
+// 本檔驗「開關關閉＝現行外部清單」的行為、讀取預算與快照；COMPETITIONS_ENABLED 改 true 上線後仍固定以關閉跑。
+// 開關打開的行為由 TournamentsPage.gate*.test.tsx 負責（賽事第 4 步第一次上線，取代原本依建置期常數實值跑）。
+vi.mock('@/feature-overrides', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/feature-overrides')>();
+  return { ...actual, COMPETITIONS_ENABLED: false };
+});
+
 vi.mock('@/i18n/i18n', () => ({
   useT: () => (key: string, params?: Record<string, unknown>) => {
     let text = dict[key] ?? key;
@@ -69,6 +76,13 @@ vi.mock('@/ui/AppConfirm', () => ({ appConfirm: (message: string) => mockConfirm
 
 const mockToast = vi.fn();
 vi.mock('@/ui/Toast', () => ({ toast: { show: (options: unknown) => mockToast(options) } }));
+
+// 開關是 false：這支測試檔不改寫 feature-overrides。站內 chunk 被載入才會計數。
+const inAppChunk = vi.hoisted(() => ({ imports: 0 }));
+vi.mock('@/features/competitions/components/InAppSection', () => {
+  inAppChunk.imports += 1;
+  return { InAppSection: () => null };
+});
 
 vi.mock('@/features/events/components/event-form/ImageCropper', async () => {
   const { h } = await import('preact');
@@ -168,6 +182,28 @@ describe('清單與讀取預算', () => {
     expect(screen.getByText('目前沒有賽事')).toBeTruthy();
 
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it('開關關閉時沒有來源切換，DOM 與現行外部清單相同', async () => {
+    await renderLoaded();
+    const root = document.querySelector('.tournaments-root');
+    expect(root).toBeTruthy();
+    expect(root?.hasAttribute('data-v2')).toBe(false);
+    expect(document.querySelector('.cpl-src')).toBeNull();
+    expect(document.querySelector('.cpl-chip')).toBeNull();
+    expect(document.querySelector('.cpl-cover')).toBeNull();
+    expect(document.querySelector('[data-inapp]')).toBeNull();
+    expect(inAppChunk.imports).toBe(0);
+    expect(root?.textContent ?? '').not.toContain('站內賽事');
+    expect(root?.textContent ?? '').not.toContain('外部賽事');
+    expect(root?.textContent ?? '').not.toContain('只看我的');
+    expect(document.getElementById('tc-show-ended')).toBeTruthy();
+    for (const chip of document.querySelectorAll('.tc-chip')) {
+      expect(chip.className).toBe('tc-chip');
+    }
+    expect(names()).toEqual(['2027 春季聯賽', '週末友誼賽', 'FEDA CUP 2026 飛達盃']);
+    expect(sdk.getDocs).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('#page-tournaments')?.innerHTML).toMatchSnapshot();
   });
 
   it('已結束卡片套 ended（灰階）；未結束不套', async () => {

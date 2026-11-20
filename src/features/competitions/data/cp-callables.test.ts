@@ -39,14 +39,37 @@ import {
   cpEntrySetPaymentStatus,
   cpEntryUnlockRosters,
   cpEntryWithdraw,
+  cpHostClearSchedule,
+  cpHostConfirmMatchResult,
   cpHostCreate,
   cpHostDelete,
+  cpHostGenerateSchedule,
   cpHostPublish,
+  cpHostAssignStaff,
+  cpHostCancelMatch,
+  cpHostClearTieDecision,
+  cpHostEndCompetition,
+  cpHostExplainTie,
+  cpHostRecalcStandings,
+  cpHostRecordResult,
+  cpHostResolveTie,
+  cpHostRestoreCompetition,
+  cpHostRescheduleMatch,
+  cpHostShiftMatchDay,
+  cpHostSwapMatches,
+  cpHostPostNotice,
+  cpHostDeleteNotice,
+  cpHostRemoveStaff,
+  cpHostResetMatch,
   cpHostSetStatus,
+  cpHostSetWalkover,
   cpHostUpdate,
   cpParticipantReport,
+  assignStaff,
   registerCpMock,
+  removeStaff,
   toCpCallError,
+  type CpGenerateScheduleResult,
 } from './cp-callables';
 
 const times = {
@@ -285,5 +308,312 @@ describe('cp callables（欄位與錯誤轉換）', () => {
 
     const existing = new CpCallError('ROSTERS_LOCKED', { n: 1 });
     expect(toCpCallError(existing)).toBe(existing);
+  });
+
+  it('第 3 步動作只送契約列出的鍵，null 與 0 與 false 都留著', async () => {
+    const days = [{ date: '2027-01-09', start: '09:00', end: '18:00' }];
+    await cpHostGenerateSchedule({
+      cid: 'cid_1',
+      dvId: 'dv_1',
+      legs: 1,
+      matchMinutes: 20,
+      days,
+      venueIdx: [0],
+    });
+    expect(h.calls.at(-1)?.name).toBe('cpHost');
+    expect(lastPayload()).toEqual({
+      action: 'generateSchedule',
+      cid: 'cid_1',
+      dvId: 'dv_1',
+      legs: 1,
+      matchMinutes: 20,
+      days,
+      venueIdx: [0],
+    });
+    expect(lastPayload()).not.toHaveProperty('ranking');
+    expect(lastPayload()).not.toHaveProperty('bufferMinutes');
+    expect(lastPayload()).not.toHaveProperty('minRestMinutes');
+    expect(lastPayload()).not.toHaveProperty('seed');
+    expect(lastPayload()).not.toHaveProperty('dryRun');
+    expect(lastPayload()).not.toHaveProperty('penaltyScore');
+
+    await cpHostGenerateSchedule({
+      cid: 'cid_1',
+      dvId: 'dv_1',
+      legs: 2,
+      ranking: 'goalDiffFirst',
+      matchMinutes: 25,
+      bufferMinutes: 5,
+      minRestMinutes: 0,
+      days,
+      venueIdx: [0, 1],
+      seed: 0,
+      dryRun: false,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'generateSchedule',
+      cid: 'cid_1',
+      dvId: 'dv_1',
+      legs: 2,
+      ranking: 'goalDiffFirst',
+      matchMinutes: 25,
+      bufferMinutes: 5,
+      minRestMinutes: 0,
+      days,
+      venueIdx: [0, 1],
+      seed: 0,
+      dryRun: false,
+    });
+
+    await cpHostClearSchedule({ cid: 'cid_1', dvId: 'dv_1' });
+    expect(lastPayload()).toEqual({ action: 'clearSchedule', cid: 'cid_1', dvId: 'dv_1' });
+
+    await cpHostRescheduleMatch({
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 3,
+      kickoffAt: null,
+      venueIdx: null,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'rescheduleMatch',
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 3,
+      kickoffAt: null,
+      venueIdx: null,
+    });
+
+    await cpHostRecordResult({
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 4,
+      score: { home: 2, away: 1 },
+      confirm: true,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'recordResult',
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 4,
+      score: { home: 2, away: 1 },
+      confirm: true,
+    });
+    expect(lastPayload()).not.toHaveProperty('penaltyScore');
+
+    await cpHostConfirmMatchResult({ cid: 'cid_1', mtId: 'mt_1', expectedRev: 5 });
+    expect(lastPayload()).toEqual({
+      action: 'confirmMatchResult',
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 5,
+    });
+
+    await cpHostSetWalkover({
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 6,
+      forfeitSide: 'away',
+      reason: '未到場',
+    });
+    expect(lastPayload()).toEqual({
+      action: 'setWalkover',
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 6,
+      forfeitSide: 'away',
+      reason: '未到場',
+    });
+
+    await cpHostResetMatch({ cid: 'cid_1', mtId: 'mt_1', expectedRev: 7, reason: '記錯' });
+    expect(lastPayload()).toEqual({
+      action: 'resetMatch',
+      cid: 'cid_1',
+      mtId: 'mt_1',
+      expectedRev: 7,
+      reason: '記錯',
+    });
+
+    await cpHostRecalcStandings({ cid: 'cid_1', dvId: 'dv_1' });
+    expect(lastPayload()).toEqual({ action: 'recalcStandings', cid: 'cid_1', dvId: 'dv_1' });
+
+    await cpHostCancelMatch({ cid: 'cid_1', mtId: 'mt_1', expectedRev: 8, reason: '大雨' });
+    expect(lastPayload()).toEqual({
+      action: 'cancelMatch', cid: 'cid_1', mtId: 'mt_1', expectedRev: 8, reason: '大雨',
+    });
+    await cpHostEndCompetition({ cid: 'cid_1', reason: '剩餘場次不再進行' });
+    expect(lastPayload()).toEqual({ action: 'endCompetition', cid: 'cid_1', reason: '剩餘場次不再進行' });
+    await cpHostRestoreCompetition({ cid: 'cid_1', reason: '誤按結束' });
+    expect(lastPayload()).toEqual({ action: 'restoreCompetition', cid: 'cid_1', reason: '誤按結束' });
+    await cpHostExplainTie({ cid: 'cid_1', dvId: 'dv_1', teamIds: ['en_a', 'en_b'] });
+    expect(lastPayload()).toEqual({
+      action: 'explainTie', cid: 'cid_1', dvId: 'dv_1', teamIds: ['en_a', 'en_b'],
+    });
+    expect(lastPayload()).not.toHaveProperty('groupId');
+    await cpHostResolveTie({
+      cid: 'cid_1', dvId: 'dv_1', groupId: 'A', order: ['en_b', 'en_a'],
+      method: 'host', reason: '依報名先後', expectedVersion: 3,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'resolveTie',
+      cid: 'cid_1',
+      dvId: 'dv_1',
+      groupId: 'A',
+      order: ['en_b', 'en_a'],
+      method: 'host',
+      reason: '依報名先後',
+      expectedVersion: 3,
+    });
+    await cpHostClearTieDecision({
+      cid: 'cid_1', dvId: 'dv_1', groupId: 'A', reason: '重算', expectedVersion: 4,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'clearTieDecision',
+      cid: 'cid_1',
+      dvId: 'dv_1',
+      groupId: 'A',
+      reason: '重算',
+      expectedVersion: 4,
+    });
+
+    await cpHostCreate({ ...base, hostType: 'personal', category: 'cup' });
+    expect(lastPayload()).toMatchObject({ action: 'create', category: 'cup', hostType: 'personal' });
+
+    await cpHostUpdate({ cid: 'cid_1', category: 'friendly' });
+    expect(lastPayload()).toEqual({ action: 'update', cid: 'cid_1', category: 'friendly' });
+  });
+
+  it('改期 force、順延、對調、公告與聯絡文字只送有值的鍵', async () => {
+    await cpHostRescheduleMatch({
+      cid: 'cid_1', mtId: 'mt_1', expectedRev: 3, kickoffAt: 1, venueIdx: 0, force: true,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'rescheduleMatch', cid: 'cid_1', mtId: 'mt_1', expectedRev: 3, kickoffAt: 1, venueIdx: 0, force: true,
+    });
+
+    await cpHostRescheduleMatch({
+      cid: 'cid_1', mtId: 'mt_1', expectedRev: 3, kickoffAt: 1, venueIdx: 0, force: false,
+    });
+    expect(lastPayload()).not.toHaveProperty('force');
+
+    await cpHostShiftMatchDay({ cid: 'cid_1', fromDate: '2027-01-09', toDate: '2027-01-12', reason: '雨天' });
+    expect(lastPayload()).toEqual({
+      action: 'shiftMatchDay', cid: 'cid_1', fromDate: '2027-01-09', toDate: '2027-01-12', reason: '雨天',
+    });
+    await cpHostShiftMatchDay({
+      cid: 'cid_1', fromDate: '2027-01-09', toDate: '2027-01-12', reason: '雨天', force: true,
+    });
+    expect(lastPayload().force).toBe(true);
+
+    await cpHostSwapMatches({
+      cid: 'cid_1', mtIdA: 'mt_1', mtIdB: 'mt_2', expectedRevA: 3, expectedRevB: 4, reason: '對調場地',
+    });
+    expect(lastPayload()).toEqual({
+      action: 'swapMatches',
+      cid: 'cid_1',
+      mtIdA: 'mt_1',
+      mtIdB: 'mt_2',
+      expectedRevA: 3,
+      expectedRevB: 4,
+      reason: '對調場地',
+    });
+    expect(lastPayload()).not.toHaveProperty('force');
+
+    await cpHostPostNotice({ cid: 'cid_1', text: '今晚改期' });
+    expect(lastPayload()).toEqual({ action: 'postNotice', cid: 'cid_1', text: '今晚改期' });
+    await cpHostDeleteNotice({ cid: 'cid_1', noticeId: 'nt_1' });
+    expect(lastPayload()).toEqual({ action: 'deleteNotice', cid: 'cid_1', noticeId: 'nt_1' });
+
+    await cpHostCreate({ ...base, hostType: 'personal', contactNote: '賽前群組' });
+    expect(lastPayload().contactNote).toBe('賽前群組');
+    await cpHostCreate({ ...base, hostType: 'personal' });
+    expect(lastPayload()).not.toHaveProperty('contactNote');
+
+    await cpHostUpdate({ cid: 'cid_1', contactNote: null });
+    expect(lastPayload()).toEqual({ action: 'update', cid: 'cid_1', contactNote: null });
+    await cpHostUpdate({ cid: 'cid_1', contactNote: '賽前群組' });
+    expect(lastPayload()).toEqual({ action: 'update', cid: 'cid_1', contactNote: '賽前群組' });
+    await cpHostUpdate({ cid: 'cid_1' });
+    expect(lastPayload()).not.toHaveProperty('contactNote');
+  });
+
+  it('assignStaff／removeStaff 只送契約列出的鍵，省略的選填不送出', async () => {
+    await cpHostAssignStaff({
+      cid: 'cid_1',
+      uid: 'uid_1',
+      roles: ['scorer'],
+      matchIds: ['mt_a', 'mt_b'],
+    });
+    expect(h.calls.at(-1)?.name).toBe('cpHost');
+    expect(lastPayload()).toEqual({
+      action: 'assignStaff',
+      cid: 'cid_1',
+      uid: 'uid_1',
+      roles: ['scorer'],
+      matchIds: ['mt_a', 'mt_b'],
+    });
+    expect(lastPayload()).not.toHaveProperty('expiresAt');
+
+    await assignStaff({
+      cid: 'cid_1',
+      uid: 'uid_1',
+      roles: ['referee'],
+      matchIds: [],
+      expiresAt: 90,
+    });
+    expect(lastPayload()).toEqual({
+      action: 'assignStaff',
+      cid: 'cid_1',
+      uid: 'uid_1',
+      roles: ['referee'],
+      matchIds: [],
+      expiresAt: 90,
+    });
+
+    await cpHostRemoveStaff({ cid: 'cid_1', uid: 'uid_1' });
+    expect(lastPayload()).toEqual({ action: 'removeStaff', cid: 'cid_1', uid: 'uid_1' });
+    expect(lastPayload()).not.toHaveProperty('roles');
+
+    await removeStaff({ cid: 'cid_1', uid: 'uid_1', roles: ['scorer'] });
+    expect(lastPayload()).toEqual({
+      action: 'removeStaff',
+      cid: 'cid_1',
+      uid: 'uid_1',
+      roles: ['scorer'],
+    });
+  });
+
+  it('指派錯誤代碼原樣轉出', async () => {
+    for (const reason of [
+      'STAFF_NOT_FOUND',
+      'STAFF_PROTECTED',
+      'FORBIDDEN',
+      'COMPETITION_CLOSED',
+      'COMPETITION_ENDED',
+      'COMPETITION_HIDDEN',
+    ]) {
+      h.nextError = { details: { reason } };
+      await expect(cpHostAssignStaff({
+        cid: 'cid_1',
+        uid: 'uid_1',
+        roles: ['scorer'],
+        matchIds: [],
+      })).rejects.toMatchObject({ name: 'CpCallError', reason, params: {} });
+    }
+  });
+
+  it('generateSchedule 的 daysUsed 是日期陣列', () => {
+    const preview = {
+      dvId: 'dv_1',
+      seed: 7,
+      matchCount: 6,
+      unplacedCount: 0,
+      daysUsed: ['2026-12-05', '2026-12-06'],
+      perTeam: 3,
+      teamCount: 4,
+      dryRun: true,
+    } satisfies CpGenerateScheduleResult;
+    expect(preview.daysUsed).toEqual(['2026-12-05', '2026-12-06']);
+    expect(preview.daysUsed.every((day) => typeof day === 'string')).toBe(true);
   });
 });

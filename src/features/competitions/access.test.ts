@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canUnlockRosters, isCpAdmin, rosterFormBlock } from './access';
+import { canEndCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canShowFlexSchedule, canUnlockRosters, isCpAdmin, rosterFormBlock } from './access';
 
 const window = { repClubIds: ['club_a'], status: 'published' as const, hidden: false, regOpenAt: 10, regCloseAt: 20, now: 15 };
 
@@ -41,6 +41,13 @@ describe('賽事權限顯示', () => {
     })).toBe(false);
   });
 
+  it('排賽程只給主辦、共同主辦、管理員，俱樂部代表不算', () => {
+    expect(canHostOrCo({ staffRoles: ['host'], isAdmin: false })).toBe(true);
+    expect(canHostOrCo({ staffRoles: ['coHost'], isAdmin: false })).toBe(true);
+    expect(canHostOrCo({ staffRoles: [], isAdmin: true })).toBe(true);
+    expect(canHostOrCo({ staffRoles: [], isAdmin: false })).toBe(false);
+  });
+
   it('以俱樂部報隊只給代表，而且要在公開報名期間', () => {
     expect(canRegisterClubEntry(window)).toBe(true);
     expect(canRegisterClubEntry({ ...window, repClubIds: [] })).toBe(false);
@@ -48,6 +55,23 @@ describe('賽事權限顯示', () => {
     expect(canRegisterClubEntry({ ...window, now: 21 })).toBe(false);
     expect(canRegisterClubEntry({ ...window, status: 'draft' })).toBe(false);
     expect(canRegisterClubEntry({ ...window, hidden: true })).toBe(false);
+  });
+
+  it('結束賽事只在已發布且尚未結束時顯示', () => {
+    expect(canEndCompetition({ status: 'published', endedAt: null })).toBe(true);
+    expect(canEndCompetition({ status: 'published', endedAt: 1 })).toBe(false);
+    expect(canEndCompetition({ status: 'postponed', endedAt: null })).toBe(false);
+    expect(canEndCompetition({ status: 'draft', endedAt: null })).toBe(false);
+    expect(canEndCompetition({ status: 'cancelled', endedAt: null })).toBe(false);
+  });
+
+  it('順延與對調只在已發布、且未結束或是管理員時顯示', () => {
+    expect(canShowFlexSchedule({ status: 'published', endedAt: null }, false)).toBe(true);
+    expect(canShowFlexSchedule({ status: 'published', endedAt: 1 }, false)).toBe(false);
+    expect(canShowFlexSchedule({ status: 'published', endedAt: 1 }, true)).toBe(true);
+    expect(canShowFlexSchedule({ status: 'draft', endedAt: null }, true)).toBe(false);
+    expect(canShowFlexSchedule({ status: 'postponed', endedAt: null }, false)).toBe(false);
+    expect(canShowFlexSchedule({ status: 'cancelled', endedAt: null }, true)).toBe(false);
   });
 
   it('解鎖：未鎖定不顯示；首場前主辦可解，首場後只留管理員', () => {

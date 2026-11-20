@@ -1,0 +1,282 @@
+// 賽程管理上的整天順延與兩場對調。改期仍留在場次列的底頁。
+
+import type { JSX } from 'preact';
+import { useState } from 'preact/hooks';
+import { Button } from '@/ui/Button';
+import { Select } from '@/ui/Select';
+import { Textarea } from '@/ui/Textarea';
+import { toast } from '@/ui/Toast';
+import { boundedReason } from '../data/host-write';
+import {
+  clashSentence,
+  matchPickLabel,
+  movableOnDay,
+  nextCalendarDay,
+  shiftDayChoices,
+  shiftDayLabel,
+  shiftMovesLater,
+  swappableMatches,
+  swapPreview,
+  type ScheduleClash,
+} from '../data/flex-schedule';
+import type { MatchDoc } from '../data/types';
+import type { CompetitionsT } from '../i18n';
+import { reasonText } from '../ui/feedback';
+import { DateField } from '../ui/fields';
+import { CpCard } from '../ui/shell';
+
+export interface ShiftRequest {
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  force: boolean;
+}
+
+export interface SwapRequest {
+  mtIdA: string;
+  mtIdB: string;
+  expectedRevA: number;
+  expectedRevB: number;
+  reason: string;
+  force: boolean;
+}
+
+/** 順延、對調的結果。成功才清表單；撞期失敗把衝突帶回來畫警示。 */
+export type FlexWriteResult =
+  | { ok: true }
+  | { ok: false; clash: ScheduleClash | null };
+
+function reject(ct: CompetitionsT, reason: string, params?: Record<string, number>): void {
+  toast.show({ message: reasonText(ct, reason, params), tone: 'error' });
+}
+
+export function HostFlexCards({
+  ct,
+  matches,
+  weekdays,
+  busy,
+  onShift,
+  onSwap,
+  onOpen,
+}: {
+  ct: CompetitionsT;
+  matches: readonly MatchDoc[];
+  weekdays: readonly string[];
+  busy: boolean;
+  onShift: (input: ShiftRequest) => Promise<FlexWriteResult>;
+  onSwap: (input: SwapRequest) => Promise<FlexWriteResult>;
+  /** 點進順延或對調卡片。這兩張卡一直開著，父層用來清掉上一則成功公告。 */
+  onOpen?: () => void;
+}): JSX.Element {
+  const choices = shiftDayChoices(matches);
+  const rows = swappableMatches(matches);
+  const [fromPick, setFromPick] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [shiftReason, setShiftReason] = useState('');
+  const [shiftClash, setShiftClash] = useState<ScheduleClash | null>(null);
+  const [pickA, setPickA] = useState('');
+  const [pickB, setPickB] = useState('');
+  const [swapReason, setSwapReason] = useState('');
+  const [swapClash, setSwapClash] = useState<ScheduleClash | null>(null);
+
+  const fromDate = choices.some((choice) => choice.date === fromPick) ? fromPick : (choices[0]?.date ?? '');
+  const idA = rows.some((match) => match.id === pickA) ? pickA : (rows[0]?.id ?? '');
+  const idB = rows.some((match) => match.id === pickB) ? pickB : (rows.find((match) => match.id !== idA)?.id ?? '');
+  const affected = fromDate ? movableOnDay(matches, fromDate).length : 0;
+  const matchA = rows.find((match) => match.id === idA) ?? null;
+  const matchB = rows.find((match) => match.id === idB) ?? null;
+  const shiftHit = shiftClash ? matches.find((match) => match.id === shiftClash.mtId) : undefined;
+  const swapHit = swapClash ? matches.find((match) => match.id === swapClash.mtId) : undefined;
+
+  // 送出鈕不算「打開面板」。成功後那一下點擊不該把剛發布的公告提示清掉。
+  function opened(event: { target: EventTarget | null }): void {
+    const node = event.target;
+    if (node instanceof Element && node.closest('button')) return;
+    onOpen?.();
+  }
+
+  async function sendShift(force: boolean): Promise<void> {
+    if (busy || !fromDate) return;
+    if (!toDate.trim()) {
+      reject(ct, 'FIELD_REQUIRED');
+      return;
+    }
+    if (!shiftMovesLater(fromDate, toDate)) {
+      reject(ct, 'FIELD_RANGE');
+      return;
+    }
+    const problem = boundedReason(shiftReason, 2, 100);
+    if (problem) {
+      reject(ct, problem, problem === 'FIELD_LENGTH' ? { min: 2, max: 100 } : undefined);
+      return;
+    }
+    const result = await onShift({
+      fromDate,
+      toDate,
+      reason: shiftReason.trim(),
+      force,
+    });
+    // 成功後清掉來源、目標日與理由。否則再按一次會把下一天搬到同一個目標日，並再發一則公告。
+    if (result.ok) {
+      setFromPick('');
+      setToDate('');
+      setShiftReason('');
+      setShiftClash(null);
+      return;
+    }
+    setShiftClash(result.clash);
+  }
+
+  async function sendSwap(force: boolean): Promise<void> {
+    if (busy || !matchA || !matchB) return;
+    if (matchA.id === matchB.id) {
+      reject(ct, 'FIELD_RANGE');
+      return;
+    }
+    const problem = boundedReason(swapReason, 2, 100);
+    if (problem) {
+      reject(ct, problem, problem === 'FIELD_LENGTH' ? { min: 2, max: 100 } : undefined);
+      return;
+    }
+    const result = await onSwap({
+      mtIdA: matchA.id,
+      mtIdB: matchB.id,
+      expectedRevA: matchA.rev,
+      expectedRevB: matchB.rev,
+      reason: swapReason.trim(),
+      force,
+    });
+    // 對調成功後清掉理由與選取，避免同一對再送一次。
+    if (result.ok) {
+      setPickA('');
+      setPickB('');
+      setSwapReason('');
+      setSwapClash(null);
+      return;
+    }
+    setSwapClash(result.clash);
+  }
+
+  return (
+    <>
+      {choices.length > 0 ? (
+        <div onClick={opened} onFocusCapture={opened}>
+        <CpCard>
+          <h3 class="cpm-h">{ct('shiftDay')}</h3>
+          <div class="cps-fields">
+            <Select
+              label={ct('schedMatchDay')}
+              value={fromDate}
+              disabled={busy}
+              onValueChange={(value) => {
+                setFromPick(value);
+                setToDate((current) => (shiftMovesLater(value, current) ? current : ''));
+                setShiftClash(null);
+              }}
+              options={choices.map((choice) => ({
+                value: choice.date,
+                label: shiftDayLabel(choice.date, choice.count, weekdays, ct('matchUnit')),
+              }))}
+            />
+            <DateField
+              id="cp-shift-date"
+              label={ct('newDate')}
+              value={toDate}
+              disabled={busy}
+              min={nextCalendarDay(fromDate)}
+              onValueChange={(value) => {
+                setToDate(value);
+                setShiftClash(null);
+              }}
+            />
+            <p class="cpm-preview">{ct('affected', { n: affected })}</p>
+            <Textarea
+              label={ct('shiftReason')}
+              required
+              value={shiftReason}
+              maxLength={100}
+              rows={2}
+              variant="fixed"
+              disabled={busy}
+              onValueChange={(value) => {
+                setShiftReason(value);
+                setShiftClash(null);
+              }}
+            />
+            {shiftClash ? (
+              <p class="cpm-warn" role="alert">
+                {clashSentence(shiftHit, shiftClash.type, ct('clashTeam'), ct('clashVenue'), ct('vsWord'))}
+              </p>
+            ) : null}
+            <div class="cps-actions">
+              <Button variant="primary" disabled={busy} onClick={() => { void sendShift(false); }}>{ct('shiftOk')}</Button>
+              {shiftClash ? (
+                <Button variant="secondary" disabled={busy} onClick={() => { void sendShift(true); }}>{ct('forceShift')}</Button>
+              ) : null}
+            </div>
+          </div>
+        </CpCard>
+        </div>
+      ) : null}
+      {rows.length >= 2 ? (
+        <div onClick={opened} onFocusCapture={opened}>
+        <CpCard>
+          <h3 class="cpm-h">{ct('swapTwo')}</h3>
+          <div class="cps-fields">
+            <Select
+              label={ct('swapFirst')}
+              value={idA}
+              disabled={busy}
+              onValueChange={(value) => {
+                setPickA(value);
+                setSwapClash(null);
+              }}
+              options={rows.map((match) => ({ value: match.id, label: matchPickLabel(match, ct('vsWord')) }))}
+            />
+            <Select
+              label={ct('swapSecond')}
+              value={idB}
+              disabled={busy}
+              onValueChange={(value) => {
+                setPickB(value);
+                setSwapClash(null);
+              }}
+              options={rows.map((match) => ({ value: match.id, label: matchPickLabel(match, ct('vsWord')) }))}
+            />
+            {matchA && matchB && matchA.id !== matchB.id ? (
+              <>
+                <p class="cpm-swap">{swapPreview(matchA, matchB, ct('timeTbd'), ct('vsWord'))}</p>
+                <p class="cpm-swap">{swapPreview(matchB, matchA, ct('timeTbd'), ct('vsWord'))}</p>
+              </>
+            ) : null}
+            <Textarea
+              label={ct('swapReason')}
+              required
+              value={swapReason}
+              maxLength={100}
+              rows={2}
+              variant="fixed"
+              disabled={busy}
+              onValueChange={(value) => {
+                setSwapReason(value);
+                setSwapClash(null);
+              }}
+            />
+            {swapClash ? (
+              <p class="cpm-warn" role="alert">
+                {clashSentence(swapHit, swapClash.type, ct('clashTeam'), ct('clashVenue'), ct('vsWord'))}
+              </p>
+            ) : null}
+            <div class="cps-actions">
+              <Button variant="primary" disabled={busy} onClick={() => { void sendSwap(false); }}>{ct('swapOk')}</Button>
+              {swapClash ? (
+                <Button variant="secondary" disabled={busy} onClick={() => { void sendSwap(true); }}>{ct('forceSwap')}</Button>
+              ) : null}
+            </div>
+          </div>
+        </CpCard>
+        </div>
+      ) : null}
+    </>
+  );
+}

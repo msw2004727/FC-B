@@ -16,6 +16,7 @@ import { LiveBoundary } from '../live';
 import type { EntryStatus, RosterPublicDoc } from '../data/types';
 import { CpError, errorOf } from '../ui/feedback';
 import { CpCard, CpFrame, CpI18nPending, TrashIcon } from '../ui/shell';
+import { TeamCrest } from '../ui/TeamCrest';
 
 async function loadRoster(env: CpInjectedEnv, cid: string, enId: string): Promise<CpBundle> {
   const uid = env.actor.uid;
@@ -182,8 +183,14 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
             ? <Badge tone="success" label={ct('rosterConfirmed')} size="sm" />
             : <Badge tone="warning" label={ct('rosterUnconfirmed')} size="sm" />}
         </div>
-        <h2 class="cps-title">{entry.name}</h2>
-        <p class="cps-sub">{division.name}　{ct('formatN', { n: division.playersOnField })}</p>
+        <div class="cp3-roster-head">
+          {/* ASSUMPTION: 名單這頁的 listEntries 已經帶 teamLogo，不再多打一筆 listEntriesForCrest。 */}
+          <TeamCrest teamId={entry.teamId} name={entry.name} teamLogo={entry.teamLogo} size={48} />
+          <div class="cp3-roster-head__t">
+            <h2 class="cps-title">{entry.name}</h2>
+            <p class="cps-sub">{division.name}　{ct('formatN', { n: division.playersOnField })}</p>
+          </div>
+        </div>
         <div class="cps-bar" aria-hidden="true">
           <i class={short ? 'low' : ''} style={`width:${Math.min(100, (players.length / max) * 100)}%`} />
         </div>
