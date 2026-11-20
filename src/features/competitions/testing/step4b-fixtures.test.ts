@@ -154,8 +154,8 @@ describe('step4b 假資料', () => {
   });
 
   it('畫面 id 不重複', () => {
-    expect(STEP4B_SCREENS).toHaveLength(20);
-    expect(new Set(STEP4B_SCREENS).size).toBe(20);
+    expect(STEP4B_SCREENS).toHaveLength(16);
+    expect(new Set(STEP4B_SCREENS).size).toBe(16);
   });
 
   it('主辦本人不能移除；共同主辦只有主辦能移除', () => {

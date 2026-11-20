@@ -46,6 +46,15 @@ const PAGES: Record<string, ComponentType> = {
   'real-cancelled-comp': CompetitionDetailPage,
   'real-notices': CompetitionDetailPage,
   'real-notices-host': CompetitionDetailPage,
+  // 總收尾示範缺口（設計 06:3x 指定順序）：改期勾時間待定、多行輸入超過字數（頁面與面板各一）、
+  // 射手榜在入口卡內展開、公告「更多」、同分比較的跳過列、建立賽事兩個以上場地。
+  'real-reschedule-tbd': HostMatchesPage,
+  'real-tie-overlimit': CompetitionDetailPage,
+  'real-cancel-overlimit': HostMatchesPage,
+  'real-done-scorers': CompetitionDetailPage,
+  'real-notices-more': CompetitionDetailPage,
+  'real-tie-skip': CompetitionDetailPage,
+  'real-wizard-two-venues': NewCompetitionPage,
   'real-contact-club': CompetitionDetailPage,
   // 設計總監 04:56：原本 real-contact-personal 把兩頁疊在同一頁，第二頁 .cps-root::before（fixed 全視窗底色、z-index -1，
   // 但在第二個 .cps-root 自己的疊層裡，整層畫在第一頁之上）把第一頁蓋掉；改成一頁一個狀態。
@@ -183,6 +192,15 @@ function CrestColors(): ComponentChildren {
   );
 }
 
+/** 總收尾示範缺口：沿用既有畫面的假資料、只多一個操作的畫面。 */
+const ENV_ALIAS: Record<string, string> = {
+  'real-reschedule-tbd': 'real-reschedule-clash',
+  'real-tie-overlimit': 'real-tie-panel',
+  'real-cancel-overlimit': 'real-cancel-sheet',
+  'real-done-scorers': 'real-done',
+  'real-wizard-two-venues': 'real-wizard-personal',
+};
+
 function Screen(): ComponentChildren {
   if (screenName === 'real-crest-colors') {
     return (
@@ -216,7 +234,7 @@ function Screen(): ComponentChildren {
   const Page = PAGES[screenName];
   if (!Page) return <p class="cpr-cap">沒有這個 screen：{screenName}</p>;
   return (
-    <CpEnvProvider value={screenEnv(screenName)}>
+    <CpEnvProvider value={screenEnv(ENV_ALIAS[screenName] ?? screenName)}>
       <Page />
     </CpEnvProvider>
   );
@@ -255,7 +273,8 @@ function hasText(text: string): boolean {
 
 /** 面板類：點正式按鈕。積分分頁、已結束賽程也在這裡展開。 */
 const OPEN: Record<string, () => Promise<void>> = {
-  'list-in': () => until('站內清單', () => hasText('今天 3 場\u30fb下一場 14:30') && hasText('距開賽 3 天') && hasText('報名截止')),
+  // 總收尾更新錨點：清單批起「今天 3 場、下一場」改成記分板格子（.cpl-card--board），不再是一句話。
+  'list-in': () => until('站內清單', () => !!document.querySelector('.cpl-card--board') && hasText('距開賽 3 天') && hasText('報名截止')),
   'real-live-stand': async () => {
     clickButton('積分');
     await until('積分分頁', () => {
@@ -307,6 +326,39 @@ const OPEN: Record<string, () => Promise<void>> = {
     // 順延表單預設收合，截圖要先點開。
     clickButton('整天順延');
     await until('整天順延表單', () => buttonsNamed('確認順延').length > 0);
+  },
+  'real-reschedule-tbd': async () => {
+    clickButton('改期');
+    await until('確認改期', () => buttonsNamed('確認改期').length > 0);
+    const box = [...document.querySelectorAll<HTMLInputElement>('.d2-panel input[type="checkbox"]')][0];
+    if (!box) throw new Error('找不到時間待定勾選');
+    box.click();
+    await until('時間待定已勾', () => box.checked);
+  },
+  // 頁面上的多行輸入超過字數：用同分裁定原因（上限 200、不截字；公告輸入會自動截到 300，不會超過）。
+  'real-tie-overlimit': async () => {
+    clickButton('同分');
+    await until('裁定原因', () => !!document.querySelector('.cps-root textarea'));
+    setField('.cps-root textarea', '兩隊所有條件都相同，依賽前領隊會議決議抽籤決定名次。'.repeat(9));
+    await until('超過字數', () => !!document.querySelector('.cps-root .ui-textarea [data-field-error]'));
+  },
+  'real-cancel-overlimit': async () => {
+    clickButton('取消這場');
+    await until('取消理由', () => !!document.querySelector('.d2-panel textarea'));
+    setField('.d2-panel textarea', '場地臨時維修無法使用。'.repeat(12));
+    await until('超過字數', () => !!document.querySelector('.d2-panel .ui-textarea [data-field-error]'));
+  },
+  'real-done-scorers': async () => {
+    await until('射手榜入口', () => buttonsNamed('射手榜').length > 0);
+    clickButton('射手榜');
+    await until('射手榜展開', () => !!document.querySelector('.d2-rows > .cp-scb'));
+  },
+  'real-notices-more': () => until('更多', () => !!document.querySelector('.cpm-ann + .ui-button')),
+  'real-tie-skip': () => openTie('銀河隊', () => !!document.querySelector('.cpm-cmp__r--skip')),
+  'real-wizard-two-venues': async () => {
+    await until('新增場地', () => [...document.querySelectorAll('button')].some((b) => (b.textContent ?? '').includes('新增場地')));
+    [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => (b.textContent ?? '').includes('新增場地'))?.click();
+    await until('兩個場地', () => document.querySelectorAll('.cph-venue > .cph-trash').length >= 2);
   },
   'real-tie-panel': async () => {
     clickButton('同分');

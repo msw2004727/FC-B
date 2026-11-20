@@ -1,7 +1,8 @@
 /* 賽事分類色與隊徽底色。
  * 只由賽事頁 TournamentsPage 與站內賽事 competitions.css 匯入。
  * 不得從 main.tsx 或 tokens.css 匯入（首頁入口包沒有餘裕）。
- * 色值照預覽 src/dev/cp-step3-list-harness.css 與 src/dev/cp-step3-harness.css 逐值抄。
+ * 分類色照預覽 src/dev/cp-step3-list-harness.css 逐值抄；隊徽底色原本照第 3 步手寫預覽 cp-step3-harness.css（總收尾已刪），
+ * 對照值改寫在 category-tokens.test.ts。
  * 深色預覽沒有改封面漸層，這裡把同一組 -from／-to 再寫一次，深色卡片才不會掉回透明。
  */
 :root {

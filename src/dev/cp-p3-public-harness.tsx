@@ -102,6 +102,8 @@ export const P3_SHOTS: Record<string, Shot> = {
   'p3-my-long': { page: ScorerMatchesPage, env: () => myMatchesEnv('long'), anchor: '一二三四五六七八九十示範隊' },
   // 第 3 批小修補拍（設計總監 05:08）：跨日板卡＋長場地名；射手榜名額附註在 360 寬（直接捲到附註）
   'p3-my-edge': { page: ScorerMatchesPage, env: () => myMatchesEnv('edge'), anchor: '隔日' },
+  // 總收尾示範缺口：我的場次全部時間待定。
+  'p3-my-tbd': { page: ScorerMatchesPage, env: () => myMatchesEnv('tbd'), anchor: '山貓隊' },
   'p3-detail-scorers-cap-end': {
     page: CompetitionDetailPage,
     env: () => detailLiveEnv({ stats: P3_STATS_CAP }),

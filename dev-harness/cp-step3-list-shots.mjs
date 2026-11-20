@@ -33,6 +33,7 @@ const SCREENS = [
   ['in-live-noline', true, '.cpl-card--board'],
   ['in-recruit-board', true, '.cpl-card--board'],
   ['in-marks', true, '.cpl-card--board'],
+  ['in-cancelled', true, '.cpl-card', pickStatus('已結束')],
   ['in-noboard', true, '.cpl-card'],
   ['in-long', true, '.cpl-card--board'],
   ['in-guest', true, '.cpl-card--board'],
@@ -51,6 +52,10 @@ const SCREENS = [
     await p.locator('#tc-delete').click();
     await p.locator('#app-confirm-modal .app-confirm-ok').waitFor();
   }, true],
+  ['ext-edit-image', false, '.cpl-xrow__edit', async (p) => {
+    await p.locator('.cpl-xrow__edit').first().click();
+    await p.locator('.tc-form-image img').waitFor();
+  }],
   ['gate-off', false, '.cpl-xrow'],
   ['gate-off-admin', false, '.cpl-xrow__edit'],
   ['gate-off-long', false, '.cpl-xrow'],

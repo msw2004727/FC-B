@@ -99,7 +99,8 @@ export const S4_ROSTER_AWAY = roster(S4_AWAY.teamId, 'hf', AWAY_PLAYERS);
 const HOME_LONG_EXTRA: P[] = [
   [2, '吳柏', 'DF'], [3, '何安', 'DF'], [6, '呂恩', 'MF'], [11, '高翔', 'FW'],
   [13, '羅文', 'MF'], [14, '宋宇', 'MF'], [15, '唐亮', 'DF'], [16, '馮凱', 'FW'],
-  [17, '彭宇', 'DF'], [18, '董禾', 'MF'],
+  // 17 號用 7 個字的名字（設計總監 06:47：看選球員面板長名字是否省略、背號有沒有被擠）。
+  [17, '司馬歐陽志明德', 'DF'], [18, '董禾', 'MF'],
 ];
 export const S4_ROSTER_HOME_LONG: RosterPublicDoc[] = [
   ...S4_ROSTER_HOME,

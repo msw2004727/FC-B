@@ -138,11 +138,11 @@ const IV = 'iv_k1112demo0000000000';
 const CODE = 'AbCdEfGhIjKlMnOpQrStUv';
 
 const PAGES: Record<string, { env: () => CpInjectedEnv; Page: ComponentType; anchor: () => boolean }> = {
-  detail: { env: () => renamed(screenEnv('real-recruit')), Page: CompetitionDetailPage, anchor: () => !!document.querySelector('.cps-title') },
-  'detail-live': { env: () => renamed(screenEnv('real-live')), Page: CompetitionDetailPage, anchor: () => !!document.querySelector('.cps-top h1') && hasText('進行中') },
+  detail: { env: () => renamed(screenEnv('real-recruit')), Page: CompetitionDetailPage, anchor: () => !!document.querySelector('.d2-board__name') && hasText('招募中') },
+  'detail-live': { env: () => renamed(screenEnv('real-live')), Page: CompetitionDetailPage, anchor: () => !!document.querySelector('.d2-board__name') && hasText('進行中') },
   manage: { env: () => renamed(screenEnv('host-approved')), Page: CompetitionManagePage, anchor: () => !!document.querySelector('.cps-h') },
   matches: { env: () => renamed(screenEnv('real-host-matches')), Page: HostMatchesPage, anchor: () => !!document.querySelector('.cp3-m') },
-  schedule: { env: () => renamed(screenEnv('real-host-schedule')), Page: HostSchedulePage, anchor: () => !!document.querySelector('.cps-sub') },
+  schedule: { env: () => renamed(screenEnv('real-host-schedule')), Page: HostSchedulePage, anchor: () => !!document.querySelector('.cps-top h1') && hasText('排賽程') },
   staff: { env: () => ({ actor: hostActor, repo: staffRepo(), actions: idleActions(), route: { cid: 'cup' } }), Page: StaffPage, anchor: () => hasText('陳小明') },
   roster: { env: () => renamed(screenEnv('roster')), Page: RosterPage, anchor: () => !!document.querySelector('.cps-title') },
   join: { env: () => renamed(screenEnv('form-self-adult')), Page: JoinRosterPage, anchor: () => !!document.querySelector('.cps-title') },

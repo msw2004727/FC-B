@@ -164,12 +164,9 @@
 .d2-panel .ui-button__label,
 .tournaments-root[data-d2] .ui-button__label { white-space: nowrap; overflow-wrap: normal; word-break: keep-all; }
 .cps-root .ui-button--sm,
-.s4-root .ui-button--sm,
-.d2-panel .ui-button--sm,
 .tournaments-root[data-d2] .ui-button--sm { font-size: 13px; line-height: 20px; }
 .cps-root .ui-button--ghost,
-.s4-root .ui-button--ghost,
-.d2-panel .ui-button--ghost {
+.s4-root .ui-button--ghost {
   --comp-button-background-hover: transparent;
   --comp-button-background-active: transparent;
   --comp-button-foreground-default: var(--d2-accent-ink);
@@ -196,17 +193,11 @@
 .cps-root .ui-button.ui-button--danger::before,
 .s4-root .ui-button.ui-button--danger::before,
 .d2-panel .ui-button.ui-button--danger::before { border-color: transparent; background: var(--d2-field-bg); box-shadow: inset 0 0 0 1.5px var(--d2-danger); }
-.cps-root .ui-button.ui-button--danger.ui-button--sm,
-.s4-root .ui-button.ui-button--danger.ui-button--sm,
-.d2-panel .ui-button.ui-button--danger.ui-button--sm { --comp-button-background-hover: transparent; --comp-button-background-active: transparent; }
-.cps-root .ui-button.ui-button--danger.ui-button--sm::before,
-.s4-root .ui-button.ui-button--danger.ui-button--sm::before,
-.d2-panel .ui-button.ui-button--danger.ui-button--sm::before { background: none; box-shadow: none; }
+.cps-root .ui-button.ui-button--danger.ui-button--sm { --comp-button-background-hover: transparent; --comp-button-background-active: transparent; }
+.cps-root .ui-button.ui-button--danger.ui-button--sm::before { background: none; box-shadow: none; }
 .cps-root .ui-button.ui-button--secondary[aria-expanded="true"],
-.d2-panel .ui-button.ui-button--secondary[aria-expanded="true"],
 .tournaments-root[data-d2] .ui-button.ui-button--secondary[aria-expanded="true"] { color: var(--d2-seg-fg); }
 .cps-root .ui-button.ui-button--secondary[aria-expanded="true"]::before,
-.d2-panel .ui-button.ui-button--secondary[aria-expanded="true"]::before,
 .tournaments-root[data-d2] .ui-button.ui-button--secondary[aria-expanded="true"]::before { background: var(--d2-seg-on); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
 .cps-root .ui-button[aria-disabled="true"],
 .s4-root .ui-button[aria-disabled="true"],
@@ -225,18 +216,15 @@
 .cps-root .ui-tabs__tab:focus-visible,
 .s4-page .ui-tabs__tab:focus-visible,
 .d2-panel .ui-button:focus-visible,
-.d2-panel .ui-tabs__tab:focus-visible,
 .tournaments-root[data-d2] .ui-button:focus-visible,
 .cpl-card__link:focus-visible { outline: 2px solid var(--d2-accent); outline-offset: 2px; }
 .cps-root .ui-tabs .ui-tabs__list,
-.s4-page .ui-tabs .ui-tabs__list,
-.d2-panel .ui-tabs .ui-tabs__list {
+.s4-page .ui-tabs .ui-tabs__list {
   display: flex; align-items: center; gap: 0; height: 40px; padding: 0; overflow: visible; border: 0; border-radius: 12px;
   background: var(--d2-glass-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh);
 }
 .cps-root .ui-tabs .ui-tabs__tab,
-.s4-page .ui-tabs .ui-tabs__tab,
-.d2-panel .ui-tabs .ui-tabs__tab {
+.s4-page .ui-tabs .ui-tabs__tab {
   position: relative; z-index: 0; flex: 1 1 0; min-width: 0; max-inline-size: none; height: 44px; margin: -2px 0; padding: 0;
   border: 0; border-radius: 0; background: none; color: var(--d2-text-2);
 }
@@ -245,73 +233,53 @@
 .cps-root .ui-tabs .ui-tabs__tab[aria-selected="true"],
 .s4-page .ui-tabs .ui-tabs__tab:not(:disabled):hover,
 .s4-page .ui-tabs .ui-tabs__tab:not(:disabled):active,
-.s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"],
-.d2-panel .ui-tabs .ui-tabs__tab:not(:disabled):hover,
-.d2-panel .ui-tabs .ui-tabs__tab:not(:disabled):active,
-.d2-panel .ui-tabs .ui-tabs__tab[aria-selected="true"] { border: 0; background: none; }
+.s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"] { border: 0; background: none; }
 .cps-root .ui-tabs .ui-tabs__tab + .ui-tabs__tab::before,
-.s4-page .ui-tabs .ui-tabs__tab + .ui-tabs__tab::before,
-.d2-panel .ui-tabs .ui-tabs__tab + .ui-tabs__tab::before {
+.s4-page .ui-tabs .ui-tabs__tab + .ui-tabs__tab::before {
   content: ''; position: absolute; top: 14px; bottom: 14px; left: 0; width: 1px; background: var(--d2-divider); pointer-events: none;
 }
 .cps-root .ui-tabs .ui-tabs__tab::after,
 .cps-root .ui-tabs .ui-tabs__tab[aria-selected="true"]::after,
 .s4-page .ui-tabs .ui-tabs__tab::after,
-.s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"]::after,
-.d2-panel .ui-tabs .ui-tabs__tab::after,
-.d2-panel .ui-tabs .ui-tabs__tab[aria-selected="true"]::after {
+.s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"]::after {
   content: ''; position: absolute; top: 7px; right: 4px; bottom: 7px; left: 4px; z-index: -1; width: auto; height: auto;
   border-radius: 8px; background: transparent; box-shadow: none; pointer-events: none;
 }
 .cps-root .ui-tabs .ui-tabs__tab[aria-selected="true"]::after,
 .cps-root .ui-tabs .ui-tabs__tab[aria-pressed="true"]::after,
-.s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"]::after,
-.d2-panel .ui-tabs .ui-tabs__tab[aria-selected="true"]::after { background: var(--d2-seg-on); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
+.s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"]::after { background: var(--d2-seg-on); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
 .cps-root .ui-tabs .ui-tabs__label,
-.s4-page .ui-tabs .ui-tabs__label,
-.d2-panel .ui-tabs .ui-tabs__label { font-size: 13px; line-height: 20px; font-weight: 600; color: inherit; white-space: nowrap; }
+.s4-page .ui-tabs .ui-tabs__label { font-size: 13px; line-height: 20px; font-weight: 600; color: inherit; white-space: nowrap; }
 .cps-root .ui-tabs .ui-tabs__tab[aria-selected="true"],
 .cps-root .ui-tabs .ui-tabs__tab[aria-pressed="true"],
-.s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"],
-.d2-panel .ui-tabs .ui-tabs__tab[aria-selected="true"] { color: var(--d2-seg-fg); }
+.s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"] { color: var(--d2-seg-fg); }
 .cps-root .ui-tabs .ui-tabs__tab[aria-selected="true"] .ui-tabs__label,
 .cps-root .ui-tabs .ui-tabs__tab[aria-pressed="true"] .ui-tabs__label,
-.s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"] .ui-tabs__label,
-.d2-panel .ui-tabs .ui-tabs__tab[aria-selected="true"] .ui-tabs__label { font-weight: 700; }
+.s4-page .ui-tabs .ui-tabs__tab[aria-selected="true"] .ui-tabs__label { font-weight: 700; }
 /* 分段切換小一號（第 3 批卡 3-4：射手榜｜紅黃牌、組別切換）：只寫尺寸差異。外觀高 32、寬度跟著字、每格左右 16、點擊區 44（上下各外推 6） */
 .ui-tabs.d2-seg-sm .ui-tabs__list { display: inline-flex; height: 32px; border-radius: 10px; }
 .ui-tabs.d2-seg-sm .ui-tabs__tab { flex: 0 0 auto; height: 44px; margin: -6px 0; padding: 0 16px; }
 .ui-tabs.d2-seg-sm .ui-tabs__list .ui-tabs__tab::after { top: 9px; right: 3px; bottom: 9px; left: 3px; border-radius: 7px; }
 .ui-tabs.d2-seg-sm .ui-tabs__list .ui-tabs__tab + .ui-tabs__tab::before { top: 16px; bottom: 16px; }
 .cps-root .ui-badge,
-.s4-page .ui-badge,
-.d2-panel .ui-badge {
+.s4-page .ui-badge {
   min-height: 0; height: 22px; padding: 0 8px; border: 0; border-radius: 8px; background: none;
   box-shadow: inset 0 0 0 1px var(--d2-line-strong); color: var(--d2-text-2);
   font-size: 12px; line-height: 22px; font-weight: 600; white-space: nowrap;
 }
 .cps-root .ui-badge__label,
-.s4-page .ui-badge__label,
-.d2-panel .ui-badge__label { white-space: nowrap; overflow-wrap: normal; }
+.s4-page .ui-badge__label { white-space: nowrap; overflow-wrap: normal; }
 .cps-root .d2-tag--live,
-.d2-panel .d2-tag--live,
 .cpl-card .cpl-st--live { background: var(--d2-sb-bg); color: var(--d2-sb-now); font-weight: 700; box-shadow: var(--d2-sb-sh-lit); }
 .cps-root .d2-tag--live::before,
-.d2-panel .d2-tag--live::before,
 .cpl-card .cpl-st--live::before { content: ''; flex: 0 0 auto; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--d2-sb-now); }
-.cps-root .d2-tag--cancelled,
-.d2-panel .d2-tag--cancelled { color: var(--d2-danger); box-shadow: inset 0 0 0 1px var(--d2-danger-line); }
-.cps-root .d2-tag--next,
-.d2-panel .d2-tag--next { color: var(--d2-accent-ink); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
+.cps-root .d2-tag--cancelled { color: var(--d2-danger); box-shadow: inset 0 0 0 1px var(--d2-danger-line); }
+.cps-root .d2-tag--next { color: var(--d2-accent-ink); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
 .cps-root .d2-tag--neutral,
-.s4-page .d2-tag--neutral,
-.d2-panel .d2-tag--neutral { color: var(--d2-text-2); box-shadow: inset 0 0 0 1px var(--d2-line-strong); }
-.cps-root .ui-switch,
-.d2-panel .ui-switch { --comp-switch-track-default: var(--d2-line); --comp-switch-track-checked: var(--d2-accent); }
-.cps-root .ui-switch .ui-switch__track,
-.d2-panel .ui-switch .ui-switch__track { border-color: var(--d2-switch-edge); }
-.cps-root .ui-switch--checked .ui-switch__track,
-.d2-panel .ui-switch--checked .ui-switch__track { border-color: var(--d2-accent); }
+.s4-page .d2-tag--neutral { color: var(--d2-text-2); box-shadow: inset 0 0 0 1px var(--d2-line-strong); }
+.cps-root .ui-switch { --comp-switch-track-default: var(--d2-line); --comp-switch-track-checked: var(--d2-accent); }
+.cps-root .ui-switch .ui-switch__track { border-color: var(--d2-switch-edge); }
+.cps-root .ui-switch--checked .ui-switch__track { border-color: var(--d2-accent); }
 .cps-root .ui-input input,
 .cps-root .ui-select select,
 .cps-root .ui-textarea textarea,
@@ -325,7 +293,6 @@
 }
 .cps-root .ui-input [aria-invalid="true"],
 .cps-root .ui-textarea [aria-invalid="true"],
-.d2-panel .ui-input [aria-invalid="true"],
 .d2-panel .ui-select [aria-invalid="true"],
 .d2-panel .ui-textarea [aria-invalid="true"] { box-shadow: inset 0 0 0 2px var(--d2-danger); }
 .cps-root .ui-input input:focus-visible,
@@ -347,29 +314,19 @@
 .d2-panel .ui-input label,
 .d2-panel .ui-select label,
 .d2-panel .ui-textarea label,
-.d2-panel .ui-radio-group__label,
-.d2-panel .cps-label,
-.d2-panel .ui-stepper > div:not(.ui-stepper__controls) { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-text-2); }
+.d2-panel .ui-radio-group__label { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-text-2); }
 .cps-root .ui-input label > small,
 .cps-root .ui-textarea label > small,
 .cps-root .ui-input [data-field-hint],
 .cps-root .ui-textarea [data-field-hint],
-.d2-panel .ui-input label > small,
-.d2-panel .ui-select label > small,
-.d2-panel .ui-textarea label > small,
-.d2-panel .ui-radio-group__label small,
-.d2-panel .ui-input [data-field-hint],
-.d2-panel .ui-select [data-field-hint],
-.d2-panel .ui-textarea [data-field-hint] { font-size: 12px; line-height: 16px; font-weight: 400; color: var(--d2-text-2); }
+.d2-panel .ui-textarea label > small { font-size: 12px; line-height: 16px; font-weight: 400; color: var(--d2-text-2); }
 .cps-root .ui-input [data-field-error],
 .cps-root .ui-textarea [data-field-error],
-.d2-panel .ui-input [data-field-error],
 .d2-panel .ui-select [data-field-error],
 .d2-panel .ui-textarea [data-field-error] { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-danger); }
 /* 錯誤訊息前的紅底驚嘆號圓點（第 4 批 3.10；偽元素畫，報讀與 textContent 不含它） */
 .cps-root .ui-input [data-field-error]::before,
 .cps-root .ui-textarea [data-field-error]::before,
-.d2-panel .ui-input [data-field-error]::before,
 .d2-panel .ui-select [data-field-error]::before,
 .d2-panel .ui-textarea [data-field-error]::before {
   content: '!'; content: '!' / ''; flex: 0 0 auto; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%;
@@ -411,11 +368,9 @@
 .d2-panel .ui-checkbox { --comp-checkbox-accent-checked: var(--d2-accent); }
 .cps-root .ui-checkbox input,
 .d2-panel .ui-checkbox input { color-scheme: var(--d2-scheme); }
-.cps-root .ui-stepper,
-.d2-panel .ui-stepper { --comp-stepper-border-default: var(--d2-switch-edge); --comp-stepper-surface-default: var(--d2-field-bg); }
+.cps-root .ui-stepper { --comp-stepper-border-default: var(--d2-switch-edge); --comp-stepper-surface-default: var(--d2-field-bg); }
 .cps-root .cp3-crest.cp3-crest--txt,
-.s4-page .cp3-crest.cp3-crest--txt,
-.d2-panel .cp3-crest.cp3-crest--txt { background: var(--d2-line); color: var(--d2-text); box-shadow: inset 0 0 0 1px var(--d2-line-strong); font-weight: 600; }
+.s4-page .cp3-crest.cp3-crest--txt { background: var(--d2-line); color: var(--d2-text); box-shadow: inset 0 0 0 1px var(--d2-line-strong); font-weight: 600; }
 
 /* 面板外殼（第 0 批）：面板畫在頁面最上層，帶 d2-panel 的面板換外殼；內容的元件長相與頁面同一套（上面各條已併入 .d2-panel） */
 .d2-panel.ui-modal {

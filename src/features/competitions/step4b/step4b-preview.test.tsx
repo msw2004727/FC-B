@@ -18,6 +18,7 @@ import {
   auditNewestFirst,
   formatMdHm,
 } from '../testing/step4b-fixtures';
+import { U3_COHOST_ROWS } from '../testing/step4-u3-rows';
 import { auditActorLabel, copy, criterionLabel, publicTimeoutLines, templateTimeoutLine } from './copy';
 import {
   AdditionRequestScreen,
@@ -345,12 +346,13 @@ describe('step4b 預覽畫面', () => {
     expect(host.container.textContent ?? '').not.toContain('李共同');
     cleanup();
 
-    const cohost = render(renderStep4bScreen('staff-list-cohost'));
+    // 共同主辦視角：改用正式頁示範（cp-step4-u3 u3-staff-cohost）同一份資料（原 step4b 示範畫面 staff-list-cohost 已刪）。
+    const cohost = render(<StaffListScreen viewerRole="coHost" title="指派" rows={U3_COHOST_ROWS} />);
     expect(cohost.container.querySelector('[data-screen="staff-list-cohost"]')).not.toBeNull();
-    expect(removeButton(cohost, '王主辦')).toBeNull();
-    expect(removeButton(cohost, '李共同')).toBeNull();
-    expect(removeButton(cohost, '林記分')).not.toBeNull();
-    expect(removeButton(cohost, '陳裁判')).not.toBeNull();
+    expect(removeButton(cohost, '成員 1')).toBeNull();
+    expect(removeButton(cohost, '我自己')).toBeNull();
+    expect(removeButton(cohost, '成員 3')).not.toBeNull();
+    expect(removeButton(cohost, '成員 6')).not.toBeNull();
   });
 
   it('增補核可寫出年齡是否符合組別', () => {

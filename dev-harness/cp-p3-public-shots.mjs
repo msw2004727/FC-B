@@ -43,6 +43,8 @@ const SCREENS = [
   ['p3-detail-scorers-empty', 'cp-p3-public', '還沒有已確認的比賽紀錄', true],
   ['p3-detail-scorers-cap', 'cp-p3-public', '只顯示前 50 名', true],
   ['p3-detail-scorers-groups', 'cp-p3-public', '壯年四十歲以上組', true],
+  // 總收尾示範缺口：我的場次全部時間待定
+  ['p3-my-tbd', 'cp-p3-public', '時間待定', false],
   // 我的場次
   ['p3-my-pre', 'cp-p3-public', '進入記分', true],
   ['p3-my-done', 'cp-p3-public', '已取消', true],

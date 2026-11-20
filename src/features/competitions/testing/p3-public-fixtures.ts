@@ -394,8 +394,15 @@ const MY_EDGE: MatchDoc[] = [
   myMatch('my_e3', { status: 'finished', kickoffAt: taipeiMs(2027, 1, 9, 9, 0), venueName: LONG_VENUE, score: { home: 2, away: 1 }, finishedAt: taipeiMs(2027, 1, 9, 10, 0) }),
 ];
 
+/** 總收尾示範缺口：兩場都還沒排開賽時間（時間待定）——最近一場的記分板卡與其餘列都是待定。 */
+const MY_TBD: MatchDoc[] = [
+  myMatch('my_t1', { status: 'scheduled', kickoffAt: null, venueName: '2號場', score: { home: 0, away: 0 }, clockBase: IDLE_CLOCK, home: { teamId: 'en_c', name: '山貓隊' }, away: { teamId: 'en_b', name: '藍鯨隊' } }),
+  myMatch('my_t2', { status: 'scheduled', kickoffAt: null, venueName: '1號場', score: { home: 0, away: 0 }, clockBase: IDLE_CLOCK, home: { teamId: 'en_h', name: '海風隊' }, away: { teamId: 'en_c', name: '雷霆隊' } }),
+];
+
 export const P3_MY_MATCHES: Record<string, MatchDoc[]> = {
   pre: MY_PRE,
+  tbd: MY_TBD,
   done: MY_DONE,
   long: MY_LONG,
   edge: MY_EDGE,

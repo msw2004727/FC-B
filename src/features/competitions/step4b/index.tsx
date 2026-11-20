@@ -30,14 +30,6 @@ export {
 /** 依畫面 id 畫預覽。每個 id 都有對應分支，缺一個就過不了型別檢查。 */
 export function renderStep4bScreen(screen: Step4bScreen): JSX.Element {
   switch (screen) {
-    case 'staff-list-cohost':
-      return <StaffListScreen viewerRole="coHost" />;
-    case 'invite-accept':
-      return <InviteAcceptScreen />;
-    case 'invite-accept-invalid':
-      return <InviteAcceptScreen status="expired" />;
-    case 'scorer-my-matches':
-      return <ScorerMatchesScreen />;
     case 'link-rep':
       return <LinkRepScreen />;
     case 'link-join':
