@@ -21,6 +21,8 @@ const NEW = [[360, 800], [1280, 800]];
 const ANCHORS = {
   'host-approved-personal': '名單', 'host-locked': '解鎖名單', 'host-edit-open': '編輯賽事資訊', 'host-long': '三重示範青年足球俱樂部隊',
   'host-long-pending': '三重示範青年足球俱樂部隊', 'gate-guest': '登入後才能建立賽事', 'gate-member': '建立賽事尚未開放', 'gate-error': '讀取失敗',
+  'host-pending-empty': '目前沒有待審的隊伍', 'host-approved-empty': '目前沒有已核准的隊伍', 'host-rejected-empty': '目前沒有已拒絕的隊伍',
+  'host-lock-all': '鎖定後各隊不能再改名單', 'roster-confirmed': '確認名單', 'detail-oneday': '比賽期間',
   'roster-member': '登錄名單', 'roster-remove': '確定要移除', 'form-error': '送出', 'form-custom-pos': '自訂', 'form-ineligible': '只有俱樂部成員可以做這個操作',
 };
 const THEMES_ALL = ['light', 'dark'];
@@ -65,6 +67,13 @@ const SCREENS = [
   ['form-error', NEW, THEMES_ALL, true],
   ['form-custom-pos', NEW, THEMES_ALL, true],
   ['form-ineligible', NEW, THEMES_ALL, true],
+  // 既有小修（顧問 §3.505）
+  ['host-pending-empty', NEW, THEMES_ALL, true],
+  ['host-approved-empty', NEW, THEMES_ALL, true],
+  ['host-rejected-empty', NEW, THEMES_ALL, true],
+  ['host-lock-all', NEW, THEMES_ALL, false],
+  ['roster-confirmed', NEW, THEMES_ALL, true],
+  ['detail-oneday', NEW, THEMES_ALL, true],
 ];
 
 const SELECTORS = 'button, .ui-badge, .ui-chip, dt, .cps-line, .cps-li__name, .cps-cap, .cps-kv span, .cps-label, .ui-input label, .ui-checkbox label, .ui-switch label, h1, h2, h3, .cps-stepname span, .cps-stepname b, .ui-stepper label'
@@ -102,7 +111,7 @@ for (const [name, sizes, themes, full] of SCREENS) {
         continue;
       }
       await page.evaluate(() => document.fonts.ready);
-      if (name === 'host-lock') await page.waitForSelector('.app-confirm, [class*="app-confirm"]');
+      if (name === 'host-lock' || name === 'host-lock-all') await page.waitForSelector('.app-confirm, [class*="app-confirm"]');
       await page.waitForTimeout(400);
       for (const c of await page.evaluate(() => window.__CPS_COPY)) copyMap.set(c.key, c);
       const wide = await page.evaluate(() => Math.max(document.documentElement.scrollWidth - document.documentElement.clientWidth, document.body.scrollWidth - document.body.clientWidth));
