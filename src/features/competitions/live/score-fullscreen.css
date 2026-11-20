@@ -1,0 +1,21 @@
+/*
+ * 記分頁全幅（11-20 顧問 staging 實測 P1）：真實 App 外框下，頂欄、底部導覽列（含 QR 圓鈕）、
+ * 搶先試用角標與 staging 診斷浮層會蓋住記分頁底部控制列。ScoringPage 掛載時在 <html> 加
+ * .cp-score-full、卸載時移除；本檔只在那段期間生效，不動 App.tsx（主站外框與入口預算）。
+ */
+html.cp-score-full #top-bar,
+html.cp-score-full #bottom-tabs,
+html.cp-score-full .internal-test-badge,
+html.cp-score-full .fcb-diag-loads {
+  display: none !important;
+}
+
+html.cp-score-full .ui-app-shell .app-main {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+html.cp-score-full .s4-root {
+  padding-top: calc(4px + env(safe-area-inset-top, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
