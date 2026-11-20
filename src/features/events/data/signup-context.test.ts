@@ -286,3 +286,17 @@ describe('夥伴切換 payload', () => {
     });
   });
 });
+
+describe('profileComplete 與伺服器 Plan C 同一組三欄（顧問 §3.268）', () => {
+  it('個人資料標示缺欄時 profileComplete=false', async () => {
+    const contexts = setup();
+    contexts.setProfile({ ...profile, incomplete: true });
+    expect((await contexts.signup.load('public-id', [{ type: 'self' }])).profileComplete).toBe(false);
+  });
+
+  it('個人資料讀不到（null）時放行，交給伺服器', async () => {
+    const contexts = setup();
+    contexts.setProfile(null);
+    expect((await contexts.signup.load('public-id', [{ type: 'self' }])).profileComplete).toBe(true);
+  });
+});

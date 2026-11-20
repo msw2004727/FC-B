@@ -12,13 +12,18 @@ import type { ComponentChildren, ComponentType } from 'preact';
 import { Suspense, lazy as lazyComponent } from 'preact/compat';
 import { LocationProvider, Router, Route, lazy, useLocation } from 'preact-iso';
 import { TopBar } from '@/ui/TopBar';
-import { QaBanner } from '@/features/qa-login/components/QaBanner';
+import { useQaSession } from '@/features/qa-login/data/qa-session';
 import { BottomNav } from '@/ui/BottomNav';
 import { Text } from '@/ui/Text';
 import { ErrorFallback } from '@/ui/ErrorFallback';
 import { AppConfirmHost } from '@/ui/AppConfirm';
 import { ToastHost } from '@/ui/ToastHost';
 import { toast } from '@/ui/Toast';
+import { isChunkReloadScheduled, waitForChunkReloadCancelled } from '@/core/chunk-reload';
+import { isModuleLoadFailure, moduleLoadFailedError } from '@/core/module-load-error';
+import { isSubmitting } from '@/core/submit-guard';
+import { showReloadBusyToast } from '@/core/reload-safety';
+import { refreshThenReload } from '@/core/refresh-reload';
 import { useT } from '@/i18n/i18n';
 import { getActiveRoutes, useRegistryVersion } from '@/core/feature-registry';
 import { on } from '@/core/events';
@@ -38,6 +43,7 @@ import {
   ROUTE_STEP_TIMEOUT,
   ROUTE_TIMEOUT_MS,
 } from '@/core/route-loading';
+import { beginRouteLoad } from '@/core/route-load-pending';
 import { applyRouteMeta } from '@/core/route-meta';
 import { initMultiTabGuard } from '@/core/multi-tab-guard';
 import {
@@ -85,7 +91,7 @@ import {
 import { LazyUidQrModal } from './LazyUidQrModal';
 import { LazySideDrawer } from './LazySideDrawer';
 import { SyncStatusBar } from './SyncStatusBar';
-import { DiagLoadsBadge } from './DiagLoadsBadge';
+import { LazyDiagLoadsBadge } from './LazyDiagLoadsBadge';
 import { MobileLineLoginHintModal } from './MobileLineLoginHintModal';
 
 // M-139：全站私訊即時泡泡與浮層外框一律 lazy 載入，避免首屏帶入 firestore。
@@ -99,6 +105,24 @@ const LazyPmDialogHost = lazyComponent(() =>
 const LazyInboxStoreHost = lazyComponent(() =>
   import('@/features/inbox/components/InboxStoreHost').then((m) => ({ default: m.InboxStoreHost })),
 );
+// 入口瘦身 C 案（顧問 §3.290／§3.293）：QA 橫幅只在 QA 身分時才載入，一般使用者不下載。
+// 載入失敗退回不顯示，不讓殼層進錯誤畫面。取代：原本直接 import QaBanner 進入口。
+const LazyQaBanner = lazyComponent(() =>
+  import('@/features/qa-login/components/QaBanner').then(
+    (m) => ({ default: m.QaBanner }),
+    () => ({ default: () => null }),
+  ),
+);
+
+function QaBannerGate({ uid }: { uid: string | null }): preact.JSX.Element | null {
+  const session = useQaSession(uid);
+  if (session == null) return null;
+  return (
+    <Suspense fallback={null}>
+      <LazyQaBanner uid={uid} />
+    </Suspense>
+  );
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const lazyCache = new Map<FeatureRoute['load'], ComponentType<any>>();
@@ -110,18 +134,42 @@ function getRouteComponent(load: FeatureRoute['load'], routePath = ''): Componen
   // M-047：載入超過 10 秒照 A 提示「網路較慢…」，但不中斷下載（晚到仍會顯示，不把頁面卡在失敗）；
   // L-08：失敗時從快取移除以便重試。
   const wrappedLoad = (): ReturnType<FeatureRoute['load']> => {
+    // 顧問 §3.263：load 進行中才算「路由正在載入」；任何落定（成功、失敗、回 undefined）都移除。
+    const settled = beginRouteLoad();
     const timer = setTimeout(() => {
       toast.show({ message: getRouteFailureToast(routePath, { code: ROUTE_STEP_TIMEOUT }) });
     }, ROUTE_TIMEOUT_MS);
     const p = Promise.resolve().then(() => load());
     p.then(
-      () => clearTimeout(timer),
+      (mod) => {
+        clearTimeout(timer);
+        // 守門已排重載時 Vite 回 undefined：不把這個停在載入中的 lazy 留在快取，重載沒生效時換頁回來可重新載入（Flash 差異審 P2）。
+        if (!mod) lazyCache.delete(load);
+        settled();
+      },
       () => {
         clearTimeout(timer);
         lazyCache.delete(load);
+        settled();
       },
     );
-    return p;
+    // preact-iso 的 lazy 在 load 被拒絕時不會重繪、也不會把錯誤丟給錯誤邊界，主內容會一直空白。
+    // 改成 render 時丟出原錯誤，讓 RouteErrorBoundary 顯示錯誤畫面、吐司並上報一次（顧問 §3.260 第②項）。
+    // 取代：直接回傳會被拒絕的 p（實測主內容空白、錯誤變成沒人接的 rejection）。
+    // 守門回 undefined 時也不能把 promise 停在載入中：已排重整就等頁面重整，沒排程或重整被擋就改丟載入失敗。
+    const resolveRoute = async (): Promise<Awaited<ReturnType<FeatureRoute['load']>>> => {
+      try {
+        const mod = await p;
+        if (mod) return mod;
+        // 守門已排重整時 Vite 回 undefined：等頁面重整；若重整被擋（§3.297 P2），改丟載入失敗交給 RouteErrorBoundary。
+        if (isChunkReloadScheduled()) await waitForChunkReloadCancelled();
+        const error = moduleLoadFailedError(routePath || 'route');
+        return { default: () => { throw error; } } as Awaited<ReturnType<FeatureRoute['load']>>;
+      } catch (error: unknown) {
+        return { default: () => { throw error; } } as Awaited<ReturnType<FeatureRoute['load']>>;
+      }
+    };
+    return resolveRoute() as ReturnType<FeatureRoute['load']>;
   };
   const component = lazy(wrappedLoad);
   lazyCache.set(load, component);
@@ -446,7 +494,7 @@ export function App({
   return (
     <LocationProvider>
       <div ref={shellRef} class="app-shell ui-app-shell">
-        <QaBanner uid={routeAccess?.uid ?? null} />
+        <QaBannerGate uid={routeAccess?.uid ?? null} />
         <TopBar
           menuRef={menuRef}
           drawerOpen={drawerOpen}
@@ -481,7 +529,7 @@ export function App({
             {firebaseTargetLabel().endsWith('emulator') ? ` · ${firebaseTargetLabel()}` : ''}
           </div>
         )}
-        <DiagLoadsBadge />
+        <LazyDiagLoadsBadge />
       </div>
       <LazySideDrawer
         open={drawerOpen}
@@ -653,6 +701,13 @@ function RouteArea({
       path={location.path}
       previousPath={prevPathRef.current}
       onReset={() => lazyCache.clear()}
+      // 「重新嘗試」要讓 App 重繪、重新呼叫 getRouteComponent 拿新的 lazy：<Route component> 是上一次 render 算好的，
+      // 只清 lazyCache 會沿用已存了「丟錯元件」的舊 lazy，按了沒有作用（Opus 審 P2-1）。同內容卡住重試的做法。
+      // 只給重試按鈕用；自動退回上一頁與換頁重設仍只清快取，不遞增 key（Flash 差異審 P2：避免與導航競爭）。
+      onRetry={() => {
+        lazyCache.clear();
+        setStallRetryKey((k) => k + 1);
+      }}
       onNavigateBack={(fallback) => {
         endRouteLoading(loadingSeqRef.current);
         location.route(fallback, true);
@@ -686,6 +741,8 @@ interface RouteErrorBoundaryProps {
   path: string;
   previousPath?: string;
   onReset: () => void;
+  /** 錯誤畫面「重新嘗試」：清快取並讓 App 重繪。沒給時退回 onReset。 */
+  onRetry?: () => void;
   onNavigateBack?: (targetPath: string) => void;
   children: ComponentChildren;
 }
@@ -727,6 +784,20 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
   }
 
   private handleRetry = (): void => {
+    // 顧問 §3.268：程式檔載入失敗時，同一頁再 import() 會沿用失敗結果（staging 演練 D12／D13，Chromium 與 WebKit 皆然），
+    // 頁內重試沒有作用，改整頁重新整理；使用者自己按的，不受 60 秒窗限制。
+    // 送出中不重整，改跳「操作尚未完成」吐司（顧問 §3.271；取代：原本退回頁內重試，但真實瀏覽器沒有作用）。
+    // isSubmitting() 與 <html data-submitting> 由 submit-guard 同步維護，只查前者即可。
+    if (isModuleLoadFailure(this.state.error)) {
+      if (isSubmitting()) showReloadBusyToast();
+      else routeReloadPage();
+      return;
+    }
+    if (this.props.onRetry) {
+      this.props.onRetry();
+      this.setState({ error: null, resetKey: this.state.resetKey + 1 });
+      return;
+    }
     this.reset();
   };
 
@@ -736,18 +807,29 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
   }
 }
 
+// 取代：直接 location.reload()；WebKit 會沿用失敗結果（§3.293）
+// §3.295(a)：等待後重整前再查一次。手動只在送出中擋下；被擋時出吐司，錯誤畫面與按鈕留著。
+const reloadPageDefault = (): void => {
+  void refreshThenReload({
+    onBlocked: () => {
+      showReloadBusyToast();
+    },
+  });
+};
+let routeReloadPage = reloadPageDefault;
+
+/** 測試用：換掉錯誤畫面「重新嘗試」的整頁重整（jsdom 不能真的重整）。 */
+export function _setRouteReloadPageForTest(fn: () => void = reloadPageDefault): void {
+  routeReloadPage = fn;
+}
+
 function NotFound(): preact.JSX.Element {
   const t = useT();
   return (
     <section class="not-found">
       <Text as="h1">{t('notFound.title')}</Text>
       <Text as="p">{t('notFound.body')}</Text>
-      <a href="/" style={{
-        minWidth: '44px',
-        minHeight: '44px',
-        display: 'inline-flex',
-        alignItems: 'center',
-      }}>
+      <a href="/" class="not-found__home">
         <Text>{t('nav.home')}</Text>
       </a>
     </section>

@@ -30,6 +30,8 @@ import type {
   RegisterForEventRequest,
   RegisterForEventResponse,
 } from '@/data/contract/callables';
+import { reportClientError } from '@/core/error-report';
+import { isModuleLoadFailure } from '@/core/module-load-error';
 import { emit } from '@/core/events';
 import { parseEventStartMs } from '@/core/event-time';
 import { beginSubmitting } from '@/core/submit-guard';
@@ -472,6 +474,68 @@ function extractOriginalCode(error: CallableError): string {
   return error.code;
 }
 
+/** 同一頁（同一次頁面載入）最多上報幾筆通用失敗；報名與取消共用，避免單頁洗版（顧問 §3.267：限流）。 */
+const UNKNOWN_REPORT_LIMIT = 3;
+let unknownReports = 0;
+const unknownReportKeys = new Set<string>();
+
+/** 伺服器業務錯誤碼：全大寫底線常數（例如 PROFILE_INCOMPLETE），至少一個字母；純數字電話、英文姓名都不會過。 */
+const SERVER_CODE = /^(?=[A-Z0-9_]*[A-Z])[A-Z][A-Z0-9_]{2,63}$/;
+/** Firebase Functions 傳輸層代碼（官方列舉，可帶 functions/ 前綴）。 */
+const TRANSPORT_CODES = new Set([
+  'ok', 'cancelled', 'unknown', 'invalid-argument', 'deadline-exceeded', 'not-found', 'already-exists',
+  'permission-denied', 'resource-exhausted', 'failed-precondition', 'aborted', 'out-of-range',
+  'unimplemented', 'internal', 'unavailable', 'data-loss', 'unauthenticated',
+]);
+function transportCode(code: string): string {
+  const bare = code.replace(/^functions\//, '');
+  return TRANSPORT_CODES.has(bare) ? bare : 'unknown';
+}
+/** 非 Callable 錯誤的類型名稱：只認已知的錯誤類型，其餘一律 unknown（Flash 複審 P2：不放行像英文姓名的字串）。 */
+const ERROR_NAMES = new Set([
+  'Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'EvalError', 'URIError', 'AggregateError',
+  'FirebaseError', 'AbortError', 'NetworkError', 'SecurityError', 'TimeoutError', 'QuotaExceededError',
+]);
+
+/**
+ * 非 Callable 錯誤的訊息（瀏覽器／程式丟的英文訊息）：含非 ASCII 字元（例如中文姓名、地址）就整段不送；
+ * 否則遮掉 email、含分隔線或 7 位以上的數字串後只留前 120 字（憑證類由上報器的 scrubSecrets 再遮一次）。
+ */
+function redactFreeText(text: string): string {
+  if (/[^\x20-\x7E]/.test(text)) return 'message-omitted';
+  return text
+    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '[email]')
+    .replace(/\+?\d[\d\s-]{5,}\d/g, '[num]')
+    .slice(0, 120);
+}
+
+/** 測試用。 */
+export const _redactFreeTextForTest = redactFreeText;
+
+/**
+ * 落到通用文案（「報名失敗／取消失敗，請稍後重試」）時上報一筆（顧問 §3.267）：類別 register-unknown／cancel-unknown，
+ * 帶錯誤碼、是否逾時，以及白名單過的訊息（Callable 只送像錯誤碼的原始碼；其他錯誤送錯誤類型與遮罩後的前段）；
+ * 版號、時間與 uid 由上報器照常帶，不另帶其他個資。同內容重複不扣額度（上報器本來就會去重）。
+ * 已知錯誤（對照表內）與載入失敗（signup-module-load）不走這裡。只加上報，不改文案、交易、重試與送出守門。
+ * 取代：原本通用失敗被畫面接住後不寫錯誤日誌，後台看不到原因。
+ */
+function reportUnknownFailure(scope: 'register' | 'cancel', code: string, detail: string, timeout: boolean): void {
+  // 隱私優先：伺服器自由文字一律不送，不同的自由文字錯誤會得到同一個去重 key、只報第一筆（Flash 複審 P3，接受）。
+  const safeCode = SERVER_CODE.test(code) || TRANSPORT_CODES.has(code.replace(/^functions\//, '')) || ERROR_NAMES.has(code) ? code : 'unknown';
+  const key = `${scope}|${safeCode}|${detail}|${timeout ? 1 : 0}`;
+  if (unknownReportKeys.has(key) || unknownReports >= UNKNOWN_REPORT_LIMIT) return;
+  unknownReportKeys.add(key);
+  unknownReports += 1;
+  const err = new Error(`${scope} unknown: code=${safeCode} timeout=${timeout ? 1 : 0} detail=${detail}`) as Error & { code: string };
+  err.code = safeCode;
+  reportClientError(`${scope}-unknown`, err);
+}
+
+export function _resetUnknownFailureReportsForTest(): void {
+  unknownReports = 0;
+  unknownReportKeys.clear();
+}
+
 function toSignupError(
   error: unknown,
   map: Record<string, string>,
@@ -479,20 +543,42 @@ function toSignupError(
 ): SignupError {
   if (error instanceof SignupError) return error;
   const fallbackKey = scope === 'register' ? 'event.signup.error.unknown' : 'event.cancel.error.unknown';
+  const message = error instanceof Error ? error.message : String(error);
+  // 報名／取消途中程式檔載入失敗（例如按下才載入的 firebase/functions；iOS LINE 常見）：
+  // 改用專屬文案，並上報（上報器會附載入診斷 diag）。只改分類與顯示，不重試、不改送出守門。
+  // 認三種原生訊息（原始 TypeError 或被包成 CallableError），以及載入點回空值時的 MODULE_LOAD_FAILED 標記（§3.260）。
+  // 取代：原本一律「報名失敗，請稍後重試」，而且畫面接住後不寫錯誤日誌（顧問 §3.259）。
+  if (isModuleLoadFailure(error)) {
+    reportClientError(scope === 'register' ? 'signup-module-load' : 'cancel-module-load', error);
+    return new SignupError({
+      code: 'unknown',
+      originalCode: 'MODULE_LOAD_FAILED',
+      messageKey: scope === 'register' ? 'event.signup.error.loadFailed' : 'event.cancel.error.loadFailed',
+      message,
+    });
+  }
   if (error instanceof CallableError) {
     const originalCode = extractOriginalCode(error);
+    const known = map[originalCode];
+    if (!known) {
+      // 結構化錯誤碼優先用伺服器的原始碼（像錯誤碼才用），傳輸層代碼放在 detail；伺服器自由文字不送。
+      const serverCode = SERVER_CODE.test(originalCode) ? originalCode : '';
+      reportUnknownFailure(scope, serverCode || transportCode(error.code), `transport=${transportCode(error.code)}${serverCode ? '' : ' message-omitted'}`, false);
+    }
     return new SignupError({
       code: error.code,
       originalCode,
-      messageKey: map[originalCode] ?? fallbackKey,
+      messageKey: known ?? fallbackKey,
       message: error.message,
     });
   }
+  const name = error instanceof Error && ERROR_NAMES.has(error.name) ? error.name : 'unknown';
+  reportUnknownFailure(scope, name, redactFreeText(message), false);
   return new SignupError({
     code: 'unknown',
     originalCode: '',
     messageKey: fallbackKey,
-    message: error instanceof Error ? error.message : String(error),
+    message,
   });
 }
 
@@ -597,6 +683,7 @@ async function withCallableTimeout<T>(call: Promise<T>, scope: 'signup' | 'cance
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
+      reportUnknownFailure(scope === 'signup' ? 'register' : 'cancel', 'deadline-exceeded', 'CALLABLE_TIMEOUT', true);
       reject(new SignupError({
         code: 'deadline-exceeded',
         originalCode: 'CALLABLE_TIMEOUT',

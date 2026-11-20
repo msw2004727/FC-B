@@ -1,8 +1,8 @@
 // loadTeamsForUser 已經查過的隊伍文件。賽事代表清單沿用這份，只補查缺的欄位。
-// 登出或換帳號就清掉，下一個 uid 不會讀到上一個人的隊伍。
+// 登出或換帳號就清掉，下一個 uid 不會讀到上一個人的隊伍：由 viewer.ts 負責（beginViewerLoad 換人或登出、
+// resetViewerIdle 訂閱全部解除），scan 也只在 viewer 訂閱存在時寫入。
+// 2026-11-18 入口瘦身（顧問 §3.256）：取代本檔頂層重複的 auth:changed 監聽。
 // ASSUMPTION: 只留這一頁 viewer 最近一次成功讀到的結果，沒有另外的 TTL。
-
-import { on } from '@/core/events';
 
 /** 與 viewer.ts loadTeamsForUser 的四個查詢對齊。coachUids 不是代表欄位。 */
 export const VIEWER_TEAM_QUERY_FIELDS = ['captainUid', 'leaderUid', 'leaderUids', 'coachUids'] as const;
@@ -28,6 +28,7 @@ export function peekViewerTeamScan(uid: string): ViewerTeamScan | null {
   return scan;
 }
 
+/** 只給 viewer.ts 在訂閱存在時呼叫（清除也由它負責）；其他模組不得寫入，否則換帳號時沒人清。 */
 export function rememberViewerTeamScan(uid: string, next: ViewerTeamScan): void {
   if (!uid) return;
   scanUid = uid;
@@ -50,7 +51,3 @@ export function seedViewerTeamScanForTest(uid: string, next: ViewerTeamScan): vo
 export function resetViewerTeamScanForTest(): void {
   clearViewerTeamScan();
 }
-
-on('auth:changed', ({ uid }) => {
-  if (uid == null || uid !== scanUid) clearViewerTeamScan();
-});

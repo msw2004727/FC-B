@@ -26,7 +26,7 @@
   "feature.reserved": "此功能即将推出",
   "feature.external": "即将接入外部系统",
   "internalTest.badge": "ToosterX抢先试用版 {version}",
-  "swUpdate": { "title": "有新版本可用", "forcedTitle": "请更新到新版", "now": "立即更新", "later": "稍后", "busy": "当前操作尚未完成，稍后再更新" },
+  "swUpdate": { "title": "有新版本可用", "forcedTitle": "请更新到新版", "now": "立即更新", "later": "稍后", "busy": "当前操作尚未完成，稍后再更新", "loadFailed": "加载失败", "reload": "重新加载" },
   "lineLoginHint": {
     "openInLine": "在 LINE App 中登录",
     "openInLineNote": "之后都在 LINE 里使用",

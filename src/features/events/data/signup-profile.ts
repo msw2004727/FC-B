@@ -13,6 +13,20 @@ export interface SignupProfile {
   exp: number;
   /** users/{uid}.lineNotify?.bound === true */
   lineNotifyBound: boolean;
+  /**
+   * 報名必填三欄缺漏（gender、birthday、region 任一為 falsy）。判斷與伺服器同一組：
+   * FC functions/index.js registerForEvent 的 Plan C 檢查（缺任一欄回 PROFILE_INCOMPLETE）。
+   * 文件不存在時伺服器不擋，這裡也回 false（交給伺服器裁定）。選填：舊呼叫端與測試替身省略＝未缺。
+   */
+  incomplete?: boolean;
+}
+
+/** 與伺服器 Plan C 同一組必填欄位；A3-02 第二段生日欄搬移時要同批改（見驗證文件）。 */
+export const SIGNUP_REQUIRED_PROFILE_FIELDS = ['gender', 'birthday', 'region'] as const;
+
+/** 照伺服器 `!data.gender || !data.birthday || !data.region`（falsy 即缺）。 */
+export function isSignupProfileIncomplete(data: Record<string, unknown>): boolean {
+  return SIGNUP_REQUIRED_PROFILE_FIELDS.some((key) => !data[key]);
 }
 
 /**
@@ -43,5 +57,5 @@ export async function loadSignupProfile(uid: string): Promise<SignupProfile> {
     && 'bound' in lineNotify
     && (lineNotify as { bound?: unknown }).bound === true;
 
-  return { gender, birthday, exp, lineNotifyBound };
+  return { gender, birthday, exp, lineNotifyBound, incomplete: isSignupProfileIncomplete(data) };
 }

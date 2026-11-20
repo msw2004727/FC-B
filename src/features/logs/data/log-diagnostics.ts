@@ -68,6 +68,7 @@ export function buildErrorDiagnostic(log: ErrorLogDoc): string {
     ...head,
     `原始錯誤：${log.errorMessage || ''}`,
     `Stack：${String(log.errorStack || '').slice(0, 1200)}`,
+    ...(log.diag ? [`載入診斷：${log.diag}`] : []),
     `文件 ID：${log._docId || ''}`,
   ].join('\n');
 }

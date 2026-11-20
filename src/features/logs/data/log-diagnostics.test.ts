@@ -46,6 +46,21 @@ describe('buildErrorDiagnostic - 一般錯誤', () => {
   });
 });
 
+describe('buildErrorDiagnostic - 載入診斷（顧問 §3.255 D）', () => {
+  it('有 diag 時在 Stack 後、文件 ID 前多一行「載入診斷」；沒有就不出現', () => {
+    const log: ErrorLogDoc = {
+      errorMessage: 'Importing a module script failed.',
+      diag: '{"sw":"controlled","rl":null,"n":2}',
+      _docId: 'doc-2',
+    };
+    const lines = buildErrorDiagnostic(log).split('\n');
+    expect(lines.at(-2)).toBe('載入診斷：{"sw":"controlled","rl":null,"n":2}');
+    expect(lines.at(-3)).toMatch(/^Stack：/);
+    expect(lines.at(-1)).toBe('文件 ID：doc-2');
+    expect(buildErrorDiagnostic({ errorMessage: 'x' })).not.toContain('載入診斷');
+  });
+});
+
 describe('buildErrorDiagnostic - 用戶提示', () => {
   it('標題、來源、分類、內容與欄位順序', () => {
     const log: ErrorLogDoc = {

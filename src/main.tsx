@@ -16,19 +16,20 @@ import { ALL_FEATURES } from './features.config';
 import { initTheme } from './core/theme';
 import { initLocale } from './i18n/i18n';
 import { installChunkReloadGuard } from './core/chunk-reload';
+import { installFailedPreloadRecorder } from './core/failed-preloads';
 import { installErrorReporter, reportClientError } from './core/error-report';
 import { runLegacyMigrationOnce } from './core/legacy-migration';
 import { initServiceWorker } from './core/sw-control';
 import { preloadEventDetailChunks } from './app/event-detail-preload';
 
+// 要早於開機預載與任何路由載入。
+installFailedPreloadRecorder();
+
 // T-093：分享網址落在 /events/<id> 時先下載詳情頁與 Firestore 模組（與路由 load 同一個 chunk）。
-// 首頁與 /activities 只預載 Firestore SDK，不靜態匯入、不下載詳情 chunk。
-// 只下載，不初始化 Firestore、不取得連線、不繞過登入暫緩。失敗吞掉，避免再多一個 unhandledrejection。
-preloadEventDetailChunks(
-  location.pathname,
-  () => import('./features/events/pages/EventDetailPage'),
-  () => import('firebase/firestore'),
-);
+// 首頁與 /activities 只預載 Firestore SDK，不下載詳情 chunk。
+// 只下載，不初始化 Firestore、不取得連線、不繞過登入暫緩。
+// 顧問 §3.255 B′：改插 <link rel="modulepreload">（網址由建置時注入），不用 import()，失敗不耗掉 chunk-reload 的機會。
+preloadEventDetailChunks(location.pathname);
 
 // 越早越好：首屏的路由 chunk 載入失敗也要能接住。
 installChunkReloadGuard();

@@ -62,6 +62,8 @@ const CLEARED_KEYS = [
   // 測試同步更新（B1-05）：清單補本人 QR 快取前綴與隱身開關。
   'shub_qr_uid',
   'admin_stealth',
+  // 2026-11-19：首頁「我的下一場活動」快照（含 owner uid）登出時一起清。
+  'fcb:home-next:v1',
 ] as const;
 
 const consoleMethods = ['log', 'info', 'warn', 'error', 'debug'] as const;

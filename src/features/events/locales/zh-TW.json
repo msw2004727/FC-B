@@ -118,22 +118,23 @@
       "earlyBirdNotAvailable": "目前無法早鳥報名",
       "earlyBirdConfirmRequired": "請先確認早鳥報名",
       "earlyBirdSelfOnly": "早鳥報名僅限本人",
-      "earlyBirdCostChanged": "早鳥費用已變更",
+      "earlyBirdCostChanged": "早鳥所需積分已調整，請重新整理確認後再報名",
       "earlyBirdInsufficientExp": "早鳥報名積分不足",
       "earlyBirdFull": "早鳥名額已滿",
       "genderRestricted": "不符合活動性別限制",
       "teamRestricted": "不符合活動球隊限制",
       "courseLinkedPrivate": "此課程活動不開放個別報名",
       "courseLinkedManaged": "請透過課程管理此報名",
-      "profileIncomplete": "請先完成個人資料",
+      "profileIncomplete": "請先完善個人資料（性別、生日、地區），再報名",
       "teamReservationDenied": "無法使用此球隊預留名額",
       "teamReservationUnavailable": "球隊預留名額目前不可用",
       "eventUnavailable": "此活動目前無法報名",
       "ageRestricted": "此活動有年齡限制",
       "birthdayRequired": "請先補齊生日資料後再報名",
-      "requestIdConflict": "請重新整理後再試",
+      "requestIdConflict": "報名狀態剛有變動，請重新整理頁面確認",
       "participantNotAllowed": "無權限執行此操作",
-      "unknown": "報名失敗，請稍後重試"
+      "loadFailed": "頁面載入不完整，請重新載入後再報名",
+      "unknown": "報名沒有成功，請稍後再試（代碼：{code}）", "network": "網路連線不穩，請確認網路後重新整理，確認是否已報名", "loginExpired": "登入已過期，請重新登入後再試"
     }
   },
   "cancel": {
@@ -144,8 +145,9 @@
       "permissionDenied": "無法取消此報名",
       "eventEnded": "活動已開始，無法再取消報名",
       "eventStarted": "活動已於開始時間結束，無法取消報名",
-      "requestIdConflict": "請重新整理後再試",
-      "unknown": "取消失敗，請稍後重試"
+      "requestIdConflict": "報名狀態剛有變動，請重新整理頁面確認",
+      "loadFailed": "頁面載入不完整，請重新載入後再取消",
+      "unknown": "取消沒有成功，請稍後再試（代碼：{code}）", "network": "網路連線不穩，請確認網路後重新整理，確認是否已取消"
     }
   },
   "form": {

@@ -207,3 +207,40 @@ describe('groupErrors', () => {
     expect(groups[1]!.page).toBe('pa');
   });
 });
+
+describe('程式檔載入失敗歸「網路／載入」類（顧問 §3.255 E）', () => {
+  const messages = [
+    'Importing a module script failed.',
+    'Failed to fetch dynamically imported module: https://x/assets/a.js',
+    'error loading dynamically imported module: https://x/assets/a.js',
+  ];
+
+  it('三種訊息：警告、網路／載入、白話說明載入失敗', () => {
+    for (const errorMessage of messages) {
+      const log: ErrorLogDoc = { errorMessage };
+      expect(severityOf(log), errorMessage).toBe('warn');
+      expect(codeLabel(log), errorMessage).toBe('網路／載入');
+      expect(chineseMessage(log), errorMessage).toContain('程式檔載入失敗');
+      expect(displayCode(log), errorMessage).toBe('network-load');
+    }
+  });
+
+  it('新站寫入的 errorCategory 也認得；其他錯誤不受影響', () => {
+    expect(codeLabel({ errorCategory: 'network-load', errorMessage: 'x' })).toBe('網路／載入');
+    expect(codeLabel({ errorCode: 'permission-denied', errorMessage: 'Missing or insufficient permissions.' })).toBe('權限不足');
+    expect(severityOf({ errorMessage: 'boom' })).toBe('info');
+  });
+
+  it('同類分組：三種訊息同頁同位置合成一組（網路／載入、警告）；權限錯誤不會被併入', () => {
+    const groups = groupErrors([
+      ...messages.map((errorMessage) => ({ errorMessage, page: '/events/e1' })),
+      { errorMessage: 'Importing a module script failed.', errorCategory: 'network-load', page: '/events/e1' },
+      { errorCode: 'permission-denied', errorMessage: 'Missing or insufficient permissions.', page: '/events/e1' },
+    ]);
+    expect(groups).toHaveLength(2);
+    const load = groups.find((g) => g.label === '網路／載入');
+    expect(load?.logs).toHaveLength(4);
+    expect(load?.severity).toBe('warn');
+    expect(groups.find((g) => g.label === '權限不足')?.severity).toBe('critical');
+  });
+});

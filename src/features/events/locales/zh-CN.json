@@ -58,16 +58,17 @@
       "eventEnded": "活动已结束", "eventCancelled": "活动已取消",
       "regNotOpen": "报名尚未开放", "earlyBirdNotAvailable": "目前无法早鸟报名",
       "earlyBirdConfirmRequired": "请先确认早鸟报名", "earlyBirdSelfOnly": "早鸟报名仅限本人",
-      "earlyBirdCostChanged": "早鸟费用已变更", "earlyBirdInsufficientExp": "早鸟报名积分不足",
+      "earlyBirdCostChanged": "早鸟所需积分已调整，请刷新确认后再报名", "earlyBirdInsufficientExp": "早鸟报名积分不足",
       "earlyBirdFull": "早鸟名额已满", "genderRestricted": "不符合活动性别限制",
       "teamRestricted": "不符合活动球队限制", "courseLinkedPrivate": "此课程活动不开放个别报名",
-      "courseLinkedManaged": "请通过课程管理此报名", "profileIncomplete": "请先完成个人资料",
+      "courseLinkedManaged": "请通过课程管理此报名", "profileIncomplete": "请先完善个人资料（性别、生日、地区）后再报名",
       "teamReservationDenied": "无法使用此球队预留名额",
       "teamReservationUnavailable": "球队预留名额目前不可用",
       "eventUnavailable": "此活动目前无法报名", "ageRestricted": "此活动有年龄限制",
-      "birthdayRequired": "请先补齐生日资料后再报名", "requestIdConflict": "请重新整理后再试",
+      "birthdayRequired": "请先补齐生日资料后再报名", "requestIdConflict": "报名状态刚有变动，请刷新页面确认",
       "participantNotAllowed": "无权限执行此操作",
-      "unknown": "报名失败，请稍后重试"
+      "loadFailed": "页面加载不完整，请重新加载后再报名",
+      "unknown": "报名没有成功，请稍后再试（代码：{code}）", "network": "网络连接不稳定，请确认网络后刷新，确认是否已报名", "loginExpired": "登录已过期，请重新登录后再试"
     }
   },
   "cancel": {
@@ -75,8 +76,9 @@
       "alreadyCancelled": "报名已取消", "regNotFound": "找不到此报名",
       "eventNotFound": "找不到此活动", "permissionDenied": "无法取消此报名",
       "eventEnded": "活动已开始，无法再取消报名", "eventStarted": "活动已于开始时间结束，无法取消报名",
-      "requestIdConflict": "请重新整理后再试",
-      "unknown": "取消失败，请稍后重试"
+      "requestIdConflict": "报名状态刚有变动，请刷新页面确认",
+      "loadFailed": "页面加载不完整，请重新加载后再取消",
+      "unknown": "取消没有成功，请稍后再试（代码：{code}）", "network": "网络连接不稳定，请确认网络后刷新，确认是否已取消"
     }
   },
   "form": {

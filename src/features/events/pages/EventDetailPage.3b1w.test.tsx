@@ -474,7 +474,7 @@ describe('3b-1w 報名流程', () => {
     let resolve!: (value: SignupProfile) => void;
     mocks.profile.mockReturnValue(new Promise<SignupProfile>(done => { resolve = done; }));
     mount();
-    const button = await screen.findByRole('button', { name: '用戶資料同步中' });
+    const button = await screen.findByRole('button', { name: '資料載入中…' });
     expect(button).toHaveProperty('disabled', true);
     expect(button.getAttribute('aria-busy')).toBe('true');
     await act(async () => { resolve(profile); });
@@ -491,7 +491,7 @@ describe('3b-1w 報名流程', () => {
       event: { ...detail.event, genderRestrictionEnabled: true, allowedGender: '男' },
     });
     const view = mount();
-    await screen.findByRole('button', { name: '用戶資料同步中' });
+    await screen.findByRole('button', { name: '資料載入中…' });
     mocks.viewer.mockReturnValue({ ...viewer, uid: 'u2' });
     view.rerender(
       <LocationProvider><EventDetailPage id="public-event" /></LocationProvider>,

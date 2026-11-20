@@ -4,6 +4,10 @@
 
 import { getActiveRoutes } from './feature-registry';
 import type { FeatureRoute } from './feature-types';
+import { isRouteLoadPending } from './route-load-pending';
+
+/** 閒置預載遇到路由正在載入時，隔多久再檢查一次。 */
+const ROUTE_LOAD_RECHECK_MS = 500;
 
 const PREFETCH_PRIORITY_PATHS = [
   '/',
@@ -44,6 +48,12 @@ export function scheduleIdleRoutePrefetch(): () => void {
 
   const runPrefetch = (): void => {
     if (cancelled) return;
+    // 顧問 §3.268：等路由載入結束才開始，避免預載失敗落在「路由載入中」而讓詳情頁整頁重整（演練：Chromium 預載早於詳情 chunk 完成）。
+    // 只延後閒置預載；使用者按下分頁或抽屜時的預載（prefetchRouteByPath）照舊立即開始。路由載入計數超過 20 秒自動失效，不會一直延後。
+    if (isRouteLoadPending()) {
+      timer = setTimeout(runPrefetch, ROUTE_LOAD_RECHECK_MS);
+      return;
+    }
     for (const path of PREFETCH_PRIORITY_PATHS) {
       if (cancelled) return;
       prefetchRouteByPath(path);

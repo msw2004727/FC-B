@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://toosterx.com/events/ce_1792643670603_jl6zdj</loc>
-    <lastmod>2026-10-22</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://toosterx.com/events/ce_1792643711484_6pa5q7</loc>
     <lastmod>2026-10-22</lastmod>
     <changefreq>daily</changefreq>
@@ -15,12 +9,6 @@
   <url>
     <loc>https://toosterx.com/events/ce_1793592751803_gmm9k7</loc>
     <lastmod>2026-11-02</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://toosterx.com/events/ce_1793777473259_p8xt6k</loc>
-    <lastmod>2026-11-04</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
@@ -49,12 +37,6 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://toosterx.com/events/ce_1793797022643_n3kvzr</loc>
-    <lastmod>2026-11-04</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://toosterx.com/events/ce_1793895860759_kzxuc6</loc>
     <lastmod>2026-11-05</lastmod>
     <changefreq>daily</changefreq>
@@ -63,18 +45,6 @@
   <url>
     <loc>https://toosterx.com/events/ce_1794319607244_o27814</loc>
     <lastmod>2026-11-10</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://toosterx.com/events/ce_1794319607244_wbcvrl</loc>
-    <lastmod>2026-11-10</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://toosterx.com/events/ce_1794501369615_xe7sjy</loc>
-    <lastmod>2026-11-12</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
@@ -121,14 +91,14 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://toosterx.com/events/ce_1794896172187_d8bw9c</loc>
-    <lastmod>2026-11-17</lastmod>
+    <loc>https://toosterx.com/events/ce_1794897310803_atv7l3</loc>
+    <lastmod>2026-11-18</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://toosterx.com/events/ce_1794897310803_atv7l3</loc>
-    <lastmod>2026-11-17</lastmod>
+    <loc>https://toosterx.com/events/ce_1795015266827_h3sgiq</loc>
+    <lastmod>2026-11-18</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>

@@ -38,6 +38,7 @@ import {
   writeBannersSnapshot,
   toPublicBanners,
   writeSportsSnapshot,
+  SPORTS_SNAPSHOT_FRESH_MS,
   type SnapshotRead,
 } from '../data/home-snapshot';
 import { computeGuestSportRows, computeSportRows, type SportRow } from '../data/sport-rows';
@@ -253,7 +254,10 @@ export default function HomePage(): JSX.Element {
   // 來源 2（既有快取）優先於來源 3（首屏快照）；來源 1 確認後 sportSnap 已是 null，見上方 handleFreshEvents。
   // 選用快照當下再檢查一次期限（計時器被延後、時鐘往前跳時，不能選到已過期的快照）。
   const sportSnapUsable = sportSnap !== null && Date.now() < sportSnap.expiresAt;
-  const sportRows = eventsData.events.length === 0 && sportSnap && sportSnapUsable ? sportSnap.items : computedSportRows;
+  const sportFromSnap = eventsData.events.length === 0 && sportSnap !== null && sportSnapUsable;
+  const sportRows = sportFromSnap ? sportSnap.items : computedSportRows;
+  // 快照超過 30 分鐘仍可顯示（最多 7 天），但用舊資訊樣式：數字變淡，讀取中加「更新中」（站長 2026-11-19）。
+  const sportStale = sportFromSnap && Date.now() - sportSnap.savedAt > SPORTS_SNAPSHOT_FRESH_MS;
   // 橫幅同理：畫面上的橫幅若來自快照而且已過期（計時器還沒來得及撤掉），這一輪 render 就不畫。
   const shownBanners = bannerExpiry !== null && Date.now() >= bannerExpiry ? [] : banners;
 
@@ -464,6 +468,7 @@ export default function HomePage(): JSX.Element {
         <section class="home-dashboard-section" aria-labelledby="home-sport-entry-title">
           <div class="home-dashboard-title-row">
             <h3 id="home-sport-entry-title">運動快速入口</h3>
+            {sportStale && eventsData.loading ? <span class="home-refresh-pill" role="status">更新中</span> : null}
             {/* 瀏覽次數（views）B 沒有資料來源：照 A 位置顯示，無資料時不顯示數字（搭配 :empty 自動隱藏） */}
             <span
               class="home-stat-views home-sport-views"
@@ -472,7 +477,7 @@ export default function HomePage(): JSX.Element {
               aria-live="polite"
             />
           </div>
-          <div class="home-sport-entry" id="home-sport-entry" aria-live="polite">
+          <div class={sportStale ? 'home-sport-entry is-stale' : 'home-sport-entry'} id="home-sport-entry" aria-live="polite">
             {eventsData.loading && sportRows.length === 0 ? (
               <div class="reg-loading" style="white-space:nowrap">載入中…</div>
             ) : null}
