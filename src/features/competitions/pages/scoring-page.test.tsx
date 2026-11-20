@@ -13,7 +13,7 @@ import type { LockManager } from '../live/data/tab-lock';
 import { useScoring, type ScoringDeps } from '../live/useScoring';
 import { LIVE_COPY, pauseRemain, teamAction } from '../live/copy';
 import { loadCompetitionsDict } from '../i18n';
-import { ScoringScreen } from './ScoringPage';
+import { SCORE_FULLSCREEN_CLASS, ScoringScreen } from './ScoringPage';
 
 const CID = 'comp-u2';
 const MT = 'mt-u2';
@@ -179,6 +179,8 @@ describe('正式記分頁權限', () => {
     expect(screen.getByRole('button', { name: LIVE_COPY.backToSchedule })).toBeTruthy();
     expect(document.querySelector('.cps-top')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '記分' })).toBeTruthy();
+    // 沒有記分權限時保留 App 外框（顧問審 a7026243 P2-1）。
+    expect(document.documentElement.classList.contains(SCORE_FULLSCREEN_CLASS)).toBe(false);
   });
 
   it('沒有指派的主辦看得到說明', async () => {
@@ -193,6 +195,7 @@ describe('正式記分頁權限', () => {
     draw(made.deps);
     expect(await screen.findByText(LIVE_COPY.noScorePermission)).toBeTruthy();
     expect(screen.queryByRole('button', { name: '開賽' })).toBeNull();
+    expect(document.documentElement.classList.contains(SCORE_FULLSCREEN_CLASS)).toBe(false);
   });
 
   it('記分員與已指派的主辦看得到記分板', async () => {
@@ -204,7 +207,10 @@ describe('正式記分頁權限', () => {
     expect(document.querySelector('.cps-top')).toBeNull();
     expect(document.querySelector('h1')).toBeNull();
     expect(document.title).toBe('記分');
+    // 記分板出現才全幅；離開（卸載）就恢復 App 外框。
+    await waitFor(() => expect(document.documentElement.classList.contains(SCORE_FULLSCREEN_CLASS)).toBe(true));
     cleanup();
+    expect(document.documentElement.classList.contains(SCORE_FULLSCREEN_CLASS)).toBe(false);
     const host = await deps({ staffRoles: ['host', 'referee'], matchIds: [MT] });
     draw(host.deps);
     expect(await screen.findByRole('button', { name: '開賽' })).toBeTruthy();

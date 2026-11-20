@@ -6,16 +6,21 @@
 html.cp-score-full #top-bar,
 html.cp-score-full #bottom-tabs,
 html.cp-score-full .internal-test-badge,
-html.cp-score-full .fcb-diag-loads {
+html.cp-score-full .fcb-diag-loads,
+html.cp-score-full .sync-bar {
   display: none !important;
 }
 
+/* QA 測試帳號橫幅（fixed 在最上方）仍保留，主區讓出它的高度（顧問審 P3-1）；同步列由記分頁自己的連線狀態取代（P3-2）。 */
 html.cp-score-full .ui-app-shell .app-main {
-  padding-top: 0;
+  padding-top: var(--qa-banner-h, 0px);
   padding-bottom: 0;
 }
 
 html.cp-score-full .s4-root {
+  height: calc(100vh - var(--qa-banner-h, 0px));
+  height: calc(100dvh - var(--qa-banner-h, 0px));
+  max-height: calc(100dvh - var(--qa-banner-h, 0px));
   padding-top: calc(4px + env(safe-area-inset-top, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
