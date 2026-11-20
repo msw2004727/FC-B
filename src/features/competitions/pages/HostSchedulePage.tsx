@@ -379,7 +379,7 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
       ) : null}
       {formError ? <CpError reason={formError.reason} params={formError.params} /> : null}
       {formError?.reason === 'SCHEDULE_REPLACE_TOO_LARGE' ? (
-        <div class="cps-actions" style="margin-top:0">
+        <div class="cph-end">
           <Button variant="danger" disabled={busy} onClick={() => setClearOpen(true)}>{ct('schedClear')}</Button>
         </div>
       ) : null}

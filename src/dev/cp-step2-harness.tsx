@@ -58,6 +58,7 @@ const PAGES: Record<string, ComponentType> = {
   'host-edit-open': CompetitionManagePage,
   'host-long': CompetitionManagePage,
   'host-long-pending': CompetitionManagePage,
+  'host-pending-longclub': CompetitionManagePage,
   'gate-guest': NewCompetitionPage,
   'gate-member': NewCompetitionPage,
   'gate-error': NewCompetitionPage,

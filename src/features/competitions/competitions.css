@@ -947,6 +947,7 @@
 .cps-head-row > .cp3-sec-h { margin: 0; }
 /* 欄位下的說明小字緊貼上面那一格（約 2px） */
 .cph-hint { margin: 2px 0 0; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
+.cph-hint .cps-line { display: block; }
 .cps-fields > .cph-hint { margin-top: calc(2px - var(--space-4)); }
 /* 場地名稱那一格撐滿、垃圾桶在右；垃圾桶 44×44，圖示右緣對齊卡片內容 */
 .cph-venue { align-items: flex-end; }
@@ -958,7 +959,7 @@
 .cph-five .ui-chip__select { flex: 1 1 auto; justify-content: center; padding-inline: 0; }
 .cph-five .ui-chip__label { white-space: nowrap; }
 /* 步驟 2 的等高列：左標籤 15／24、右邊加減器或開關 */
-.cph-ctl .ui-stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cph-ctl .ui-stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 4px; }
 .cph-ctl .ui-stepper > div:not(.ui-stepper__controls) { font-size: 15px; line-height: 24px; font-weight: 400; color: var(--d2-text); white-space: nowrap; }
 .cph-ctl .cph-switch .ui-switch__label { font-size: 15px; line-height: 24px; color: var(--d2-text); }
 
@@ -1116,7 +1117,7 @@
 /* 賽程管理每一場的動作列（卡 4-B）：一列排完、靠左；「取消這場」紅字推到最右，放不下整顆掉到下一列靠右 */
 .cp3-m__act { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; margin-top: 2px; }
 .cp3-m__act .ui-button { min-inline-size: 0; padding-inline: 12px; }
-.cp3-m__act .ui-button--danger { margin-left: auto; }
+.cp3-m__act .ui-button--danger { margin-left: auto; margin-right: -12px; } /* 紅字右緣對齊標籤與「重置」，點擊區不變 */
 @media (max-width: 340px) {
   .cp3-m__act { gap: 0 6px; }
   .cp3-m__act .ui-button { padding-inline: 8px; }
