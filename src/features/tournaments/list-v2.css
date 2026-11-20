@@ -156,8 +156,10 @@
 #page-tournaments .cpl-xmsg p { margin: 0 0 8px; }
 #page-tournaments .cpl-xrow { display: flex; align-items: center; gap: 10px; }
 #page-tournaments .cpl-xrow__link { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 68px; padding: 10px 0; color: var(--d2-text); text-decoration: none; }
-/* 縮圖：沒有照片就不放任何東西。沒有切換時原色；有切換、看外部時降彩；已結束全灰 */
+/* 縮圖：沒有照片放預設縮圖（下一條）。沒有切換時原色；有切換、看外部時降彩；已結束全灰 */
 #page-tournaments .cpl-xrow__img { flex: 0 0 auto; width: 56px; height: 42px; border-radius: 8px; object-fit: cover; }
+/* 沒有照片：同一格中性淡灰底，中間是分類名的第一個字（不讀圖、不新增字串） */
+#page-tournaments .cpl-xrow__ph { display: flex; align-items: center; justify-content: center; background: var(--d2-line); color: var(--d2-text-3); font-size: 15px; line-height: 22px; font-weight: 600; }
 #page-tournaments.d2-ext .cpl-xrow__img { -webkit-filter: grayscale(.85) contrast(.9); filter: grayscale(.85) contrast(.9); opacity: var(--d2-thumb-op); }
 #page-tournaments .cpl-xrow.ended .cpl-xrow__img { -webkit-filter: grayscale(1); filter: grayscale(1); opacity: var(--d2-thumb-end-op); }
 #page-tournaments .cpl-xrow__body { flex: 1 1 auto; min-width: 0; }

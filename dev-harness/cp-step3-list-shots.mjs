@@ -98,6 +98,8 @@ function measure(nowrap) {
     toolbar: toolbar ? { scrollW: toolbar.scrollWidth, clientW: toolbar.clientWidth, h: Math.round(r(toolbar).height) } : null,
     cards: [...document.querySelectorAll('.cpl-card')].map((el) => ({ cid: el.getAttribute('data-cid'), board: el.classList.contains('cpl-card--board'), h: Math.round(r(el).height) })),
     xrows: [...document.querySelectorAll('.cpl-xrow')].map((el) => Math.round(r(el).height)),
+    // 外部列名稱左緣（有圖、沒圖都要相同；沒圖放預設縮圖）
+    nameLefts: [...new Set([...document.querySelectorAll('.cpl-xrow__name')].map((el) => Math.round(r(el).left)))],
     skel: [...document.querySelectorAll('.cpl-skel__card, .cpl-xskel__row')].map((el) => Math.round(r(el).height)),
     menu: menu ? {
       rows: menu.querySelectorAll('[role="option"]').length,

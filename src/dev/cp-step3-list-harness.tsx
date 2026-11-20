@@ -42,7 +42,7 @@ const screenName = params.get('screen') || 'in';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 document.documentElement.setAttribute('data-theme', theme);
 
-// ── 外部賽事（日期對真實今天 2026-11 下旬：一張未來有圖、一張未來沒圖、一張已結束有圖） ──
+// ── 外部賽事（日期對真實今天 2026-11 下旬：未來有圖、未來沒圖兩張、已結束有圖、已結束沒圖） ──
 function thumb(a: string, b: string): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="60"><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="160" height="60" fill="url(#g)"/><circle cx="118" cy="30" r="18" fill="#fff" fill-opacity=".55"/></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
@@ -55,6 +55,8 @@ const EXT_CARDS: TournamentCard[] = [
   ext('tc_b', '北區社區足球聯賽', 'league', '2026-12-12', '2027-02-27'),
   ext('tc_c', '週末三對三友誼賽', 'friendly', '2026-12-06', '2026-12-06'),
   ext('tc_d', '2026 秋季邀請賽', 'cup', '2026-10-09', '2026-10-11', thumb('#2563eb', '#22c55e')),
+  // 已結束、沒有照片：預設縮圖也要跟著變淡
+  ext('tc_e', '夏季五人制聯賽', 'league', '2026-08-01', '2026-08-30'),
 ];
 const EXT_LONG: TournamentCard[] = [
   ext('tc_l1', '二〇二七年新北市三重區春季社區五人制足球邀請賽', 'cup', '2026-12-27', '2027-01-03'),
