@@ -30,7 +30,8 @@ const MT = 'mt-u1';
 const UID = 'scorer-u1';
 const SID = 'emu-local-sid-0000000001';
 const HOST = '127.0.0.1';
-const PORT = 8402;
+// 預設 8402（FC-B 全測照舊）；與其他工作階段並行時用 FCB_EMU_PORT 換埠（顧問 11-20）。
+const PORT = Number(process.env.FCB_EMU_PORT ?? 8402);
 
 function probePort(): Promise<boolean> {
   return new Promise((resolve) => {

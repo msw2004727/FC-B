@@ -22,6 +22,7 @@ const ANCHORS = {
   'a1-kickoff-confirm': '開始比賽？',
   'a1-takeover-confirm': '接手後，另一支裝置記的動作會送不出去',
   'a1-showcard': '點一下關閉',
+  'a1-undo-confirm': '會一併復原第二張黃牌',
 };
 const SCREENS = [
   ['u2-pending', ALL, THEMES, true],
@@ -34,7 +35,10 @@ const SCREENS = [
   ['a1-kickoff-confirm', ALL, THEMES, false],
   ['a1-takeover-confirm', ALL, THEMES, false],
   ['a1-showcard', ALL, THEMES, false],
+  ['a1-undo-confirm', ALL, THEMES, false],
 ];
+// 確認框畫面：就緒後約 300ms（面板滑入完、仍在 600ms 內）先拍一張確認鈕停用中的樣子。
+const EARLY = new Set(['a1-pk-confirm-wait', 'a1-kickoff-confirm', 'a1-takeover-confirm', 'a1-undo-confirm']);
 
 const SELECTORS = '.s4-team, .s4-col__name, .s4-clock, .s4-stage, .s4-hold, .s4-banner, .s4-wake, .s4-ev__main, .s4-ev__tag, .s4-evsum, .s4-flash__no, .s4-flash__name, .s4-flash__kind, .s4-flash__close, .s4-sent__st, .s4-sent__cd, .s4-hint, .s4-note, .s4-log__intent, .s4-log__st, .s4-pl__name, .s4-dlist__when, .s4-vs__score, .cpm-drag__n, .cpm-drag__li > *, .cpl-src button, .cpl-select, .cpl-st, .tc-chip, .tc-tab, .cpl-line, .tc-card-name, .tc-card-dates, button, .ui-badge, .ui-chip, dt, .cp3-name, .cp3-meta, .cp3-strip__txt, .cp3-day, .cp3-m__when, .cp3-m__vs span, .cp3-st__r > *, .cp3-champ span, .cp3-fold span, .cp3-result, .cp3-result--bad, .cp3-judge, .cp3-sec-h, .cp3-ctx, .cp3-score__name, .cp3-modal-p, .ui-input label, .ui-checkbox label, .ui-radio label, h1, h2, h3, .cps-sub, th';
 
@@ -59,9 +63,13 @@ for (const [name, sizes, themes, scrollMore] of SCREENS) {
         await ctx.close();
         continue;
       }
-      if (name === 'a1-pk-confirm-wait') {
+      if (EARLY.has(name)) {
         const rects = await page.evaluate(() => window.__A1_RECTS ?? null);
-        const goDisabled = () => page.evaluate(() => [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === '開始 PK')?.disabled ?? null);
+        // 確認鈕＝對話框底部最後一顆（取消在左、確認在右）。
+        const goDisabled = () => page.evaluate(() => {
+          const btns = [...document.querySelectorAll('.s4-dialog .ui-modal__footer button')];
+          return btns.length ? { order: btns.map((b) => (b.textContent || '').trim()), disabled: btns[btns.length - 1].disabled } : null;
+        });
         // 等面板滑入動畫走完（仍在 600ms 內），拍停用中的確認鈕；拍之前、之後都確認仍是停用。
         await page.waitForTimeout(300);
         const before = await goDisabled();

@@ -51,6 +51,7 @@ export const U2_SCREENS = [
   'a1-kickoff-confirm',
   'a1-takeover-confirm',
   'a1-showcard',
+  'a1-undo-confirm',
 ] as const;
 
 const ANCHORS: Record<string, string> = {
@@ -75,6 +76,7 @@ const ANCHORS: Record<string, string> = {
   'a1-kickoff-confirm': '開始比賽？',
   'a1-takeover-confirm': '接手後，另一支裝置記的動作會送不出去',
   'a1-showcard': '點一下關閉',
+  'a1-undo-confirm': '會一併復原第二張黃牌',
 };
 
 const HOME: RosterPublicDoc[] = [
@@ -168,6 +170,10 @@ function rejectedEntry(op: string, intent: LogEntry['intent'], seq: number, reas
     attempts: 1,
     baseResetRev: 0,
   };
+}
+
+function secondYellowAt(seq: number, minute: number, refSeq: number): ServerEvent {
+  return { ...cardAt(seq, minute), op: `card2-home-${String(seq).padStart(4, '0')}`, cardType: 'second_yellow', refSeq };
 }
 
 function cardAt(seq: number, minute: number): ServerEvent {
@@ -393,6 +399,12 @@ function seedOf(name: string): Seed {
       events: [goalAt(1, 'home', 12), cardAt(2, 20)],
     };
   }
+  if (name === 'a1-undo-confirm') {
+    return {
+      match: match({ status: 'live', rev: 2, score: { home: 0, away: 0 }, clockBase: clock(34 * 60, 'h1', true) }),
+      events: [cardAt(1, 20), secondYellowAt(2, 30, 1)],
+    };
+  }
   if (name === 'u2-no-permission') {
     return {
       match: match({ status: 'scheduled', clockBase: clock(0, 'pre', false, null) }),
@@ -563,6 +575,13 @@ const OPEN: Record<string, () => Promise<void>> = {
   'a1-takeover-confirm': async () => {
     await until('其他裝置記分中', () => buttonsNamed('其他裝置記分中').length > 0);
     clickButton('其他裝置記分中');
+  },
+  'a1-undo-confirm': async () => {
+    await until('黃牌列', () => hasText('劉冠廷'));
+    const rows = [...document.querySelectorAll<HTMLButtonElement>('.s4-ev button')].filter((el) => (el.textContent ?? '').includes("20'"));
+    rows[0]?.click();
+    await until('復原', () => [...document.querySelectorAll('button')].some((el) => (el.textContent ?? '').trim().startsWith('復原')));
+    [...document.querySelectorAll<HTMLButtonElement>('.s4-sheet button')].find((el) => (el.textContent ?? '').trim().startsWith('復原'))?.click();
   },
   'a1-showcard': async () => {
     await until('黃牌列', () => hasText('劉冠廷'));

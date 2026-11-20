@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 第 4 步 A（顧問 11-20 第 2 點）真瀏覽器實測：正式站同款持久化快取＋IndexedDB 日誌，對 Firestore 模擬器（8402、demo-cp-u1）。
+// 第 4 步 A（顧問 11-20 第 2 點）真瀏覽器實測：正式站同款持久化快取＋IndexedDB 日誌，對 Firestore 模擬器（預設 8402，FCB_EMU_PORT 可換；demo-cp-u1）。
 // 離線記一球 → 重新整理（仍離線）→ 另一台接手 → 恢復連線，確認原頁面出現被拒（takenOver）、伺服器 0:0、不會默默當成已送出。
 // 「離線」用 Playwright 擋掉往 127.0.0.1:8402 的請求（頁面資源仍可從 vite 載入，才能重新整理）。
 // 必須在 firebase emulators:exec 底下跑（見 C:/t/fc-cp4/bin 的腳本）：
@@ -12,7 +12,8 @@ import { createServer } from 'vite';
 
 const OUT = resolve(process.argv[2] || 'cp-step4-a1-persist');
 const HOST = '127.0.0.1';
-const PORT = 8402;
+// 預設 8402；與其他工作階段並行時用 FCB_EMU_PORT 換埠（顧問 11-20）。頁面用 ?port= 帶過去。
+const PORT = Number(process.env.FCB_EMU_PORT ?? 8402);
 const PROJECT = 'demo-cp-u1';
 const DB = '(default)';
 const CID = 'comp-u1';
@@ -119,7 +120,7 @@ try {
   const consoleErrors = [];
   const page = await ctx.newPage();
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 200)); });
-  const url = `http://127.0.0.1:${VITE_PORT}/dev-harness/cp-step4-a1-persist.html`;
+  const url = `http://127.0.0.1:${VITE_PORT}/dev-harness/cp-step4-a1-persist.html?port=${PORT}`;
   const rows = () => page.evaluate(() => window.__A1?.rows?.() ?? []);
   const goalRow = async () => (await rows()).find((r) => r.kind === 'goal') ?? null;
 

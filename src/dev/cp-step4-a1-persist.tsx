@@ -1,5 +1,5 @@
 // 第 4 步 A（顧問 11-20 第 2 點）：真瀏覽器、正式站同款持久化快取（persistentLocalCache＋persistentMultipleTabManager）、
-// IndexedDB 日誌，對本機 Firestore 模擬器（127.0.0.1:8402，demo- 專案）跑「離線記一球 → 重新整理 → 另一台接手 → 恢復連線」。
+// IndexedDB 日誌，對本機 Firestore 模擬器（127.0.0.1，預設 8402、?port= 可換；demo- 專案）跑「離線記一球 → 重新整理 → 另一台接手 → 恢復連線」。
 // 只給 dev-harness/cp-step4-a1-persist.mjs 用；不連正式環境（projectId 是 demo-，host 固定 127.0.0.1）。
 import { render } from 'preact';
 import { LocationProvider } from 'preact-iso';
@@ -69,7 +69,9 @@ async function start(): Promise<void> {
     const db = initializeFirestore(app, {
       localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     });
-    connectFirestoreEmulator(db, '127.0.0.1', 8402);
+    const asked = Number(new URLSearchParams(location.search).get('port') ?? 8402);
+    const port = Number.isInteger(asked) && asked >= 1024 && asked <= 65535 ? asked : 8402;
+    connectFirestoreEmulator(db, '127.0.0.1', port);
     signIn(db, UID);
     const idb = await openScoringDatabase(indexedDB);
     const log = new IndexedDbActionLog(async () => idb);
