@@ -155,8 +155,25 @@ h3.s4b-h {
 .s4b-staff > * { grid-row: 1; }
 .s4b-staff > .s4b-mini { grid-column: 5; justify-self: end; min-width: 0; max-width: 100%; }
 .s4b-staff .ui-badge { justify-self: start; }
-/* 主辦兼記分：兩個標籤並排放第 2 欄（顧問 11-20）。 */
-.s4b-staff > .s4b-staff__roles { grid-column: 2; justify-self: start; display: inline-flex; gap: 4px; white-space: nowrap; min-width: 0; }
+/* 主辦兼記分（顧問 11-20 staging）：角色標籤與到期放第二列，可整顆換行、標籤本身不壓縮不拆字。 */
+.s4b-staff--multi > .s4b-staff__roles {
+  grid-row: 2;
+  grid-column: 1 / 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.s4b-staff__roles > .s4b-role-tag { flex: none; white-space: nowrap; }
+.s4b-staff__roles > .s4b-role-tag .ui-badge__label { white-space: nowrap; overflow-wrap: normal; }
+.s4b-staff__roles > .s4b-staff__exp-inline {
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  font-variant-numeric: tabular-nums;
+}
 
 .s4b-day {
   margin: var(--space-3) 0 var(--space-2);

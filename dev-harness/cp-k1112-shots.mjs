@@ -9,16 +9,16 @@ import { resolve, join } from 'node:path';
 
 const OUT = resolve(process.argv[2] || 'cp-k1112-shots');
 const BASE = process.argv[3] || 'http://localhost:5199';
-const SIZES = [[390, 844], [360, 640]];
+const SIZES = [[390, 844], [360, 640], [1280, 800]];
 const THEMES = ['light', 'dark'];
 const SCREENS = ['staff-list', 'invite-form', 'invite-link', 'accept-guest', 'accept-signed', 'accept-error', 'detail-admin-reports', 'detail-admin-hide', 'detail-host-hidden'];
 const CODE = 'AbCdEfGhIjKlMnOpQrStUv';
 // 介面標籤（不含使用者內容：賽事名、原因、說明可以換行）
-const SELECTORS = '.s4b-staff__meta, .s4b-staff__exp, .s4b-k, .s4b-err, .s4b-foot, .s4b-status, .s4b-day, button, .ui-badge, h1, .cpa-h, .cpa-reason, .cpa-meta > span, .cpa-muted, .ui-checkbox label, .ui-radio label, .ui-input label';
+const SELECTORS = '.s4b-staff__meta, .s4b-staff__exp, .s4b-staff__exp-inline, .s4b-role-tag, .s4b-k, .s4b-err, .s4b-foot, .s4b-status, .s4b-day, button, .ui-badge, h1, .cpa-h, .cpa-reason, .cpa-meta > span, .cpa-muted, .ui-checkbox label, .ui-radio label, .ui-input label';
 
 const browser = await chromium.launch({ args: ['--noerrdialogs'] });
 await mkdir(OUT, { recursive: true });
-const report = { shots: [], consoleErrors: [], blocked: [], overflows: [], wraps: [], leaks: [] };
+const report = { shots: [], consoleErrors: [], blocked: [], overflows: [], wraps: [], leaks: [], roleTags: [] };
 for (const name of SCREENS) {
   for (const [w, h] of SIZES) {
     for (const theme of THEMES) {
@@ -79,6 +79,16 @@ for (const name of SCREENS) {
         return out;
       }, SELECTORS);
       for (const t of wraps) report.wraps.push(`${tag}: ${t}`);
+      // 顧問 11-20：主辦兼記分的角色標籤實量（寬、高、字寬、是否一行、有無 <wbr>）
+      const tags = await page.evaluate(() => [...document.querySelectorAll('.s4b-role-tag')].map((el) => {
+        const r = el.getBoundingClientRect();
+        const label = el.querySelector('.ui-badge__label');
+        const lr = label ? label.getBoundingClientRect() : r;
+        const row = el.closest('.s4b-staff');
+        const rr = row ? row.getBoundingClientRect() : r;
+        return { text: (el.textContent || '').trim(), w: Math.round(r.width), h: Math.round(r.height), labelW: Math.round(lr.width), wbr: el.querySelectorAll('wbr').length, rowW: Math.round(rr.width), rowH: Math.round(rr.height) };
+      }));
+      for (const t of tags) report.roleTags.push({ tag, ...t });
       const ell = await page.evaluate(() => [...document.querySelectorAll('*')].filter((el) => el.children.length === 0 && el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).textOverflow === 'ellipsis').map((el) => (el.textContent || '').trim().slice(0, 30)));
       for (const t of ell) report.wraps.push(`${tag}: （省略號）${t}`);
       const total = await page.evaluate(() => document.documentElement.scrollHeight);

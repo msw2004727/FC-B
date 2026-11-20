@@ -46,6 +46,18 @@ function roleTone(role: S4bStaff['role']): 'brand' | 'neutral' | 'info' | 'warni
   return 'neutral';
 }
 
+/**
+ * 主辦兼記分那一列的角色標籤。外觀沿用 Badge 的類別，但不經過 Text：Text 會在中文詞之間插 <wbr>
+ *（ui/Text.tsx 的斷詞設計），窄寬時標籤被壓縮就會把「記分員」拆成兩行（顧問 11-20 staging 量測）。
+ */
+function RoleTag({ role, label }: { role: S4bStaff['role']; label: string }): JSX.Element {
+  return (
+    <span class={`ui-badge ui-badge--${roleTone(role)} ui-badge--soft ui-badge--sm s4b-role-tag`} title={label}>
+      <span class="ui-badge__label">{label}</span>
+    </span>
+  );
+}
+
 function lifeTone(life: ReturnType<typeof inviteLife>): 'success' | 'neutral' | 'danger' | 'warning' {
   if (life === 'active') return 'success';
   if (life === 'revoked') return 'danger';
@@ -113,23 +125,26 @@ export function StaffListScreen(props: {
     <S4bFrame title={props.title ?? copy.staffTitle} admin screen={screen} onBack={props.onBack}>
       <S4bCard plain>
         <ul class="cps-list s4b-staff-list">
-          {rows.map((staff) => (
-            <li key={staff.id} class={staff.expiresLabel ? 's4b-li s4b-li--exp' : 's4b-li'}>
-              <div class={staff.expiresLabel ? 's4b-staff s4b-staff--exp' : 's4b-staff'}>
+          {rows.map((staff) => {
+            // 主辦兼記分：第一列只放名字、場次、移除鈕；角色標籤（不壓縮、不拆字、放不下整顆換行）與到期放第二列。
+            const multi = (staff.extraRoles?.length ?? 0) > 0;
+            const twoLine = multi || !!staff.expiresLabel;
+            return (
+            <li key={staff.id} class={twoLine ? 's4b-li s4b-li--exp' : 's4b-li'}>
+              <div class={`s4b-staff${twoLine ? ' s4b-staff--exp' : ''}${multi ? ' s4b-staff--multi' : ''}`}>
                 <span class="s4b-staff__name">{staff.name}</span>
-                {staff.extraRoles?.length ? (
+                {multi ? (
                   <span class="s4b-staff__roles">
-                    <Badge tone={roleTone(staff.role)} size="sm" label={staff.roleLabel} />
-                    {staff.extraRoles.map((extra) => (
-                      <Badge key={extra.role} tone={roleTone(extra.role)} size="sm" label={extra.label} />
-                    ))}
+                    <RoleTag role={staff.role} label={staff.roleLabel} />
+                    {(staff.extraRoles ?? []).map((extra) => <RoleTag key={extra.role} role={extra.role} label={extra.label} />)}
+                    {staff.expiresLabel ? <span class="s4b-staff__exp-inline">{staff.expiresLabel}</span> : null}
                   </span>
                 ) : (
                   <Badge tone={roleTone(staff.role)} size="sm" label={staff.roleLabel} />
                 )}
                 <span class="s4b-staff__meta">{staff.countLabel}</span>
                 <span class="s4b-staff__gap" />
-                {staff.expiresLabel ? <span class="s4b-staff__exp">{staff.expiresLabel}</span> : null}
+                {!multi && staff.expiresLabel ? <span class="s4b-staff__exp">{staff.expiresLabel}</span> : null}
                 {staff.removable ? (
                   <span class="s4b-mini">
                     <Button
@@ -146,7 +161,8 @@ export function StaffListScreen(props: {
                 ) : <span class="s4b-mini" aria-hidden="true" />}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       </S4bCard>
       <div class="s4b-pair">

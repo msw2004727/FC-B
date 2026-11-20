@@ -152,7 +152,11 @@ describe('工作人員頁（K11）', () => {
     const rows = [...view.container.querySelectorAll('.s4b-staff-list > .s4b-li')];
     const badgesOf = (row: Element) => [...row.querySelectorAll('.ui-badge')].map((el) => el.textContent?.trim());
     expect(badgesOf(rows[0] as Element)).toEqual(['主辦', '記分員']);
-    expect(rows[0]?.querySelector('.s4b-staff__exp')?.textContent).toBe('01/16 18:00 到期');
+    // 角色標籤與到期在第二列（.s4b-staff__roles），標籤裡沒有 <wbr>（顧問 11-20：記分員被拆成兩行）
+    expect(rows[0]?.querySelector('.s4b-staff__roles .s4b-staff__exp-inline')?.textContent).toBe('01/16 18:00 到期');
+    expect(rows[0]?.querySelector('.s4b-staff__exp')).toBeNull();
+    expect(rows[0]?.querySelector('.s4b-staff__roles wbr')).toBeNull();
+    expect(rows[0]?.querySelector('.s4b-staff--multi')).toBeTruthy();
     expect(badgesOf(rows[1] as Element)).toEqual(['共同主辦', '裁判']);
     expect(badgesOf(rows[2] as Element)).toEqual(['共同主辦']);
     expect(rows[2]?.querySelector('.s4b-staff__exp')).toBeNull();
@@ -415,6 +419,24 @@ describe('接受邀請（K11，代碼放 #）', () => {
     history.replaceState(null, '', '/competitions/cup/invite?from=line');
     draw(acceptEnv({ actor: { ...memberActor, uid: null } }), <InviteAcceptPage />);
     expect(await screen.findByText('找不到邀請資料，請重新點開邀請連結。')).toBeTruthy();
+  });
+
+  it('顧問 11-20：停在「找不到邀請資料」時換上新的 #（hashchange）：重新讀取、立刻拿掉、可以接受；格式錯的 # 顯示連結無效', async () => {
+    history.replaceState(null, '', '/competitions/cup/invite');
+    const acceptInvite = vi.fn(async () => ({ cid: 'cup', roles: ['scorer'], matchCount: 1 }));
+    draw(acceptEnv({ actions: { ...idleActions(), acceptInvite } }), <InviteAcceptPage />);
+    expect(await screen.findByText('找不到邀請資料，請重新點開邀請連結。')).toBeTruthy();
+    history.replaceState(null, '', `/competitions/cup/invite#i=bad&c=zz`);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(await screen.findByText('邀請連結無效')).toBeTruthy();
+    expect(location.hash).toBe('');
+    history.replaceState(null, '', `/competitions/cup/invite#i=${IV}&c=${CODE}`);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(await screen.findByText('接受後你會成為這場賽事的記分人員，主辦會看到你的顯示名稱。')).toBeTruthy();
+    expect(location.hash).toBe('');
+    noCodeLeak();
+    fireEvent.click(button('接受邀請'));
+    await waitFor(() => expect(acceptInvite).toHaveBeenCalledWith({ cid: 'cup', ivId: IV, code: CODE }));
   });
 
   it('別的賽事的暫存不接續；沒有代碼顯示找不到邀請資料', async () => {
