@@ -43,7 +43,10 @@ describe('進球上方隊名標籤與分隔線', () => {
     expect(name).toMatch(/overflow:\s*hidden/);
     expect(name).toMatch(/text-overflow:\s*ellipsis/);
     expect(rule('.s4-tag')).toMatch(/min-width:\s*0/);
-    expect(rule('.s4-tags')).toMatch(/height:\s*20px/);
+    expect(rule('.s4-tags')).toMatch(/height:\s*24px/);
+    // 顧問：標籤用 body 字級＋粗體，裁判站著也看得清楚。
+    expect(rule('.s4-tag .s4-col__name')).toMatch(/font-size:\s*var\(--font-size-body\)/);
+    expect(rule('.s4-tag .s4-col__name')).toMatch(/font-weight:\s*700/);
   });
 
   it('PK、開賽前、終場後都有標籤', () => {

@@ -293,7 +293,8 @@
 }
 .s4-cardpair { height: 56px; }
 .s4-pkpair { height: 104px; }
-/* 進球上方隊名標籤＋兩欄分隔線（站長：一眼看出按的是哪一隊）。多出的 28px 由 .s4-feed 吸收，進球、牌、底欄不變。 */
+/* 進球上方隊名標籤＋兩欄分隔線（站長：一眼看出按的是哪一隊）。多出的 32px 由 .s4-feed 吸收，進球、牌、底欄不變。
+   標籤字級 body＋粗體、列高 24px（顧問：裁判站著看，body-sm 太小；取代 20px／body-sm）。 */
 .s4-pad {
   flex: 0 0 auto;
   position: relative;
@@ -303,7 +304,7 @@
   min-width: 0;
 }
 .s4-tags {
-  height: 20px;
+  height: 24px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
@@ -323,7 +324,9 @@
 .s4-tag .s4-side { flex-direction: row; }
 .s4-tag .s4-col__name {
   color: var(--s4-tag-fg);
-  line-height: 20px;
+  font-size: var(--font-size-body);
+  font-weight: 700;
+  line-height: 24px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
