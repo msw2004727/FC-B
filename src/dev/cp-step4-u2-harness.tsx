@@ -163,7 +163,7 @@ const ANCHORS: Record<string, string> = {
   'u2-timeout-away': '海風隊暫停 0:47',
   'u2-timeout-away-collapsed': '海風隊',
   'u2-timeout-picks-used': '每半場重新計算',
-  'u2-signed-out': '你沒有這場的記分權限',
+  'u2-signed-out': '請先登入再記分',
   'u2-pick-away': '不指定球員',
   'u2-pk-kick-sheet': '復原',
   'u2-menu-disabled': '球隊暫停',
