@@ -1,50 +1,18 @@
-// 站內賽事卡。結構對預覽 harness 的 tc-card／cpl-cover。封面只吃 CSS，不讀圖。
-// 預覽沒有「建立賽事」。這顆鈕是第 2 步既有入口，留在篩選列下方，文案沿用建立賽事。
+// 站內賽事卡（新外觀清-4，第 1a 批規格 3.5、3.6、3.9）：封面與彩色分類膠囊拿掉，改成玻璃卡；
+// 卡板（boardCid 那一張，由 InAppSection 的 pickInAppBoard 挑、已移到第一張）是一圈玻璃框包一塊記分板。
+// 第一行「狀態｜重點句」，重點句整句照用現有的鍵；卡板把同一份結構化資料拆成數字格，不解析字串、不多讀。
+// 篩選列：站內自己的選單（ui/menu-select）＋「只看我的」＋最右邊「建立賽事」（第 2 步既有入口，文案沿用）。
+// 保留 cpl-card、ended、data-cid、data-phase、cpl-st cpl-st--<種類>、cpl-line（測試在用）；不再輸出 tc-card 一族與 tc-chip。
 
 import type { JSX } from 'preact';
 import { useId } from 'preact/hooks';
 import { Button } from '@/ui/Button';
+import { MenuSelect } from '../ui/menu-select';
 import type { CompetitionsT } from '../i18n';
 import type { InAppListCard, InAppStatusFilter, InAppStatusLine } from '../data/list-cards';
 import { IN_APP_STATUS_FILTERS } from '../data/list-cards';
 import type { CompetitionCategory } from '../data/types';
 import type { CompetitionPhase } from '../data/present';
-
-function TrophyGlyph(): JSX.Element {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8M9 17h6" />
-    </svg>
-  );
-}
-
-function BallGlyph(): JSX.Element {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7l4 3-1.5 4.5h-5L8 10z" />
-      <path d="M12 3v4M21 10l-5 0M3 10l5 0M7 20l2.5-5.5M17 20l-2.5-5.5" />
-    </svg>
-  );
-}
-
-function HandGlyph(): JSX.Element {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />
-    </svg>
-  );
-}
-
-function DefaultCover({ cat }: { cat: CompetitionCategory }): JSX.Element {
-  return (
-    <div class={`tc-card-img cpl-cover cpl-cover--${cat}`} aria-hidden="true">
-      <span class="cpl-cover__glyph">
-        {cat === 'cup' ? <TrophyGlyph /> : cat === 'league' ? <BallGlyph /> : <HandGlyph />}
-      </span>
-    </div>
-  );
-}
 
 const CAT_KEY: Record<CompetitionCategory, 'catLeague' | 'catCup' | 'catFriendly'> = {
   league: 'catLeague',
@@ -75,13 +43,76 @@ const FILTER_KEY: Record<InAppStatusFilter, 'statusOpen' | 'recruiting' | 'statu
   all: 'filterAll',
 };
 
-function InCard({ card, ct, onOpen }: {
+function Meta({ card }: { card: InAppListCard }): JSX.Element | null {
+  if (!card.date && !card.venue) return null;
+  return (
+    <>
+      {card.date ? <span class="cpl-meta__date">{card.date}</span> : null}
+      {card.venue ? <span class="cpl-meta__venue">{card.venue}</span> : null}
+    </>
+  );
+}
+
+function BoardCells({ ct, line }: { ct: CompetitionsT; line: InAppStatusLine }): JSX.Element {
+  const unit = (key: 'matchUnit' | 'boardDayUnit') => <small>{ct(key)}</small>;
+  if (line.kind === 'live') {
+    return (
+      <div class="d2-cells d2-cells--row">
+        <div class="d2-cell d2-cell--now">
+          <span class="d2-cell__k">{ct('boardNext')}</span>
+          <span class="d2-cell__v"><b class="d2-num">{line.time}</b></span>
+        </div>
+        <div class="d2-cell">
+          <span class="d2-cell__k">{ct('boardToday')}</span>
+          <span class="d2-cell__v"><b class="d2-num">{line.count}</b>{unit('matchUnit')}</span>
+        </div>
+      </div>
+    );
+  }
+  const [k, v, u] = line.kind === 'today'
+    ? [ct('boardToday'), String(line.count), unit('matchUnit')]
+    : line.kind === 'warm'
+      ? [ct('boardToStart'), String(line.days), unit('boardDayUnit')]
+      : [ct('boardDeadline'), line.date, null];
+  return (
+    <div class="d2-cells d2-cells--row">
+      <div class="d2-cell">
+        <span class="d2-cell__k">{k}</span>
+        <span class="d2-cell__v"><b class="d2-num">{v}</b>{u}</span>
+      </div>
+    </div>
+  );
+}
+
+function InCard({ card, ct, board, onOpen }: {
   card: InAppListCard;
   ct: CompetitionsT;
+  board: boolean;
   onOpen: (cid: string, event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => void;
 }): JSX.Element {
-  const line = card.line ? lineText(ct, card.line) : '';
-  const highlight = card.phase !== 'recruit' && card.phase !== null && line !== '';
+  const cat = ct(CAT_KEY[card.category]);
+  const href = `/competitions/${card.cid}`;
+  const open = (event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => onOpen(card.cid, event);
+  // 卡板只會是 pickInAppBoard 挑出來的那一張（沒有整場延期或取消、有階段、有重點句）。
+  if (board && card.phase && card.line) {
+    return (
+      <div class="cpl-card cpl-card--board" data-cid={card.cid} data-phase={card.phase}>
+        <a class="cpl-card__link" href={href} onClick={open}>
+          <div class={`d2-sb${card.phase === 'live' ? ' d2-sb--lit' : ''}`}>
+            <div class="cpl-sb__top">
+              <span class="d2-sb__st"><i />{ct(statusKey(card.phase))}</span>
+              <span class="cpl-sb__cat">{cat}</span>
+            </div>
+            <div class="cpl-card__name">{card.name}</div>
+            {card.date || card.venue ? <div class="cpl-meta"><Meta card={card} /></div> : null}
+            <BoardCells ct={ct} line={card.line} />
+          </div>
+        </a>
+      </div>
+    );
+  }
+  // 整場延期或取消的卡不畫重點句（規格第 10 節第 3 題，終審照建議定案：延期還寫「距開賽 N 天」是錯的資訊）。
+  const line = card.line && card.statusMark === null ? lineText(ct, card.line) : '';
   const pill = card.statusMark === 'postponed'
     ? { mark: 'postponed', label: ct('compPostponed') }
     : card.statusMark === 'cancelled'
@@ -90,19 +121,18 @@ function InCard({ card, ct, onOpen }: {
         ? { mark: card.phase, label: ct(statusKey(card.phase)) }
         : null;
   return (
-    <div class={`tc-card cpl-card${card.ended ? ' ended' : ''}`} data-cid={card.cid} data-phase={card.phase ?? 'unknown'}>
-      <a class="tc-card-link" href={`/competitions/${card.cid}`} onClick={(event) => onOpen(card.cid, event)}>
-        <div class="cpl-cover-wrap">
-          <DefaultCover cat={card.category} />
-          {pill ? <span class={`cpl-st cpl-st--${pill.mark}`}><i />{pill.label}</span> : null}
-        </div>
-        <div class="tc-card-body">
-          <div class="tc-card-text">
-            <div class="tc-card-name">{card.name}</div>
-            {card.dates ? <div class="tc-card-dates">{card.dates}</div> : null}
-            {line ? <div class={`cpl-line${highlight ? ' cpl-line--hl' : ''}`}>{line}</div> : null}
+    <div class={`cpl-card${card.ended ? ' ended' : ''}`} data-cid={card.cid} data-phase={card.phase ?? 'unknown'}>
+      <a class="cpl-card__link" href={href} onClick={open}>
+        {pill || line ? (
+          <div class="cpl-card__top">
+            {pill ? <span class={`cpl-st cpl-st--${pill.mark}`}>{pill.label}</span> : null}
+            {line ? <span class="cpl-line">{line}</span> : null}
           </div>
-          <span class={`tc-chip cpl-chip cpl-chip--${card.category}`}>{ct(CAT_KEY[card.category])}</span>
+        ) : null}
+        <div class="cpl-card__name">{card.name}</div>
+        <div class="cpl-meta">
+          <span class="cpl-meta__cat">{cat}</span>
+          <Meta card={card} />
         </div>
       </a>
     </div>
@@ -115,6 +145,7 @@ export function InAppCardList({
   status,
   onlyMine,
   showCreate,
+  boardCid = null,
   onStatus,
   onOnlyMine,
   onCreate,
@@ -125,39 +156,24 @@ export function InAppCardList({
   status: InAppStatusFilter;
   onlyMine: boolean;
   showCreate: boolean;
+  /** 卡板是哪一張（pickInAppBoard 的結果，已在第一張）；沒傳就是沒有板。 */
+  boardCid?: string | null;
   onStatus: (value: InAppStatusFilter) => void;
   onOnlyMine: (value: boolean) => void;
   onCreate: () => void;
   onOpen: (cid: string, event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => void;
 }): JSX.Element {
-  const statusId = useId();
   const onlyMineId = useId();
   return (
     <div data-inapp="competitions">
-      {showCreate ? (
-        <div class="cpl-create">
-          {/* 顧問 §3.294 P2-3：改用站內按鈕元件（原本 primary-btn 是舊站樣式，B 前台沒有，顯示成瀏覽器原生灰框） */}
-          <Button variant="primary" size="sm" onClick={onCreate}>{ct('createAction')}</Button>
-        </div>
-      ) : null}
-      <div class="tc-toolbar cpl-toolbar">
-        <label class="cpl-select" for={statusId}>
-          <select
-            id={statusId}
-            aria-label={ct('statusLabel')}
-            value={status}
-            onChange={(event) => {
-              const value = event.currentTarget.value as InAppStatusFilter;
-              if ((IN_APP_STATUS_FILTERS as readonly string[]).includes(value)) onStatus(value);
-            }}
-          >
-            {IN_APP_STATUS_FILTERS.map((value) => (
-              <option key={value} value={value}>{ct(FILTER_KEY[value])}</option>
-            ))}
-          </select>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-        </label>
-        <label for={onlyMineId}>
+      <div class="cpl-bar cpl-toolbar">
+        <MenuSelect<InAppStatusFilter>
+          label={ct('statusLabel')}
+          value={status}
+          options={IN_APP_STATUS_FILTERS.map((value) => ({ value, label: ct(FILTER_KEY[value]) }))}
+          onChange={onStatus}
+        />
+        <label class="cpl-sw" for={onlyMineId}>
           <span>{ct('onlyMine')}</span>
           <span class="toggle-switch">
             <input
@@ -169,8 +185,12 @@ export function InAppCardList({
             <span class="toggle-slider" />
           </span>
         </label>
+        {/* 顧問 §3.294 P2-3：站內按鈕元件；新外觀搬進篩選列最右邊（規格 3.5） */}
+        {showCreate ? <Button variant="primary" size="sm" onClick={onCreate}>{ct('createAction')}</Button> : null}
       </div>
-      {cards.map((card) => <InCard key={card.cid} card={card} ct={ct} onOpen={onOpen} />)}
+      {cards.map((card) => (
+        <InCard key={card.cid} card={card} ct={ct} board={card.cid === boardCid} onOpen={onOpen} />
+      ))}
     </div>
   );
 }

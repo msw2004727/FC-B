@@ -3,7 +3,7 @@ import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import zhTw from '../locales/zh-TW.json';
-import TournamentsPage, { externalChipClass } from './TournamentsPage';
+import TournamentsPage from './TournamentsPage';
 import { resetCardsCacheForTest } from '../data/cards-cache';
 
 function flatten(obj: Record<string, unknown>, prefix: string, out: Record<string, string> = {}) {
@@ -143,7 +143,8 @@ describe('開關打開時的來源與讀取', () => {
     expect(location.search).toBe('');
     expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
     expect(document.querySelector('[data-inapp="mock"]')?.getAttribute('data-active')).toBe('0');
-    expect(document.querySelector('[data-card-id="tc_league"] .tc-chip')?.className).toContain('cpl-chip--league');
+    // 新外觀（清-3）：外部列沒有膠囊、分類不上色，看得到分類字。
+    expect(document.querySelector('[data-card-id="tc_league"] .cpl-xrow__cat')?.textContent).toBe('聯賽');
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
     expect(slot.mounts).toBe(1);
 
@@ -212,21 +213,25 @@ describe('開關打開時的來源與讀取', () => {
     expect(screen.queryByText('2027 春季聯賽')).toBeNull();
   });
 
-  it('非法 type 不產生 cpl-chip--*', () => {
-    const host = document.createElement('div');
-    document.body.append(host);
-    const span = document.createElement('span');
-    host.append(span);
-    for (const type of ['playoff', 'league cup', '"><img', 'cpl-chip--x', '']) {
-      span.className = externalChipClass(type, true);
-      expect(span.className).not.toMatch(/cpl-chip--/);
-      expect(host.querySelector('[class*="cpl-chip--"]')).toBeNull();
+  it('外部列的 class 不含 card.type 的原字串（不認得的類型也不會變成 class）', async () => {
+    const odd = ['playoff', 'league cup', '"><img', 'cpl-chip--x'];
+    sdk.getDocs.mockResolvedValue({
+      docs: [
+        ...DOCS.map((doc) => ({ id: doc.id, data: () => doc.data })),
+        ...odd.map((type, i) => ({
+          id: `tc_odd${i}`,
+          data: () => ({ name: `奇怪類型${i}`, type, startDate: '2027-03-06', endDate: '2027-03-06', url: 'https://odd.example.com/' }),
+        })),
+      ],
+    });
+    draw();
+    await waitFor(() => expect(screen.getByText('2027 春季聯賽')).toBeTruthy());
+    const rows = [...document.querySelectorAll('[data-card-id]')];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      const classes = [row, ...row.querySelectorAll('*')].map((el) => el.getAttribute('class') ?? '').join(' ');
+      for (const type of ['league', 'cup', 'friendly', ...odd]) expect(classes).not.toContain(type);
     }
-    span.className = externalChipClass('cup', true);
-    expect(span.classList.contains('cpl-chip--cup')).toBe(true);
-    expect(externalChipClass('league', true)).toBe('tc-chip cpl-chip cpl-chip--league');
-    expect(externalChipClass('friendly', false)).toBe('tc-chip');
-    host.remove();
   });
 
   it('直接打開 ?src=in 且閘門通過時直接站內，進頁仍只查一次', async () => {
@@ -252,7 +257,7 @@ describe('開關打開時的來源與讀取', () => {
     expect(slot.mounts).toBe(1);
   });
 
-  it('閘門沒過不畫切換，外部小標維持原 class', async () => {
+  it('閘門沒過不畫切換，標題「賽事」看得見、不帶 d2-ext', async () => {
     slot.open = false;
     draw();
     await waitFor(() => expect(screen.getByText('2027 春季聯賽')).toBeTruthy());
@@ -263,7 +268,9 @@ describe('開關打開時的來源與讀取', () => {
     expect(document.querySelector('.cpl-chip')).toBeNull();
     expect(document.querySelector('[data-inapp]')).toBeNull();
     expect(root?.textContent ?? '').not.toContain('站內賽事');
-    expect(document.querySelector('.tc-chip')?.className).toBe('tc-chip');
+    const heading = screen.getByRole('heading', { name: '賽事' });
+    expect(heading.classList.contains('cpl-vh')).toBe(false);
+    expect(document.getElementById('page-tournaments')?.classList.contains('d2-ext')).toBe(false);
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
   });
 
@@ -276,6 +283,29 @@ describe('開關打開時的來源與讀取', () => {
     expect(screen.getByText('週末友誼賽')).toBeTruthy();
     expect(document.querySelector('.cpl-src')).toBeNull();
     expect(document.querySelector('.reg-loading-skeleton')).toBeNull();
+  });
+
+  it('新外觀：最外層帶 data-d2；切換在標題列裡；<h2>「賽事」還在、視覺隱藏、沒有 hidden；外部頁帶 d2-ext、站內頁不帶', async () => {
+    draw();
+    await waitFor(() => expect(document.querySelector('.cpl-src')).toBeTruthy());
+    expect(document.querySelector('.tournaments-root')?.getAttribute('data-d2')).toBe('1');
+    expect(document.querySelector('.cpl-head > .cpl-src')).toBeTruthy();
+    const heading = document.querySelector('#page-tournaments h2');
+    expect(heading?.textContent).toBe('賽事');
+    expect(heading?.hasAttribute('hidden')).toBe(false);
+    expect(heading?.classList.contains('cpl-vh')).toBe(true);
+    const page = document.getElementById('page-tournaments');
+    expect(page?.classList.contains('d2-ext')).toBe(true);
+    fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
+    expect(page?.classList.contains('d2-ext')).toBe(false);
+  });
+
+  it('閘門判定中（沒有線索、沒有切換）最外層也帶 data-d2、不帶 d2-ext', async () => {
+    slot.holdGate = true;
+    draw();
+    await waitFor(() => expect(screen.getByText('2027 春季聯賽')).toBeTruthy());
+    expect(document.querySelector('.tournaments-root')?.getAttribute('data-d2')).toBe('1');
+    expect(document.getElementById('page-tournaments')?.classList.contains('d2-ext')).toBe(false);
   });
 
   it('來源切換有 aria-controls，左右鍵切換', async () => {
