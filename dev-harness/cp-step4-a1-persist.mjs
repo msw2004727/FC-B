@@ -160,15 +160,18 @@ try {
   const took = await until('原頁面出現被拒或被標已送出', async () => ['rejected', 'applied'].includes((await goalRow())?.state ?? ''), 90000);
   const finalRow = await goalRow();
   step('結果', { row: finalRow, tookMs: took });
-  // 被拒後畫面比分要回到伺服器的 0:0（快照回滾）。每 500ms 記一次，最多 10 秒。
+  // 被拒後畫面比分要回到伺服器的 0:0（SDK 送出持久化寫入、被拒、快照回滾）。每秒記一次，最多 120 秒。
+  // 日誌可能先因接手被標被拒（control 快照），SDK 的寫入串流在斷線後有退避，實際送出可能晚數十秒。
   const uiScores = [];
-  for (let i = 0; i < 20; i += 1) {
+  const rollStart = Date.now();
+  for (let i = 0; i < 120; i += 1) {
     const shown = await page.evaluate(() => document.querySelector('.s4-score')?.textContent ?? null);
     uiScores.push(shown);
-    if (shown === '0:0' && i >= 2) break;
-    await pause(500);
+    if (shown === '0:0') break;
+    await pause(1000);
   }
-  step('被拒後畫面比分（每 500ms）', { uiScores });
+  step('被拒後畫面比分（每秒）', { uiScores: uiScores.join(' '), rollbackMs: Date.now() - rollStart });
+  await page.screenshot({ path: join(OUT, 'p3b-after-rollback.png') });
   const match = await read(`competitions/${CID}/matches/${MT}`);
   const timeline = await list(`competitions/${CID}/matches/${MT}/timeline`);
   const ui = await page.evaluate(() => ({
