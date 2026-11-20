@@ -122,6 +122,7 @@ function spyActions() {
     acceptInvite: vi.fn(actions.acceptInvite),
     moderate: vi.fn(actions.moderate),
     reviewReport: vi.fn(actions.reviewReport),
+    deleteCompetition: vi.fn(actions.deleteCompetition),
   };
 }
 

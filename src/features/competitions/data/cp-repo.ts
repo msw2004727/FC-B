@@ -240,6 +240,7 @@ export function competitionFromDoc(id: string, raw: Record<string, unknown>): Co
     hidden: bool(raw.hidden) ?? false,
     hiddenReason: str(raw.hiddenReason),
     hiddenAt: optNum(raw.hiddenAt),
+    deletingAt: optNum(raw.deletingAt),
     regOpenAt,
     regCloseAt,
     firstMatchAt,

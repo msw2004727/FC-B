@@ -15,6 +15,7 @@ import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
 import { canHostOrCo, canManageCompetition, canRegisterClubEntry, canRestoreCompetition, isCpAdmin } from '../access';
+import { canDeleteCompetition } from '../delete-access';
 import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import type { CpBundle, CpInjectedEnv } from '../env';
@@ -45,6 +46,7 @@ import { FeeLine } from '../ui/fields';
 import { CategoryCover, categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
 import { TieWorkspace } from '../ui/tie-panel';
 import { AdminPanel, HiddenNotice } from '../ui/admin-moderation';
+import { DeleteCompetition, teamCountOf } from '../ui/delete-competition';
 import { PublicBoard } from '../ui/public-board';
 import { CpCard, CpFrame, CpI18nPending, CpRow, MoreIcon } from '../ui/shell';
 import { TeamCrest } from '../ui/TeamCrest';
@@ -463,6 +465,20 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const allowRestore = canRestoreCompetition(competition, isCpAdmin(env.actor.role));
   const isAdmin = isCpAdmin(env.actor.role);
   const divisions = bundle?.divisions ?? [];
+  // 刪除：只給後端會放行的人（delete-access.ts）。deletingAt 有值＝上次刪到一半，同一顆鈕改成續刪。
+  const deletingAt = competition.deletingAt ?? null;
+  const showDelete = canDeleteCompetition({
+    uid: env.actor.uid,
+    role: env.actor.role,
+    hostType: competition.hostType,
+    hostTeamId: competition.hostTeamId,
+    staffRoles: bundle?.staff?.roles ?? [],
+    repClubIds: clubs.map((club) => club.id),
+    hidden: competition.hidden,
+    deletingAt,
+    firstMatchAt: competition.firstMatchAt,
+    now,
+  });
   const entries = bundle?.entries ?? [];
   const sameYear = taipeiParts(competition.regOpenAt).year === taipeiParts(competition.regCloseAt).year;
 
@@ -705,6 +721,28 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           <Button variant="secondary" onClick={() => route(`/competitions/${cid}/my-matches`)}>{ct('myMatches')}</Button>
         </div>
       ) : null}
+      {showDelete ? (
+        <DeleteCompetition
+          ct={ct}
+          cid={cid}
+          name={competition.name}
+          teams={divisions.length > 0 ? teamCountOf(divisions) : null}
+          loadTeams={async () => teamCountOf(await env.repo.listDivisions(cid))}
+          resume={deletingAt != null}
+          actions={env.actions}
+          reload={() => env.repo.getCompetition(cid)}
+          onDeleted={() => {
+            toast.show({ message: ct('deleteDone') });
+            env.repo.invalidateCrests(cid);
+            // 取代目前這筆歷史：返回不會回到已刪除的賽事。列表每次進入都重讀公開清單與 cpMine。
+            route('/tournaments', true);
+          }}
+          onStuck={(doc) => {
+            setBundle((current) => (current ? { ...current, competition: doc } : current));
+          }}
+          previewOpen={env.preview?.deleteDialog}
+        />
+      ) : null}
     </>
   );
 
@@ -738,7 +776,11 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       )}
     >
       {/* 下架後一般人讀不到根文件（走不公開畫面）；Rules 只放行管理員與主辦／共同主辦（俱樂部主辦的賽事，俱樂部代表算主辦）。 */}
-      {competition.hidden ? <HiddenNotice ct={ct} reason={competition.hiddenReason} /> : null}
+      {competition.hidden && deletingAt == null ? <HiddenNotice ct={ct} reason={competition.hiddenReason} /> : null}
+      {/* 刪到一半：後端也寫了 hidden，但不是管理員下架。能續刪的人看到續刪提示，其他人（共同主辦）只看到刪除中。 */}
+      {deletingAt != null ? (
+        <p class="cpa-hidden" role="status">{showDelete ? ct('deleteStuck') : reasonText(ct, 'COMPETITION_DELETING')}</p>
+      ) : null}
       <CategoryCover category={competition.category} label={categoryText(ct, competition.category)} />
       {showHostEnd ? (
         <CpCard>
