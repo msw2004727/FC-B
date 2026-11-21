@@ -495,15 +495,16 @@ describe('賽事第 2 步畫面', () => {
   });
 
   it('只有一個俱樂部、從空白開始會帶入那個俱樂部；沒有俱樂部不顯示選項；晚到也會補', async () => {
+    // 建賽的俱樂部欄是必填，標籤後面多「* 必填」：用開頭比對（不會對到「我管理的俱樂部」選項）
     const only = mount(NewCompetitionPage, {
       ...screenEnv('wizard-1'),
       actor: { ...wizardActor, repClubs: [{ id: 'only_club', name: '唯一隊' }] },
       preview: { wizardStep: 1 },
       wizardSeed: { ...wizardSeed(), hostType: 'personal', hostTeamId: '' },
     });
-    expect(screen.queryByLabelText('俱樂部')).toBeNull();
+    expect(screen.queryByLabelText(/^俱樂部/)).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: '我管理的俱樂部' }));
-    await waitFor(() => expect((screen.getByLabelText('俱樂部') as HTMLSelectElement).value).toBe('only_club'));
+    await waitFor(() => expect((screen.getByLabelText(/^俱樂部/) as HTMLSelectElement).value).toBe('only_club'));
     only.unmount();
 
     const none = mount(NewCompetitionPage, {
@@ -533,7 +534,7 @@ describe('賽事第 2 步畫面', () => {
         </CpEnvProvider>
       </LocationProvider>,
     );
-    await waitFor(() => expect((screen.getByLabelText('俱樂部') as HTMLSelectElement).value).toBe('late_club'));
+    await waitFor(() => expect((screen.getByLabelText(/^俱樂部/) as HTMLSelectElement).value).toBe('late_club'));
   });
 
   it('建賽選了俱樂部但沒有可用俱樂部時改回個人', async () => {

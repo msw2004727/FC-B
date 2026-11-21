@@ -6,6 +6,7 @@ import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CpCallError } from '../data/cp-callables';
 import { CpEnvProvider, type CpInjectedEnv } from '../env';
+import { setLocale } from '@/i18n/i18n';
 import { loadCompetitionsDict } from '../i18n';
 import { buildCreateInput, type WizardDraft } from '../payload';
 import type { WizardSeed } from '../env';
@@ -308,6 +309,41 @@ describe('檢查函式', () => {
     const form: CheckForm = { ...wizardSeed(), contactNote: '' };
     expect(step1Problem(form, Date.UTC(2026, 11, 10))).toBeNull();
     expect(step2Problem(form)).toBeNull();
+  });
+});
+
+describe('必填標記（站長 11-21：必填要有標記）', () => {
+  // 標記字來自全站字典（ui.input.required／ui.select.required），這一組先載入繁中
+  beforeAll(async () => {
+    await setLocale('zh-TW');
+  });
+  const mark = (id: string): string | undefined => document.querySelector(`label[for="${id}"] small`)?.textContent ?? undefined;
+
+  it('第 1 步：賽事名稱、四個時間、每個場地名稱都有「* 必填」；地址與聯絡文字是選填、沒有標記', () => {
+    draw({ venues: [{ name: '甲', address: '' }, { name: '乙', address: '' }] });
+    for (const id of ['cpf-name', 'cp-reg-open', 'cp-reg-close', 'cp-first', 'cp-last', 'cpf-v0-name', 'cpf-v1-name']) expect(mark(id), id).toBe('* 必填');
+    for (const id of ['cpf-v0-address', 'cpf-contact']) expect(mark(id), id).toBeUndefined();
+  });
+
+  it('俱樂部主辦：俱樂部欄有必填標記（繳費說明是選填）', () => {
+    draw({}, { club: true });
+    expect(mark('cpf-club')).toBe('* 必填');
+    expect(mark('cpf-fee-note')).toBeUndefined();
+  });
+
+  it('第 2 步：每個組別名稱都有必填標記', () => {
+    draw({}, { step: 2 });
+    expect(mark('cpf-d0-name')).toBe('* 必填');
+    expect(mark('cpf-d1-name')).toBe('* 必填');
+  });
+
+  it('頁面沒有 <form>：必填欄位帶 required 也不會跳出瀏覽器內建的驗證泡泡，空白照樣走我們自己的檢查', () => {
+    draw({ venues: [{ name: '', address: '' }] });
+    expect(document.querySelector('form')).toBeNull();
+    expect((document.getElementById('cpf-v0-name') as HTMLInputElement).required).toBe(true);
+    next();
+    expect(errorOf('cpf-v0-name')).toBe('請填場地名稱');
+    expect(document.activeElement?.id).toBe('cpf-v0-name');
   });
 });
 

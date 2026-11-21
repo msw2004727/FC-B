@@ -517,6 +517,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 <Select
                   id="cpf-club"
                   label={ct('club')}
+                  required
                   value={form.hostTeamId}
                   error={fieldError('hostTeamId')}
                   onValueChange={(hostTeamId) => { patch({ hostTeamId }); clearField('hostTeamId'); }}
@@ -557,13 +558,13 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           <CpCard class="cph-tight">
             <h2 class="cp3-sec-h">{ct('regPeriod')}</h2>
             <div class="cps-fields cph-pair">
-              <DateTimeField id="cp-reg-open" label={ct('regStart')} value={form.regOpen} error={fieldError('regOpenAt')} onValueChange={(regOpen) => { patch({ regOpen }); clearField('regOpenAt'); }} />
-              <DateTimeField id="cp-reg-close" label={ct('regEnd')} value={form.regClose} error={fieldError('regCloseAt')} onValueChange={(regClose) => { patch({ regClose }); clearField('regCloseAt'); }} />
+              <DateTimeField id="cp-reg-open" required label={ct('regStart')} value={form.regOpen} error={fieldError('regOpenAt')} onValueChange={(regOpen) => { patch({ regOpen }); clearField('regOpenAt'); }} />
+              <DateTimeField id="cp-reg-close" required label={ct('regEnd')} value={form.regClose} error={fieldError('regCloseAt')} onValueChange={(regClose) => { patch({ regClose }); clearField('regCloseAt'); }} />
             </div>
             <h2 class="cp3-sec-h">{ct('matchPeriod')}</h2>
             <div class="cps-fields cph-pair">
-              <DateTimeField id="cp-first" label={ct('firstMatch')} value={form.firstMatch} error={fieldError('firstMatchAt')} onValueChange={(firstMatch) => { patch({ firstMatch }); clearField('firstMatchAt'); }} />
-              <DateTimeField id="cp-last" label={ct('lastMatch')} value={form.lastMatch} error={fieldError('lastMatchAt')} onValueChange={(lastMatch) => { patch({ lastMatch }); clearField('lastMatchAt'); }} />
+              <DateTimeField id="cp-first" required label={ct('firstMatch')} value={form.firstMatch} error={fieldError('firstMatchAt')} onValueChange={(firstMatch) => { patch({ firstMatch }); clearField('firstMatchAt'); }} />
+              <DateTimeField id="cp-last" required label={ct('lastMatch')} value={form.lastMatch} error={fieldError('lastMatchAt')} onValueChange={(lastMatch) => { patch({ lastMatch }); clearField('lastMatchAt'); }} />
             </div>
           </CpCard>
           <CpCard class="cph-tight">
@@ -577,6 +578,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                       <Input
                         id={`cpf-v${index}-name`}
                         label={ct('venueName')}
+                        required
                         value={venue.name}
                         maxLength={40}
                         error={fieldError(`venues.${index}.name`)}
@@ -638,6 +640,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 <Input
                   id={`cpf-d${index}-name`}
                   label={ct('divisionName')}
+                  required
                   value={division.name}
                   maxLength={30}
                   error={fieldError(`divisions.${index}.name`)}
