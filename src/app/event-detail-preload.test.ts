@@ -42,12 +42,14 @@ describe('shouldPreloadEventDetail', () => {
 });
 
 describe('shouldPreloadFirestoreSdk', () => {
-  it('首頁、活動列表與活動詳情才預載 SDK，其他路徑不預載', () => {
+  it('首頁、活動列表、賽事清單與活動詳情才預載 SDK，其他路徑不預載', () => {
     expect(shouldPreloadFirestoreSdk('/')).toBe(true);
     expect(shouldPreloadFirestoreSdk('/activities')).toBe(true);
+    // 顧問 §3.555：賽事清單冷開也先下載 SDK。
+    expect(shouldPreloadFirestoreSdk('/tournaments')).toBe(true);
     expect(shouldPreloadFirestoreSdk('/events/x')).toBe(true);
     expect(shouldPreloadFirestoreSdk('/events/abc_DEF-123')).toBe(true);
-    for (const pathname of ['', '/activities/', '/events', '/events/x/edit', '/teams', '/teams/x', '/EVENTS/x']) {
+    for (const pathname of ['', '/activities/', '/events', '/events/x/edit', '/teams', '/teams/x', '/EVENTS/x', '/tournaments/', '/tournaments/x', '/competitions/x']) {
       expect(shouldPreloadFirestoreSdk(pathname), pathname).toBe(false);
     }
   });
@@ -93,7 +95,12 @@ describe('preloadEventDetailChunks（顧問 §3.255 B′：modulepreload，不�
     expect(links('modulepreload')).toEqual(['/assets/index.esm-ddd.js', '/assets/index.esm-ddd.js']);
     expect(links('preload')).toEqual([]);
     document.head.querySelectorAll('link').forEach((l) => l.remove());
-    for (const pathname of ['/events', '/events/x/edit', '/teams/x']) preloadEventDetailChunks(pathname);
+    // 賽事清單：只插 SDK，不插詳情頁（顧問 §3.555）。
+    preloadEventDetailChunks('/tournaments');
+    expect(links('modulepreload')).toEqual(['/assets/index.esm-ddd.js']);
+    expect(links('preload')).toEqual([]);
+    document.head.querySelectorAll('link').forEach((l) => l.remove());
+    for (const pathname of ['/events', '/events/x/edit', '/teams/x', '/teams', '/tournaments/x']) preloadEventDetailChunks(pathname);
     expect(document.head.querySelectorAll('link')).toHaveLength(0);
   });
 
