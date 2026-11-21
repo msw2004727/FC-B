@@ -700,7 +700,7 @@ describe.skipIf(!EMU)('記分模擬器：本機未送寫入', { timeout: 60000 }
     try {
       await waitUntil('監聽讀到已確認事件', () => live.delivered.some((event) => event.op === op && event.seq === 1), 80);
     } catch (err) {
-      // 顧問 §3.517：只加診斷輸出，判定與時限不動（測試分支專用，不合進 cp-uiux-sb）。
+      // 顧問 §3.517：只加診斷輸出，判定與時限不動。
       console.error('[E1 診斷] op=', op, 'delivered=', JSON.stringify(live.delivered), 'rows=', JSON.stringify(await rows(live.log)));
       throw err;
     }
