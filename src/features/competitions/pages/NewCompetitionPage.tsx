@@ -473,6 +473,13 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     goBack();
   }
 
+  /** 第 2、3 步回上一步（左上返回與底部上一步）；送出中不動。 */
+  function goPrev(): void {
+    if (inFlight.current) return;
+    setError(null);
+    setStep(step === 3 ? 2 : 1);
+  }
+
   const stepName = step === 1 ? ct('stepBasic') : step === 2 ? ct('stepDivisions') : ct('stepConfirm');
   // 等待說明：轉圈的按鈕下面一句，螢幕閱讀器也會唸（role="status"）
   const waitHint = waitStage ? <p class="cps-note" role="status">{ct(waitStage === 2 ? 'waitLong' : 'waitSlow')}</p> : null;
@@ -506,7 +513,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     <CpFrame
       title={ct('createTitle')}
       menu={<span class="cph-stepno">{ct('stepOf', { step })}</span>}
-      onBack={step === 1 ? () => { void leave(); } : () => { if (inFlight.current) return; setError(null); setStep(step === 3 ? 2 : 1); }}
+      onBack={step === 1 ? () => { void leave(); } : goPrev}
       backDisabled={busy}
     >
       {/* 兩層頁首的第二層：這一步的名稱當大標，下面三段進度條 */}
@@ -858,12 +865,20 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
       ) : pageError ? <p class="cps-note cps-warn" role="alert">{problemText(ct, pageError)}</p> : null}
 
       <div class="cph-split">
-        <Button variant="secondary" class="cph-narrow" disabled={busy} onClick={() => { void leave(); }}>{ct('cancel')}</Button>
+        {/* 第 1 步「取消｜下一步」；第 2、3 步「上一步｜主鈕」，取消改成下面一行小字（站長 11-21） */}
+        {step === 1
+          ? <Button variant="secondary" class="cph-narrow" onClick={() => { void leave(); }}>{ct('cancel')}</Button>
+          : <Button variant="secondary" class="cph-narrow" disabled={busy} onClick={goPrev}>{ct('prev')}</Button>}
         {step < 3 ? <Button variant="primary" onClick={goNext}>{ct('next')}</Button> : (
           <Button variant="primary" loading={busy} onClick={() => { void create(); }}>{ct('createAction')}</Button>
         )}
       </div>
       {waitHint}
+      {step > 1 ? (
+        <div class="cph-start">
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => { void leave(); }}>{ct('cancelCreate')}</Button>
+        </div>
+      ) : null}
 
       {mapIndex != null ? (
         <MapPicker
