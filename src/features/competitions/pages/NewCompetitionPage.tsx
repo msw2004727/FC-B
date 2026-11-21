@@ -227,6 +227,27 @@ function toDraft(form: FormState, hostDisplay: string): WizardDraft | null {
   };
 }
 
+/** 建立、發布等待超過這麼久，轉圈下面才出現說明；1～2 秒內完成的不閃字（站長 11-21：慢網路或冷啟動時的安心提示）。 */
+export const WAIT_HINT_MS = 2000;
+/** 等待超過這麼久換成「還在處理、別關頁面」那一句。 */
+export const WAIT_LONG_MS = 15000;
+
+/** 0＝不顯示、1＝等超過 2 秒、2＝等超過 15 秒。busy 結束或卸載時兩個計時器都清掉。 */
+function useWaitStage(busy: boolean): 0 | 1 | 2 {
+  const [stage, setStage] = useState<0 | 1 | 2>(0);
+  useEffect(() => {
+    setStage(0);
+    if (!busy) return;
+    const hint = setTimeout(() => setStage(1), WAIT_HINT_MS);
+    const long = setTimeout(() => setStage(2), WAIT_LONG_MS);
+    return () => {
+      clearTimeout(hint);
+      clearTimeout(long);
+    };
+  }, [busy]);
+  return stage;
+}
+
 function MapPicker({
   venue,
   onClose,
@@ -283,6 +304,9 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   // 有欄位但畫面上找不到那一欄（例如俱樂部清單還在讀、下拉還沒畫）：改顯示整頁錯誤，不讓按了沒反應。
   const [lostField, setLostField] = useState(false);
   const [busy, setBusy] = useState(false);
+  // 同步鎖：連按兩下時第二下可能比按鈕停用的重畫早到（busy 還是舊值），建立／發布只送一次。
+  const inFlight = useRef(false);
+  const waitStage = useWaitStage(busy);
   const [mapIndex, setMapIndex] = useState<number | null>(null);
   const clubs = representativeClubs(env.actor);
   // ASSUMPTION: repClubsPending 省略＝清單已定案。還在讀時空陣列不改回個人，晚到的俱樂部仍要補上。
@@ -391,6 +415,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   }
 
   async function create(): Promise<void> {
+    if (inFlight.current) return;
     // 第 1、2 步都過了才會到這裡；送出前再整份驗一次（預填或其他路徑可能帶進不合法的值）。
     const problem = step1Problem(form, env.now ?? Date.now()) ?? step2Problem(form);
     if (problem) {
@@ -399,6 +424,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     }
     const draft = toDraft(form, env.actor.displayName ?? '');
     if (!draft || busy) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -412,12 +438,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
       const field = info.reason === 'DIVISION_NAME_DUPLICATE' ? (duplicateDivisionField(form.divisions) ?? raw) : raw;
       showProblem({ reason: info.reason, params: info.params, field });
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
 
   async function publish(): Promise<void> {
-    if (!cid || busy) return;
+    if (!cid || busy || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -426,11 +454,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     } catch (err) {
       setError(errorOf(err));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
 
   const stepName = step === 1 ? ct('stepBasic') : step === 2 ? ct('stepDivisions') : ct('stepConfirm');
+  // 等待說明：轉圈的按鈕下面一句，螢幕閱讀器也會唸（role="status"）
+  const waitHint = waitStage ? <p class="cps-note" role="status">{ct(waitStage === 2 ? 'waitLong' : 'waitSlow')}</p> : null;
   const hostName = form.hostType === 'club'
     ? (clubs.find((club) => club.id === form.hostTeamId)?.name ?? '')
     : (env.actor.displayName ?? '');
@@ -446,6 +477,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           <div class="cps-actions cps-actions--col">
             <Button variant="primary" loading={busy} onClick={() => { void publish(); }}>{ct('publish')}</Button>
             <Button variant="secondary" onClick={() => route(cid ? `/competitions/${cid}` : '/tournaments')}>{ct('publishLater')}</Button>
+            {waitHint}
           </div>
         </CpCard>
       </CpFrame>
@@ -816,6 +848,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           <Button variant="primary" loading={busy} onClick={() => { void create(); }}>{ct('createAction')}</Button>
         )}
       </div>
+      {waitHint}
 
       {mapIndex != null ? (
         <MapPicker

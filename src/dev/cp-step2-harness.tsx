@@ -13,7 +13,7 @@ import { setLocale } from '@/i18n/i18n';
 import { AppConfirmHost } from '@/ui/AppConfirm';
 import { ToastHost } from '@/ui/ToastHost';
 import { CpEnvProvider } from '@/features/competitions/env';
-import { screenEnv } from '@/features/competitions/testing/screen-fixtures';
+import { idleActions, screenEnv } from '@/features/competitions/testing/screen-fixtures';
 import AddRosterPage from '@/features/competitions/pages/AddRosterPage';
 import CompetitionDetailPage from '@/features/competitions/pages/CompetitionDetailPage';
 import CompetitionManagePage from '@/features/competitions/pages/CompetitionManagePage';
@@ -30,6 +30,10 @@ const framed = params.get('frame') === '1';
 // ?nav=1：載入正式外框的 legacy/layout.css，放同樣 id 的 #top-bar、#bottom-tabs（z-index 900，含半圓凸起），看建立賽事有沒有讓開。
 // 只放外框元素、不載正式 TopBar／BottomNav 元件（會帶進登入與路由註冊模組）；只在 nav=1 時載入，其他畫面不受影響。
 const withShell = params.get('nav') === '1';
+// ?slow=create|publish：建立或發布一直不回（看等待中按鈕轉圈、2 秒與 15 秒兩段說明）；不給就照常立即完成。
+const slow = params.get('slow');
+const never = (): Promise<never> => new Promise(() => {});
+const actions = slow === 'create' ? { ...idleActions(), create: never } : slow === 'publish' ? { ...idleActions(), publish: never } : undefined;
 document.documentElement.setAttribute('data-theme', theme);
 
 const PAGES: Record<string, ComponentType> = {
@@ -174,13 +178,13 @@ async function start(): Promise<void> {
       {framed ? (
         <div class="app-shell ui-app-shell">
           <main class="app-main">
-            <CpEnvProvider value={screenEnv(ENV_OF[screenName] ?? screenName)}>
+            <CpEnvProvider value={screenEnv(ENV_OF[screenName] ?? screenName, actions)}>
               <Page />
             </CpEnvProvider>
           </main>
         </div>
       ) : (
-        <CpEnvProvider value={screenEnv(ENV_OF[screenName] ?? screenName)}>
+        <CpEnvProvider value={screenEnv(ENV_OF[screenName] ?? screenName, actions)}>
           <Page />
         </CpEnvProvider>
       )}
