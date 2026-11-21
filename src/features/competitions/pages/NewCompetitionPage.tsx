@@ -32,6 +32,7 @@ import { CpError, CpGate, errorOf, reasonText } from '../ui/feedback';
 import { DateTimeField, FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending, CpRow, InfoIcon, LockIcon, PinIcon, PlusIcon, TrashIcon } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
+import { COVER_FIELD_ID, CoverField, coverProblemText, isCoverField, type CoverShown } from '../ui/cover-field';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { duplicateDivisionField, fieldSpot, step1Problem, step2Problem, type FieldProblem } from './new-competition-check';
 import '../live/score-fullscreen.css';
@@ -80,6 +81,7 @@ const LABEL_KEY: Record<string, string> = {
 /** 錯誤句要說是哪一欄、怎麼改；沒有對應句子的退回後端原因的通用文案。 */
 function problemText(ct: (key: string, params?: Record<string, string | number>) => string, err: WizardError): string {
   const f = err.field ?? '';
+  if (f === 'cover') return coverProblemText(ct, err.reason, err.params);
   const p = err.params ?? {};
   const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
   const kind = f.split('.').pop() ?? '';
@@ -169,6 +171,8 @@ interface FormState {
   lastMatch: string;
   venues: VenueDraft[];
   divisions: DivisionDraft[];
+  /** 已上傳好的封面（選填）；null＝沒選，送出時不帶 cover 鍵。 */
+  cover: CoverShown | null;
 }
 
 function blankForm(): FormState {
@@ -185,6 +189,7 @@ function blankForm(): FormState {
     lastMatch: '',
     venues: [emptyVenue()],
     divisions: [{ ...emptyDivision(), name: '' }],
+    cover: null,
   };
 }
 
@@ -204,6 +209,7 @@ function formFromEnv(env: CpInjectedEnv): FormState {
     lastMatch: seed.lastMatch,
     venues: seed.venues.map((venue) => ({ ...venue })),
     divisions: seed.divisions.map((division) => ({ ...division })),
+    cover: seed.cover ?? null,
   };
 }
 
@@ -227,6 +233,7 @@ function toDraft(form: FormState, hostDisplay: string): WizardDraft | null {
     lastMatchAt,
     venues: form.venues,
     divisions: form.divisions,
+    cover: form.cover,
   };
 }
 
@@ -315,6 +322,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   const inFlight = useRef(false);
   const waitStage = useWaitStage(busy);
   const [mapIndex, setMapIndex] = useState<number | null>(null);
+  // 封面上傳中：第 1 步「下一步」先擋（建立時一定要有兩個網址或完全不帶）。
+  const [coverBusy, setCoverBusy] = useState(false);
   const clubs = representativeClubs(env.actor);
   // ASSUMPTION: repClubsPending 省略＝清單已定案。還在讀時空陣列不改回個人，晚到的俱樂部仍要補上。
   const clubsPending = env.actor.repClubsPending === true;
@@ -412,6 +421,10 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   }
 
   function goNext(): void {
+    if (step === 1 && coverBusy) {
+      showProblem({ field: 'cover', reason: 'COVER_BUSY' });
+      return;
+    }
     const problem = step === 1 ? step1Problem(form, env.now ?? Date.now()) : step2Problem(form);
     if (problem) {
       showProblem(problem);
@@ -441,8 +454,10 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     } catch (err) {
       const info = errorOf(err);
       const raw = typeof info.params.field === 'string' ? info.params.field : undefined;
-      // 重複組別名稱後端只標 divisions：找出是哪一組，落在那一組的名稱欄。
-      const field = info.reason === 'DIVISION_NAME_DUPLICATE' ? (duplicateDivisionField(form.divisions) ?? raw) : raw;
+      // 重複組別名稱後端只標 divisions：找出是哪一組，落在那一組的名稱欄。封面三種 field 都落在封面欄。
+      const field = info.reason === 'DIVISION_NAME_DUPLICATE'
+        ? (duplicateDivisionField(form.divisions) ?? raw)
+        : isCoverField(raw) ? 'cover' : raw;
       showProblem({ reason: info.reason, params: info.params, field });
     } finally {
       inFlight.current = false;
@@ -533,6 +548,15 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         <>
           <CpCard class="cph-tight">
             <div class="cps-fields">
+              <CoverField
+                ct={ct}
+                value={form.cover}
+                upload={env.coverUpload}
+                error={fieldError('cover')}
+                onDirty={() => clearField('cover')}
+                onBusyChange={setCoverBusy}
+                onChange={(cover) => patch({ cover })}
+              />
               <Input
                 id="cpf-name"
                 label={ct('name')}
@@ -800,6 +824,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
       {step === 3 && draftTimes ? (
         <>
           <CpCard>
+            {form.cover ? <img class="d2-hero__cover" src={form.cover.src ?? form.cover.url} alt="" width={1200} height={450} /> : null}
             <div class="cps-badges" style="margin-bottom:8px">
               <StatusTag kind="neutral" label={form.hostType === 'club' ? ct('hostClub') : ct('hostPersonal')} />
               <StatusTag kind="neutral" label={ct('draft')} />

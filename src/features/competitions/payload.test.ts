@@ -62,6 +62,15 @@ describe('送出欄位只含契約的鍵', () => {
     expect(buildCreateInput({ ...draft, contactNote: ' 賽前群組 ' }).contactNote).toBe('賽前群組');
   });
 
+  it('封面：沒選不帶 cover 鍵（不是 null）；選了只送 url、thumb 兩鍵（本機預覽不送）', () => {
+    expect(Object.keys(buildCreateInput(draft))).not.toContain('cover');
+    expect(Object.keys(buildCreateInput({ ...draft, cover: null }))).not.toContain('cover');
+    expect(Object.keys(buildCreateInput({ ...draft, hostType: 'club', cover: null }))).not.toContain('cover');
+    const cover = { url: 'https://u', thumb: 'https://t', src: 'data:image/webp;base64,AA', thumbSrc: 'data:image/webp;base64,BB' };
+    expect(buildCreateInput({ ...draft, cover }).cover).toEqual({ url: 'https://u', thumb: 'https://t' });
+    expect(buildCreateInput({ ...draft, hostType: 'club', cover }).cover).toEqual({ url: 'https://u', thumb: 'https://t' });
+  });
+
   it('盃賽分類送進 create', () => {
     const input = buildCreateInput({ ...draft, category: 'cup' });
     expect(input.category).toBe('cup');

@@ -120,21 +120,32 @@ function InCard({ card, ct, board, onOpen }: {
       : card.phase
         ? { mark: card.phase, label: ct(statusKey(card.phase)) }
         : null;
+  const text = (
+    <>
+      {pill || line ? (
+        <div class="cpl-card__top">
+          {pill ? <span class={`cpl-st cpl-st--${pill.mark}`}>{pill.label}</span> : null}
+          {line ? <span class="cpl-line">{line}</span> : null}
+        </div>
+      ) : null}
+      <div class="cpl-card__name">{card.name}</div>
+      <div class="cpl-meta">
+        <span class="cpl-meta__cat">{cat}</span>
+        <Meta card={card} />
+      </div>
+    </>
+  );
   return (
     <div class={`cpl-card${card.ended ? ' ended' : ''}`} data-cid={card.cid} data-phase={card.phase ?? 'unknown'}>
-      <a class="cpl-card__link" href={href} onClick={open}>
-        {pill || line ? (
-          <div class="cpl-card__top">
-            {pill ? <span class={`cpl-st cpl-st--${pill.mark}`}>{pill.label}</span> : null}
-            {line ? <span class="cpl-line">{line}</span> : null}
-          </div>
-        ) : null}
-        <div class="cpl-card__name">{card.name}</div>
-        <div class="cpl-meta">
-          <span class="cpl-meta__cat">{cat}</span>
-          <Meta card={card} />
-        </div>
-      </a>
+      {/* 有封面才在右邊放 56×42 縮圖（沿用外部清單同一格 list-v2.css 的 .cpl-xrow__img）；沒封面版面一行不動 */}
+      {card.thumb ? (
+        <a class="cpl-card__link cpl-card__link--img" href={href} onClick={open}>
+          <div>{text}</div>
+          <img class="cpl-xrow__img" src={card.thumb} alt="" loading="lazy" decoding="async" />
+        </a>
+      ) : (
+        <a class="cpl-card__link" href={href} onClick={open}>{text}</a>
+      )}
     </div>
   );
 }

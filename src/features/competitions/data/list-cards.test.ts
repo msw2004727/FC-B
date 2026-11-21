@@ -212,6 +212,7 @@ describe('站內卡片純函式', () => {
       mine: false,
       ended: false,
       statusMark: null,
+      thumb: '',
     };
     const card = (partial: Partial<InAppListCard> & Pick<InAppListCard, 'cid'>): InAppListCard => ({ ...base, ...partial });
     const LIVE = { kind: 'live', count: 3, time: '14:30' } as const;

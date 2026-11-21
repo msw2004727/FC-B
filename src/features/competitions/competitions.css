@@ -942,7 +942,6 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 
 /* 第 3 步詳情：class 對照預覽 harness 的 cp3-*。字級只用字級 token。
  * 隊徽底色與分類漸層用 category-tokens，不在這裡重抄色值。 */
-.cps-root .ui-radio__text,
 .cps-root .ui-radio-group__label,
 .cps-root .ui-tabs__label { white-space: nowrap; }
 
@@ -1387,11 +1386,8 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 }
 .cpm-warn {
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
   font-size: var(--font-size-body-sm);
   line-height: var(--line-height-body-sm);
-  font-weight: 700;
 }
 /* 撞期警示（新外觀卡 2-5）：提示列的長相（中性底＋三角驚嘆號），是內容句子可以折行；
  * 撞期句由「原因　時間　對戰」三段以空白分開；窄螢幕只在段落之間換行，不把隊名拆成兩行 */
@@ -1538,3 +1534,17 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 .cpa-reason { font-weight: 700; white-space: nowrap; font-size: var(--font-size-body); }
 .cpa-detail { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; }
 .cpa-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; color: var(--d2-text-2); font-size: var(--font-size-body-sm); font-variant-numeric: tabular-nums; }
+
+/* 賽事封面圖（計畫書「賽事封面圖」第一階段）。清單縮圖沿用 list-v2.css 的 .cpl-xrow__img（56×42），這裡只排版；沒封面的卡不帶 --img。
+ * 上傳中的轉圈沿用全站欄位的 [data-field-spinner]（ui/form-controls.css），圖示線條寫在 SVG 屬性上 */
+.cpl-card__link--img { display: flex; align-items: center; gap: 12px; }
+.cpl-card__link--img > div { flex: 1; min-width: 0; }
+.cpl-card.ended .cpl-xrow__img { opacity: var(--d2-thumb-end-op); }
+/* 詳情頂部（記分板上面）、建賽確認頁、封面欄預覽：8:3，載入前是淡底 */
+.d2-hero__cover, .cpc-pic img { display: block; width: 100%; height: auto; aspect-ratio: 8 / 3; object-fit: cover; border-radius: 11px; background: var(--d2-line); }
+.d2-hero__cover { margin-bottom: 6px; }
+.cpc-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 100%; aspect-ratio: 8 / 3; border: 1px dashed var(--d2-input-edge); border-radius: 11px; background: var(--d2-input-bg); color: var(--d2-accent-ink); font-weight: 600; cursor: pointer; }
+.cpc-pic { position: relative; }
+.cpc-busy { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 11px; background: rgba(8, 12, 16, .5); color: #fff; font-weight: 600; }
+.cpc-acts { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.cpc-acts img { margin-right: auto; border-radius: 8px; }

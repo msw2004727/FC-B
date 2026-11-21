@@ -86,6 +86,7 @@ export function DetailHero({
   venue,
   now,
   foot,
+  cover,
 }: {
   ct: CompetitionsT;
   hero: HeroModel;
@@ -101,10 +102,13 @@ export function DetailHero({
   now: number;
   /** 主辦列；沒有就加 d2-hero--bare。 */
   foot?: ComponentChildren;
+  /** 封面圖網址（站長定案：記分板上面，玻璃框內）；沒有就不畫，版面與現況相同。下架的判斷在呼叫端（data/cover.ts#shownCover）。 */
+  cover?: string;
 }): JSX.Element {
   const notes = !hero.board && (hero.reason || hero.champions.length > 0);
   return (
     <section class={`d2-hero${foot ? '' : ' d2-hero--bare'}`}>
+      {cover ? <img class="d2-hero__cover" src={cover} alt="" width={1200} height={450} decoding="async" /> : null}
       <div class={hero.board ? `d2-sb d2-board${hero.lit ? ' d2-sb--lit' : ''}` : 'd2-plain'}>
         <div class="d2-board__top">
           <span class={`d2-sb__st${danger ? ' d2-sb__st--danger' : ''}`}><i aria-hidden="true" />{status}</span>

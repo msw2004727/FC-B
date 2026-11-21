@@ -46,6 +46,7 @@ import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, type CpLoadFail
 import { FeeLine } from '../ui/fields';
 import { categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
 import { DetailHero } from '../ui/detail-hero';
+import { shownCover } from '../data/cover';
 import { TieWorkspace } from '../ui/tie-panel';
 import { AdminPanel, HiddenNotice } from '../ui/admin-moderation';
 import { DeleteCompetition, teamCountOf } from '../ui/delete-competition';
@@ -843,6 +844,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         date={formatInAppDates(competition)}
         venue={firstVenueName(competition)}
         now={now}
+        cover={shownCover(competition, isAdmin)?.url}
         foot={hostLineShown(clubTeamId, competition.contactNote) ? (
           <HostLine
             ct={ct}

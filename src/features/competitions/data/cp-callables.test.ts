@@ -537,6 +537,28 @@ describe('cp callables（欄位與錯誤轉換）', () => {
     expect(lastPayload()).not.toHaveProperty('contactNote');
   });
 
+  it('封面：沒選不送 cover 鍵（舊 cpHost 收到 cover 會回 UNKNOWN_FIELD）；換新送物件、移除送 null', async () => {
+    const cover = {
+      url: 'https://firebasestorage.googleapis.com/v0/b/b1/o/images%2Fcompetitions%2Fc_aaaaaaaaaaaaaaaa%2Fcover_1700000000000.webp?alt=media',
+      thumb: 'https://firebasestorage.googleapis.com/v0/b/b1/o/images%2Fcompetitions%2Fc_aaaaaaaaaaaaaaaa%2Fthumb_1700000000000.webp?alt=media',
+    };
+    await cpHostCreate({ ...base, hostType: 'personal' });
+    expect(Object.keys(lastPayload())).not.toContain('cover');
+    await cpHostCreate({ ...base, hostType: 'club', hostTeamId: 'team_1' });
+    expect(Object.keys(lastPayload())).not.toContain('cover');
+    await cpHostCreate({ ...base, hostType: 'personal', cover });
+    expect(lastPayload().cover).toEqual(cover);
+    await cpHostCreate({ ...base, hostType: 'club', hostTeamId: 'team_1', cover });
+    expect(lastPayload().cover).toEqual(cover);
+
+    await cpHostUpdate({ cid: 'cid_1', category: 'cup' });
+    expect(Object.keys(lastPayload())).not.toContain('cover');
+    await cpHostUpdate({ cid: 'cid_1', cover });
+    expect(lastPayload()).toEqual({ action: 'update', cid: 'cid_1', cover });
+    await cpHostUpdate({ cid: 'cid_1', cover: null });
+    expect(lastPayload()).toEqual({ action: 'update', cid: 'cid_1', cover: null });
+  });
+
   it('assignStaff／removeStaff 只送契約列出的鍵，省略的選填不送出', async () => {
     await cpHostAssignStaff({
       cid: 'cid_1',

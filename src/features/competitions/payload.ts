@@ -9,7 +9,7 @@ import type {
   CpReportInput,
   CpReviewEntryInput,
 } from './data/cp-callables';
-import type { CompetitionCategory, DivisionInput, PaymentStatusWrite, ReportReason, RosterPositionCode, Venue } from './data/types';
+import type { CompetitionCategory, CompetitionCover, DivisionInput, PaymentStatusWrite, ReportReason, RosterPositionCode, Venue } from './data/types';
 
 export type PositionChoice = 'none' | RosterPositionCode;
 
@@ -50,6 +50,8 @@ export interface WizardDraft {
   divisions: DivisionDraft[];
   /** 公開聯絡文字。空白不送。 */
   contactNote?: string;
+  /** 已上傳好的封面；沒選是 null／省略，這時 payload 不帶 cover 鍵（舊 cpHost 會回 UNKNOWN_FIELD）。 */
+  cover?: CompetitionCover | null;
 }
 
 function venueOf(draft: VenueDraft): Venue {
@@ -102,6 +104,7 @@ export function buildCreateInput(draft: WizardDraft): CpHostCreateInput {
     divisions: draft.divisions.map(divisionOf),
     category: draft.category,
     ...(contactNote ? { contactNote } : {}),
+    ...(draft.cover ? { cover: { url: draft.cover.url, thumb: draft.cover.thumb } } : {}),
   };
   if (draft.hostType === 'club') {
     const feeNote = draft.feeNote.trim();

@@ -29,6 +29,9 @@ import { CpError, CpLoadFailed, errorOf, loadFailOf } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending, DownIcon, NextIcon } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
+import { CoverField, type CoverShown } from '../ui/cover-field';
+import { shownCover } from '../data/cover';
+import { toast } from '@/ui/Toast';
 
 const INFO_TOGGLE_ID = 'cp-comp-info-toggle';
 const INFO_PANEL_ID = 'cp-comp-info';
@@ -99,6 +102,8 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [contactDraft, setContactDraft] = useState(env.bundle?.competition?.contactNote ?? '');
   // 站長「畫面要簡潔」：賽事分類與聯絡文字預設收成一顆按鈕，點了才展開；聯絡文字儲存成功後收回。
   const [infoOpen, setInfoOpen] = useState(false);
+  // 剛上傳的封面：本機預覽，網址相同時直接顯示，不再下載一次。
+  const [coverLocal, setCoverLocal] = useState<CoverShown | null>(null);
   const infoFocus = useRef<string | null>(null);
   const now = env.now ?? Date.now();
   const repKey = representativeClubs(env.actor).map((club) => club.id).join('\n');
@@ -110,7 +115,8 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   }, [infoOpen]);
 
   function toggleInfo(next: boolean): void {
-    infoFocus.current = next ? `#${INFO_PANEL_ID} input` : `#${INFO_TOGGLE_ID}`;
+    // 封面欄的選檔 input 是隱藏的，聚焦跳過它（照舊落在分類第一個選項）。
+    infoFocus.current = next ? `#${INFO_PANEL_ID} input:not([hidden])` : `#${INFO_TOGGLE_ID}`;
     setInfoOpen(next);
   }
 
@@ -362,6 +368,17 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     }
   }
 
+  /** 封面換新或移除：按下去直接存（同分類）。失敗丟回 CoverField，錯誤畫在封面那一格、畫面維持原本的封面。 */
+  async function saveCover(next: CoverShown | null): Promise<void> {
+    await env.actions.update({ cid, cover: next ? { url: next.url, thumb: next.thumb } : null });
+    setCoverLocal(next);
+    setBundle((current) => current?.competition ? {
+      ...current,
+      competition: { ...current.competition, cover: next ? { url: next.url, thumb: next.thumb } : null },
+    } : current);
+    toast.show({ message: ct(next ? 'coverSaved' : 'coverRemoved') });
+  }
+
   async function saveCategory(next: CompetitionCategory): Promise<void> {
     if (!manage || busy || next === category) return;
     const prev = category;
@@ -381,6 +398,21 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       setBusy(false);
     }
   }
+
+  // 封面欄：下架時主辦看不到也改不了（後端非管理員回 COMPETITION_HIDDEN），管理員照畫；
+  // 已結束／已取消只能移除，沒封面就不畫這一格。
+  const isAdmin = isCpAdmin(env.actor.role);
+  const coverNow = shownCover(competition, isAdmin);
+  const coverClosed = competition.status === 'cancelled' || competition.endedAt != null;
+  const coverField = manage && !(competition.hidden && !isAdmin) && (!coverClosed || coverNow) ? (
+    <CoverField
+      ct={ct}
+      value={coverNow ? (coverLocal?.url === coverNow.url ? coverLocal : coverNow) : null}
+      upload={env.coverUpload}
+      removeOnly={coverClosed}
+      onChange={saveCover}
+    />
+  ) : null;
 
   const showUnlock = canUnlockRosters({
     locked,
@@ -561,7 +593,9 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       <div id={INFO_PANEL_ID} class="cps-stack">
       {manage ? (
         <CpCard>
-          {/* ASSUMPTION: 沒有獨立的編輯賽事路由。分類改在報隊管理；建立仍走精靈步驟 1。 */}
+          {/* ASSUMPTION: 沒有獨立的編輯賽事路由。分類改在報隊管理；建立仍走精靈步驟 1。封面在分類上面（計畫書第 6 題）。 */}
+          <div class="cps-fields">
+          {coverField}
           <RadioGroup
             label={ct('category')}
             orientation="horizontal"
@@ -575,6 +609,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               { value: 'friendly', label: ct('categoryFriendly') },
             ]}
           />
+          </div>
         </CpCard>
       ) : null}
       {hostOps ? (

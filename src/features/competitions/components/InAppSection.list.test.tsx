@@ -54,6 +54,7 @@ function card(partial: Partial<InAppListCard> & Pick<InAppListCard, 'cid' | 'nam
     mine: false,
     ended: partial.phase === 'done',
     statusMark: null,
+    thumb: '',
     ...partial,
   };
 }
