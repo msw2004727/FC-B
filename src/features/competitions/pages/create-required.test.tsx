@@ -237,13 +237,45 @@ describe('後端回 params.field：跳回那一欄的步驟、捲過去並顯示
   });
 });
 
-describe('建立賽事照建立活動蓋住底部導覽', () => {
-  it('整頁包在 .cps-cover 裡，背景不捲；離開頁面後還原', () => {
+describe('建立賽事照記分頁全幅：隱藏 App 頂欄與底部導覽', () => {
+  it('掛載時 <html> 加 cp-score-full（與記分頁 SCORE_FULLSCREEN_CLASS 同名），離開頁面後移除', async () => {
+    const { SCORE_FULLSCREEN_CLASS } = await import('./ScoringPage');
     const { view } = draw();
-    expect(view.container.querySelector('.cps-cover > .cps-root')).toBeTruthy();
-    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.documentElement.classList.contains(SCORE_FULLSCREEN_CLASS)).toBe(true);
     view.unmount();
-    expect(document.body.style.overflow).toBe('');
+    expect(document.documentElement.classList.contains(SCORE_FULLSCREEN_CLASS)).toBe(false);
+  });
+});
+
+describe('找不到欄位與刪除列', () => {
+  it('俱樂部清單還在讀（下拉沒畫）時按下一步：退回整頁錯誤，不會按了沒反應', async () => {
+    const base = screenEnv('wizard-1-club');
+    const env: CpInjectedEnv = {
+      ...base,
+      actor: { ...base.actor, repClubs: [], repClubsPending: true },
+      wizardSeed: { ...wizardSeed(), hostType: 'club', hostTeamId: '' },
+      preview: { wizardStep: 1, wizardClub: true },
+    };
+    render(<LocationProvider><CpEnvProvider value={env}><NewCompetitionPage /></CpEnvProvider></LocationProvider>);
+    next();
+    expect((await screen.findByRole('alert')).textContent).toBe('請選俱樂部');
+    expect(screen.getByText('步驟 1／3')).toBeTruthy();
+  });
+
+  it('刪除場地後錯誤清掉（索引會位移）', () => {
+    draw({ venues: [{ name: '甲場', address: '' }, { name: '', address: '' }] });
+    next();
+    expect(errorOf('cpf-v1-name')).toBe('請填場地名稱');
+    fireEvent.click(screen.getAllByRole('button', { name: '移除場地' })[1]!);
+    expect(document.querySelectorAll('[data-field-error]')).toHaveLength(0);
+  });
+
+  it('改加減器就收掉這一組的年齡錯誤', () => {
+    draw({ divisions: [{ ...division, limitAge: true, minAge: 15, maxAge: 12 }] }, { step: 2 });
+    next();
+    expect(errorOf('cpf-d0-maxAge')).toBe('最大年齡不可小於最小年齡');
+    fireEvent.click(document.getElementById('cpf-d0-minAge')!.closest('.ui-stepper')!.querySelector('.ui-stepper__decrease')!);
+    expect(errorOf('cpf-d0-maxAge')).toBe('');
   });
 });
 

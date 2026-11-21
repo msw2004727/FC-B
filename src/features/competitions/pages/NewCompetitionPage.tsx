@@ -21,7 +21,6 @@ import type { LaunchDoc } from '../data/types';
 import { useInjectedEnv, type CpActor, type CpInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { clipCodePoints, fromDatetimeLocalValue, formatTaipeiDateTime } from '../format';
-import { lockBody } from '@/ui/Modal';
 import { buildCreateInput, type DivisionDraft, type VenueDraft, type WizardDraft } from '../payload';
 import type { CompetitionCategory } from '../data/types';
 import { categoryText } from '../ui/schedule-board';
@@ -32,6 +31,14 @@ import { CpCard, CpFrame, CpI18nPending, CpRow, InfoIcon, LockIcon, PinIcon, Plu
 import { StatusTag } from '../ui/status-tag';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { duplicateDivisionField, fieldSpot, step1Problem, step2Problem, type FieldProblem } from './new-competition-check';
+import '../live/score-fullscreen.css';
+
+/**
+ * 建立賽事照記分頁全幅（ScoringPage.tsx 的 useScoreFullscreen、score-fullscreen.css）：掛載時 <html> 加同一個 class，
+ * 隱藏 App 頂欄、底部導覽（z-index 900）、角標與同步列，卸載時移除；避免誤觸底部導覽換頁、表單要重填（站長 11-21）。
+ * 不從 ScoringPage 匯入（會把整支記分頁帶進建賽頁的 chunk），class 名稱必須與 SCORE_FULLSCREEN_CLASS 相同。
+ */
+const FULLSCREEN_CLASS = 'cp-score-full';
 
 const FORMATS = [5, 7, 8, 9, 11] as const;
 
@@ -268,6 +275,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     preview?.wizardError ? { reason: 'BANNED_WORD', field: 'name' } : null,
   );
   const [jumpTick, setJumpTick] = useState(0);
+  // 有欄位但畫面上找不到那一欄（例如俱樂部清單還在讀、下拉還沒畫）：改顯示整頁錯誤，不讓按了沒反應。
+  const [lostField, setLostField] = useState(false);
   const [busy, setBusy] = useState(false);
   const [mapIndex, setMapIndex] = useState<number | null>(null);
   const clubs = representativeClubs(env.actor);
@@ -292,15 +301,23 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     setForm((prev) => (prev.hostTeamId === first ? prev : { ...prev, hostTeamId: first }));
   }, [clubs, clubsPending, form.hostType, form.hostTeamId]);
 
-  // 建立賽事照建立活動：整頁蓋住頂部列與底部導覽，避免誤觸換頁又要重填；背景不跟著捲（同一支 lockBody）。
-  useEffect(() => lockBody(document.body), []);
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add(FULLSCREEN_CLASS);
+    return () => {
+      root.classList.remove(FULLSCREEN_CLASS);
+    };
+  }, []);
 
   // 沒過的欄位：捲到畫面中間再聚焦。減少動態時不做平滑捲動。
   useEffect(() => {
     if (!jumpTick) return;
     const spot = fieldSpot(error?.field);
     const node = spot ? document.getElementById(spot.id) : null;
-    if (!node) return;
+    if (!node) {
+      if (spot) setLostField(true);
+      return;
+    }
     const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     node.scrollIntoView?.({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
     node.focus({ preventScroll: true });
@@ -329,6 +346,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   /** 欄位有問題：回到那一欄所在的步驟、錯誤畫在欄位上、捲過去聚焦。畫面上沒有對應欄位就留在原步驟顯示整頁錯誤。 */
   function showProblem(problem: WizardError | FieldProblem): void {
     const spot = fieldSpot(problem.field);
+    setLostField(false);
     setError(spot ? { ...problem, field: spot.field } : problem);
     if (!spot) return;
     setStep(spot.step);
@@ -337,6 +355,21 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
 
   function clearField(field: string): void {
     setError((current) => (current?.field === field ? null : current));
+  }
+
+  /** 刪除場地或組別後索引會位移：錯誤直接清掉，下次按下一步再檢查。 */
+  function removeRow(partial: Partial<FormState>): void {
+    patch(partial);
+    setError(null);
+  }
+
+  /** 加減器改值：這一組的隊數、人數、年齡錯誤都收掉（最大年齡的錯誤可能是改最小年齡修好的）。 */
+  function clearDivisionNumbers(index: number): void {
+    setError((current) => (
+      current?.field && /^divisions\.\d+\.(maxTeams|rosterMin|rosterMax|minAge|maxAge)$/.test(current.field) && current.field.startsWith(`divisions.${index}.`)
+        ? null
+        : current
+    ));
   }
 
   function fieldError(field: string): string | undefined {
@@ -400,7 +433,6 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
 
   if (done) {
     return (
-      <div class="cps-cover">
       <CpFrame title={ct('createTitle')}>
         <CpCard class="cps-success">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M7.5 12.5l3 3 6-6.5" /></svg>
@@ -413,16 +445,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           </div>
         </CpCard>
       </CpFrame>
-      </div>
     );
   }
 
   const draftTimes = toDraft(form, '');
 
-  const pageError = error && fieldSpot(error.field)?.step !== step ? error : null;
+  const pageError = error && (lostField || fieldSpot(error.field)?.step !== step) ? error : null;
 
   return (
-    <div class="cps-cover">
     <CpFrame
       title={ct('createTitle')}
       menu={<span class="cph-stepno">{ct('stepOf', { step })}</span>}
@@ -548,7 +578,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                       onValueChange={(name) => { patchVenue(index, { name }); clearField(`venues.${index}.name`); }}
                     />
                     {form.venues.length > 1 ? (
-                      <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} onClick={() => patch({ venues: form.venues.filter((_, i) => i !== index) })}>
+                      <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} onClick={() => removeRow({ venues: form.venues.filter((_, i) => i !== index) })}>
                         <TrashIcon />
                       </button>
                     ) : null}
@@ -590,7 +620,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                     type="button"
                     class="cps-iconbtn cps-iconbtn--flat cph-trash"
                     aria-label={ct('removeDivision')}
-                    onClick={() => patch({ divisions: form.divisions.filter((_, i) => i !== index) })}
+                    onClick={() => removeRow({ divisions: form.divisions.filter((_, i) => i !== index) })}
                   >
                     <TrashIcon />
                   </button>
@@ -626,18 +656,18 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 </div>
                 {/* 連續的加減器與開關：細線等高列（列高 48），左標籤、右控制 */}
                 <div class="d2-lines d2-lines--48 cph-ctl">
-                <Stepper id={`cpf-d${index}-maxTeams`} label={ct('maxTeams')} value={division.maxTeams} min={2} max={64} onValueChange={(maxTeams) => patchDivision(index, { maxTeams })} />
-                <Stepper id={`cpf-d${index}-rosterMin`} label={ct('rosterMin')} value={division.rosterMin} min={1} max={division.rosterMax} onValueChange={(rosterMin) => patchDivision(index, { rosterMin })} />
+                <Stepper id={`cpf-d${index}-maxTeams`} label={ct('maxTeams')} value={division.maxTeams} min={2} max={64} onValueChange={(maxTeams) => { patchDivision(index, { maxTeams }); clearDivisionNumbers(index); }} />
+                <Stepper id={`cpf-d${index}-rosterMin`} label={ct('rosterMin')} value={division.rosterMin} min={1} max={division.rosterMax} onValueChange={(rosterMin) => { patchDivision(index, { rosterMin }); clearDivisionNumbers(index); }} />
                 <Stepper
                   id={`cpf-d${index}-rosterMax`}
                   label={ct('rosterMax')}
                   value={division.rosterMax}
                   min={division.playersOnField}
                   max={40}
-                  onValueChange={(rosterMax) => patchDivision(index, {
-                    rosterMax,
-                    rosterMin: Math.min(division.rosterMin, rosterMax),
-                  })}
+                  onValueChange={(rosterMax) => {
+                    patchDivision(index, { rosterMax, rosterMin: Math.min(division.rosterMin, rosterMax) });
+                    clearDivisionNumbers(index);
+                  }}
                 />
                 <Switch
                   class="cph-switch"
@@ -650,8 +680,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 />
                 {division.limitAge ? (
                   <>
-                    <Stepper id={`cpf-d${index}-minAge`} label={ct('minAge')} value={division.minAge} min={3} max={99} onValueChange={(minAge) => patchDivision(index, { minAge })} />
-                    <Stepper id={`cpf-d${index}-maxAge`} label={ct('maxAge')} value={division.maxAge} min={3} max={99} onValueChange={(maxAge) => { patchDivision(index, { maxAge }); clearField(`divisions.${index}.maxAge`); }} />
+                    <Stepper id={`cpf-d${index}-minAge`} label={ct('minAge')} value={division.minAge} min={3} max={99} onValueChange={(minAge) => { patchDivision(index, { minAge }); clearDivisionNumbers(index); }} />
+                    <Stepper id={`cpf-d${index}-maxAge`} label={ct('maxAge')} value={division.maxAge} min={3} max={99} onValueChange={(maxAge) => { patchDivision(index, { maxAge }); clearDivisionNumbers(index); }} />
                   </>
                 ) : null}
                 <Switch
@@ -767,7 +797,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
             {ct('goBirthday')}
           </a>
         </p>
-      ) : pageError ? <CpError reason={pageError.reason} params={pageError.params} /> : null}
+      ) : pageError ? <p class="cps-note cps-warn" role="alert">{problemText(ct, pageError)}</p> : null}
 
       <div class="cph-split">
         {step > 1 ? <Button variant="secondary" class="cph-narrow" onClick={() => { setError(null); setStep(step === 3 ? 2 : 1); }}>{ct('prev')}</Button> : null}
@@ -794,7 +824,6 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         />
       ) : null}
     </CpFrame>
-    </div>
   );
 }
 

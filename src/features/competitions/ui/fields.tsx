@@ -14,6 +14,11 @@ export const POSITION_TEXT_MAX = 5;
 
 const POSITIONS: readonly PositionChoice[] = ['none', 'GK', 'DF', 'MF', 'FW', 'custom'];
 
+function changedValue(event: Event, onValueChange: (value: string) => void): void {
+  const target = event.target;
+  if (target instanceof HTMLInputElement && !target.disabled) onValueChange(target.value);
+}
+
 export function DateTimeField({
   id,
   label,
@@ -28,10 +33,11 @@ export function DateTimeField({
   /** 欄位層級錯誤：紅框＋紅底驚嘆號圓點那一句（與 Input 的 error 同一套樣式）。 */
   error?: string;
 }): JSX.Element {
+  // iOS 的時間選擇器可能只送 change、不送 input。正式環境載了 preact/compat，<input> 上的 onChange 會被改寫成 input 監聽，
+  // 所以 change 接在外層（change 會冒泡），兩種事件都寫進表單。
   return (
-    <div class={`ui-input${error ? ' ui-input--error' : ''}`}>
+    <div class={`ui-input${error ? ' ui-input--error' : ''}`} onChange={(event) => changedValue(event, onValueChange)}>
       <label for={id}><Text>{label}</Text></label>
-      {/* iOS 的時間選擇器可能只送 change、不送 input：兩個都接，值才一定寫進表單 */}
       <input
         id={id}
         type="datetime-local"
@@ -39,7 +45,6 @@ export function DateTimeField({
         aria-invalid={Boolean(error)}
         aria-describedby={error ? `${id}-error` : undefined}
         onInput={(event) => onValueChange(event.currentTarget.value)}
-        onChange={(event) => onValueChange(event.currentTarget.value)}
       />
       {error ? <div id={`${id}-error`} data-field-error aria-live="polite"><Text>{error}</Text></div> : null}
     </div>
@@ -66,7 +71,7 @@ export function DateField({
 }): JSX.Element {
   const t = useT();
   return (
-    <div class="ui-input">
+    <div class="ui-input" onChange={(event) => changedValue(event, onValueChange)}>
       <label for={id}>
         <Text>{label}</Text>
         {required ? <small><Text>{t('ui.input.required')}</Text></small> : null}
@@ -79,9 +84,6 @@ export function DateField({
         disabled={disabled}
         min={min}
         onInput={(event) => {
-          if (!disabled) onValueChange(event.currentTarget.value);
-        }}
-        onChange={(event) => {
           if (!disabled) onValueChange(event.currentTarget.value);
         }}
       />

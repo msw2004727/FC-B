@@ -27,9 +27,9 @@ const params = new URLSearchParams(location.search);
 const screenName = params.get('screen') || 'wizard-1';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 const framed = params.get('frame') === '1';
-// ?nav=1：畫兩條代用的頂部列與底部導覽（紅色，套正式 .ui-top-bar／.ui-bottom-nav 的定位與層級），看建立賽事有沒有蓋住。
-// 不載正式 TopBar／BottomNav：它們會帶進登入與路由註冊模組。
-const navStandIn = params.get('nav') === '1';
+// ?nav=1：載入正式外框的 legacy/layout.css，放同樣 id 的 #top-bar、#bottom-tabs（z-index 900，含半圓凸起），看建立賽事有沒有讓開。
+// 只放外框元素、不載正式 TopBar／BottomNav 元件（會帶進登入與路由註冊模組）；只在 nav=1 時載入，其他畫面不受影響。
+const withShell = params.get('nav') === '1';
 document.documentElement.setAttribute('data-theme', theme);
 
 const PAGES: Record<string, ComponentType> = {
@@ -165,6 +165,7 @@ const Page = PAGES[screenName] ?? NewCompetitionPage;
 void start();
 
 async function start(): Promise<void> {
+  if (withShell) await import('../styles/legacy/layout.css');
   await setLocale('zh-TW');
   const root = document.getElementById('app');
   if (!root) return;
@@ -183,11 +184,11 @@ async function start(): Promise<void> {
           <Page />
         </CpEnvProvider>
       )}
-      {navStandIn ? (
-        <>
-          <div class="ui-top-bar" style="height:56px;background:#e11d48" data-stand-in="top" />
-          <div class="ui-bottom-nav" style="height:64px;background:#e11d48" data-stand-in="bottom" />
-        </>
+      {withShell ? (
+        <div class="legacy-ui legacy-chrome">
+          <header id="top-bar" data-shell="top">頂部列</header>
+          <nav id="bottom-tabs" data-shell="bottom">底部導覽</nav>
+        </div>
       ) : null}
       <ToastHost />
       <AppConfirmHost />
