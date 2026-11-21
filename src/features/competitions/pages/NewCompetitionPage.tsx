@@ -27,6 +27,7 @@ import type { CompetitionCategory } from '../data/types';
 import { categoryText } from '../ui/schedule-board';
 import { representativeClubs } from '../rep-clubs';
 import { dangerConfirm } from '../ui/danger-confirm';
+import { waitOverlayReleased } from '../ui/delete-competition';
 import { CpError, CpGate, errorOf, reasonText } from '../ui/feedback';
 import { DateTimeField, FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending, CpRow, InfoIcon, LockIcon, PinIcon, PlusIcon, TrashIcon } from '../ui/shell';
@@ -468,8 +469,11 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   /** 取消與第 1 步返回：和進頁時不同才問要不要放棄，沒填過直接走（同 CpFrame 返回）。送出中不動（同步鎖擋按下建立同一刻的取消）。 */
   async function leave(): Promise<void> {
     if (inFlight.current) return;
-    if (JSON.stringify(form) !== JSON.stringify(startForm.current)
-      && !(await dangerConfirm(ct('discardCreate'), { okText: ct('discard'), danger: true }))) return;
+    if (JSON.stringify(form) !== JSON.stringify(startForm.current)) {
+      if (!(await dangerConfirm(ct('discardCreate'), { okText: ct('discard'), danger: true }))) return;
+      // 確認框開著時推了一筆同網址紀錄（overlay-back）：先等它退掉，返回才會退到進來前那頁、起點時的取代才蓋到建立頁那筆。
+      await waitOverlayReleased();
+    }
     goBack();
   }
 

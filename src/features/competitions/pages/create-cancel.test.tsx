@@ -1,10 +1,11 @@
 // 建立賽事「取消」（站長 11-21）：第 1 步底部「取消｜下一步」；第 2、3 步底部「上一步｜主鈕」，按鈕列下方一行小字「取消建立」。
 // 取消、取消建立、第 1 步左上返回同一條規則：表單和進頁時不同才問「放棄建立？」，沒填過直接離開；第 2、3 步返回與上一步回上一步。
 // 建立、發布送出中：上一步、取消建立與返回都停用。離開走 CpFrame 同一個 useGoBack('/tournaments')：歷史起點時取代成 /tournaments。
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { markHistoryRoot } from '@/core/back-guard';
+import { _resetOverlayBackForTest } from '@/core/overlay-back';
 import { AppConfirmHost, _resetAppConfirmForTest } from '@/ui/AppConfirm';
 import { CpEnvProvider, type CpInjectedEnv } from '../env';
 import { loadCompetitionsDict } from '../i18n';
@@ -27,6 +28,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   _resetAppConfirmForTest();
+  _resetOverlayBackForTest();
   vi.useRealTimers();
 });
 
@@ -62,6 +64,12 @@ const editDivision = () => fireEvent.input(document.getElementById('cpf-d0-name'
 async function press(node: HTMLElement): Promise<void> {
   fireEvent.click(node);
   await flush();
+}
+
+/** 確認框按「取消」（繼續填寫）：等過確認框那筆紀錄退掉的時間，確定沒有晚一步離開。 */
+async function keep(node: HTMLElement): Promise<void> {
+  await press(node);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 150)); });
 }
 
 function restart(): void {
@@ -113,7 +121,7 @@ describe('建立賽事：第 1 步取消', () => {
     expect(dialog()?.textContent).toContain(ASK);
     expect(document.getElementById('app-confirm-ok')?.textContent).toBe('放棄');
 
-    await press(document.getElementById('app-confirm-cancel')!);
+    await keep(document.getElementById('app-confirm-cancel')!);
     expect(dialog()).toBeNull();
     expect(location.pathname).toBe(START);
     expect(screen.getByText('步驟 1／3')).toBeTruthy();
@@ -121,7 +129,7 @@ describe('建立賽事：第 1 步取消', () => {
 
     await press(cancelBtn());
     await press(document.getElementById('app-confirm-ok')!);
-    expect(location.pathname).toBe('/tournaments');
+    await waitFor(() => expect(location.pathname).toBe('/tournaments'));
   });
 });
 
@@ -138,13 +146,13 @@ describe('建立賽事：第 2、3 步「取消建立」', () => {
     editDivision();
     await press(cancelLink());
     expect(dialog()?.textContent).toContain(ASK);
-    await press(document.getElementById('app-confirm-cancel')!);
+    await keep(document.getElementById('app-confirm-cancel')!);
     expect(location.pathname).toBe(START);
     expect(screen.getByText('步驟 2／3')).toBeTruthy();
     expect((document.getElementById('cpf-d0-name') as HTMLInputElement).value).toBe('青年組');
     await press(cancelLink());
     await press(document.getElementById('app-confirm-ok')!);
-    expect(location.pathname).toBe('/tournaments');
+    await waitFor(() => expect(location.pathname).toBe('/tournaments'));
   });
 
   it('第 3 步：沒改直接離開；前面改過才問', async () => {
@@ -160,7 +168,7 @@ describe('建立賽事：第 2、3 步「取消建立」', () => {
     expect(screen.getByText('步驟 3／3')).toBeTruthy();
     await press(cancelLink());
     expect(dialog()?.textContent).toContain(ASK);
-    await press(document.getElementById('app-confirm-cancel')!);
+    await keep(document.getElementById('app-confirm-cancel')!);
     expect(location.pathname).toBe(START);
   });
 
@@ -187,12 +195,12 @@ describe('建立賽事：左上返回', () => {
     fireEvent.input(nameInput(), { target: { value: '夏季盃' } });
     await press(backBtn());
     expect(dialog()?.textContent).toContain(ASK);
-    await press(document.getElementById('app-confirm-cancel')!);
+    await keep(document.getElementById('app-confirm-cancel')!);
     expect(location.pathname).toBe(START);
     expect(nameInput().value).toBe('夏季盃');
     await press(backBtn());
     await press(document.getElementById('app-confirm-ok')!);
-    expect(location.pathname).toBe('/tournaments');
+    await waitFor(() => expect(location.pathname).toBe('/tournaments'));
   });
 
   it('第 2 步：返回仍是回第 1 步，不問', async () => {
@@ -261,5 +269,53 @@ describe('建立賽事：送出中停用上一步、取消建立與返回', () =
     expect(backBtn().disabled).toBe(true);
     await press(backBtn());
     expect(location.pathname).toBe(START);
+  });
+});
+
+// 確認框開著時 overlay-back 推了一筆同網址紀錄；按放棄要先等它退掉再返回（審查 P1／P2）。
+describe('建立賽事：放棄後的歷史紀錄', () => {
+  const sleep = (ms: number) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+  const overlayKey = () => Object.keys((history.state as Record<string, unknown> | null) ?? {}).includes('__overlay');
+
+  async function discardVia(screenName: 'wizard-1' | 'wizard-2', trigger: () => HTMLElement): Promise<void> {
+    draw(screenName, { blank: screenName === 'wizard-1' });
+    if (screenName === 'wizard-1') fireEvent.input(nameInput(), { target: { value: '夏季盃' } });
+    else editDivision();
+    await press(trigger());
+    expect(overlayKey()).toBe(true);
+    await press(document.getElementById('app-confirm-ok')!);
+  }
+
+  it.each([
+    ['第 1 步取消', 'wizard-1', () => cancelBtn()],
+    ['第 2 步取消建立', 'wizard-2', () => cancelLink()],
+    ['第 1 步左上返回', 'wizard-1', () => backBtn()],
+  ] as const)('從賽事列表進來（非起點）：%s→放棄，回到賽事列表那筆', async (_label, screenName, trigger) => {
+    history.replaceState(null, '', '/tournaments');
+    markHistoryRoot();
+    history.pushState(null, '', START);
+    const depth = history.length;
+    await discardVia(screenName, trigger);
+    await waitFor(() => expect(location.pathname).toBe('/tournaments'));
+    await sleep(50);
+    expect(location.pathname).toBe('/tournaments');
+    expect(overlayKey()).toBe(false);
+    // 退回的是進來前那筆起點紀錄，不是另推一筆
+    expect((history.state as Record<string, unknown> | null)?.['__fcbRoot']).toBe(true);
+    expect(history.length).toBe(depth + 1); // 建立頁與確認框兩筆留在「下一頁」，沒有多推
+  });
+
+  it('直開（起點）：放棄→取代成賽事列表，之後返回不會回到建立頁', async () => {
+    // 建立頁之前放一筆別的紀錄，才看得出返回退到哪裡（jsdom 的歷史跨案累積）
+    history.replaceState(null, '', '/before');
+    history.pushState(null, '', START);
+    markHistoryRoot();
+    await discardVia('wizard-1', () => cancelBtn());
+    await waitFor(() => expect(location.pathname).toBe('/tournaments'));
+    await sleep(50);
+    expect(overlayKey()).toBe(false);
+    expect((history.state as Record<string, unknown> | null)?.['__fcbRoot']).toBe(true);
+    act(() => { history.back(); });
+    await waitFor(() => expect(location.pathname).toBe('/before'));
   });
 });
