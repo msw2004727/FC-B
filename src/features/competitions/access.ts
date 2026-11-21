@@ -63,6 +63,21 @@ export function canManageCompetition(input: ManageInput): boolean {
   return canHostOrCo(input);
 }
 
+/**
+ * 「編輯賽事」入口與編輯頁。對齊後端 updateCompetition：主辦或共同主辦（canHostOrCo）；
+ * 已結束／已取消一律不行（後端 COMPETITION_CLOSED，只准移除封面，報隊管理的封面欄另外處理）；
+ * 下架只留管理員（COMPETITION_HIDDEN）；刪到一半（deletingAt）不給改。
+ */
+export function canEditCompetition(
+  doc: { status: CompetitionStatus; endedAt: number | null; hidden: boolean; deletingAt?: number | null },
+  input: { canHost: boolean; isAdmin: boolean },
+): boolean {
+  if (!input.canHost) return false;
+  if (doc.status === 'cancelled' || doc.endedAt != null) return false;
+  if (doc.deletingAt != null) return false;
+  return !doc.hidden || input.isAdmin;
+}
+
 export interface RegisterInput {
   repClubIds: readonly string[];
   status: CompetitionStatus;

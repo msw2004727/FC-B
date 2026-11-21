@@ -1307,6 +1307,27 @@ function base(actions: CpActions, who: CpActor, bundle?: CpBundle, preview?: CpP
   };
 }
 
+/** 編輯賽事：成人組已有 2 隊報名（不能刪、規則不能改），新秀組還沒有報隊。個人主辦沒有繳費說明與報名費。 */
+export function editBundle(opts: { personal?: boolean; locked?: boolean } = {}): CpBundle {
+  const comp = competition({
+    rostersLockedAt: opts.locked ? taipeiMs(2026, 12, 5, 10, 0) : null,
+    contactNote: 'LINE：@demo-cup',
+    ...(opts.personal ? { hostType: 'personal', hostTeamId: null, hostDisplay: '王示範', feeNote: null } : {}),
+  });
+  const fee = (amount: number) => (opts.personal ? 0 : amount);
+  return {
+    competition: comp,
+    divisions: [
+      { ...adultDivision, feePerTeam: fee(1500) },
+      division({ dvId: 'dv_rookie', name: '新秀組', playersOnField: 7, maxTeams: 6, rosterMin: 9, rosterMax: 14, feePerTeam: fee(800), order: 1 }),
+    ],
+    entries: [],
+    roster: [],
+    privates: [],
+    staff: { uid: 'uid_host', roles: ['host'] },
+  };
+}
+
 /** 每個 ?screen= 的注入環境。首屏就有 bundle，不打網路。 */
 export function screenEnv(screen: string, actions: CpActions = idleActions()): CpInjectedEnv {
   switch (screen) {
@@ -1761,6 +1782,22 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       const b = detailBundle();
       return base(actions, repActor, { ...b, competition: competition({ lastMatchAt: taipeiMs(2027, 1, 9, 18, 0) }) });
     }
+    // 編輯賽事（網址 /competitions/new?edit=cup；harness 自己補 edit=cup）。主辦 staff host、非管理員。
+    case 'edit-1':
+      return base(actions, hostActor, editBundle(), { wizardStep: 1 });
+    case 'edit-1-personal':
+      return base(actions, hostActor, editBundle({ personal: true }), { wizardStep: 1 });
+    case 'edit-2':
+      return base(actions, hostActor, editBundle(), { wizardStep: 2 });
+    case 'edit-3':
+      return base(actions, hostActor, editBundle(), { wizardStep: 3 });
+    case 'edit-started':
+      // 首場（1/9 08:00）已過：四個時間停用
+      return { ...base(actions, hostActor, editBundle(), { wizardStep: 1 }), now: LIVE_NOW };
+    case 'edit-locked':
+      return base(actions, hostActor, editBundle({ locked: true }), { wizardStep: 2 });
+    case 'edit-denied':
+      return base(actions, hostActor, { ...editBundle(), competition: competition({ status: 'cancelled', statusReason: '場地封閉' }) });
     default:
       return base(actions, wizardActor, undefined, { wizardStep: 1 }, wizardSeed());
   }

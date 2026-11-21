@@ -116,6 +116,10 @@ export const CP_REASON_CODES = [
   'REPORT_NOT_FOUND',
   // 賽事封面圖（cpHost create／update 的 cover 欄；field 是 cover、cover.url 或 cover.thumb）。
   'COVER_URL_NOT_ALLOWED',
+  // 編輯賽事（host.ts updateCompetition 的組別清單）。
+  'DIVISION_HAS_ENTRIES',
+  'DIVISION_RULES_LOCKED',
+  'DIVISION_BELOW_APPROVED',
 ] as const;
 
 export type CpReasonCode = (typeof CP_REASON_CODES)[number];

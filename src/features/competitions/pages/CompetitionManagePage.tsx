@@ -12,7 +12,7 @@ import { RadioGroup } from '@/ui/RadioGroup';
 import { Switch } from '@/ui/Switch';
 import { Tabs } from '@/ui/Tabs';
 import { Textarea } from '@/ui/Textarea';
-import { canHostOrCo, canManageCompetition, canUnlockRosters, isCpAdmin } from '../access';
+import { canEditCompetition, canHostOrCo, canManageCompetition, canUnlockRosters, isCpAdmin } from '../access';
 import { contactNoteProblem } from '../data/flex-schedule';
 import { clipCodePoints } from '../format';
 import { liveCpActions } from '../actions';
@@ -654,6 +654,10 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               <Button variant="ghost" size="sm" trailing={<NextIcon />} onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
               <Button variant="ghost" size="sm" trailing={<NextIcon />} onClick={() => route(`/competitions/${cid}/matches`)}>{ct('hostListTitle')}</Button>
               <Button variant="ghost" size="sm" trailing={<NextIcon />} onClick={() => route(`/competitions/${cid}/staff`)}>{ct('assignScorer')}</Button>
+              {/* 完整編輯（建賽精靈同一份表單）；上面的「編輯賽事資訊」快速面板照舊 */}
+              {canEditCompetition(competition, { canHost: hostOps, isAdmin }) ? (
+                <Button variant="ghost" size="sm" trailing={<NextIcon />} onClick={() => route(`/competitions/new?edit=${cid}`)}>{ct('editTitle')}</Button>
+              ) : null}
             </div>
           ) : null}
         </section>

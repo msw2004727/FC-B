@@ -89,10 +89,20 @@ const PAGES: Record<string, ComponentType> = {
   'host-lock-all': CompetitionManagePage,
   'roster-confirmed': RosterPage,
   'detail-oneday': CompetitionDetailPage,
+  // 編輯賽事（站長 11-21）：建賽精靈同一頁，網址補 edit=cup；入口按鈕看報隊管理主辦區與詳情頁主辦卡
+  'edit-1': NewCompetitionPage,
+  'edit-1-personal': NewCompetitionPage,
+  'edit-2': NewCompetitionPage,
+  'edit-3': NewCompetitionPage,
+  'edit-started': NewCompetitionPage,
+  'edit-locked': NewCompetitionPage,
+  'edit-denied': NewCompetitionPage,
+  'edit-entry-manage': CompetitionManagePage,
+  'edit-entry-detail': CompetitionDetailPage,
 };
 
 /** 沿用既有資料的畫面：畫面名稱 → screenEnv 的狀態名。 */
-const ENV_OF: Record<string, string> = { 'form-long-name': 'form-rep' };
+const ENV_OF: Record<string, string> = { 'form-long-name': 'form-rep', 'edit-entry-manage': 'host-approved', 'edit-entry-detail': 'real-draft-host' };
 
 function buttonsNamed(name: string): HTMLButtonElement[] {
   return [...document.querySelectorAll('button')].filter((node) => (node.textContent ?? '').replace(/\s+/g, ' ').trim() === name);
@@ -165,6 +175,8 @@ const OPEN: Record<string, () => Promise<void>> = {
 };
 
 const Page = PAGES[screenName] ?? NewCompetitionPage;
+// 編輯賽事走 /competitions/new?edit=<cid>：頁面讀網址的 edit，這裡補上（不改其他畫面的網址）。
+if (screenName.startsWith('edit-') && Page === NewCompetitionPage) history.replaceState(null, '', `${location.pathname}${location.search}&edit=cup`);
 
 void start();
 
