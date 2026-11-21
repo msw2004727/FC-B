@@ -7,7 +7,7 @@
 // 「emulator 一律禁止」擋板。那道擋板是為了避免打到正式 Functions；這裡的實例在模擬器模式已接到本機。
 // ASSUMPTION: 更新的四個時間在型別裡包成 schedule，送出時攤成四個欄位，不送 schedule 這個鍵。
 
-import type { CompetitionCategory, DivisionInput, PaymentStatusWrite, ReportReason, Venue } from './types';
+import type { CompetitionCategory, CompetitionCover, DivisionInput, PaymentStatusWrite, ReportReason, Venue } from './types';
 import { getCpFirebase } from './cp-firebase';
 
 export type CpCallableName = 'cpHost' | 'cpEntry' | 'cpParticipant';
@@ -128,6 +128,11 @@ interface CpHostCommon {
   category?: CompetitionCategory;
   /** 公開聯絡文字。空白不送，伺服器寫 null。 */
   contactNote?: string;
+  /**
+   * 封面圖兩個下載網址。沒選封面時不帶這個鍵（不是帶 null）：尚未支援封面的舊 cpHost 收到 cover 鍵會整筆回
+   * UNKNOWN_FIELD，前端比後端先上時一般建賽才不會失敗。
+   */
+  cover?: CompetitionCover;
 }
 
 export type CpHostCreateInput = CpHostCommon & (
@@ -155,6 +160,7 @@ export function cpHostCreate(input: CpHostCreateInput): Promise<CpHostCreateResu
     divisions: input.divisions,
     category: input.category,
     contactNote: input.contactNote,
+    cover: input.cover,
   };
   if (input.hostType === 'club') {
     return callAction('cpHost', payload('create', {
@@ -174,6 +180,7 @@ export function cpHostCreate(input: CpHostCreateInput): Promise<CpHostCreateResu
 // 主辦類型、俱樂部、運動、時區建立後不能改，多帶會被整筆拒絕（Flash 交叉審 P2）。
 // category 是卡 A 新增的欄位；不送時不帶這個鍵。
 // contactNote 送 null 或空字串，伺服器寫 null。不送這個鍵就不動原本的文字。
+// cover：物件＝換新、null＝移除、不送＝不動（已結束／已取消只能單獨送 { cid, cover: null }）。
 export interface CpHostUpdateInput {
   cid: string;
   name?: string;
@@ -185,6 +192,7 @@ export interface CpHostUpdateInput {
   divisions?: DivisionInput[];
   category?: CompetitionCategory;
   contactNote?: string | null;
+  cover?: CompetitionCover | null;
 }
 
 export interface CpCidResult {

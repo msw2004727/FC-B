@@ -68,6 +68,12 @@ export interface DivisionInput {
   feePerTeam?: number;
 }
 
+/** 賽事封面的兩個 Firebase Storage 下載網址（同一個 images/competitions/c_… 資料夾）。 */
+export interface CompetitionCover {
+  url: string;
+  thumb: string;
+}
+
 /** 根文件。沒有 hostUid（主辦身分在 staff/{uid}.roles）。 */
 export interface CompetitionDoc {
   id: string;
@@ -80,6 +86,11 @@ export interface CompetitionDoc {
   status: CompetitionStatus;
   statusReason: string | null;
   hidden: boolean;
+  /**
+   * 封面圖（主辦上傳，選填；url 1200×450、thumb 224×168）。舊文件沒有這欄。
+   * 下架時主辦仍讀得到，畫面用 data/cover.ts#shownCover 判斷要不要畫。
+   */
+  cover?: CompetitionCover | null;
   /** 管理員下架原因（2～200 字）。恢復後是 null；舊文件沒有這欄。一般人讀不到下架的根文件。 */
   hiddenReason?: string | null;
   /** 下架時間（毫秒）。恢復後是 null。 */

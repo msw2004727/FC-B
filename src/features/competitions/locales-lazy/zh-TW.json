@@ -583,6 +583,21 @@
     "INVITE_EXPIRED": "這個邀請已過期",
     "NO_CHANGE": "狀態沒有變更",
     "REPORT_NOT_FOUND": "找不到這筆檢舉",
-    "UNKNOWN": "操作失敗，請稍後再試"
-  }
+    "UNKNOWN": "操作失敗，請稍後再試",
+    "COVER_URL_NOT_ALLOWED": "封面圖不合規定，請重新上傳"
+  },
+  "cover": "封面圖",
+  "coverUpload": "上傳封面",
+  "coverUploading": "上傳中",
+  "coverChange": "更換",
+  "coverRemove": "移除",
+  "coverSaved": "已更新封面",
+  "coverRemoved": "已移除封面",
+  "coverBusy": "封面還在上傳，請稍候",
+  "coverOff": "目前還不能使用封面圖",
+  "coverClosed": "賽事已結束或取消，只能移除封面",
+  "coverBadType": "請選 JPG、PNG、WebP 或 HEIC 圖片",
+  "coverTooBig": "圖片不能超過 5MB",
+  "coverFailed": "封面上傳失敗，請再試一次",
+  "coverTimeout": "封面上傳逾時，請檢查網路後重新選圖"
 }

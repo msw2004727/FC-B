@@ -13,6 +13,7 @@
 import { clipCodePoints } from '../format';
 import { getCpFirebase } from './cp-firebase';
 import { categoryOf } from './present';
+import { coverOf } from './cover';
 import {
   CP_READ_LIMIT,
   type CompetitionDoc,
@@ -238,6 +239,7 @@ export function competitionFromDoc(id: string, raw: Record<string, unknown>): Co
     status,
     statusReason: str(raw.statusReason),
     hidden: bool(raw.hidden) ?? false,
+    cover: coverOf(raw.cover),
     hiddenReason: str(raw.hiddenReason),
     hiddenAt: optNum(raw.hiddenAt),
     deletingAt: optNum(raw.deletingAt),

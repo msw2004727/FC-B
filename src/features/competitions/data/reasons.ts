@@ -114,6 +114,8 @@ export const CP_REASON_CODES = [
   'INVITE_EXPIRED',
   'NO_CHANGE',
   'REPORT_NOT_FOUND',
+  // 賽事封面圖（cpHost create／update 的 cover 欄；field 是 cover、cover.url 或 cover.thumb）。
+  'COVER_URL_NOT_ALLOWED',
 ] as const;
 
 export type CpReasonCode = (typeof CP_REASON_CODES)[number];

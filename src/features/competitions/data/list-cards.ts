@@ -13,6 +13,7 @@
 
 import type { CompetitionCategory, CompetitionDoc, SummaryEntry } from './types';
 import { categoryOf, competitionPhase, type CompetitionPhase } from './present';
+import { shownCover } from './cover';
 import { formatTaipeiShort, taipeiParts } from '../format';
 
 export type InAppTab = 'all' | CompetitionCategory;
@@ -47,6 +48,8 @@ export interface InAppListCard {
   ended: boolean;
   /** 整場延期或取消時，列表膠囊改顯示這個，不再用階段。 */
   statusMark: 'postponed' | 'cancelled' | null;
+  /** 封面縮圖網址（224×168）；沒有封面或下架是空字串，卡片版面照舊。 */
+  thumb: string;
 }
 
 export interface MineListRow {
@@ -162,6 +165,7 @@ function cardFromDoc(
     mine,
     ended: phase === 'done',
     statusMark: doc.status === 'postponed' || doc.status === 'cancelled' ? doc.status : null,
+    thumb: shownCover(doc, false)?.thumb ?? '',
   };
 }
 
@@ -231,6 +235,7 @@ export function assembleInAppCards(input: {
       mine: true,
       ended: false,
       statusMark: null,
+      thumb: '',
     });
   }
 
