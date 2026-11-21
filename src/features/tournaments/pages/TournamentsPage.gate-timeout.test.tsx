@@ -4,6 +4,9 @@
 // 網址帶 ?src=in 才直接進站內（取代原「2 秒內通過照預設停在站內」）。
 // 站內區塊用假元件代替：照正式 InAppSection 的順序呼叫 getLaunch，再用正式的 canSeeInAppSection 判定，
 // 讀取失敗走 onGate(false)（與正式元件的 catch 相同）。
+// 站長 11-21 指示「預設是站內賽事」：沒有 ?src 改走先畫站內的路徑（見 TournamentsPage.inapp-hint.test.tsx），
+// 本檔的「外部先畫、閘門延後開始、2 秒逾時」只剩網址明確 ?src=ext 時才走，所以每案預設從 ?src=ext 進頁；
+// ?src=in 進頁改成一進頁就開始閘門、先畫骨架（取代 §3.377 對 ?src=in 的「先等外部清單」）。
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -41,16 +44,22 @@ vi.mock('@/features/competitions/components/InAppSection', async () => {
   const { h } = await import('preact');
   const { canSeeInAppSection } = await import('@/features/competitions/access');
   return {
-    InAppSection: (props: { active: boolean; onGate?: (open: boolean) => void }) => {
+    InAppSection: (props: { active: boolean; onGate?: (open: boolean) => void; onReady?: () => void }) => {
       const onGate = useRef(props.onGate);
       onGate.current = props.onGate;
+      const onReady = useRef(props.onReady);
+      onReady.current = props.onReady;
       useEffect(() => {
         gateCtl.mounts += 1;
         let alive = true;
         gateCtl.calls += 1;
         void gateCtl.getLaunch().then((launch) => {
           const isPublic = launch ? (launch as { isPublic: boolean | null }).isPublic : null;
-          if (alive) onGate.current?.(canSeeInAppSection({ isPublic, isTester: false, isAdmin: false }));
+          if (!alive) return;
+          const open = canSeeInAppSection({ isPublic, isTester: false, isAdmin: false });
+          onGate.current?.(open);
+          // 正式元件通過後讀好清單才 onReady；這裡通過就一起送。
+          if (open) onReady.current?.();
         }).catch(() => {
           if (alive) onGate.current?.(false);
         });
@@ -175,7 +184,7 @@ beforeEach(async () => {
   gateCtl.calls = 0;
   gateCtl.mounts = 0;
   gateCtl.getLaunch = () => new Promise(() => undefined);
-  history.replaceState(null, '', '/tournaments');
+  history.replaceState(null, '', '/tournaments?src=ext');
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
   vi.setSystemTime(new Date('2026-11-02T04:00:00Z'));
   // 閘門通過會寫「上次有過」線索（顧問 11-20 方案 2）；每案清掉，避免前一案影響下一案。
@@ -195,7 +204,7 @@ describe.each([
   ['已登入', 'u_user'],
   ['訪客', null],
 ] as const)('閘門不回應（%s）', (_label, uid) => {
-  it('本機快取第一個畫面就出現；伺服器清單到了照畫；2 秒後仍無切換', async () => {
+  it('?src=ext：本機快取第一個畫面就出現；伺服器清單到了照畫；2 秒後仍無切換', async () => {
     mockUseViewer.mockReturnValue(viewer(uid));
     writeCardsCache(uid, CACHED);
     draw();
@@ -222,7 +231,7 @@ describe.each([
 });
 
 describe('閘門結果', () => {
-  it('2 秒內通過：補上切換但仍停在外部，不自動切到站內；點站內才換', async () => {
+  it('?src=ext：2 秒內通過補上切換但仍停在外部，不自動切到站內；點站內才換', async () => {
     const launch = deferred<Launch>();
     gateCtl.getLaunch = () => launch.promise;
     draw();
@@ -237,7 +246,7 @@ describe('閘門結果', () => {
     expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('false');
     expect(document.querySelector('[data-inapp]')).toBeNull();
     expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
-    expect(location.search).toBe('');
+    expect(location.search).toBe('?src=ext');
 
     // 逾時點過了也不會自己換。
     await tick(COMPETITIONS_GATE_TIMEOUT_MS);
@@ -254,7 +263,7 @@ describe('閘門結果', () => {
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
   });
 
-  it('逾時後晚到的通過仍補上切換；同樣停在外部，點站內才換', async () => {
+  it('?src=ext：逾時後晚到的通過仍補上切換；同樣停在外部，點站內才換', async () => {
     const launch = deferred<Launch>();
     gateCtl.getLaunch = () => launch.promise;
     draw();
@@ -273,7 +282,7 @@ describe('閘門結果', () => {
     expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
     expect(document.querySelector('[data-inapp]')).toBeNull();
 
-    expect(location.search).toBe('');
+    expect(location.search).toBe('?src=ext');
 
     fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
     await tick();
@@ -288,7 +297,7 @@ describe('閘門結果', () => {
     ['讀取失敗', () => Promise.reject(new Error('offline'))],
     ['文件不存在', () => Promise.resolve(null)],
     ['未公開（非測試者）', () => Promise.resolve({ isPublic: false, bannedWords: [] })],
-  ] as const)('%s：不顯示切換，外部清單照常', async (_label, impl) => {
+  ] as const)('?src=ext、%s：不顯示切換，外部清單照常', async (_label, impl) => {
     gateCtl.getLaunch = impl;
     draw();
     await tick();
@@ -302,15 +311,16 @@ describe('閘門結果', () => {
     expect(gateCtl.calls).toBe(1);
   });
 
-  it('?src=in 進頁：2 秒內通過直接站內', async () => {
+  // 站長 11-21：?src=in 進頁走先畫站內的路徑（取代「判定中照常先畫外部清單」），不先閃外部。
+  it('?src=in 進頁：判定中先畫骨架、不畫外部清單；通過直接站內', async () => {
     history.replaceState(null, '', '/tournaments?src=in');
     const launch = deferred<Launch>();
     gateCtl.getLaunch = () => launch.promise;
     draw();
+    expect(document.querySelector('[data-cp-pending-in]')).toBeTruthy();
     await tick(500);
-    // 判定中照常先畫外部清單。
-    expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
-    expect(document.querySelector('[data-inapp]')).toBeNull();
+    expect(screen.queryByText('2027 春季聯賽')).toBeNull();
+    expect(document.querySelector('[data-cp-pending-in]')).toBeTruthy();
     launch.resolve({ isPublic: true, bannedWords: [] });
     await tick();
     expect(gateAttr()).toBe('open');
@@ -320,20 +330,21 @@ describe('閘門結果', () => {
     expect(location.search).toBe('?src=in');
   });
 
-  it('?src=in 明確指定時，晚到的通過照網址切到站內', async () => {
+  it('?src=in 明確指定、閘門超過 2 秒才通過：不套 2 秒逾時，骨架留著，通過後照網址站內', async () => {
     history.replaceState(null, '', '/tournaments?src=in');
     const launch = deferred<Launch>();
     gateCtl.getLaunch = () => launch.promise;
     draw();
     await tick(COMPETITIONS_GATE_TIMEOUT_MS + 500);
-    expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
+    expect(gateAttr()).toBe('pending');
+    expect(screen.queryByText('2027 春季聯賽')).toBeNull();
     launch.resolve({ isPublic: true, bannedWords: [] });
     await tick();
     expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
     expect(document.querySelector('[data-inapp]')).toBeTruthy();
   });
 
-  it('冷開：外部清單還在讀時不載入站內區塊、不讀閘門；清單有結果後才開始（11-20 staging 冷開修正）', async () => {
+  it('?src=ext 冷開：外部清單還在讀時不載入站內區塊、不讀閘門；清單有結果後才開始（11-20 staging 冷開修正）', async () => {
     const cardsReady = deferred<{ docs: Array<{ id: string; data: () => unknown }> }>();
     sdk.getDocs.mockReset();
     sdk.getDocs.mockReturnValue(cardsReady.promise);
@@ -352,25 +363,27 @@ describe('閘門結果', () => {
     expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true');
   });
 
-  it('冷開帶 ?src=in：同樣先等外部清單結束才開始閘門（顧問 §3.377）', async () => {
+  // 站長 11-21 取代 §3.377 對 ?src=in 的延後：?src=in 走先畫站內的路徑，進頁就開始閘門（與原本有線索的路徑相同）。
+  it('冷開帶 ?src=in：不等外部清單，進頁就開始閘門；外部清單仍只讀一次', async () => {
     history.replaceState(null, '', '/tournaments?src=in');
     const cardsReady = deferred<{ docs: Array<{ id: string; data: () => unknown }> }>();
     sdk.getDocs.mockReset();
     sdk.getDocs.mockReturnValue(cardsReady.promise);
     gateCtl.getLaunch = () => Promise.resolve({ isPublic: true, bannedWords: [] });
     draw();
-    await tick(3_000);
-    expect(gateCtl.mounts).toBe(0);
-    expect(gateCtl.calls).toBe(0);
-    cardsReady.resolve({ docs: DOCS.map((doc) => ({ id: doc.id, data: () => doc.data })) });
     await tick();
-    await tick();
+    expect(gateCtl.mounts).toBe(1);
     expect(gateCtl.calls).toBe(1);
     expect(gateAttr()).toBe('open');
     expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
+    expect(document.querySelector('[data-inapp]')).toBeTruthy();
+    cardsReady.resolve({ docs: DOCS.map((doc) => ({ id: doc.id, data: () => doc.data })) });
+    await tick();
+    expect(sdk.getDocs).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('2027 春季聯賽')).toBeNull();
   });
 
-  it('8 秒逾時也算外部清單結束：之後才開始閘門', async () => {
+  it('?src=ext：8 秒逾時也算外部清單結束：之後才開始閘門', async () => {
     sdk.getDocs.mockReset();
     sdk.getDocs.mockReturnValue(new Promise(() => undefined));
     gateCtl.getLaunch = () => Promise.resolve({ isPublic: true, bannedWords: [] });
@@ -382,7 +395,7 @@ describe('閘門結果', () => {
     expect(gateCtl.calls).toBe(1);
   });
 
-  it('有快取、伺服器還沒回：不得啟動閘門；伺服器回來才啟動（顧問 §3.381）', async () => {
+  it('?src=ext、有快取、伺服器還沒回：不得啟動閘門；伺服器回來才啟動（顧問 §3.381）', async () => {
     mockUseViewer.mockReturnValue(viewer(null));
     writeCardsCache(null, CACHED);
     const cardsReady = deferred<{ docs: Array<{ id: string; data: () => unknown }> }>();

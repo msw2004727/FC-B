@@ -614,3 +614,42 @@ describe('進行中卡當日摘要', () => {
     expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(1);
   });
 });
+
+// 站長 11-21 預設站內後，站內 0 場時訪客第一眼不能是空白（顧問 11-21）：一行空狀態，沿用 cpl-xmsg，不加副標。
+describe('站內 0 場的空狀態', () => {
+  it('公開清單 0 場（訪客）：篩選列照畫，下面一行「目前沒有站內賽事」', async () => {
+    const repo = createFakeCpRepo({ launch: { isPublic: true, bannedWords: [] }, competitions: [] });
+    const env = { actor: { ...memberActor, uid: null }, repo, actions: idleActions(), now: NOW };
+    render(
+      <LocationProvider>
+        <CpEnvProvider value={env}>
+          <InAppSection />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    const msg = await screen.findByText('目前沒有站內賽事');
+    expect(msg.tagName).toBe('P');
+    expect(msg.className).toBe('cpl-xmsg');
+    expect(document.querySelectorAll('.cpl-xmsg')).toHaveLength(1);
+    expect(document.querySelector('[data-inapp="competitions"] .cpl-toolbar')).toBeTruthy();
+    expect(document.querySelector('[data-cid]')).toBeNull();
+  });
+
+  it('有卡時不畫空狀態', async () => {
+    const ct = makeCompetitionsT(await loadCompetitionsDict('zh-TW'));
+    render(
+      <InAppCardList
+        cards={[card({ cid: 'a', name: '有一場', category: 'cup', phase: 'recruit' })]}
+        ct={ct}
+        status="open"
+        onlyMine={false}
+        showCreate={false}
+        onStatus={() => undefined}
+        onOnlyMine={() => undefined}
+        onCreate={() => undefined}
+        onOpen={() => undefined}
+      />,
+    );
+    expect(screen.queryByText('目前沒有站內賽事')).toBeNull();
+  });
+});

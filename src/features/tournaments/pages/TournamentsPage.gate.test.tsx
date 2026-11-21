@@ -31,10 +31,13 @@ vi.mock('@/features/competitions/components/InAppSection', async () => {
   const { useEffect } = await import('preact/hooks');
   const { h } = await import('preact');
   return {
-    InAppSection: (props: { tab: string; active: boolean; onGate?: (open: boolean) => void }) => {
+    InAppSection: (props: { tab: string; active: boolean; onGate?: (open: boolean) => void; onReady?: () => void }) => {
       useEffect(() => {
         slot.mounts += 1;
-        if (!slot.holdGate) props.onGate?.(slot.open);
+        if (slot.holdGate) return;
+        props.onGate?.(slot.open);
+        // 正式元件通過後讀好清單才 onReady；站長 11-21 預設站內後，沒有 ?src 也走「骨架留到站內讀好」的路徑。
+        if (slot.open) props.onReady?.();
       }, [props.onGate]);
       if (!slot.open) return null;
       return h('div', {
@@ -112,6 +115,12 @@ function draw(): void {
   );
 }
 
+// 站內區塊是動態載入；切換列一進頁就在（先畫站內），要等站內區塊掛上、清單讀好才算站內畫面出來。
+async function inAppShown(): Promise<void> {
+  await waitFor(() => expect(document.querySelector('[data-inapp="mock"]')?.getAttribute('data-active')).toBe('1'));
+  expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
+}
+
 beforeEach(() => {
   resetCardsCacheForTest();
   slot.open = true;
@@ -133,41 +142,42 @@ afterEach(() => {
   history.replaceState(null, '', '/');
 });
 
-// 顧問 §3.373：預設停在外部（取代原「閘門通過預設站內、外部寫 ?src=ext」）。閘門通過只補切換，
-// 使用者點「站內」才換、網址寫 ?src=in；網址帶 ?src=in 進頁才直接站內。
+// 站長 11-21 指示「預設是站內賽事」：取代顧問 §3.373「預設停在外部，閘門通過只補切換」。
+// 沒有 ?src 時先畫站內；點選後兩側都明確寫 ?src（顧問 11-20 方案 2 條件 3）；網址帶 ?src=ext 進頁仍停在外部。
 describe('開關打開時的來源與讀取', () => {
   it('?src= 用 replace 記在目前這筆歷史；切來源、分類都不重讀，站內區不重掛', async () => {
     draw();
-    await waitFor(() => expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true'));
-    expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('false');
+    await inAppShown();
     expect(location.search).toBe('');
-    expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
+    expect(document.querySelector('[data-inapp="mock"]')?.getAttribute('data-active')).toBe('1');
+    expect(screen.queryByText('2027 春季聯賽')).toBeNull();
+
+    const replace = vi.spyOn(history, 'replaceState');
+    const push = vi.spyOn(history, 'pushState');
+    fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
+    expect(location.search).toBe('?src=ext');
+    expect(push).not.toHaveBeenCalled();
+    expect(replace).toHaveBeenCalled();
+    replace.mockRestore();
+    push.mockRestore();
+    expect(await screen.findByText('2027 春季聯賽')).toBeTruthy();
     expect(document.querySelector('[data-inapp="mock"]')?.getAttribute('data-active')).toBe('0');
     // 新外觀（清-3）：外部列沒有膠囊、分類不上色，看得到分類字。
     expect(document.querySelector('[data-card-id="tc_league"] .cpl-xrow__cat')?.textContent).toBe('聯賽');
-    expect(sdk.getDocs).toHaveBeenCalledTimes(1);
-    expect(slot.mounts).toBe(1);
 
     fireEvent.click(screen.getByRole('tab', { name: '盃賽' }));
     expect(screen.getByText('FEDA CUP 2026 飛達盃')).toBeTruthy();
     expect(screen.queryByText('2027 春季聯賽')).toBeNull();
     expect(document.querySelector('[data-tab]')?.getAttribute('data-tab')).toBe('cup');
 
-    const replace = vi.spyOn(history, 'replaceState');
-    const push = vi.spyOn(history, 'pushState');
     fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
     expect(location.search).toBe('?src=in');
-    expect(push).not.toHaveBeenCalled();
-    expect(replace).toHaveBeenCalled();
-    replace.mockRestore();
-    push.mockRestore();
     expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
     expect(document.querySelector('[data-active]')?.getAttribute('data-active')).toBe('1');
     expect(document.querySelector('[data-tab]')?.getAttribute('data-tab')).toBe('cup');
     expect(screen.queryByText('FEDA CUP 2026 飛達盃')).toBeNull();
 
     fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
-    // 顧問 11-20 方案 2 條件 3 取代 §3.373：點外部也明確寫 ?src=ext。
     expect(location.search).toBe('?src=ext');
     expect(document.querySelector('[data-active]')?.getAttribute('data-active')).toBe('0');
     expect(screen.getByText('FEDA CUP 2026 飛達盃')).toBeTruthy();
@@ -175,35 +185,41 @@ describe('開關打開時的來源與讀取', () => {
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
   });
 
-  it('開關打開、閘門通過、沒有 ?src：外部清單仍是第一個畫面，切換出現但選在外部', async () => {
+  it('站長 11-21：開關打開、閘門通過、沒有 ?src：站內是第一個畫面，切換選在站內、外部清單不畫', async () => {
     draw();
-    await waitFor(() => expect(document.querySelector('.cpl-src')).toBeTruthy());
+    await inAppShown();
+    await waitFor(() => expect(sdk.getDocs).toHaveBeenCalledTimes(1));
     expect(document.querySelector('.tournaments-root')?.getAttribute('data-cp-gate')).toBe('open');
-    expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('false');
-    expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
-    expect(screen.getByText('週末友誼賽')).toBeTruthy();
-    expect(document.querySelector('[data-inapp="mock"]')?.getAttribute('data-active')).toBe('0');
+    expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('false');
+    expect(screen.queryByText('2027 春季聯賽')).toBeNull();
+    expect(document.querySelector('[data-inapp="mock"]')?.getAttribute('data-active')).toBe('1');
     expect(location.search).toBe('');
   });
 
-  it('不認得的 src 回到外部，其他參數留著', async () => {
+  it('不認得的 src 回到站內（站長 11-21 預設），其他參數留著', async () => {
     history.replaceState(null, '', '/tournaments?src=nope&keep=1');
     draw();
-    await waitFor(() => expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true'));
-    expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
+    await inAppShown();
+    expect(screen.queryByText('2027 春季聯賽')).toBeNull();
     expect(location.search).toBe('?src=nope&keep=1');
+    fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
+    expect(location.search).toBe('?src=ext&keep=1');
+    expect(await screen.findByText('2027 春季聯賽')).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
     expect(location.search).toBe('?src=in&keep=1');
-    fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
-    // 顧問 11-20 方案 2 條件 3 取代 §3.373：點外部也明確寫 ?src=ext。
-    expect(location.search).toBe('?src=ext&keep=1');
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
   });
 
-  it('模擬返回（popstate）後仍停在 ?src=in', async () => {
+  it('模擬返回（popstate）後仍停在點選的那一側（?src=ext 不被搶回站內、?src=in 留在站內）', async () => {
     draw();
-    await waitFor(() => expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true'));
+    await inAppShown();
+    fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
+    expect(location.search).toBe('?src=ext');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(location.search).toBe('?src=ext');
+    expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true');
+    expect(await screen.findByText('2027 春季聯賽')).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
     expect(location.search).toBe('?src=in');
     window.dispatchEvent(new PopStateEvent('popstate'));
@@ -224,6 +240,7 @@ describe('開關打開時的來源與讀取', () => {
         })),
       ],
     });
+    history.replaceState(null, '', '/tournaments?src=ext');
     draw();
     await waitFor(() => expect(screen.getByText('2027 春季聯賽')).toBeTruthy());
     const rows = [...document.querySelectorAll('[data-card-id]')];
@@ -237,7 +254,7 @@ describe('開關打開時的來源與讀取', () => {
   it('直接打開 ?src=in 且閘門通過時直接站內，進頁仍只查一次', async () => {
     history.replaceState(null, '', '/tournaments?src=in');
     draw();
-    await waitFor(() => expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true'));
+    await inAppShown();
     expect(document.querySelector('[data-active]')?.getAttribute('data-active')).toBe('1');
     expect(screen.queryByText('週末友誼賽')).toBeNull();
     expect(location.search).toBe('?src=in');
@@ -245,7 +262,7 @@ describe('開關打開時的來源與讀取', () => {
     expect(slot.mounts).toBe(1);
   });
 
-  it('舊網址 ?src=ext 仍停在外部，改選站內寫成 ?src=in', async () => {
+  it('網址 ?src=ext 進頁仍停在外部（不被搶回站內），改選站內寫成 ?src=in', async () => {
     history.replaceState(null, '', '/tournaments?src=ext');
     draw();
     await waitFor(() => expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true'));
@@ -274,8 +291,9 @@ describe('開關打開時的來源與讀取', () => {
     expect(sdk.getDocs).toHaveBeenCalledTimes(1);
   });
 
-  // 顧問 §3.368 P2-1 取代原「判定中不先畫外部清單、改顯示骨架」：判定中照開關關閉時畫外部清單。
-  it('閘門判定中照常畫外部清單，不顯示切換', async () => {
+  // 顧問 §3.368 P2-1：判定中照開關關閉時畫外部清單。站長 11-21 預設站內後只剩網址 ?src=ext 走這條。
+  it('?src=ext、閘門判定中照常畫外部清單，不顯示切換', async () => {
+    history.replaceState(null, '', '/tournaments?src=ext');
     slot.holdGate = true;
     draw();
     await waitFor(() => expect(slot.mounts).toBe(1));
@@ -283,6 +301,17 @@ describe('開關打開時的來源與讀取', () => {
     expect(screen.getByText('週末友誼賽')).toBeTruthy();
     expect(document.querySelector('.cpl-src')).toBeNull();
     expect(document.querySelector('.reg-loading-skeleton')).toBeNull();
+  });
+
+  it('站長 11-21：沒有 ?src、閘門判定中：先畫切換列（選在站內）與站內骨架，外部清單不畫（不先閃外部）', async () => {
+    slot.holdGate = true;
+    draw();
+    expect(document.querySelector('[data-cp-pending-in]')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
+    await waitFor(() => expect(slot.mounts).toBe(1));
+    await waitFor(() => expect(sdk.getDocs).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('2027 春季聯賽')).toBeNull();
+    expect(document.querySelector('[data-cp-pending-in]')).toBeTruthy();
   });
 
   it('新外觀：最外層帶 data-d2；切換在標題列裡；<h2>「賽事」還在、視覺隱藏、沒有 hidden；外部頁帶 d2-ext、站內頁不帶', async () => {
@@ -295,12 +324,15 @@ describe('開關打開時的來源與讀取', () => {
     expect(heading?.hasAttribute('hidden')).toBe(false);
     expect(heading?.classList.contains('cpl-vh')).toBe(true);
     const page = document.getElementById('page-tournaments');
+    expect(page?.classList.contains('d2-ext')).toBe(false);
+    fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
     expect(page?.classList.contains('d2-ext')).toBe(true);
     fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
     expect(page?.classList.contains('d2-ext')).toBe(false);
   });
 
-  it('閘門判定中（沒有線索、沒有切換）最外層也帶 data-d2、不帶 d2-ext', async () => {
+  it('?src=ext、閘門判定中（沒有切換）最外層也帶 data-d2、不帶 d2-ext', async () => {
+    history.replaceState(null, '', '/tournaments?src=ext');
     slot.holdGate = true;
     draw();
     await waitFor(() => expect(screen.getByText('2027 春季聯賽')).toBeTruthy());
@@ -310,23 +342,23 @@ describe('開關打開時的來源與讀取', () => {
 
   it('來源切換有 aria-controls，左右鍵切換', async () => {
     draw();
-    const outbound = await screen.findByRole('tab', { name: '外部賽事' });
+    await inAppShown();
     const inbound = screen.getByRole('tab', { name: '站內賽事' });
-    expect(outbound.getAttribute('aria-selected')).toBe('true');
+    const outbound = screen.getByRole('tab', { name: '外部賽事' });
+    expect(inbound.getAttribute('aria-selected')).toBe('true');
     expect(inbound.getAttribute('aria-controls')).toBe('tournaments-source-panel');
     expect(outbound.getAttribute('aria-controls')).toBe('tournaments-source-panel');
     expect(document.getElementById('tournaments-source-panel')).toBeTruthy();
     expect(document.querySelector('.cpl-src')?.getAttribute('aria-label')).toBe('賽事來源');
-    outbound.focus();
-    fireEvent.keyDown(outbound, { key: 'ArrowLeft' });
+    inbound.focus();
+    fireEvent.keyDown(inbound, { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true');
+    expect(location.search).toBe('?src=ext');
+    expect(await screen.findByText('2027 春季聯賽')).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('tab', { name: '外部賽事' }), { key: 'ArrowLeft' });
     expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true');
     expect(location.search).toBe('?src=in');
     expect(screen.queryByText('2027 春季聯賽')).toBeNull();
-    fireEvent.keyDown(screen.getByRole('tab', { name: '站內賽事' }), { key: 'ArrowRight' });
-    expect(screen.getByRole('tab', { name: '外部賽事' }).getAttribute('aria-selected')).toBe('true');
-    // 顧問 11-20 方案 2 條件 3 取代 §3.373：點外部也明確寫 ?src=ext。
-    expect(location.search).toBe('?src=ext');
-    expect(screen.getByText('2027 春季聯賽')).toBeTruthy();
   });
 });
 
@@ -335,16 +367,17 @@ describe('「＋ 新增賽事」只在外部分頁（站長 11-20：站內不要
     return { ...viewer(), uid: 'u_super', role: 'super_admin', roleLevel: 9 };
   }
 
-  it('閘門通過：外部分頁出現、切到站內消失、切回外部又出現', async () => {
+  it('閘門通過：預設站內不出現；切到外部出現、切回站內消失', async () => {
     mockUseViewer.mockReturnValue(manager());
     draw();
     await waitFor(() => expect(document.querySelector('.cpl-src')).toBeTruthy());
+    await waitFor(() => expect(sdk.getDocs).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('＋ 新增賽事')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
     await waitFor(() => expect(screen.getByText('＋ 新增賽事')).toBeTruthy());
     fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
     await waitFor(() => expect(screen.queryByText('＋ 新增賽事')).toBeNull());
     expect(document.getElementById('tc-add-btn')).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
-    await waitFor(() => expect(screen.getByText('＋ 新增賽事')).toBeTruthy());
   });
 
   it('直接開 ?src=in：站內分頁不出現', async () => {
@@ -352,7 +385,7 @@ describe('「＋ 新增賽事」只在外部分頁（站長 11-20：站內不要
     mockUseViewer.mockReturnValue(manager());
     draw();
     await waitFor(() => expect(document.querySelector('.cpl-src')).toBeTruthy());
-    await waitFor(() => expect(screen.getByRole('tab', { name: '站內賽事' }).getAttribute('aria-selected')).toBe('true'));
+    await inAppShown();
     expect(screen.queryByText('＋ 新增賽事')).toBeNull();
   });
 

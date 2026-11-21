@@ -6,16 +6,17 @@ import {
   withCompetitionSource,
 } from './source';
 
-// 顧問 §3.373：預設停在外部，站內才寫 ?src=in；舊的 ?src=ext 仍可解析（取代原「預設站內、外部寫 ?src=ext」）。
+// 站長 11-21 指示「預設是站內賽事」：沒有參數、不認得的參數都回到站內，?src=ext 仍是外部
+// （取代顧問 §3.373「預設停在外部」）。
 describe('賽事來源網址', () => {
-  it('預設是外部；不認得的參數回到外部；舊的 ?src=ext 仍解析為外部', () => {
-    expect(COMPETITIONS_DEFAULT_SOURCE).toBe('ext');
-    expect(competitionSourceFromQuery(undefined)).toBe('ext');
-    expect(competitionSourceFromQuery(null)).toBe('ext');
-    expect(competitionSourceFromQuery('')).toBe('ext');
-    expect(competitionSourceFromQuery('nope')).toBe('ext');
-    expect(competitionSourceFromQuery('out')).toBe('ext');
-    expect(competitionSourceFromQuery('IN')).toBe('ext');
+  it('預設是站內；不認得的參數回到站內；?src=ext 仍解析為外部', () => {
+    expect(COMPETITIONS_DEFAULT_SOURCE).toBe('in');
+    expect(competitionSourceFromQuery(undefined)).toBe('in');
+    expect(competitionSourceFromQuery(null)).toBe('in');
+    expect(competitionSourceFromQuery('')).toBe('in');
+    expect(competitionSourceFromQuery('nope')).toBe('in');
+    expect(competitionSourceFromQuery('out')).toBe('in');
+    expect(competitionSourceFromQuery('EXT')).toBe('in');
     expect(competitionSourceFromQuery('ext')).toBe('ext');
     expect(competitionSourceFromQuery('in')).toBe('in');
   });
