@@ -14,7 +14,6 @@ import { useLocation } from 'preact-iso';
 import { shouldLeaveAnchorClick } from '@/core/open-external';
 import { lt, useT } from '@/i18n/i18n';
 import { getLastKnownAuthUid } from '@/data/auth';
-import { readAuthHint } from '@/data/auth-hint';
 import { useViewer } from '@/features/profile/data/viewer';
 import { toast } from '@/ui/Toast';
 import { TournamentCardForm } from '../components/TournamentCardForm';
@@ -46,7 +45,6 @@ import {
   tournamentsSourcePath,
   type CompetitionSource,
 } from '../source';
-import { readInAppHint, writeInAppHint } from '../inapp-hint';
 import { dangerConfirm } from '../danger-confirm';
 
 /** 讀取超過這麼久沒回來就走既有的錯誤＋重試；晚到的結果照常收尾。 */
@@ -59,7 +57,7 @@ export const TOURNAMENTS_LOAD_TIMEOUT_MS = 8_000;
 export const COMPETITIONS_GATE_TIMEOUT_MS = 2_000;
 
 /**
- * 有「上次有過」線索時，從進頁到站內清單畫出的上限；到了還沒好就這一次改看外部。
+ * 先畫站內（沒有 ?src=ext）時，從進頁到站內清單畫出的上限；到了還沒好就這一次改看外部。
  * 12 秒（顧問 11-20 上限裁定：staging 冷開閘門約進頁 7 秒才通過，8 秒餘裕不足；刻意不與外部清單的 8 秒共用，
  * 取代前一版「與 TOURNAMENTS_LOAD_TIMEOUT_MS 同值」）。
  */
@@ -134,18 +132,18 @@ export default function TournamentsPage(): JSX.Element {
   gateRef.current = gate;
   // 非法 ?src 只影響畫面預設，這裡不改網址。
   const rawSrc = location.query?.src;
-  // 這台裝置上次閘門有過、上次是登入狀態、網址沒有指定外部：一進來就先畫站內（顧問 11-20 選方案 2，
-  // 取代 §3.373「預設一律停在外部」）。只在進頁當下判斷一次。沒有線索的人走原本的路徑，一個字都不變。
-  const [preferIn] = useState(() => COMPETITIONS_ENABLED && rawSrc !== 'ext' && readAuthHint() && readInAppHint());
-  // 沒有 ?src 時的來源。閘門先定案沒過（逾時、未登入定案前）之後才通過，使用者已經在看外部清單，
-  // 這時預設留在外部、只補切換，不把畫面整個換成站內。使用者點選後改回點選的那一側。
-  const [fallbackSource, setFallbackSource] = useState<CompetitionSource>(preferIn ? 'in' : COMPETITIONS_DEFAULT_SOURCE);
+  // 網址沒有指定外部：一進來就先畫站內（切換列＋站內骨架），不先閃外部清單。只在進頁當下判斷一次。
+  // 站長 11-21 指示「預設是站內賽事」：取代顧問 11-20 方案 2「這台裝置上次閘門有過、上次是登入狀態才先畫站內」，
+  // 訪客、第一次來、清過快取的人也一樣（站內賽事 11-21 已對外開放，閘門對訪客也會通過）。
+  const [preferIn] = useState(() => COMPETITIONS_ENABLED && rawSrc !== 'ext');
+  const rawSrcRef = useRef(rawSrc);
+  rawSrcRef.current = rawSrc;
+  // 沒有 ?src 時的來源。閘門先定案沒過（讀取失敗、伺服器判定看不到）之後才通過，使用者已經在看外部清單，
+  // 這時留在外部、只補切換，不把畫面整個換成站內。使用者點選後改回點選的那一側。
+  const [fallbackSource, setFallbackSource] = useState<CompetitionSource>(COMPETITIONS_DEFAULT_SOURCE);
   const inAppOpen = gate === 'open';
-  const onGate = useCallback((open: boolean, reason?: 'denied') => {
+  const onGate = useCallback((open: boolean) => {
     if (open && gateRef.current === 'closed') setFallbackSource('ext');
-    // 通過就記下；只有伺服器明確判定看不到才清。逾時與讀取失敗不清（只讓這一次退回外部）。
-    if (open) writeInAppHint(true);
-    else if (reason === 'denied') writeInAppHint(false);
     gateRef.current = open ? 'open' : 'closed';
     setGate(open ? 'open' : 'closed');
   }, []);
@@ -155,13 +153,13 @@ export default function TournamentsPage(): JSX.Element {
   // 此時啟動閘門又會搶資源；取代「有快取就在下一個 idle 開始」）。
   // 在那之前開關開或關走同一條路徑。（11-20 staging 冷開實測：閘門同時載入 chunk＋第二條連線，
   // 把外部清單既有的 8 秒逾時推過界；取代「進頁立刻開始」。）
-  // 有線索（preferIn）時一進頁就開始。
+  // 先畫站內（preferIn，沒有 ?src=ext）時一進頁就開始；只有網址明確 ?src=ext 才等外部清單讀完。
   const [gateArmed, setGateArmed] = useState(preferIn);
   useEffect(() => {
     if (!COMPETITIONS_ENABLED || gateArmed) return;
     if (state !== 'loading') setGateArmed(true);
   }, [gateArmed, state]);
-  // 2 秒逾時只給沒有線索的路徑。有線索時改用下面從進頁起算的單一上限（顧問 11-20 staging 冷開實測：
+  // 2 秒逾時只給 ?src=ext 的路徑。先畫站內時改用下面從進頁起算的單一上限（顧問 11-20 staging 冷開實測：
   // 內部期閘門要等登入還原＋角色讀到，冷開約 7～8 秒，2 秒必定逾時，變成骨架→外部→切換列晚到三段跳動）。
   useEffect(() => {
     if (!COMPETITIONS_ENABLED || !gateArmed || preferIn) return undefined;
@@ -174,24 +172,31 @@ export default function TournamentsPage(): JSX.Element {
   }, [gateArmed]);
   const source: CompetitionSource = rawSrc === 'in' || rawSrc === 'ext' ? rawSrc : fallbackSource;
   const showInApp = inAppOpen && source === 'in';
-  // 有線索、停在站內、閘門判定中或已通過但站內清單還沒讀好：先畫切換列與站內的載入骨架，不畫外部清單，
+  // 先畫站內、停在站內、閘門判定中或已通過但站內清單還沒讀好：先畫切換列與站內的載入骨架，不畫外部清單，
   // 避免先閃外部再切站內；骨架留到站內卡出現，中間不空白（11-20 實測骨架消失到卡片出現之間有一段空白）。
   const [inAppReady, setInAppReady] = useState(false);
   const onInAppReady = useCallback(() => setInAppReady(true), []);
   const pendingIn = preferIn && source === 'in' && (gate === 'pending' || (gate === 'open' && !inAppReady));
-  // 有線索時的單一上限：從進頁起算，涵蓋「閘門定案＋站內清單讀好」。到上限還沒好，這一次改看外部，線索不清；
-  // 閘門還在判定時切換列留著，晚到的通過不會把人搶回站內。網址有 ?src（自己選過）時以網址為準，不受影響。
+  // 先畫站內時的單一上限：從進頁起算，涵蓋「閘門定案＋站內清單讀好」。到上限還沒好，這一次改看外部；
+  // 閘門還在判定時切換列留著，晚到的通過不會把人搶回站內。網址有 ?src=in（自己選過）時以網址為準。
+  // 例外：網址 ?src=in 而閘門到上限都還沒定案，照 ?src=ext 路徑的 2 秒逾時一樣當作沒過（不畫切換、看外部），
+  // 不讓整頁卡在骨架；晚到的通過照網址回到站內（站長 11-21 預設站內後 ?src=in 也走這條路徑，原本是 2 秒逾時）。
   // （顧問 11-20 退修：取代「閘門 2 秒逾時＋通過後另計 8 秒」兩段計時；Opus 審 P2-2 的骨架上限併在這裡。）
   const inAppReadyRef = useRef(false);
   inAppReadyRef.current = inAppReady;
   useEffect(() => {
     if (!preferIn) return undefined;
     const timer = setTimeout(() => {
-      if (!inAppReadyRef.current) setFallbackSource('ext');
+      if (inAppReadyRef.current) return;
+      setFallbackSource('ext');
+      if (rawSrcRef.current === 'in' && gateRef.current === 'pending') {
+        gateRef.current = 'closed';
+        setGate('closed');
+      }
     }, COMPETITIONS_PREFER_IN_CAP_MS);
     return () => clearTimeout(timer);
   }, [preferIn]);
-  // 有線索、閘門還在判定：不論選哪一側都留著切換列，點「外部」立刻看外部清單、再點「站內」回到骨架。
+  // 先畫站內、閘門還在判定：不論選哪一側都留著切換列，點「外部」立刻看外部清單、再點「站內」回到骨架。
   const showSourceTabs = inAppOpen || (preferIn && gate === 'pending');
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -362,7 +367,7 @@ export default function TournamentsPage(): JSX.Element {
   };
 
   // 新外觀對所有人一次到位（清-3）：最外層一律 data-d2；有切換而且正在看外部時 #page-tournaments 加 d2-ext（只換顏色）。
-  // 沒有切換時（功能開關關閉、閘門沒過、判定中又沒有線索）標題「賽事」看得見，其餘版面與有切換時相同。
+  // 沒有切換時（功能開關關閉、閘門沒過、?src=ext 判定中）標題「賽事」看得見，其餘版面與有切換時相同。
   const extTinted = showSourceTabs && source === 'ext';
   const editIcon = (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
