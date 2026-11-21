@@ -1,5 +1,7 @@
 // 賽事封面圖畫面：封面欄（選圖→裁切→上傳→交出網址、錯誤）、建賽送出（沒選不帶 cover 鍵）、伺服器欄位錯誤落在封面欄、
 // 報隊管理換封面／移除（直接存）、已結束只能移除、下架時主辦看不到、詳情頂部封面在記分板上面、清單只在有封面時出縮圖。
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import type { ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
@@ -393,6 +395,35 @@ describe('詳情頂部', () => {
     draw(detailEnv({ hidden: true, cover: COVER }, true), CompetitionDetailPage);
     expect(document.querySelector('.d2-hero__cover')?.getAttribute('src')).toBe(URL1);
   });
+
+  it('載入完成就看得到：沒有 hidden、inline 樣式或等 onload 才加的 class', () => {
+    draw(detailEnv({ cover: COVER }), CompetitionDetailPage);
+    const img = document.querySelector<HTMLImageElement>('.d2-hero__cover')!;
+    const before = img.className;
+    act(() => { img.dispatchEvent(new Event('load')); });
+    const after = document.querySelector<HTMLImageElement>('.d2-hero__cover');
+    expect(after).toBe(img);
+    expect(after?.className).toBe(before);
+    expect(after?.hidden).toBe(false);
+    expect(after?.getAttribute('style')).toBeNull();
+  });
+
+  it('圖載不到：整塊封面收起，版面回到沒封面的樣子', () => {
+    draw(detailEnv({ cover: COVER }), CompetitionDetailPage);
+    const img = document.querySelector<HTMLImageElement>('.d2-hero__cover')!;
+    act(() => { img.dispatchEvent(new Event('error')); });
+    expect(document.querySelector('.d2-hero__cover')).toBeNull();
+    expect(document.querySelector('.d2-hero')?.firstElementChild?.classList.contains('d2-board')).toBe(true);
+  });
+});
+
+describe('封面樣式不靠動畫', () => {
+  it('.d2-hero__cover 與清單縮圖的規則沒有 opacity／animation／transition（背景分頁動畫被節流也不會卡在透明）', () => {
+    const css = readFileSync(resolve('src/features/competitions/competitions.css'), 'utf8');
+    const rules = css.match(/[^{}]*(?:d2-hero__cover|cpl-card__link--img)[^{}]*\{[^}]*\}/g) ?? [];
+    expect(rules.length).toBeGreaterThan(0);
+    for (const rule of rules) expect(rule).not.toMatch(/opacity|animation|transition/);
+  });
 });
 
 describe('清單卡', () => {
@@ -422,5 +453,31 @@ describe('清單卡', () => {
     expect(none?.querySelector('a')?.className).toBe('cpl-card__link');
     // 沒封面的卡結構與改版前相同：連結底下直接是名稱與分類列
     expect(none?.querySelector('a > .cpl-card__name')).not.toBeNull();
+  });
+
+  it('縮圖載不到：改畫沒封面的版面，不留 56×42 空格', () => {
+    const card: InAppListCard = {
+      cid: 'bad', name: 'bad', category: 'league', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
+      line: null, mine: false, ended: false, statusMark: null, thumb: THUMB1,
+    };
+    render(
+      <InAppCardList
+        cards={[card]}
+        ct={makeCompetitionsT({})}
+        status="open"
+        onlyMine={false}
+        showCreate={false}
+        onStatus={() => {}}
+        onOnlyMine={() => {}}
+        onCreate={() => {}}
+        onOpen={() => {}}
+      />,
+    );
+    const img = document.querySelector<HTMLImageElement>('[data-cid="bad"] img')!;
+    act(() => { img.dispatchEvent(new Event('error')); });
+    const el = document.querySelector('[data-cid="bad"]');
+    expect(el?.querySelector('img')).toBeNull();
+    expect(el?.querySelector('a')?.className).toBe('cpl-card__link');
+    expect(el?.querySelector('a > .cpl-card__name')).not.toBeNull();
   });
 });

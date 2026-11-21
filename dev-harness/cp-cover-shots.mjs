@@ -39,6 +39,8 @@ const SCREENS = [
   ['detail-hidden-host', false],
   ['detail-hidden-admin', false],
   ['list-mixed', true],
+  ['guest-list', true],
+  ['guest-detail', false],
 ];
 const SELECTORS = 'button, .ui-badge, .ui-chip, dt, .cps-line, .cps-li__name, .cps-cap, .cps-label, .ui-input label, .ui-switch label, h1, h2, h3, '
   + '.cps-stepname b, .cps-sub, .cps-note, [data-field-error], .cpc-busy, .cpl-card__name, .cpl-meta, .cpl-line, .cpl-st, .d2-board__name, .ui-toast';

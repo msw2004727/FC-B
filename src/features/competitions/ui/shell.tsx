@@ -137,6 +137,7 @@ export function CpFrame({
   crumb,
   context,
   onBack,
+  backDisabled,
   menu,
   children,
 }: {
@@ -144,6 +145,8 @@ export function CpFrame({
   crumb?: string;
   context?: string;
   onBack?: () => void;
+  /** 送出中停用返回，避免結果回來時已離開或蓋掉畫面。 */
+  backDisabled?: boolean;
   menu?: ComponentChildren;
   children: ComponentChildren;
 }): JSX.Element {
@@ -154,7 +157,7 @@ export function CpFrame({
   return (
     <div class="cps-root">
       <header class="cps-top">
-        <button type="button" class="cps-iconbtn" aria-label={ct('back')} onClick={onBack ?? goBack}>
+        <button type="button" class="cps-iconbtn" aria-label={ct('back')} disabled={backDisabled} style={backDisabled ? 'opacity:.5' : undefined} onClick={backDisabled ? undefined : onBack ?? goBack}>
           <BackIcon />
         </button>
         {crumb ? <span class="cps-top__crumb">{crumb}</span> : <h1>{title}</h1>}
