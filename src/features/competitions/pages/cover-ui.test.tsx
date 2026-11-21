@@ -6,6 +6,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import type { ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { markHistoryRoot } from '@/core/back-guard';
+import { _resetOverlayBackForTest } from '@/core/overlay-back';
+import { AppConfirmHost, _resetAppConfirmForTest } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 import { CpCallError } from '../data/cp-callables';
 import type { CpHostCreateInput, CpHostUpdateInput } from '../data/cp-callables';
@@ -231,6 +234,70 @@ function manageEnv(patch: { endedAt?: number; status?: 'cancelled'; hidden?: boo
 function openPanel(): void {
   fireEvent.click(screen.getByRole('button', { name: '編輯賽事資訊' }));
 }
+
+// 建賽「取消」（cp-create-cancel）：封面在 form 裡，選了封面就算填過；上傳中 form 還沒封面，也一樣先問。
+describe('建賽取消與封面', () => {
+  const START = '/competitions/new';
+  const ASK = '已填的內容不會保存，確定放棄建立？';
+
+  beforeEach(() => {
+    history.replaceState(null, '', START);
+    markHistoryRoot();
+  });
+
+  afterEach(() => {
+    cleanup();
+    _resetAppConfirmForTest();
+    _resetOverlayBackForTest();
+  });
+
+  function drawBlank(upload: CpInjectedEnv['coverUpload']): void {
+    const env = screenEnv('wizard-1', idleActions());
+    render(
+      <LocationProvider>
+        <CpEnvProvider value={{ ...env, wizardSeed: undefined, coverUpload: upload }}>
+          <NewCompetitionPage />
+        </CpEnvProvider>
+        <AppConfirmHost />
+      </LocationProvider>,
+    );
+  }
+
+  const cancelBtn = () => [...document.querySelectorAll<HTMLButtonElement>('.cph-split button')].find((node) => node.textContent === '取消')!;
+  const flush = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+  it('只選了封面（其他沒填）：按取消跳「放棄建立？」；繼續填寫封面還在，放棄才離開', async () => {
+    drawBlank(okUpload());
+    await pickAndCrop();
+    await screen.findByRole('button', { name: '更換' });
+    fireEvent.click(cancelBtn());
+    await flush();
+    expect(screen.getByRole('alertdialog').textContent).toContain(ASK);
+    fireEvent.click(document.getElementById('app-confirm-cancel')!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 150)); });
+    expect(location.pathname).toBe(START);
+    expect(document.querySelector('.cpc-pic img')?.getAttribute('src')).toBe(CROPPED);
+    fireEvent.click(cancelBtn());
+    await flush();
+    fireEvent.click(document.getElementById('app-confirm-ok')!);
+    await waitFor(() => expect(location.pathname).toBe('/tournaments'));
+  });
+
+  it('封面上傳中按取消：同一套確認；放棄後離開，上傳晚到也不寫回、不報錯', async () => {
+    let finish: (up: UploadedCover) => void = () => {};
+    drawBlank(vi.fn(() => new Promise<UploadedCover>((resolve) => { finish = resolve; })));
+    await pickAndCrop();
+    expect(screen.getByRole('status').textContent).toContain('上傳中');
+    fireEvent.click(cancelBtn());
+    await flush();
+    expect(screen.getByRole('alertdialog').textContent).toContain(ASK);
+    fireEvent.click(document.getElementById('app-confirm-ok')!);
+    await waitFor(() => expect(location.pathname).toBe('/tournaments'));
+    await act(async () => { finish({ url: URL2, thumb: THUMB2, thumbSrc: THUMB_SRC }); await Promise.resolve(); });
+    expect(location.pathname).toBe('/tournaments');
+    expect(document.getElementById('cpf-cover-error')).toBeNull();
+  });
+});
 
 describe('報隊管理：換封面、移除（按下去直接存）', () => {
   it('沒封面：選圖上傳後 update 帶 { cid, cover }，跳提示；再移除送 cover: null', async () => {

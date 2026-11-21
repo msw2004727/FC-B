@@ -484,7 +484,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   /** 取消與第 1 步返回：和進頁時不同才問要不要放棄，沒填過直接走（同 CpFrame 返回）。送出中不動（同步鎖擋按下建立同一刻的取消）。 */
   async function leave(): Promise<void> {
     if (inFlight.current) return;
-    if (JSON.stringify(form) !== JSON.stringify(startForm.current)) {
+    // 封面在 form 裡，選好的封面自動算「填過」；上傳中 form 還沒有封面，也當填過一起問。放棄後上傳中那張成孤兒（計畫書第 5 題接受）。
+    if (coverBusy || JSON.stringify(form) !== JSON.stringify(startForm.current)) {
       if (!(await dangerConfirm(ct('discardCreate'), { okText: ct('discard'), danger: true }))) return;
       // 確認框開著時推了一筆同網址紀錄（overlay-back）：先等它退掉，返回才會退到進來前那頁、起點時的取代才蓋到建立頁那筆。
       await waitOverlayReleased();
