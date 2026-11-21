@@ -144,6 +144,11 @@ function emptyDivision(): DivisionDraft {
   };
 }
 
+/** 有座標才算「已設定地圖座標」（與 payload venueOf 送不送座標同一個條件）。 */
+function hasPoint(venue: VenueDraft): boolean {
+  return venue.lat != null && venue.lng != null && Number.isFinite(venue.lat) && Number.isFinite(venue.lng);
+}
+
 function emptyVenue(): VenueDraft {
   return { name: '', address: '' };
 }
@@ -466,9 +471,10 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         </div>
       </div>
 
+      {/* 第 1 步收緊（站長 11-21）：卡片 .cph-tight，分類與主辦身分標籤和選項同一列；兩段期間合成一張卡 */}
       {step === 1 ? (
         <>
-          <CpCard>
+          <CpCard class="cph-tight">
             <div class="cps-fields">
               <Input
                 id="cpf-name"
@@ -549,53 +555,56 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
               {form.hostType === 'personal' ? <p class="cps-cap cph-hint">{ct('contactEmptyHint')}</p> : null}
             </div>
           </CpCard>
-          <CpCard>
+          <CpCard class="cph-tight">
             <h2 class="cp3-sec-h">{ct('regPeriod')}</h2>
-            <div class="cps-fields">
+            <div class="cps-fields cph-pair">
               <DateTimeField id="cp-reg-open" label={ct('regStart')} value={form.regOpen} error={fieldError('regOpenAt')} onValueChange={(regOpen) => { patch({ regOpen }); clearField('regOpenAt'); }} />
               <DateTimeField id="cp-reg-close" label={ct('regEnd')} value={form.regClose} error={fieldError('regCloseAt')} onValueChange={(regClose) => { patch({ regClose }); clearField('regCloseAt'); }} />
             </div>
-          </CpCard>
-          <CpCard>
             <h2 class="cp3-sec-h">{ct('matchPeriod')}</h2>
-            <div class="cps-fields">
+            <div class="cps-fields cph-pair">
               <DateTimeField id="cp-first" label={ct('firstMatch')} value={form.firstMatch} error={fieldError('firstMatchAt')} onValueChange={(firstMatch) => { patch({ firstMatch }); clearField('firstMatchAt'); }} />
               <DateTimeField id="cp-last" label={ct('lastMatch')} value={form.lastMatch} error={fieldError('lastMatchAt')} onValueChange={(lastMatch) => { patch({ lastMatch }); clearField('lastMatchAt'); }} />
             </div>
           </CpCard>
-          <CpCard>
+          <CpCard class="cph-tight">
             <h2 class="cp3-sec-h">{ct('venue')}</h2>
             <div class="cps-fields">
+              {/* 場地照建立活動的地點欄（EventFormFields 的 event-location-control）：文字欄下一列「座標狀態＋選點鈕」，選點同一個 EventLocationPicker */}
               {form.venues.map((venue, index) => (
-                <div class="cps-fields" key={index}>
-                  <div class="cps-head-row cph-venue">
+                <div class="cps-fields cph-vrow" key={index}>
+                  <div class="cps-fields cph-pair">
+                    <div class="cps-head-row cph-venue">
+                      <Input
+                        id={`cpf-v${index}-name`}
+                        label={ct('venueName')}
+                        value={venue.name}
+                        maxLength={40}
+                        error={fieldError(`venues.${index}.name`)}
+                        onValueChange={(name) => { patchVenue(index, { name }); clearField(`venues.${index}.name`); }}
+                      />
+                      {form.venues.length > 1 ? (
+                        <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} onClick={() => removeRow({ venues: form.venues.filter((_, i) => i !== index) })}>
+                          <TrashIcon />
+                        </button>
+                      ) : null}
+                    </div>
                     <Input
-                      id={`cpf-v${index}-name`}
-                      label={ct('venueName')}
-                      value={venue.name}
-                      maxLength={40}
-                      error={fieldError(`venues.${index}.name`)}
-                      onValueChange={(name) => { patchVenue(index, { name }); clearField(`venues.${index}.name`); }}
+                      id={`cpf-v${index}-address`}
+                      label={ct('venueAddress')}
+                      value={venue.address}
+                      maxLength={100}
+                      error={fieldError(`venues.${index}.address`)}
+                      onValueChange={(address) => {
+                        patchVenue(index, { address, mapPlaceId: '', mapProvider: address === venue.address ? venue.mapProvider : 'manual' });
+                        clearField(`venues.${index}.address`);
+                      }}
                     />
-                    {form.venues.length > 1 ? (
-                      <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} onClick={() => removeRow({ venues: form.venues.filter((_, i) => i !== index) })}>
-                        <TrashIcon />
-                      </button>
-                    ) : null}
                   </div>
-                  <Input
-                    id={`cpf-v${index}-address`}
-                    label={ct('venueAddress')}
-                    value={venue.address}
-                    maxLength={100}
-                    error={fieldError(`venues.${index}.address`)}
-                    onValueChange={(address) => {
-                      patchVenue(index, { address, mapPlaceId: '', mapProvider: address === venue.address ? venue.mapProvider : 'manual' });
-                      clearField(`venues.${index}.address`);
-                    }}
-                  />
-                  <div class="cph-start">
-                    <Button variant="secondary" size="sm" leading={<PinIcon />} onClick={() => setMapIndex(index)}>{ct('pickOnMap')}</Button>
+                  {/* 狀態與鈕的字照建立活動 locationControlState（已設定／尚未設定地圖座標、設定／重新設定地圖座標） */}
+                  <div class="cph-start cph-map">
+                    <span class={`cps-sub cps-nowrap${hasPoint(venue) ? ' cph-on' : ''}`}>{ct(hasPoint(venue) ? 'mapSet' : 'mapUnset')}</span>
+                    <Button variant="secondary" size="sm" leading={<PinIcon />} onClick={() => setMapIndex(index)}>{ct(hasPoint(venue) ? 'mapRepick' : 'mapPick')}</Button>
                   </div>
                 </div>
               ))}

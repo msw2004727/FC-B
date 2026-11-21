@@ -191,6 +191,15 @@ describe('根因：只手打地址、沒在地圖選點', () => {
     expect(buildCreateInput(draft).venues[0]).toEqual({ name: '甲', lat: 25, lng: 121, mapPlaceId: 'p_1', mapProvider: 'google' });
   });
 
+  it('座標狀態照建立活動的地點欄：手打地址仍是「尚未設定地圖座標」，有座標才是「已設定」與「重新設定」', () => {
+    draw({ venues: [{ name: '甲', address: '' }, { name: '乙', address: '', lat: 25, lng: 121, mapPlaceId: 'p_1', mapProvider: 'google' }] });
+    fireEvent.input(screen.getAllByLabelText('地址（選填）')[0]!, { target: { value: '台北市中山區示範路 1 號' } });
+    expect(screen.getAllByText('尚未設定地圖座標')).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: '設定地圖座標' })).toHaveLength(1);
+    expect(screen.getAllByText('已設定地圖座標')).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: '重新設定地圖座標' })).toHaveLength(1);
+  });
+
   it('個人主辦不送 hostDisplay：顯示名稱空白或只有不可見字元也不會被後端擋（後端改讀主站顯示名，退回「主辦」）', () => {
     expect(buildCreateInput({ ...baseDraft(), hostDisplay: '' })).not.toHaveProperty('hostDisplay');
     expect(buildCreateInput({ ...baseDraft(), hostDisplay: '​' })).not.toHaveProperty('hostDisplay');
