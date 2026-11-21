@@ -17,13 +17,14 @@ const SIZES = [[360, 800], [1280, 800]];
 const THEMES = ['light', 'dark'];
 // [畫面, 是否整頁]
 const SCREENS = [
-  ['form-empty', false],
+  ['form-empty', true],
   ['form-uploading', false],
   ['form-ready', false],
   ['form-error', false],
   ['form-timeout', false],
   ['form-server-error', false],
-  ['form-confirm', false],
+  ['form-step2', true],
+  ['form-confirm', true],
   ['manage-empty', false],
   ['manage-ready', false],
   ['manage-uploading', false],

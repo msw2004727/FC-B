@@ -195,6 +195,11 @@ const SCREENS: Record<string, Screen> = {
       window.scrollTo(0, 0);
     },
   },
+  // 第 2 步（組別）：底部「上一步｜下一步」＋下方「取消建立」（cp-create-cancel），帶已選封面進來
+  'form-step2': {
+    env: () => ({ ...wizardEnv(instantUpload), preview: { wizardStep: 2 }, wizardSeed: { ...wizardSeed(), cover: PITCH } }),
+    Page: NewCompetitionPage,
+  },
   'form-confirm': {
     env: () => ({ ...wizardEnv(instantUpload), preview: { wizardStep: 3 }, wizardSeed: { ...wizardSeed(), cover: PITCH } }),
     Page: NewCompetitionPage,
