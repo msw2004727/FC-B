@@ -5,7 +5,7 @@
 // 保留 cpl-card、ended、data-cid、data-phase、cpl-st cpl-st--<種類>、cpl-line（測試在用）；不再輸出 tc-card 一族與 tc-chip。
 
 import type { JSX } from 'preact';
-import { useId } from 'preact/hooks';
+import { useId, useState } from 'preact/hooks';
 import { Button } from '@/ui/Button';
 import { MenuSelect } from '../ui/menu-select';
 import type { CompetitionsT } from '../i18n';
@@ -93,6 +93,9 @@ function InCard({ card, ct, board, onOpen }: {
   const cat = ct(CAT_KEY[card.category]);
   const href = `/competitions/${card.cid}`;
   const open = (event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => onOpen(card.cid, event);
+  // 縮圖載不到：改畫沒封面的版面（不留 56×42 空格）。記網址，換新網址再試。
+  const [brokenThumb, setBrokenThumb] = useState<string | null>(null);
+  const thumb = card.thumb && card.thumb !== brokenThumb ? card.thumb : '';
   // 卡板只會是 pickInAppBoard 挑出來的那一張（沒有整場延期或取消、有階段、有重點句）。
   if (board && card.phase && card.line) {
     return (
@@ -138,10 +141,10 @@ function InCard({ card, ct, board, onOpen }: {
   return (
     <div class={`cpl-card${card.ended ? ' ended' : ''}`} data-cid={card.cid} data-phase={card.phase ?? 'unknown'}>
       {/* 有封面才在右邊放 56×42 縮圖（沿用外部清單同一格 list-v2.css 的 .cpl-xrow__img）；沒封面版面一行不動 */}
-      {card.thumb ? (
+      {thumb ? (
         <a class="cpl-card__link cpl-card__link--img" href={href} onClick={open}>
           <div>{text}</div>
-          <img class="cpl-xrow__img" src={card.thumb} alt="" loading="lazy" decoding="async" />
+          <img class="cpl-xrow__img" src={thumb} alt="" loading="lazy" decoding="async" onError={() => setBrokenThumb(thumb)} />
         </a>
       ) : (
         <a class="cpl-card__link" href={href} onClick={open}>{text}</a>

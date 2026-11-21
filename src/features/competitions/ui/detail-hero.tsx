@@ -3,6 +3,7 @@
 // .d2-hero／.d2-hero--bare／.d2-foot 寫成不綁詳情頁的 class，別頁的玻璃頂部直接套。
 
 import type { ComponentChildren, JSX } from 'preact';
+import { useState } from 'preact/hooks';
 import type { CompetitionsT } from '../i18n';
 import { formatTaipeiShort } from '../format';
 import type { DetailHero as HeroModel, HeroCell } from '../data/schedule-present';
@@ -106,9 +107,13 @@ export function DetailHero({
   cover?: string;
 }): JSX.Element {
   const notes = !hero.board && (hero.reason || hero.champions.length > 0);
+  // 封面載不到（被刪、網路斷、token 失效）：整塊收起，版面回到沒封面的樣子，不留空白框。記網址，換新網址再試。
+  // 圖本身沒有淡入動畫或 onload 才加的 class，載好就看得到（背景分頁、動畫被節流也一樣）。
+  const [broken, setBroken] = useState<string | null>(null);
+  const shown = cover && cover !== broken ? cover : null;
   return (
     <section class={`d2-hero${foot ? '' : ' d2-hero--bare'}`}>
-      {cover ? <img class="d2-hero__cover" src={cover} alt="" width={1200} height={450} decoding="async" /> : null}
+      {shown ? <img class="d2-hero__cover" src={shown} alt="" width={1200} height={450} decoding="async" onError={() => setBroken(shown)} /> : null}
       <div class={hero.board ? `d2-sb d2-board${hero.lit ? ' d2-sb--lit' : ''}` : 'd2-plain'}>
         <div class="d2-board__top">
           <span class={`d2-sb__st${danger ? ' d2-sb__st--danger' : ''}`}><i aria-hidden="true" />{status}</span>

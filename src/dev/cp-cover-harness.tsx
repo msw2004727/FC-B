@@ -24,7 +24,7 @@ import { loadCompetitionsDict } from '@/features/competitions/i18n';
 import { CpCallError } from '@/features/competitions/data/cp-callables';
 import type { UploadedCover } from '@/features/competitions/data/cover-upload';
 import type { CompetitionCover, CompetitionDoc } from '@/features/competitions/data/types';
-import { adminActor, competition, hostActor, idleActions, listInEnv, screenEnv, wizardSeed } from '@/features/competitions/testing/screen-fixtures';
+import { adminActor, competition, hostActor, idleActions, listInEnv, memberActor, screenEnv, wizardSeed } from '@/features/competitions/testing/screen-fixtures';
 import { taipeiMs } from '@/features/competitions/format';
 import CompetitionDetailPage from '@/features/competitions/pages/CompetitionDetailPage';
 import CompetitionManagePage from '@/features/competitions/pages/CompetitionManagePage';
@@ -52,6 +52,8 @@ function cover(art: string): CompetitionCover {
 }
 
 const PITCH = cover('pitch');
+// 訪客：同建賽守門的未登入（uid null），不屬於任何俱樂部。
+const GUEST = { ...memberActor, uid: null, memberClubIds: [], repClubs: [] };
 
 // ── 上傳：假的（不連 Storage） ──
 const instantUpload = async (dataUrl: string): Promise<UploadedCover> => ({ url: dataUrl, thumb: PITCH.thumb, thumbSrc: PITCH.thumb });
@@ -238,6 +240,9 @@ const SCREENS: Record<string, Screen> = {
   },
   // 清單：有封面卡（縮圖）與沒封面卡並列
   'list-mixed': { env: listEnv, Page: ListIn },
+  // 訪客（未登入）：清單有圖／沒圖混排、詳情有封面
+  'guest-list': { env: () => ({ ...listEnv(), actor: GUEST }), Page: ListIn },
+  'guest-detail': { env: () => ({ ...withCover(screenEnv('real-live'), { cover: PITCH }), actor: GUEST }), Page: CompetitionDetailPage },
 };
 
 const cfg = SCREENS[screenName];
