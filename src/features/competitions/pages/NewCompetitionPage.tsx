@@ -144,6 +144,11 @@ function emptyDivision(): DivisionDraft {
   };
 }
 
+/** 有座標才算「已設定地圖座標」（與 payload venueOf 送不送座標同一個條件）。 */
+function hasPoint(venue: VenueDraft): boolean {
+  return venue.lat != null && venue.lng != null && Number.isFinite(venue.lat) && Number.isFinite(venue.lng);
+}
+
 function emptyVenue(): VenueDraft {
   return { name: '', address: '' };
 }
@@ -222,6 +227,28 @@ function toDraft(form: FormState, hostDisplay: string): WizardDraft | null {
   };
 }
 
+/** 建立、發布等待超過這麼久，轉圈下面才出現說明；1～2 秒內完成的不閃字（站長 11-21：慢網路或冷啟動時的安心提示）。 */
+export const WAIT_HINT_MS = 2000;
+/** 等待超過這麼久換成「還在處理、別關頁面」那一句。 */
+export const WAIT_LONG_MS = 15000;
+
+/** 0＝不顯示、1＝等超過 2 秒、2＝等超過 15 秒。busy 結束或卸載時兩個計時器都清掉。 */
+function useWaitStage(busy: boolean): 0 | 1 | 2 {
+  const [stage, setStage] = useState<0 | 1 | 2>(0);
+  useEffect(() => {
+    setStage(0);
+    if (!busy) return;
+    const hint = setTimeout(() => setStage(1), WAIT_HINT_MS);
+    const long = setTimeout(() => setStage(2), WAIT_LONG_MS);
+    return () => {
+      clearTimeout(hint);
+      clearTimeout(long);
+    };
+  }, [busy]);
+  // effect 要等畫完那一幀才歸零；busy 一結束當場回 0，失敗或切到「已建立草稿」那一幀不殘留等待句。
+  return busy ? stage : 0;
+}
+
 function MapPicker({
   venue,
   onClose,
@@ -278,6 +305,9 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   // 有欄位但畫面上找不到那一欄（例如俱樂部清單還在讀、下拉還沒畫）：改顯示整頁錯誤，不讓按了沒反應。
   const [lostField, setLostField] = useState(false);
   const [busy, setBusy] = useState(false);
+  // 同步鎖：連按兩下時第二下可能比按鈕停用的重畫早到（busy 還是舊值），建立／發布只送一次。
+  const inFlight = useRef(false);
+  const waitStage = useWaitStage(busy);
   const [mapIndex, setMapIndex] = useState<number | null>(null);
   const clubs = representativeClubs(env.actor);
   // ASSUMPTION: repClubsPending 省略＝清單已定案。還在讀時空陣列不改回個人，晚到的俱樂部仍要補上。
@@ -309,8 +339,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     };
   }, []);
 
-  // 沒過的欄位：立即捲到畫面中間再聚焦。不用平滑捲動：站長 iPhone 實測平滑捲動沒有發生（11-21，顧問 §3.530），
-  // 推測是聚焦（叫出鍵盤、視窗高度改變）打斷了進行中的平滑捲動；立即捲動在聚焦前就完成，不受影響。
+  // 沒過的欄位：立即捲到畫面中間再聚焦。不依賴動畫：立即捲動在聚焦前就完成（顧問 §3.533）。
   useEffect(() => {
     if (!jumpTick) return;
     const spot = fieldSpot(error?.field);
@@ -387,6 +416,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   }
 
   async function create(): Promise<void> {
+    if (inFlight.current) return;
     // 第 1、2 步都過了才會到這裡；送出前再整份驗一次（預填或其他路徑可能帶進不合法的值）。
     const problem = step1Problem(form, env.now ?? Date.now()) ?? step2Problem(form);
     if (problem) {
@@ -395,6 +425,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     }
     const draft = toDraft(form, env.actor.displayName ?? '');
     if (!draft || busy) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -408,12 +439,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
       const field = info.reason === 'DIVISION_NAME_DUPLICATE' ? (duplicateDivisionField(form.divisions) ?? raw) : raw;
       showProblem({ reason: info.reason, params: info.params, field });
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
 
   async function publish(): Promise<void> {
-    if (!cid || busy) return;
+    if (!cid || busy || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -422,11 +455,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     } catch (err) {
       setError(errorOf(err));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
 
   const stepName = step === 1 ? ct('stepBasic') : step === 2 ? ct('stepDivisions') : ct('stepConfirm');
+  // 等待說明：轉圈的按鈕下面一句，螢幕閱讀器也會唸（role="status"）
+  const waitHint = waitStage ? <p class="cps-note" role="status">{ct(waitStage === 2 ? 'waitLong' : 'waitSlow')}</p> : null;
   const hostName = form.hostType === 'club'
     ? (clubs.find((club) => club.id === form.hostTeamId)?.name ?? '')
     : (env.actor.displayName ?? '');
@@ -442,6 +478,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           <div class="cps-actions cps-actions--col">
             <Button variant="primary" loading={busy} onClick={() => { void publish(); }}>{ct('publish')}</Button>
             <Button variant="secondary" onClick={() => route(cid ? `/competitions/${cid}` : '/tournaments')}>{ct('publishLater')}</Button>
+            {waitHint}
           </div>
         </CpCard>
       </CpFrame>
@@ -466,9 +503,10 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         </div>
       </div>
 
+      {/* 第 1 步收緊（站長 11-21）：卡片 .cph-tight，分類與主辦身分標籤和選項同一列；兩段期間合成一張卡 */}
       {step === 1 ? (
         <>
-          <CpCard>
+          <CpCard class="cph-tight">
             <div class="cps-fields">
               <Input
                 id="cpf-name"
@@ -512,6 +550,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 <Select
                   id="cpf-club"
                   label={ct('club')}
+                  required
                   value={form.hostTeamId}
                   error={fieldError('hostTeamId')}
                   onValueChange={(hostTeamId) => { patch({ hostTeamId }); clearField('hostTeamId'); }}
@@ -549,53 +588,57 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
               {form.hostType === 'personal' ? <p class="cps-cap cph-hint">{ct('contactEmptyHint')}</p> : null}
             </div>
           </CpCard>
-          <CpCard>
+          <CpCard class="cph-tight">
             <h2 class="cp3-sec-h">{ct('regPeriod')}</h2>
-            <div class="cps-fields">
-              <DateTimeField id="cp-reg-open" label={ct('regStart')} value={form.regOpen} error={fieldError('regOpenAt')} onValueChange={(regOpen) => { patch({ regOpen }); clearField('regOpenAt'); }} />
-              <DateTimeField id="cp-reg-close" label={ct('regEnd')} value={form.regClose} error={fieldError('regCloseAt')} onValueChange={(regClose) => { patch({ regClose }); clearField('regCloseAt'); }} />
+            <div class="cps-fields cph-pair">
+              <DateTimeField id="cp-reg-open" required label={ct('regStart')} value={form.regOpen} error={fieldError('regOpenAt')} onValueChange={(regOpen) => { patch({ regOpen }); clearField('regOpenAt'); }} />
+              <DateTimeField id="cp-reg-close" required label={ct('regEnd')} value={form.regClose} error={fieldError('regCloseAt')} onValueChange={(regClose) => { patch({ regClose }); clearField('regCloseAt'); }} />
             </div>
-          </CpCard>
-          <CpCard>
             <h2 class="cp3-sec-h">{ct('matchPeriod')}</h2>
-            <div class="cps-fields">
-              <DateTimeField id="cp-first" label={ct('firstMatch')} value={form.firstMatch} error={fieldError('firstMatchAt')} onValueChange={(firstMatch) => { patch({ firstMatch }); clearField('firstMatchAt'); }} />
-              <DateTimeField id="cp-last" label={ct('lastMatch')} value={form.lastMatch} error={fieldError('lastMatchAt')} onValueChange={(lastMatch) => { patch({ lastMatch }); clearField('lastMatchAt'); }} />
+            <div class="cps-fields cph-pair">
+              <DateTimeField id="cp-first" required label={ct('firstMatch')} value={form.firstMatch} error={fieldError('firstMatchAt')} onValueChange={(firstMatch) => { patch({ firstMatch }); clearField('firstMatchAt'); }} />
+              <DateTimeField id="cp-last" required label={ct('lastMatch')} value={form.lastMatch} error={fieldError('lastMatchAt')} onValueChange={(lastMatch) => { patch({ lastMatch }); clearField('lastMatchAt'); }} />
             </div>
           </CpCard>
-          <CpCard>
+          <CpCard class="cph-tight">
             <h2 class="cp3-sec-h">{ct('venue')}</h2>
             <div class="cps-fields">
+              {/* 場地照建立活動的地點欄（EventFormFields 的 event-location-control）：文字欄下一列「座標狀態＋選點鈕」，選點同一個 EventLocationPicker */}
               {form.venues.map((venue, index) => (
-                <div class="cps-fields" key={index}>
-                  <div class="cps-head-row cph-venue">
+                <div class="cps-fields cph-vrow" key={index}>
+                  <div class="cps-fields cph-pair">
+                    <div class="cps-head-row cph-venue">
+                      <Input
+                        id={`cpf-v${index}-name`}
+                        label={ct('venueName')}
+                        required
+                        value={venue.name}
+                        maxLength={40}
+                        error={fieldError(`venues.${index}.name`)}
+                        onValueChange={(name) => { patchVenue(index, { name }); clearField(`venues.${index}.name`); }}
+                      />
+                      {form.venues.length > 1 ? (
+                        <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} onClick={() => removeRow({ venues: form.venues.filter((_, i) => i !== index) })}>
+                          <TrashIcon />
+                        </button>
+                      ) : null}
+                    </div>
                     <Input
-                      id={`cpf-v${index}-name`}
-                      label={ct('venueName')}
-                      value={venue.name}
-                      maxLength={40}
-                      error={fieldError(`venues.${index}.name`)}
-                      onValueChange={(name) => { patchVenue(index, { name }); clearField(`venues.${index}.name`); }}
+                      id={`cpf-v${index}-address`}
+                      label={ct('venueAddress')}
+                      value={venue.address}
+                      maxLength={100}
+                      error={fieldError(`venues.${index}.address`)}
+                      onValueChange={(address) => {
+                        patchVenue(index, { address, mapPlaceId: '', mapProvider: address === venue.address ? venue.mapProvider : 'manual' });
+                        clearField(`venues.${index}.address`);
+                      }}
                     />
-                    {form.venues.length > 1 ? (
-                      <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} onClick={() => removeRow({ venues: form.venues.filter((_, i) => i !== index) })}>
-                        <TrashIcon />
-                      </button>
-                    ) : null}
                   </div>
-                  <Input
-                    id={`cpf-v${index}-address`}
-                    label={ct('venueAddress')}
-                    value={venue.address}
-                    maxLength={100}
-                    error={fieldError(`venues.${index}.address`)}
-                    onValueChange={(address) => {
-                      patchVenue(index, { address, mapPlaceId: '', mapProvider: address === venue.address ? venue.mapProvider : 'manual' });
-                      clearField(`venues.${index}.address`);
-                    }}
-                  />
-                  <div class="cph-start">
-                    <Button variant="secondary" size="sm" leading={<PinIcon />} onClick={() => setMapIndex(index)}>{ct('pickOnMap')}</Button>
+                  {/* 狀態與鈕的字照建立活動 locationControlState（已設定／尚未設定地圖座標、設定／重新設定地圖座標） */}
+                  <div class="cph-start cph-map">
+                    <span class={`cps-sub cps-nowrap${hasPoint(venue) ? ' cph-on' : ''}`}>{ct(hasPoint(venue) ? 'mapSet' : 'mapUnset')}</span>
+                    <Button variant="secondary" size="sm" leading={<PinIcon />} onClick={() => setMapIndex(index)}>{ct(hasPoint(venue) ? 'mapRepick' : 'mapPick')}</Button>
                   </div>
                 </div>
               ))}
@@ -630,6 +673,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 <Input
                   id={`cpf-d${index}-name`}
                   label={ct('divisionName')}
+                  required
                   value={division.name}
                   maxLength={30}
                   error={fieldError(`divisions.${index}.name`)}
@@ -805,6 +849,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           <Button variant="primary" loading={busy} onClick={() => { void create(); }}>{ct('createAction')}</Button>
         )}
       </div>
+      {waitHint}
 
       {mapIndex != null ? (
         <MapPicker

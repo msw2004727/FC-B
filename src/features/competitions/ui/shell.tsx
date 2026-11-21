@@ -86,7 +86,7 @@ export function PlusIcon(): JSX.Element {
   );
 }
 
-/** 地圖點（「在地圖上選點」小鈕的前置圖示）。 */
+/** 地圖點（建賽場地「設定地圖座標」小鈕的前置圖示）。 */
 export function PinIcon(): JSX.Element {
   return (
     <svg class="cps-ico" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">

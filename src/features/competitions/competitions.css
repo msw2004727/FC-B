@@ -912,12 +912,25 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 /* 欄位下的說明小字緊貼上面那一格（約 2px） */
 .cph-hint { margin: 2px 0 0; font-size: 12px; line-height: 16px; color: var(--d2-text-2); }
 .cph-hint .cps-line { display: block; }
-.cps-fields > .cph-hint { margin-top: calc(2px - var(--space-4)); }
+.cps-fields > .cph-hint { margin-top: -10px; } /* 欄距 12（.cph-tight）減 10＝貼 2px */
 /* 場地名稱那一格撐滿、垃圾桶在右；垃圾桶 44×44，圖示右緣對齊卡片內容 */
 .cph-venue { align-items: flex-end; }
 .cph-venue > .ui-input { flex: 1 1 auto; min-width: 0; }
 .cph-trash { width: 44px; height: 44px; margin: -10px -13px -10px 0; }
 .cph-venue > .cph-trash { margin-top: 0; margin-bottom: 0; }
+/* 第 1 步收緊（站長 11-21「留太多空白」）：卡片上下 16→14、欄距 16→12、標籤到欄位 8→6；
+ * 分類與主辦身分的標籤和選項同一列（放不下才整組折到下一列，字不斷行） */
+.cph-tight { padding: 14px 16px; }
+.cph-tight .cps-fields { gap: 12px; }
+.cph-tight .ui-input, .cph-tight .ui-select, .cph-tight .ui-textarea { gap: 6px; }
+.cph-tight .ui-radio-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; }
+/* 開始／截止、首場／最後一場、場地名稱／地址：寬度夠時兩欄並排，360 寬仍一欄 */
+.cph-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); align-items: start; }
+.cph-pair + .cp3-sec-h { margin-top: 16px; }
+/* 場地之間一條細線；地址下一列「座標狀態＋設定地圖座標」（照建立活動地點欄的 event-location-control），已設定時狀態轉青綠 */
+.cph-vrow + .cph-vrow { padding-top: 12px; border-top: 1px solid var(--d2-line); }
+.cph-map { flex-wrap: wrap; align-items: center; gap: 0 12px; }
+.cph-on { color: var(--d2-accent-ink); }
 /* 場上人數：五格等寬一列 */
 .cph-five { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .cph-five .ui-chip__select { flex: 1 1 auto; justify-content: center; padding-inline: 0; }
