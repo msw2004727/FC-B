@@ -4,6 +4,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import { useGoBack } from '@/core/back-guard';
 import { ctOrKey, useCompetitionsT } from '../i18n';
 import { Button } from '@/ui/Button';
 import { Chip } from '@/ui/Chip';
@@ -25,6 +26,7 @@ import { buildCreateInput, type DivisionDraft, type VenueDraft, type WizardDraft
 import type { CompetitionCategory } from '../data/types';
 import { categoryText } from '../ui/schedule-board';
 import { representativeClubs } from '../rep-clubs';
+import { dangerConfirm } from '../ui/danger-confirm';
 import { CpError, CpGate, errorOf, reasonText } from '../ui/feedback';
 import { DateTimeField, FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending, CpRow, InfoIcon, LockIcon, PinIcon, PlusIcon, TrashIcon } from '../ui/shell';
@@ -298,6 +300,9 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   const [done, setDone] = useState(preview?.wizardStep === 'done');
   const [cid, setCid] = useState('');
   const [form, setForm] = useState<FormState>(() => formFromEnv(env));
+  // 進頁時的表單：取消與第 1 步返回拿來比對「有沒有填過」（站長 11-21）。
+  const startForm = useRef(form);
+  const goBack = useGoBack('/tournaments');
   const [error, setError] = useState<WizardError | null>(
     preview?.wizardError ? { reason: 'BANNED_WORD', field: 'name' } : null,
   );
@@ -460,6 +465,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     }
   }
 
+  /** 取消與第 1 步返回：和進頁時不同才問要不要放棄，沒填過直接走（同 CpFrame 返回）。送出中不動（同步鎖擋按下建立同一刻的取消）。 */
+  async function leave(): Promise<void> {
+    if (inFlight.current) return;
+    if (JSON.stringify(form) !== JSON.stringify(startForm.current)
+      && !(await dangerConfirm(ct('discardCreate'), { okText: ct('discard'), danger: true }))) return;
+    goBack();
+  }
+
   const stepName = step === 1 ? ct('stepBasic') : step === 2 ? ct('stepDivisions') : ct('stepConfirm');
   // 等待說明：轉圈的按鈕下面一句，螢幕閱讀器也會唸（role="status"）
   const waitHint = waitStage ? <p class="cps-note" role="status">{ct(waitStage === 2 ? 'waitLong' : 'waitSlow')}</p> : null;
@@ -469,7 +482,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
 
   if (done) {
     return (
-      <CpFrame title={ct('createTitle')}>
+      <CpFrame title={ct('createTitle')} backDisabled={busy}>
         <CpCard class="cps-success">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M7.5 12.5l3 3 6-6.5" /></svg>
           <h2 class="cps-title" style="margin:12px 0 4px">{ct('createdDraft')}</h2>
@@ -493,7 +506,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     <CpFrame
       title={ct('createTitle')}
       menu={<span class="cph-stepno">{ct('stepOf', { step })}</span>}
-      onBack={step === 1 ? undefined : () => { setError(null); setStep(step === 3 ? 2 : 1); }}
+      onBack={step === 1 ? () => { void leave(); } : () => { if (inFlight.current) return; setError(null); setStep(step === 3 ? 2 : 1); }}
+      backDisabled={busy}
     >
       {/* 兩層頁首的第二層：這一步的名稱當大標，下面三段進度條 */}
       <div>
@@ -844,7 +858,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
       ) : pageError ? <p class="cps-note cps-warn" role="alert">{problemText(ct, pageError)}</p> : null}
 
       <div class="cph-split">
-        {step > 1 ? <Button variant="secondary" class="cph-narrow" onClick={() => { setError(null); setStep(step === 3 ? 2 : 1); }}>{ct('prev')}</Button> : null}
+        <Button variant="secondary" class="cph-narrow" disabled={busy} onClick={() => { void leave(); }}>{ct('cancel')}</Button>
         {step < 3 ? <Button variant="primary" onClick={goNext}>{ct('next')}</Button> : (
           <Button variant="primary" loading={busy} onClick={() => { void create(); }}>{ct('createAction')}</Button>
         )}
