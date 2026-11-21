@@ -1308,7 +1308,7 @@ function base(actions: CpActions, who: CpActor, bundle?: CpBundle, preview?: CpP
 }
 
 /** 編輯賽事：成人組已有 2 隊報名（不能刪、規則不能改），新秀組還沒有報隊。個人主辦沒有繳費說明與報名費。 */
-export function editBundle(opts: { personal?: boolean; locked?: boolean } = {}): CpBundle {
+export function editBundle(opts: { personal?: boolean; locked?: boolean; scheduled?: boolean } = {}): CpBundle {
   const comp = competition({
     rostersLockedAt: opts.locked ? taipeiMs(2026, 12, 5, 10, 0) : null,
     contactNote: 'LINE：@demo-cup',
@@ -1318,7 +1318,7 @@ export function editBundle(opts: { personal?: boolean; locked?: boolean } = {}):
   return {
     competition: comp,
     divisions: [
-      { ...adultDivision, feePerTeam: fee(1500) },
+      { ...adultDivision, feePerTeam: fee(1500), ranking: opts.scheduled ? 'h2hFirst' : null },
       division({ dvId: 'dv_rookie', name: '新秀組', playersOnField: 7, maxTeams: 6, rosterMin: 9, rosterMax: 14, feePerTeam: fee(800), order: 1 }),
     ],
     entries: [],
@@ -1794,6 +1794,9 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
     case 'edit-started':
       // 首場（1/9 08:00）已過：四個時間停用
       return { ...base(actions, hostActor, editBundle(), { wizardStep: 1 }), now: LIVE_NOW };
+    case 'edit-scheduled':
+      // 成人組已排賽程：既有場地不能改，只能在最後新增
+      return base(actions, hostActor, editBundle({ scheduled: true }), { wizardStep: 1 });
     case 'edit-locked':
       return base(actions, hostActor, editBundle({ locked: true }), { wizardStep: 2 });
     case 'edit-denied':

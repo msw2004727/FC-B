@@ -616,5 +616,6 @@
   "editNotAllowed": "這場賽事目前不能編輯",
   "editTimesLocked": "首場已開始，時間不能再改",
   "editDivLocked": "名單已鎖定，組別只能改名稱",
-  "hostDisplayField": "主辦名稱"
+  "hostDisplayField": "主辦名稱",
+  "editVenuesLocked": "已排賽程，既有場地不能更改"
 }

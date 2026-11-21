@@ -36,7 +36,7 @@ import { CoverField, coverProblemText, isCoverField, type CoverShown } from '../
 import { PageSpinner } from '@/ui/PageSpinner';
 import { toast } from '@/ui/Toast';
 import { duplicateDivisionField, fieldSpot, step1Problem, step2Problem, type EditCheck, type FieldProblem } from './new-competition-check';
-import { divisionTaken, editDraftOf, editErrorField, editLocks, type EditSource } from './edit-competition';
+import { divisionTaken, editDraftOf, editErrorField, editLocks, isCompetitionId, type EditSource } from './edit-competition';
 import '../live/score-fullscreen.css';
 
 /**
@@ -746,7 +746,10 @@ function WizardView({ env, edit }: { env: CpInjectedEnv; edit?: EditSource }): J
             <h2 class="cp3-sec-h">{ct('venue')}</h2>
             <div class="cps-fields">
               {/* 場地照建立活動的地點欄（EventFormFields 的 event-location-control）：文字欄下一列「座標狀態＋選點鈕」，選點同一個 EventLocationPicker */}
-              {form.venues.map((venue, index) => (
+              {form.venues.map((venue, index) => {
+                // 已排賽程：進頁時就有的場地全部停用（含刪除與選點），只有新增的那幾列可改可刪
+                const venueOff = locks?.venues === true && index < (edit?.competition.venues.length ?? 0);
+                return (
                 <div class="cps-fields cph-vrow" key={index}>
                   <div class="cps-fields cph-pair">
                     <div class="cps-head-row cph-venue">
@@ -754,13 +757,14 @@ function WizardView({ env, edit }: { env: CpInjectedEnv; edit?: EditSource }): J
                         id={`cpf-v${index}-name`}
                         label={ct('venueName')}
                         required
+                        disabled={venueOff}
                         value={venue.name}
                         maxLength={40}
                         error={fieldError(`venues.${index}.name`)}
                         onValueChange={(name) => { patchVenue(index, { name }); clearField(`venues.${index}.name`); }}
                       />
                       {form.venues.length > 1 ? (
-                        <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} onClick={() => removeRow({ venues: form.venues.filter((_, i) => i !== index) })}>
+                        <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} disabled={venueOff} style={venueOff ? 'opacity:.5' : undefined} onClick={() => removeRow({ venues: form.venues.filter((_, i) => i !== index) })}>
                           <TrashIcon />
                         </button>
                       ) : null}
@@ -768,6 +772,7 @@ function WizardView({ env, edit }: { env: CpInjectedEnv; edit?: EditSource }): J
                     <Input
                       id={`cpf-v${index}-address`}
                       label={ct('venueAddress')}
+                      disabled={venueOff}
                       value={venue.address}
                       maxLength={100}
                       error={fieldError(`venues.${index}.address`)}
@@ -780,15 +785,17 @@ function WizardView({ env, edit }: { env: CpInjectedEnv; edit?: EditSource }): J
                   {/* 狀態與鈕的字照建立活動 locationControlState（已設定／尚未設定地圖座標、設定／重新設定地圖座標） */}
                   <div class="cph-start cph-map">
                     <span class={`cps-sub cps-nowrap${hasPoint(venue) ? ' cph-on' : ''}`}>{ct(hasPoint(venue) ? 'mapSet' : 'mapUnset')}</span>
-                    <Button variant="secondary" size="sm" leading={<PinIcon />} onClick={() => setMapIndex(index)}>{ct(hasPoint(venue) ? 'mapRepick' : 'mapPick')}</Button>
+                    <Button variant="secondary" size="sm" leading={<PinIcon />} disabled={venueOff} onClick={() => setMapIndex(index)}>{ct(hasPoint(venue) ? 'mapRepick' : 'mapPick')}</Button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {form.venues.length < 10 ? (
                 <div class="cph-start">
                   <Button variant="secondary" size="sm" leading={<PlusIcon />} onClick={() => patch({ venues: [...form.venues, emptyVenue()] })}>{ct('addVenue')}</Button>
                 </div>
               ) : null}
+              {locks?.venues ? <p class="cps-cap" data-edit-lock="venues">{ct('editVenuesLocked')}</p> : null}
             </div>
           </CpCard>
         </>
@@ -1128,6 +1135,23 @@ function CreateGate({
   );
 }
 
+/** 不能編輯：有合格的 cid 才給「回賽事頁」，否則回賽事列表（不拿網址上的值組路徑）。 */
+function EditDenied({ cid }: { cid?: string }): JSX.Element {
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
+  const { route } = useLocation();
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
+  return (
+    <CpFrame title={ct('editTitle')}>
+      <CpGate icon={<LockIcon />} text={ct('editNotAllowed')} load="edit-denied">
+        {cid
+          ? <Button variant="primary" onClick={() => route(`/competitions/${cid}`, true)}>{ct('backToCompetition')}</Button>
+          : <Button variant="primary" onClick={() => route('/tournaments', true)}>{ct('backToTournaments')}</Button>}
+      </CpGate>
+    </CpFrame>
+  );
+}
+
 type EditLoad =
   | { phase: 'loading' | 'missing' | 'hidden' | 'error' }
   | { phase: 'ready'; competition: CompetitionDoc; divisions: DivisionDoc[]; staff: StaffDoc | null };
@@ -1140,7 +1164,6 @@ type EditLoad =
 function EditGate({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Element {
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
-  const { route } = useLocation();
   const preset = env.bundle?.competition;
   const [load, setLoad] = useState<EditLoad>(() => (preset
     ? { phase: 'ready', competition: preset, divisions: env.bundle?.divisions ?? [], staff: env.bundle?.staff ?? null }
@@ -1186,15 +1209,7 @@ function EditGate({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elemen
   }) : false;
   // 目前不像主辦，但角色（管理員）或代表俱樂部還在讀：等定案再判斷。
   if (ready && !canHost && (env.actor.rolePending || (ready.competition.hostType === 'club' && env.actor.repClubsPending))) return spinner;
-  if (!ready || !canEditCompetition(ready.competition, { canHost, isAdmin })) {
-    return (
-      <CpFrame title={ct('editTitle')}>
-        <CpGate icon={<LockIcon />} text={ct('editNotAllowed')} load="edit-denied">
-          <Button variant="primary" onClick={() => route(`/competitions/${cid}`, true)}>{ct('backToCompetition')}</Button>
-        </CpGate>
-      </CpFrame>
-    );
-  }
+  if (!ready || !canEditCompetition(ready.competition, { canHost, isAdmin })) return <EditDenied cid={cid} />;
   return <WizardView env={env} edit={{ cid, competition: ready.competition, divisions: ready.divisions, isAdmin }} />;
 }
 
@@ -1203,6 +1218,7 @@ export default function NewCompetitionPage(): JSX.Element {
   // 編輯賽事走同一頁：/competitions/new?edit=<cid>（不另加路由，首頁入口的路由表不變大）。
   const editCid = useLocation().query.edit ?? '';
   if (editCid) {
+    if (!isCompetitionId(editCid)) return <EditDenied />;
     if (injected) return <EditGate env={injected} cid={editCid} />;
     return (
       <LiveBoundary>

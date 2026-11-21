@@ -40,7 +40,12 @@ import NewCompetitionPage from './NewCompetitionPage';
 import { editErrorField } from './edit-competition';
 import { step1Problem } from './new-competition-check';
 
-const EDIT_URL = '/competitions/new?edit=cup';
+// 網址上的 cid 要符合後端 CID_RE（cp_＋20 碼）；注入的假資料 id 仍是 cup（編輯頁用注入的 bundle）。
+const CID = 'cp_' + 'A'.repeat(20);
+const EDIT_URL = `/competitions/new?edit=${CID}`;
+const DETAIL = `/competitions/${CID}`;
+/** 報隊管理、詳情頁的入口用假資料的 cid（cup）組網址。 */
+const ENTRY_URL = '/competitions/new?edit=cup';
 const LIVE_NOW = taipeiMs(2027, 1, 9, 12, 0);
 
 beforeAll(async () => {
@@ -68,6 +73,10 @@ interface DrawOpts {
   comp?: Partial<CompetitionDoc>;
   now?: number;
   update?: CpActions['update'];
+  /** 第一組已排賽程（schedule.ranking 有值）。 */
+  scheduled?: boolean;
+  /** 多一個既有場地（第二球場）。 */
+  extraVenue?: boolean;
 }
 
 function editEnv(opts: DrawOpts = {}): CpInjectedEnv {
@@ -79,7 +88,12 @@ function editEnv(opts: DrawOpts = {}): CpInjectedEnv {
     now: opts.now ?? NOW,
     bundle: {
       ...b,
-      competition: { ...b.competition!, ...opts.comp },
+      competition: {
+        ...b.competition!,
+        ...(opts.extraVenue ? { venues: [...b.competition!.venues, { name: '第二球場' }] } : {}),
+        ...opts.comp,
+      },
+      divisions: opts.scheduled ? b.divisions.map((d, i) => (i === 0 ? { ...d, ranking: 'h2hFirst' as const } : d)) : b.divisions,
       staff: opts.staff === undefined ? b.staff : opts.staff,
     },
   };
@@ -182,9 +196,9 @@ describe('編輯賽事：只送有變的欄位', () => {
     draw(editEnv({ update }));
     type('cpf-name', '示範盃改名');
     await saveWith(update);
-    expect(calls).toEqual([{ cid: 'cup', name: '示範盃改名' }]);
+    expect(calls).toEqual([{ cid: CID, name: '示範盃改名' }]);
     expect(shown).toHaveBeenCalledWith({ message: '已儲存' });
-    await waitFor(() => expect(location.pathname).toBe('/competitions/cup'));
+    await waitFor(() => expect(location.pathname).toBe(DETAIL));
   });
 
   it('從報隊管理進來：儲存後退回報隊管理', async () => {
@@ -203,7 +217,7 @@ describe('編輯賽事：只送有變的欄位', () => {
     type('cp-reg-close', '2026-12-25T20:00');
     await saveWith(update);
     expect(calls).toEqual([{
-      cid: 'cup',
+      cid: CID,
       schedule: { regOpenAt: REG_OPEN, regCloseAt: taipeiMs(2026, 12, 25, 20, 0), firstMatchAt: FIRST_MATCH, lastMatchAt: LAST_MATCH },
     }]);
   });
@@ -213,7 +227,7 @@ describe('編輯賽事：只送有變的欄位', () => {
     draw(editEnv({ update }));
     type('cpf-contact', '');
     await saveWith(update);
-    expect(calls).toEqual([{ cid: 'cup', contactNote: null }]);
+    expect(calls).toEqual([{ cid: CID, contactNote: null }]);
   });
 
   it('改組別名稱：送完整清單、保留 dvId 與原本規則', async () => {
@@ -255,7 +269,7 @@ describe('編輯賽事：只送有變的欄位', () => {
     type('cpf-name', '示範盃');
     await toStep(3);
     await press(rowButton('儲存變更'));
-    await waitFor(() => expect(location.pathname).toBe('/competitions/cup'));
+    await waitFor(() => expect(location.pathname).toBe(DETAIL));
     expect(update).not.toHaveBeenCalled();
     expect(shown).not.toHaveBeenCalled();
   });
@@ -293,7 +307,7 @@ describe('編輯賽事：依狀態鎖欄位', () => {
     draw(editEnv({ update, now: taipeiMs(2026, 12, 22, 12, 0) }));
     type('cpf-name', '示範盃改名');
     await saveWith(update);
-    expect(calls).toEqual([{ cid: 'cup', name: '示範盃改名' }]);
+    expect(calls).toEqual([{ cid: CID, name: '示範盃改名' }]);
   });
 
   it('名單已鎖定：組別只能改名稱，增刪與規則停用；改名送完整清單', async () => {
@@ -313,6 +327,29 @@ describe('編輯賽事：依狀態鎖欄位', () => {
     await press(rowButton('儲存變更'));
     await waitFor(() => expect(update).toHaveBeenCalled());
     expect(calls[0]?.divisions?.map((d) => [d.dvId, d.name])).toEqual([['dv_adult', '成人組'], ['dv_rookie', '新秀 B 組']]);
+  });
+
+  it('已排賽程（組別有 schedule.ranking）：既有場地名稱、地址、選點、刪除全部停用並說原因；只能在最後新增場地，新增的可改可刪', async () => {
+    const { calls, update } = spyUpdate();
+    draw(editEnv({ update, scheduled: true, extraVenue: true }));
+    for (const id of ['cpf-v0-name', 'cpf-v0-address', 'cpf-v1-name', 'cpf-v1-address']) expect(byId(id).disabled, id).toBe(true);
+    const trash = () => [...document.querySelectorAll<HTMLButtonElement>('button[aria-label="移除場地"]')];
+    expect(trash().map((node) => node.disabled)).toEqual([true, true]);
+    expect(screen.getAllByRole('button', { name: '重新設定地圖座標' }).every((node) => (node as HTMLButtonElement).disabled)).toBe(true);
+    expect(document.querySelector('[data-edit-lock="venues"]')?.textContent).toBe('已排賽程，既有場地不能更改');
+    await press(button('新增場地'));
+    expect(byId('cpf-v2-name').disabled).toBe(false);
+    expect(trash().map((node) => node.disabled)).toEqual([true, true, false]);
+    type('cpf-v2-name', '第三球場');
+    await saveWith(update);
+    expect(calls[0]?.venues?.map((v) => v.name)).toEqual(['示範球場', '第二球場', '第三球場']);
+  });
+
+  it('沒排賽程：場地照常可改可刪、沒有那一句', () => {
+    draw(editEnv({ extraVenue: true }));
+    expect(byId('cpf-v0-name').disabled).toBe(false);
+    expect([...document.querySelectorAll<HTMLButtonElement>('button[aria-label="移除場地"]')].some((node) => node.disabled)).toBe(false);
+    expect(document.querySelector('[data-edit-lock="venues"]')).toBeNull();
   });
 
   it('有報隊的組別：刪除鈕停用、人制年齡實名報名費停用、隊數最少到已核准數；沒報隊的組別照常', async () => {
@@ -355,14 +392,22 @@ describe('編輯賽事：後端錯誤對回欄位', () => {
   });
 
   it.each([
-    ['ROSTERS_LOCKED', { field: 'divisions' }, 'cpf-d0-name', '名單已鎖定，不能再修改'],
-    ['DIVISION_HAS_ENTRIES', { field: 'divisions' }, 'cpf-d0-name', '已有報隊的組別不能刪除'],
     ['DIVISION_RULES_LOCKED', { field: 'divisions.1' }, 'cpf-d1-name', '已有隊伍報名，部分規則不能改'],
   ])('%s → 回第 2 步，錯誤畫在 %s 並聚焦', async (reason, params, id, text) => {
     await failWith(reason, params);
     expect(screen.getByText('步驟 2／3')).toBeTruthy();
     await waitFor(() => expect(document.activeElement?.id).toBe(id));
     expect(document.getElementById(`${id}-error`)?.textContent).toBe(text);
+  });
+
+  it.each([
+    ['ROSTERS_LOCKED', '名單已鎖定，不能再修改'],
+    ['DIVISION_HAS_ENTRIES', '已有報隊的組別不能刪除'],
+  ])('%s（整份組別清單）→ 留在第 3 步整頁一句，不落到第 1 組名稱', async (reason, text) => {
+    await failWith(reason, { field: 'divisions' });
+    expect(screen.getByText('步驟 3／3')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toBe(text);
+    expect(document.querySelector('[data-field-error]')).toBeNull();
   });
 
   it('個人主辦名稱含禁用字 → 畫在主辦名稱欄', async () => {
@@ -384,7 +429,7 @@ describe('編輯賽事：取消比對預填值', () => {
     draw(editEnv());
     await press(rowButton('取消'));
     expect(screen.queryByRole('alertdialog')).toBeNull();
-    expect(location.pathname).toBe('/competitions/cup');
+    expect(location.pathname).toBe(DETAIL);
   });
 
   it('改了又改回：視同沒改', async () => {
@@ -403,7 +448,7 @@ describe('編輯賽事：取消比對預填值', () => {
     await press(button('取消編輯'));
     expect(screen.getByRole('alertdialog').textContent).toContain('變更不會保存，確定放棄編輯？');
     await press(document.getElementById('app-confirm-ok')!);
-    await waitFor(() => expect(location.pathname).toBe('/competitions/cup'));
+    await waitFor(() => expect(location.pathname).toBe(DETAIL));
     expect(update).not.toHaveBeenCalled();
   });
 });
@@ -447,11 +492,22 @@ describe('編輯賽事：誰能編輯（入口與直開網址）', () => {
     expect(button('回賽事頁')).toBeTruthy();
   });
 
+  it.each([['cup'], ['cp_short'], ['../x']])('?edit=%s 不符賽事 id 格式：直接顯示不能編輯，回賽事列表，不讀資料', async (bad) => {
+    history.replaceState(null, '', `/competitions/new?edit=${encodeURIComponent(bad)}`);
+    const repo = createFakeCpRepo({ competitions: [competition()] });
+    draw({ actor: hostActor, repo, actions: idleActions(), now: NOW });
+    expect(document.querySelector('[data-cp-load="edit-denied"]')?.textContent).toBe('這場賽事目前不能編輯');
+    expect(screen.queryByRole('button', { name: '回賽事頁' })).toBeNull();
+    expect(repo.calls()).toEqual([]);
+    await press(button('返回賽事列表'));
+    expect(location.pathname).toBe('/tournaments');
+  });
+
   it('沒注入資料：讀根文件、組別、staff 各一次（不讀報隊），讀到就預填', async () => {
     const repo = createFakeCpRepo({
-      competitions: [competition()],
-      divisions: { cup: editBundle().divisions },
-      staff: { cup: [{ uid: 'uid_host', roles: ['host'] }] },
+      competitions: [competition({ id: CID })],
+      divisions: { [CID]: editBundle().divisions },
+      staff: { [CID]: [{ uid: 'uid_host', roles: ['host'] }] },
     });
     draw({ actor: hostActor, repo, actions: idleActions(), now: NOW });
     await waitFor(() => expect(byId('cpf-name')?.value).toBe('示範盃'));
@@ -465,7 +521,7 @@ describe('編輯賽事：誰能編輯（入口與直開網址）', () => {
     expect(doors()).toEqual(['排賽程', '賽程管理', '指派記分員', '編輯賽事']);
     expect(button('編輯賽事資訊')).toBeTruthy();
     await press(button('編輯賽事'));
-    expect(`${location.pathname}${location.search}`).toBe(EDIT_URL);
+    expect(`${location.pathname}${location.search}`).toBe(ENTRY_URL);
   });
 
   it.each([
@@ -489,7 +545,7 @@ describe('編輯賽事：誰能編輯（入口與直開網址）', () => {
     history.replaceState(null, '', '/competitions/cup');
     draw(screenEnv('real-draft-host'), CompetitionDetailPage);
     await press(button('編輯賽事'));
-    expect(`${location.pathname}${location.search}`).toBe(EDIT_URL);
+    expect(`${location.pathname}${location.search}`).toBe(ENTRY_URL);
     cleanup();
     draw(screenEnv('detail-member'), CompetitionDetailPage);
     expect(screen.queryByRole('button', { name: '編輯賽事' })).toBeNull();
@@ -556,7 +612,7 @@ describe('純函式：buildUpdateInput、step1Problem（編輯）、editErrorFie
   it('後端欄位對回畫面欄位', () => {
     expect(editErrorField('COMPETITION_STARTED', 'schedule')).toBe('regOpenAt');
     expect(editErrorField('SCHEDULE_OUT_OF_RANGE', 'schedule')).toBe('firstMatchAt');
-    expect(editErrorField('ROSTERS_LOCKED', 'divisions')).toBe('divisions.0.name');
+    expect(editErrorField('ROSTERS_LOCKED', 'divisions')).toBe('divisions');
     expect(editErrorField('DIVISION_RULES_LOCKED', 'divisions.2')).toBe('divisions.2.name');
     expect(editErrorField('DIVISION_BELOW_APPROVED', 'divisions.1.maxTeams')).toBe('divisions.1.maxTeams');
     expect(editErrorField('BANNED_WORD', 'name')).toBe('name');

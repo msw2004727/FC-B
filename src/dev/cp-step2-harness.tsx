@@ -96,6 +96,7 @@ const PAGES: Record<string, ComponentType> = {
   'edit-3': NewCompetitionPage,
   'edit-started': NewCompetitionPage,
   'edit-locked': NewCompetitionPage,
+  'edit-scheduled': NewCompetitionPage,
   'edit-denied': NewCompetitionPage,
   'edit-entry-manage': CompetitionManagePage,
   'edit-entry-detail': CompetitionDetailPage,
@@ -175,8 +176,8 @@ const OPEN: Record<string, () => Promise<void>> = {
 };
 
 const Page = PAGES[screenName] ?? NewCompetitionPage;
-// 編輯賽事走 /competitions/new?edit=<cid>：頁面讀網址的 edit，這裡補上（不改其他畫面的網址）。
-if (screenName.startsWith('edit-') && Page === NewCompetitionPage) history.replaceState(null, '', `${location.pathname}${location.search}&edit=cup`);
+// 編輯賽事走 /competitions/new?edit=<cid>：頁面讀網址的 edit，這裡補上合格的示範 id（後端 CID_RE：cp_＋20 碼；不改其他畫面的網址）。
+if (screenName.startsWith('edit-') && Page === NewCompetitionPage) history.replaceState(null, '', `${location.pathname}${location.search}&edit=cp_${'A'.repeat(20)}`);
 
 void start();
 

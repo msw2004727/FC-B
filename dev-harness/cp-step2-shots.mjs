@@ -24,7 +24,7 @@ const ANCHORS = {
   'host-pending-empty': '目前沒有待審的隊伍', 'host-approved-empty': '目前沒有已核准的隊伍', 'host-rejected-empty': '目前沒有已拒絕的隊伍',
   'host-lock-all': '鎖定後各隊不能再改名單', 'roster-confirmed': '確認名單', 'detail-oneday': '比賽期間',
   'edit-started': '首場已開始，時間不能再改', 'edit-locked': '名單已鎖定，組別只能改名稱', 'edit-denied': '這場賽事目前不能編輯',
-  'edit-1-personal': '主辦名稱', 'edit-3': '儲存變更', 'edit-entry-manage': '編輯賽事', 'edit-entry-detail': '編輯賽事',
+  'edit-1-personal': '主辦名稱', 'edit-scheduled': '已排賽程，既有場地不能更改', 'edit-3': '儲存變更', 'edit-entry-manage': '編輯賽事', 'edit-entry-detail': '編輯賽事',
   'roster-member': '登錄名單', 'roster-remove': '確定要移除', 'form-error': '送出', 'form-custom-pos': '自訂', 'form-ineligible': '只有俱樂部成員可以做這個操作',
 };
 const THEMES_ALL = ['light', 'dark'];
@@ -83,6 +83,7 @@ const SCREENS = [
   ['edit-3', NEW, THEMES_ALL, true],
   ['edit-started', NEW, THEMES_ALL, true],
   ['edit-locked', NEW, THEMES_ALL, true],
+  ['edit-scheduled', NEW, THEMES_ALL, true],
   ['edit-denied', NEW, THEMES_ALL, true],
   ['edit-entry-manage', NEW, THEMES_ALL, true],
   ['edit-entry-detail', NEW, THEMES_ALL, true],
