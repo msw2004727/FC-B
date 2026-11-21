@@ -1,5 +1,7 @@
 // 新外觀清-3：沒有切換的三種情況（功能開關關閉、閘門沒過、閘門不回應），#page-tournaments 的標記逐字相等，
 // 而且最外層都帶 data-d2。保護的是「不管閘門怎麼樣，沒有切換的人看到同一個畫面」。一般用戶與管理者各一組。
+// 站長 11-21 預設站內後，沒有 ?src 時閘門不回應會先畫切換列與站內骨架（不是沒有切換的情況），
+// 所以「閘門不回應」這組改從 ?src=ext 進頁；功能開關關閉、閘門沒過仍從沒有 ?src 進頁。
 import { cleanup, render, screen, waitFor } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -105,9 +107,10 @@ afterEach(() => {
   history.replaceState(null, '', '/');
 });
 
-async function markup(enabled: boolean, gate: 'closed' | 'hold'): Promise<{ html: string; d2: string | null; cpGate: string | null }> {
+async function markup(enabled: boolean, gate: 'closed' | 'hold', url = '/tournaments'): Promise<{ html: string; d2: string | null; cpGate: string | null }> {
   flags.enabled = enabled;
   flags.gate = gate;
+  history.replaceState(null, '', url);
   render(
     <LocationProvider>
       <TournamentsPage />
@@ -120,7 +123,8 @@ async function markup(enabled: boolean, gate: 'closed' | 'hold'): Promise<{ html
     await waitFor(() => expect(root?.getAttribute('data-cp-gate')).toBe(expected));
   }
   const out = {
-    html: document.getElementById('page-tournaments')?.innerHTML ?? '',
+    // 先畫站內時切換列一進頁就在，閘門沒過後 preact 把 tabpanel 的 id 屬性設成空字串（不是拿掉），畫面與行為無差別，比對時去掉。
+    html: (document.getElementById('page-tournaments')?.innerHTML ?? '').replace(' id=""', ''),
     d2: root?.getAttribute('data-d2') ?? null,
     cpGate: root?.getAttribute('data-cp-gate') ?? null,
   };
@@ -136,7 +140,7 @@ describe('沒有切換的三種情況畫面相同', () => {
     mockUseViewer.mockReturnValue(viewer(manager));
     const off = await markup(false, 'closed');
     const closed = await markup(true, 'closed');
-    const hold = await markup(true, 'hold');
+    const hold = await markup(true, 'hold', '/tournaments?src=ext');
     expect(off.cpGate).toBeNull();
     expect(closed.cpGate).toBe('closed');
     expect(hold.cpGate).toBe('pending');
