@@ -27,6 +27,9 @@ const params = new URLSearchParams(location.search);
 const screenName = params.get('screen') || 'wizard-1';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 const framed = params.get('frame') === '1';
+// ?nav=1：畫兩條代用的頂部列與底部導覽（紅色，套正式 .ui-top-bar／.ui-bottom-nav 的定位與層級），看建立賽事有沒有蓋住。
+// 不載正式 TopBar／BottomNav：它們會帶進登入與路由註冊模組。
+const navStandIn = params.get('nav') === '1';
 document.documentElement.setAttribute('data-theme', theme);
 
 const PAGES: Record<string, ComponentType> = {
@@ -35,6 +38,9 @@ const PAGES: Record<string, ComponentType> = {
   'wizard-1-error': NewCompetitionPage,
   'wizard-2': NewCompetitionPage,
   'wizard-3': NewCompetitionPage,
+  // 必填沒過：按下一步後捲到該欄、欄位錯誤
+  'wizard-1-required': NewCompetitionPage,
+  'wizard-2-required': NewCompetitionPage,
   'wizard-done': NewCompetitionPage,
   'detail-rep': CompetitionDetailPage,
   'detail-member': CompetitionDetailPage,
@@ -107,7 +113,17 @@ function clickButton(name: string): void {
   node.click();
 }
 
+async function nextUntilFieldError(): Promise<void> {
+  await until('下一步', () => buttonsNamed('下一步').length > 0);
+  clickButton('下一步');
+  await until('欄位錯誤', () => !!document.querySelector('.cps-root [data-field-error]'));
+  // 平滑捲動跑完再拍
+  await new Promise((resolve) => setTimeout(resolve, 600));
+}
+
 const OPEN: Record<string, () => Promise<void>> = {
+  'wizard-1-required': nextUntilFieldError,
+  'wizard-2-required': nextUntilFieldError,
   'host-edit-open': async () => {
     await until('編輯賽事資訊鈕', () => buttonsNamed('編輯賽事資訊').length > 0);
     clickButton('編輯賽事資訊');
@@ -167,6 +183,12 @@ async function start(): Promise<void> {
           <Page />
         </CpEnvProvider>
       )}
+      {navStandIn ? (
+        <>
+          <div class="ui-top-bar" style="height:56px;background:#e11d48" data-stand-in="top" />
+          <div class="ui-bottom-nav" style="height:64px;background:#e11d48" data-stand-in="bottom" />
+        </>
+      ) : null}
       <ToastHost />
       <AppConfirmHost />
     </LocationProvider>,

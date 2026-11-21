@@ -245,10 +245,10 @@ describe('賽事第 2 步畫面', () => {
     expect(wizard.container.textContent ?? '').not.toContain('每隊報名費');
     cleanup();
     mount(CompetitionDetailPage, { ...screenEnv('detail-personal') });
-    expect(screen.queryAllByRole('button', { name: '線上支付' })).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: /線上支付/ })).toHaveLength(0);
     cleanup();
     mount(CompetitionManagePage, { ...screenEnv('host-approved-personal') });
-    expect(screen.queryAllByRole('button', { name: '線上支付' })).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: /線上支付/ })).toHaveLength(0);
     expect(screen.queryAllByRole('switch', { name: '標示已繳費' })).toHaveLength(0);
     expect(document.body.textContent ?? '').not.toMatch(/未繳費|已繳費/);
   });
@@ -277,7 +277,7 @@ describe('賽事第 2 步畫面', () => {
   it('線上支付鈕沒有行為；標示已繳費才呼叫 setPaymentStatus', async () => {
     const actions = spyActions();
     mount(CompetitionManagePage, { ...screenEnv('host-approved', actions) });
-    const pay = screen.getAllByRole('button', { name: '線上支付' });
+    const pay = screen.getAllByRole('button', { name: '線上支付（未開放）' });
     expect(pay.length).toBeGreaterThan(0);
     for (const button of pay) {
       expect(button).toHaveProperty('disabled', true);
@@ -1286,10 +1286,13 @@ describe('賽事第 2 步畫面', () => {
     await waitFor(() => expect(document.documentElement.classList.contains('cp-danger-confirm')).toBe(false));
   });
 
-  it('首場不在未來時精靈步驟 1 顯示時間不能早於現在', async () => {
+  it('時間已過時精靈步驟 1 擋下：報名截止在首場之前，錯誤畫在截止欄並聚焦', () => {
     mount(NewCompetitionPage, { ...screenEnv('wizard-1'), now: FIRST_MATCH });
     fireEvent.click(screen.getByRole('button', { name: '下一步' }));
-    expect((await screen.findByRole('alert')).textContent).toBe('時間不能早於現在');
+    expect(screen.getByText('步驟 1／3')).toBeTruthy();
+    expect(document.getElementById('cp-reg-close-error')?.textContent).toBe('截止須晚於現在');
+    expect(document.getElementById('cp-reg-close')?.getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement?.id).toBe('cp-reg-close');
   });
 
   it('生日載入前不顯示成年欄位', async () => {

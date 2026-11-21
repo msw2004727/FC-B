@@ -46,7 +46,8 @@ describe('送出欄位只含契約的鍵', () => {
     expect(input).not.toHaveProperty('feeNote');
     expect(input).not.toHaveProperty('hostDisplay');
     expect(input.liveLinks).toEqual([]);
-    expect(input.venues[0]).toEqual({ name: '示範球場', mapPlaceId: 'place_demo', mapProvider: 'google' });
+    // 缺 lng 的半組座標不送；地點編號與來源也跟著不送，否則後端 venuesOf 回 FIELD_REQUIRED（venues.0.lat）。
+    expect(input.venues[0]).toEqual({ name: '示範球場' });
     expect(input.divisions[0]).not.toHaveProperty('minAge');
     // 報名費只限俱樂部主辦（顧問 §3.257）：個人主辦一律送 0
     expect(input.divisions[0]?.feePerTeam).toBe(0);

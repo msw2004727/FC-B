@@ -19,21 +19,29 @@ export function DateTimeField({
   label,
   value,
   onValueChange,
+  error,
 }: {
   id: string;
   label: string;
   value: string;
   onValueChange: (value: string) => void;
+  /** 欄位層級錯誤：紅框＋紅底驚嘆號圓點那一句（與 Input 的 error 同一套樣式）。 */
+  error?: string;
 }): JSX.Element {
   return (
-    <div class="ui-input">
+    <div class={`ui-input${error ? ' ui-input--error' : ''}`}>
       <label for={id}><Text>{label}</Text></label>
+      {/* iOS 的時間選擇器可能只送 change、不送 input：兩個都接，值才一定寫進表單 */}
       <input
         id={id}
         type="datetime-local"
         value={value}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? `${id}-error` : undefined}
         onInput={(event) => onValueChange(event.currentTarget.value)}
+        onChange={(event) => onValueChange(event.currentTarget.value)}
       />
+      {error ? <div id={`${id}-error`} data-field-error aria-live="polite"><Text>{error}</Text></div> : null}
     </div>
   );
 }
@@ -71,6 +79,9 @@ export function DateField({
         disabled={disabled}
         min={min}
         onInput={(event) => {
+          if (!disabled) onValueChange(event.currentTarget.value);
+        }}
+        onChange={(event) => {
           if (!disabled) onValueChange(event.currentTarget.value);
         }}
       />
