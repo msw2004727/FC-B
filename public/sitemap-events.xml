@@ -104,13 +104,19 @@
   </url>
   <url>
     <loc>https://toosterx.com/events/ce_1795174770650_0386ct</loc>
-    <lastmod>2026-11-20</lastmod>
+    <lastmod>2026-11-21</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://toosterx.com/events/ce_1795193006928_tkk7tx</loc>
     <lastmod>2026-11-20</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://toosterx.com/events/ce_1795239208556_7up5ge</loc>
+    <lastmod>2026-11-21</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
