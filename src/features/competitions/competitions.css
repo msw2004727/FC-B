@@ -925,7 +925,7 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 .cph-tight .ui-input, .cph-tight .ui-select, .cph-tight .ui-textarea { gap: 6px; }
 .cph-tight .ui-radio-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; }
 /* 開始／截止、首場／最後一場、場地名稱／地址：寬度夠時兩欄並排，360 寬仍一欄 */
-.cph-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.cph-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); align-items: start; }
 .cph-pair + .cp3-sec-h { margin-top: 16px; }
 /* 場地之間一條細線；地址下一列「座標狀態＋設定地圖座標」（照建立活動地點欄的 event-location-control），已設定時狀態轉青綠 */
 .cph-vrow + .cph-vrow { padding-top: 12px; border-top: 1px solid var(--d2-line); }

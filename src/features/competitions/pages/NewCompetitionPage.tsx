@@ -245,7 +245,8 @@ function useWaitStage(busy: boolean): 0 | 1 | 2 {
       clearTimeout(long);
     };
   }, [busy]);
-  return stage;
+  // effect 要等畫完那一幀才歸零；busy 一結束當場回 0，失敗或切到「已建立草稿」那一幀不殘留等待句。
+  return busy ? stage : 0;
 }
 
 function MapPicker({
