@@ -60,7 +60,9 @@ function errorOf(id: string): string {
 function expectFocused(id: string, text: string): void {
   expect(errorOf(id)).toBe(text);
   expect(document.activeElement?.id).toBe(id);
-  expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+  // 顧問 §3.530：一律立即捲動（iPhone 上平滑捲動被聚焦打斷），不再用 smooth
+  expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' });
+  expect(scrollIntoView).not.toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }));
   // 整頁那一句不出現：錯誤只畫在欄位上
   expect(screen.queryByRole('alert')).toBeNull();
 }
@@ -117,7 +119,7 @@ describe('第 1 步：每一類必填與格式擋在第 1 步，捲到那一欄�
     expect(screen.getByText('步驟 2／3')).toBeTruthy();
   });
 
-  it('減少動態時直接捲到欄位，不做平滑捲動', () => {
+  it('減少動態時也是立即捲到欄位（和一般情況相同）', () => {
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       value: (query: string) => ({ matches: query.includes('reduce'), media: query, addEventListener() {}, removeEventListener() {} }),

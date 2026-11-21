@@ -314,7 +314,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     };
   }, []);
 
-  // 沒過的欄位：捲到畫面中間再聚焦。減少動態時不做平滑捲動。
+  // 沒過的欄位：立即捲到畫面中間再聚焦。不用平滑捲動：站長 iPhone 實測平滑捲動沒有發生（11-21，顧問 §3.530），
+  // 推測是聚焦（叫出鍵盤、視窗高度改變）打斷了進行中的平滑捲動；立即捲動在聚焦前就完成，不受影響。
   useEffect(() => {
     if (!jumpTick) return;
     const spot = fieldSpot(error?.field);
@@ -323,8 +324,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
       if (spot) setLostField(true);
       return;
     }
-    const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    node.scrollIntoView?.({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    node.scrollIntoView?.({ block: 'center', behavior: 'auto' });
     node.focus({ preventScroll: true });
   }, [jumpTick]);
 
