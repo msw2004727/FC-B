@@ -32,7 +32,7 @@ import { CpError, CpGate, errorOf, reasonText } from '../ui/feedback';
 import { DateTimeField, FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending, CpRow, InfoIcon, LockIcon, PinIcon, PlusIcon, TrashIcon } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
-import { COVER_FIELD_ID, CoverField, coverProblemText, isCoverField, type CoverShown } from '../ui/cover-field';
+import { CoverField, coverProblemText, isCoverField, type CoverShown } from '../ui/cover-field';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { duplicateDivisionField, fieldSpot, step1Problem, step2Problem, type FieldProblem } from './new-competition-check';
 import '../live/score-fullscreen.css';

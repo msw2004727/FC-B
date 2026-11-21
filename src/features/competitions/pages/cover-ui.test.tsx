@@ -13,7 +13,7 @@ import { CpEnvProvider, type CpInjectedEnv } from '../env';
 import { loadCompetitionsDict, makeCompetitionsT } from '../i18n';
 import { InAppCardList } from '../components/InAppCardList';
 import { adminActor, hostActor, idleActions, screenEnv, wizardSeed } from '../testing/screen-fixtures';
-import { COVER_CROP } from '../ui/cover-field';
+import { COVER_CROP, CoverField } from '../ui/cover-field';
 import CompetitionDetailPage from './CompetitionDetailPage';
 import CompetitionManagePage from './CompetitionManagePage';
 import NewCompetitionPage from './NewCompetitionPage';
@@ -286,6 +286,77 @@ describe('報隊管理：換封面、移除（按下去直接存）', () => {
     draw(admin.env, CompetitionManagePage);
     openPanel();
     expect(document.querySelector('.cpc-pic img')?.getAttribute('src')).toBe(URL1);
+  });
+
+  it('上傳中：「編輯賽事資訊」與「完成」都不能按，面板收不起來；傳完照常存檔、按鈕恢復', async () => {
+    const { env, update } = manageEnv();
+    let finish: (up: UploadedCover) => void = () => {};
+    const upload = vi.fn(() => new Promise<UploadedCover>((resolve) => { finish = resolve; }));
+    draw({ ...env, coverUpload: upload }, CompetitionManagePage);
+    openPanel();
+    await pickAndCrop();
+    expect(screen.getByRole('status').textContent).toContain('上傳中');
+    const toggle = screen.getByRole('button', { name: '編輯賽事資訊' }) as HTMLButtonElement;
+    const done = screen.getByRole('button', { name: '完成' }) as HTMLButtonElement;
+    expect(toggle.disabled).toBe(true);
+    expect(done.disabled).toBe(true);
+    fireEvent.click(toggle);
+    fireEvent.click(done);
+    expect(document.querySelector('.cpc')).not.toBeNull();
+    await act(async () => { finish({ url: URL2, thumb: THUMB2, thumbSrc: THUMB_SRC }); });
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ cid: 'cup', cover: { url: URL2, thumb: THUMB2 } }));
+    await screen.findByRole('button', { name: '更換' });
+    expect(toggle.disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: '完成' }));
+    expect(document.querySelector('.cpc')).toBeNull();
+  });
+});
+
+describe('上傳逾時與錯誤記錄', () => {
+  function timeoutError(): Error {
+    const err = new Error('cover upload timed out https://x/?token=SECRET') as Error & { code: string };
+    err.name = 'CoverUploadError';
+    err.code = 'timeout';
+    return err;
+  }
+
+  it('逾時：封面欄說明逾時、回到可重選；console.warn 只印 code', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { env, update } = manageEnv();
+    draw({ ...env, coverUpload: vi.fn(async () => { throw timeoutError(); }) }, CompetitionManagePage);
+    openPanel();
+    await pickAndCrop();
+    await waitFor(() => expect(coverError()).toBe('封面上傳逾時，請檢查網路後重新選圖'));
+    expect(screen.getByRole('button', { name: '封面圖 上傳封面' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: '編輯賽事資訊' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(update).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('[cover] upload failed', 'timeout');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+  });
+
+  it('不是 CoverUploadError（例如載入失敗）：一般失敗句，記錄 unknown', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    wizard({ upload: vi.fn(async () => { throw Object.assign(new Error('chunk'), { code: 'timeout' }); }) });
+    await pickAndCrop();
+    await waitFor(() => expect(coverError()).toBe('封面上傳失敗，請再試一次'));
+    expect(warn).toHaveBeenCalledWith('[cover] upload failed', 'unknown');
+  });
+
+  it('上傳中被卸載：還給呼叫端「不忙」', async () => {
+    const onBusyChange = vi.fn();
+    const view = render(
+      <CoverField
+        ct={makeCompetitionsT({})}
+        value={null}
+        upload={() => new Promise<UploadedCover>(() => {})}
+        onBusyChange={onBusyChange}
+        onChange={() => {}}
+      />,
+    );
+    await pickAndCrop();
+    expect(onBusyChange).toHaveBeenLastCalledWith(true);
+    view.unmount();
+    expect(onBusyChange).toHaveBeenLastCalledWith(false);
   });
 });
 

@@ -104,6 +104,9 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [infoOpen, setInfoOpen] = useState(false);
   // 剛上傳的封面：本機預覽，網址相同時直接顯示，不再下載一次。
   const [coverLocal, setCoverLocal] = useState<CoverShown | null>(null);
+  // 封面上傳／儲存中：面板不能收（收起來封面欄會卸載，上傳完就不會存、留孤兒圖）。ref 給 saveContact await 之後讀最新值。
+  const [coverBusy, setCoverBusyState] = useState(false);
+  const coverBusyRef = useRef(false);
   const infoFocus = useRef<string | null>(null);
   const now = env.now ?? Date.now();
   const repKey = representativeClubs(env.actor).map((club) => club.id).join('\n');
@@ -114,7 +117,13 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     if (target) document.querySelector<HTMLElement>(target)?.focus();
   }, [infoOpen]);
 
+  function setCoverBusy(next: boolean): void {
+    coverBusyRef.current = next;
+    setCoverBusyState(next);
+  }
+
   function toggleInfo(next: boolean): void {
+    if (!next && coverBusyRef.current) return;
     // 封面欄的選檔 input 是隱藏的，聚焦跳過它（照舊落在分類第一個選項）。
     infoFocus.current = next ? `#${INFO_PANEL_ID} input:not([hidden])` : `#${INFO_TOGGLE_ID}`;
     setInfoOpen(next);
@@ -410,6 +419,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       value={coverNow ? (coverLocal?.url === coverNow.url ? coverLocal : coverNow) : null}
       upload={env.coverUpload}
       removeOnly={coverClosed}
+      onBusyChange={setCoverBusy}
       onChange={saveCover}
     />
   ) : null;
@@ -583,6 +593,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           trailing={<DownIcon />}
           aria-expanded={infoOpen}
           aria-controls={INFO_PANEL_ID}
+          disabled={coverBusy}
           onClick={() => toggleInfo(!infoOpen)}
         >
           {ct('editCompInfo')}
@@ -631,7 +642,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         </CpCard>
       ) : null}
       <div class="cph-right">
-        <Button variant="secondary" size="sm" onClick={() => toggleInfo(false)}>{ct('editCompDone')}</Button>
+        <Button variant="secondary" size="sm" disabled={coverBusy} onClick={() => toggleInfo(false)}>{ct('editCompDone')}</Button>
       </div>
       </div>
       ) : null}

@@ -1,9 +1,10 @@
 // 賽事封面上傳：資料夾鍵、路徑格式（與後端 functions-cp validate.ts#coverOf 同一條規則）、縮圖尺寸與格式、
 // 2MB 上限、兩張同資料夾同 bucket、bucket 失敗改試下一個。
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   COVER_MAX_BYTES,
   COVER_PATH_RE,
+  COVER_UPLOAD_TIMEOUT_MS,
   CoverUploadError,
   coverExt,
   coverPath,
@@ -48,10 +49,19 @@ function fakeCanvas(out: Drawn, supportsWebp = true): () => CoverCanvasLike {
   };
 }
 
+/** 亂數每次呼叫都不同（計數器）：若程式多產生一個資料夾，兩張的資料夾就會對不上。 */
+function countingBytes() {
+  let call = 0;
+  return vi.fn((n: number) => {
+    call += 1;
+    return Uint8Array.from({ length: n }, (_, i) => i * 7 + call);
+  });
+}
+
 function deps(extra: Partial<CoverUploadDeps> = {}, out: Drawn = { args: [], size: [0, 0], types: [] }): CoverUploadDeps {
   return {
     now: () => 1_700_000_000_123,
-    randomBytes: (n) => Uint8Array.from({ length: n }, (_, i) => i * 7),
+    randomBytes: countingBytes(),
     loadImage: async () => ({ width: 1200, height: 450 }),
     createCanvas: fakeCanvas(out),
     ...extra,
@@ -124,8 +134,12 @@ describe('uploadCompetitionCover', () => {
   it('兩張傳到同一個資料夾、同一個 bucket、同一個毫秒，網址照後端要的格式回傳', async () => {
     const puts: string[] = [];
     const put: CoverPut = async (_data, path) => { puts.push(path); return storageUrl(path); };
-    const result = await uploadCompetitionCover(WEBP, deps({ targets: async () => [put] }));
+    const randomBytes = countingBytes();
+    const result = await uploadCompetitionCover(WEBP, deps({ targets: async () => [put], randomBytes }));
     expect(puts).toHaveLength(2);
+    // 資料夾只產生一次（newCoverFolder 每次呼叫 randomBytes(16) 一次），兩張共用
+    expect(randomBytes).toHaveBeenCalledTimes(1);
+    expect(randomBytes).toHaveBeenCalledWith(16);
     const [cover, thumb] = puts.map((p) => BACKEND_COVER_PATH_RE.exec(p));
     expect(cover?.[2]).toBe('cover');
     expect(thumb?.[2]).toBe('thumb');
@@ -177,5 +191,50 @@ describe('uploadCompetitionCover', () => {
     const err = await uploadCompetitionCover(WEBP, deps({ targets: async () => [fail, fail] })).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CoverUploadError);
     expect((err as CoverUploadError).code).toBe('upload');
+  });
+});
+
+describe('上傳逾時（不改全站共用的 SDK maxUploadRetryTime，自己計時）', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('預設 60 秒；卡住的上傳到時丟 timeout，之後不再試下一個 bucket', async () => {
+    vi.useFakeTimers();
+    expect(COVER_UPLOAD_TIMEOUT_MS).toBe(60_000);
+    const hang = vi.fn<CoverPut>(() => new Promise<string>(() => {}));
+    const next = vi.fn<CoverPut>(async (_d, path) => storageUrl(path));
+    const result = uploadCompetitionCover(WEBP, deps({ targets: async () => [hang, next] })).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(hang).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    const err = await result;
+    expect(err).toBeInstanceOf(CoverUploadError);
+    expect((err as CoverUploadError).code).toBe('timeout');
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('封面那張逾時後才傳完：不再傳縮圖', async () => {
+    vi.useFakeTimers();
+    let finish: (url: string) => void = () => {};
+    const paths: string[] = [];
+    const slow: CoverPut = (_d, path) => {
+      paths.push(path);
+      return new Promise<string>((resolve) => { finish = resolve; });
+    };
+    const result = uploadCompetitionCover(WEBP, deps({ targets: async () => [slow], timeoutMs: 1000 })).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await result).toMatchObject({ code: 'timeout' });
+    finish('late');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(paths).toHaveLength(1);
+    expect(paths[0]).toContain('/cover_');
+  });
+
+  it('時間內完成：正常回傳，計時器清掉', async () => {
+    vi.useFakeTimers();
+    const put: CoverPut = async (_d, path) => storageUrl(path);
+    await expect(uploadCompetitionCover(WEBP, deps({ targets: async () => [put] }))).resolves.toMatchObject({ thumbSrc: WEBP });
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

@@ -57,6 +57,10 @@ const PITCH = cover('pitch');
 const instantUpload = async (dataUrl: string): Promise<UploadedCover> => ({ url: dataUrl, thumb: PITCH.thumb, thumbSrc: PITCH.thumb });
 const neverUpload = (): Promise<UploadedCover> => new Promise(() => {});
 const failUpload = async (): Promise<UploadedCover> => { throw new Error('offline'); };
+// 逾時：同 data/cover-upload.ts 的 CoverUploadError('timeout')（這裡不載入那支模組，只給同樣的 name／code）。
+const timeoutUpload = async (): Promise<UploadedCover> => {
+  throw Object.assign(new Error('cover upload timed out'), { name: 'CoverUploadError', code: 'timeout' });
+};
 
 function withCover(env: CpInjectedEnv, patch: Partial<CompetitionDoc>): CpInjectedEnv {
   const comp = env.bundle?.competition;
@@ -171,6 +175,10 @@ const SCREENS: Record<string, Screen> = {
     open: async () => { await pickPhoto(); await until('上傳失敗', () => !!document.getElementById('cpf-cover-error')); },
   },
   // 後端還沒部署封面欄（舊 cpHost 回 UNKNOWN_FIELD）：建立後跳回第 1 步，錯誤畫在封面欄
+  'form-timeout': {
+    env: () => wizardEnv(timeoutUpload), Page: NewCompetitionPage,
+    open: async () => { await pickPhoto(); await until('上傳逾時', () => !!document.getElementById('cpf-cover-error')); },
+  },
   'form-server-error': {
     env: () => ({
       ...wizardEnv(instantUpload, async () => { throw new CpCallError('UNKNOWN_FIELD', { field: 'cover' }); }),
@@ -192,6 +200,15 @@ const SCREENS: Record<string, Screen> = {
   // 報隊管理「編輯賽事資訊」：沒封面、已有封面、換封面（選圖上傳後直接存）、移除、已結束只能移除、下架主辦看不到
   'manage-empty': { env: () => hostManage({ cover: null }, instantUpload), Page: CompetitionManagePage, open: openEdit },
   'manage-ready': { env: () => hostManage({ cover: PITCH }, instantUpload), Page: CompetitionManagePage, open: openEdit },
+  // 上傳中：「編輯賽事資訊」與「完成」暫時不能按（收起來封面欄會卸載、上傳完就不會存）
+  'manage-uploading': {
+    env: () => hostManage({ cover: null }, neverUpload), Page: CompetitionManagePage,
+    open: async () => { await openEdit(); await pickPhoto(); await until('上傳中', () => !!document.querySelector('.cpc-busy')); },
+  },
+  'manage-timeout': {
+    env: () => hostManage({ cover: PITCH }, timeoutUpload), Page: CompetitionManagePage,
+    open: async () => { await openEdit(); await pickPhoto(); await until('上傳逾時', () => !!document.getElementById('cpf-cover-error')); },
+  },
   'manage-changed': {
     env: () => hostManage({ cover: cover('cup') }, instantUpload), Page: CompetitionManagePage,
     open: async () => { await openEdit(); await pickPhoto(); await until('已更新封面', () => (document.body.textContent ?? '').includes('已更新封面')); },

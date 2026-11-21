@@ -601,5 +601,6 @@
   "coverClosed": "賽事已結束或取消，只能移除封面",
   "coverBadType": "請選 JPG、PNG、WebP 或 HEIC 圖片",
   "coverTooBig": "圖片不能超過 5MB",
-  "coverFailed": "封面上傳失敗，請再試一次"
+  "coverFailed": "封面上傳失敗，請再試一次",
+  "coverTimeout": "封面上傳逾時，請檢查網路後重新選圖"
 }

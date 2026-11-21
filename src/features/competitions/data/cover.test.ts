@@ -22,6 +22,7 @@ describe('coverOf：根文件 cover 欄', () => {
     ['少 thumb', { url: URL1 }],
     ['thumb 不是字串', { url: URL1, thumb: 1 }],
     ['外站網址', { url: 'https://evil.example/x.webp', thumb: THUMB1 }],
+    ['外站但路徑像 Storage', { url: 'https://evil.example/v0/b/x/o/y?alt=media', thumb: THUMB1 }],
     ['http', { url: URL1.replace('https:', 'http:'), thumb: THUMB1 }],
     ['帶帳密', { url: URL1.replace('https://', 'https://a:b@'), thumb: THUMB1 }],
     ['帶埠號', { url: URL1.replace('.com/', '.com:8443/'), thumb: THUMB1 }],

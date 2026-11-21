@@ -129,17 +129,26 @@ export function CoverField({
   const fileRef = useRef<HTMLInputElement | null>(null);
   const mounted = useRef(true);
   const request = useRef(0);
+  const busy = useRef(false);
+  const onBusy = useRef(onBusyChange);
+  onBusy.current = onBusyChange;
 
   useLayoutEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
       request.current += 1;
+      // 上傳中被卸載（例如報隊管理重新載入後不再畫這一格）：還給呼叫端「不忙」，免得它的按鈕一直擋著。
+      if (busy.current) {
+        busy.current = false;
+        onBusy.current?.(false);
+      }
     };
   }, []);
 
   function begin(next: typeof pending): void {
     setPending(next);
+    busy.current = next != null;
     onBusyChange?.(next != null);
   }
 
@@ -179,8 +188,12 @@ export function CoverField({
       let up: UploadedCover;
       try {
         up = await (upload ?? defaultUpload)(dataUrl);
-      } catch {
-        if (mounted.current && id === request.current) setLocalError(ct('coverFailed'));
+      } catch (err) {
+        // 只印 CoverUploadError 的 code（format／too-large／image／upload／timeout），不印訊息或網址（網址帶 token）。
+        // 用 name 判斷而不 import 類別：cover-upload 是動態載入，不拉進這一包。
+        const code = err instanceof Error && err.name === 'CoverUploadError' ? (err as Error & { code?: unknown }).code : undefined;
+        console.warn('[cover] upload failed', typeof code === 'string' ? code : 'unknown');
+        if (mounted.current && id === request.current) setLocalError(ct(code === 'timeout' ? 'coverTimeout' : 'coverFailed'));
         return;
       }
       if (!mounted.current || id !== request.current) return;

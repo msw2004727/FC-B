@@ -24,7 +24,7 @@ const FOLDER_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 export const COVER_FOLDER_RE = /^c_[a-z0-9]{16}$/;
 export const COVER_PATH_RE = /^images\/competitions\/(c_[a-z0-9]{16})\/(cover|thumb)_[0-9]{13}\.(webp|jpg)$/;
 
-export type CoverUploadErrorCode = 'format' | 'too-large' | 'image' | 'upload';
+export type CoverUploadErrorCode = 'format' | 'too-large' | 'image' | 'upload' | 'timeout';
 
 export class CoverUploadError extends Error {
   readonly code: CoverUploadErrorCode;
@@ -70,7 +70,17 @@ export interface CoverUploadDeps {
   createCanvas?: () => CoverCanvasLike;
   /** 依序嘗試的上傳目標（每個目標一支 put）；預設是 getStorageUploadTargets 的兩個 bucket。 */
   targets?: () => Promise<CoverPut[]>;
+  /** 整次上傳的上限（毫秒），預設 COVER_UPLOAD_TIMEOUT_MS。 */
+  timeoutMs?: number;
 }
+
+/**
+ * 整次上傳（縮圖＋兩張＋換 bucket）最多等 60 秒，超過丟 CoverUploadError('timeout')，封面欄可重選。
+ * 不用 SDK 的 maxUploadRetryTime：它設在 FirebaseStorage instance 上（預設約 10 分鐘），而 getStorage(app, bucket)
+ * 對同一個 bucket 回同一個 instance，活動封面、外部賽事卡也共用，改了會影響全站其他上傳。所以在這裡自己計時；
+ * 代價是 uploadString 無法取消，逾時後背景那支請求可能稍後才傳完而成為孤兒（第一階段本來就接受孤兒，計畫書第 5 題）。
+ */
+export const COVER_UPLOAD_TIMEOUT_MS = 60_000;
 
 function defaultRandomBytes(n: number): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(n));
@@ -173,10 +183,32 @@ function checkedExt(dataUrl: string): 'webp' | 'jpg' {
 
 /**
  * 裁好的封面 → 產生縮圖 → 兩張傳到同一個資料夾、同一個 bucket。第一個 bucket 有任一張失敗就整組改試下一個；
- * 全部失敗丟 CoverUploadError('upload')。已傳上去的那張成為孤兒（第一階段不刪）。
+ * 全部失敗丟 CoverUploadError('upload')；整次超過 COVER_UPLOAD_TIMEOUT_MS 丟 CoverUploadError('timeout')。
+ * 已傳上去的那張成為孤兒（第一階段不刪）。
  */
 export async function uploadCompetitionCover(coverDataUrl: string, deps: CoverUploadDeps = {}): Promise<UploadedCover> {
   const coverType = checkedExt(coverDataUrl);
+  let expired = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      expired = true;
+      reject(new CoverUploadError('timeout', 'cover upload timed out'));
+    }, deps.timeoutMs ?? COVER_UPLOAD_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([uploadBoth(coverDataUrl, coverType, deps, () => expired), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function uploadBoth(
+  coverDataUrl: string,
+  coverType: 'webp' | 'jpg',
+  deps: CoverUploadDeps,
+  expired: () => boolean,
+): Promise<UploadedCover> {
   const thumbSrc = await makeCoverThumb(coverDataUrl, deps);
   const thumbType = checkedExt(thumbSrc);
   const folder = newCoverFolder(deps.randomBytes);
@@ -190,8 +222,11 @@ export async function uploadCompetitionCover(coverDataUrl: string, deps: CoverUp
     throw new CoverUploadError('upload', 'storage unavailable');
   }
   for (const put of targets) {
+    // 逾時後已經回報失敗：不再開下一張或下一個 bucket（背景那張 SDK 請求無法取消，由它自己結束）。
+    if (expired()) break;
     try {
       const url = await put(coverDataUrl, coverAt);
+      if (expired()) break;
       const thumb = await put(thumbSrc, thumbAt);
       return { url, thumb, thumbSrc };
     } catch {
