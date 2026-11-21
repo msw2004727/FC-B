@@ -16,25 +16,27 @@ import { Switch } from '@/ui/Switch';
 import { Textarea } from '@/ui/Textarea';
 import type { EventLocationSelection } from '@/features/events/components/event-form/EventLocationPicker';
 import { liveCpActions } from '../actions';
-import { canSeeInAppSection, isCpAdmin } from '../access';
+import { canEditCompetition, canHostOrCo, canSeeInAppSection, isCpAdmin } from '../access';
 import type { CompetitionsRepo } from '../data/cp-repo';
 import type { LaunchDoc } from '../data/types';
 import { useInjectedEnv, type CpActor, type CpInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { clipCodePoints, fromDatetimeLocalValue, formatTaipeiDateTime } from '../format';
-import { buildCreateInput, type DivisionDraft, type VenueDraft, type WizardDraft } from '../payload';
-import type { CompetitionCategory } from '../data/types';
+import { buildCreateInput, buildUpdateInput, type DivisionDraft, type VenueDraft, type WizardDraft } from '../payload';
+import type { CompetitionCategory, CompetitionDoc, DivisionDoc, StaffDoc } from '../data/types';
 import { categoryText } from '../ui/schedule-board';
 import { representativeClubs } from '../rep-clubs';
 import { dangerConfirm } from '../ui/danger-confirm';
 import { waitOverlayReleased } from '../ui/delete-competition';
-import { CpError, CpGate, errorOf, reasonText } from '../ui/feedback';
+import { CpError, CpGate, CpLoadFailed, errorOf, loadFailOf, reasonText } from '../ui/feedback';
 import { DateTimeField, FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending, CpRow, InfoIcon, LockIcon, PinIcon, PlusIcon, TrashIcon } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
 import { CoverField, coverProblemText, isCoverField, type CoverShown } from '../ui/cover-field';
 import { PageSpinner } from '@/ui/PageSpinner';
-import { duplicateDivisionField, fieldSpot, step1Problem, step2Problem, type FieldProblem } from './new-competition-check';
+import { toast } from '@/ui/Toast';
+import { duplicateDivisionField, fieldSpot, step1Problem, step2Problem, type EditCheck, type FieldProblem } from './new-competition-check';
+import { divisionTaken, editDraftOf, editErrorField, editLocks, isCompetitionId, type EditSource } from './edit-competition';
 import '../live/score-fullscreen.css';
 
 /**
@@ -76,6 +78,7 @@ const LABEL_KEY: Record<string, string> = {
   minAge: 'minAge',
   maxAge: 'maxAge',
   feePerTeam: 'feePerTeam',
+  hostDisplay: 'hostDisplayField',
 };
 
 /** 錯誤句要說是哪一欄、怎麼改；沒有對應句子的退回後端原因的通用文案。 */
@@ -118,6 +121,8 @@ function problemText(ct: (key: string, params?: Record<string, string | number>)
       break;
     case 'SCHEDULE_TOO_FAR':
       return ct('fe.tooFar');
+    case 'SCHEDULE_OUT_OF_RANGE':
+      return ct('fe.outOfRange');
     case 'SCHEDULE_PAST':
       if (f === 'firstMatchAt') return ct('fe.past');
       break;
@@ -163,6 +168,8 @@ interface FormState {
   category: CompetitionCategory;
   hostType: 'personal' | 'club';
   hostTeamId: string;
+  /** 編輯個人主辦時的主辦名稱；建立時不用（後端取主站顯示名）。 */
+  hostDisplay: string;
   feeNote: string;
   contactNote: string;
   regOpen: string;
@@ -181,6 +188,7 @@ function blankForm(): FormState {
     category: 'league',
     hostType: 'personal',
     hostTeamId: '',
+    hostDisplay: '',
     feeNote: '',
     contactNote: '',
     regOpen: '',
@@ -201,6 +209,7 @@ function formFromEnv(env: CpInjectedEnv): FormState {
     category: seed.category ?? 'league',
     hostType: env.preview?.wizardClub ? 'club' : seed.hostType,
     hostTeamId: seed.hostTeamId,
+    hostDisplay: '',
     feeNote: seed.feeNote,
     contactNote: seed.contactNote ?? '',
     regOpen: seed.regOpen,
@@ -299,18 +308,24 @@ function MapPicker({
   );
 }
 
-function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
+/**
+ * edit：編輯既有賽事（站長 11-21：照活動系統，建立與編輯共用這一份表單）。預填讀到的值；第 3 步主鈕「儲存變更」只送有變的鍵；
+ * 取消比對預填值；儲存或放棄後回到進來的頁面（報隊管理或詳情；歷史起點時取代成賽事詳情）。
+ */
+function WizardView({ env, edit }: { env: CpInjectedEnv; edit?: EditSource }): JSX.Element {
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   const preview = env.preview;
   const [step, setStep] = useState<1 | 2 | 3>(preview?.wizardStep === 2 || preview?.wizardStep === 3 ? preview.wizardStep : 1);
-  const [done, setDone] = useState(preview?.wizardStep === 'done');
+  const [done, setDone] = useState(!edit && preview?.wizardStep === 'done');
   const [cid, setCid] = useState('');
-  const [form, setForm] = useState<FormState>(() => formFromEnv(env));
-  // 進頁時的表單：取消與第 1 步返回拿來比對「有沒有填過」（站長 11-21）。
+  const [form, setForm] = useState<FormState>(() => (edit ? editDraftOf(edit) : formFromEnv(env)));
+  // 進頁時的表單：取消與第 1 步返回拿來比對「有沒有填過」（站長 11-21）；編輯時也是送出比對「改了哪些」的基準。
   const startForm = useRef(form);
-  const goBack = useGoBack('/tournaments');
+  const goBack = useGoBack(edit ? `/competitions/${edit.cid}` : '/tournaments');
+  const now = env.now ?? Date.now();
+  const locks = edit ? editLocks(edit, now) : null;
   const [error, setError] = useState<WizardError | null>(
     preview?.wizardError ? { reason: 'BANNED_WORD', field: 'name' } : null,
   );
@@ -329,6 +344,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   const clubsPending = env.actor.repClubsPending === true;
 
   useEffect(() => {
+    // 編輯時主辦身分不能改：不拿目前的代表俱樂部去改寫（管理員或共同主辦不一定是這個俱樂部的代表）。
+    if (edit) return;
     if (form.hostType !== 'club') return;
     if (clubsPending) return;
     if (clubs.length === 0) {
@@ -344,7 +361,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     const first = clubs[0]?.id ?? '';
     if (!first) return;
     setForm((prev) => (prev.hostTeamId === first ? prev : { ...prev, hostTeamId: first }));
-  }, [clubs, clubsPending, form.hostType, form.hostTeamId]);
+  }, [clubs, clubsPending, form.hostType, form.hostTeamId, edit]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -354,10 +371,24 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     };
   }, []);
 
+  // 編輯個人主辦多一個主辦名稱欄；建立時 hostDisplay 沒有欄位（整頁錯誤＋個人資料連結，照舊）。
+  const editHostName = !!edit && form.hostType === 'personal';
+  const spotOf = (field: string | undefined): ReturnType<typeof fieldSpot> => (
+    field === 'hostDisplay' && editHostName ? { step: 1, field, id: 'cpf-host-display' } : fieldSpot(field)
+  );
+  // 編輯：四個時間沒改就不檢查（報名已截止的賽事也能改其他欄位），有改照後端 updateCompetition 的規則。
+  const start = startForm.current;
+  const editCheck: EditCheck | undefined = edit ? {
+    timesChanged: form.regOpen !== start.regOpen || form.regClose !== start.regClose
+      || form.firstMatch !== start.firstMatch || form.lastMatch !== start.lastMatch,
+    admin: edit.isAdmin,
+    hostDisplay: editHostName,
+  } : undefined;
+
   // 沒過的欄位：立即捲到畫面中間再聚焦。不依賴動畫：立即捲動在聚焦前就完成（顧問 §3.533）。
   useEffect(() => {
     if (!jumpTick) return;
-    const spot = fieldSpot(error?.field);
+    const spot = spotOf(error?.field);
     const node = spot ? document.getElementById(spot.id) : null;
     if (!node) {
       if (spot) setLostField(true);
@@ -389,7 +420,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
 
   /** 欄位有問題：回到那一欄所在的步驟、錯誤畫在欄位上、捲過去聚焦。畫面上沒有對應欄位就留在原步驟顯示整頁錯誤。 */
   function showProblem(problem: WizardError | FieldProblem): void {
-    const spot = fieldSpot(problem.field);
+    const spot = spotOf(problem.field);
     setLostField(false);
     setError(spot ? { ...problem, field: spot.field } : problem);
     if (!spot) return;
@@ -425,7 +456,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
       showProblem({ field: 'cover', reason: 'COVER_BUSY' });
       return;
     }
-    const problem = step === 1 ? step1Problem(form, env.now ?? Date.now()) : step2Problem(form);
+    const problem = step === 1 ? step1Problem(form, now, editCheck) : step2Problem(form);
     if (problem) {
       showProblem(problem);
       return;
@@ -465,6 +496,44 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     }
   }
 
+  /** 編輯：送出前整份再驗一次；沒有任何變動直接回去（不打後端、不跳已儲存）。成功回到進來的頁面，那頁掛載時重讀。 */
+  async function save(): Promise<void> {
+    if (!edit || inFlight.current) return;
+    const problem = step1Problem(form, now, editCheck) ?? step2Problem(form);
+    if (problem) {
+      showProblem(problem);
+      return;
+    }
+    const input = buildUpdateInput(edit.cid, startForm.current, form);
+    if (!input) {
+      goBack();
+      return;
+    }
+    inFlight.current = true;
+    setBusy(true);
+    setError(null);
+    let saved = false;
+    try {
+      await env.actions.update(input);
+      saved = true;
+      toast.show({ message: ct('editSaved') });
+      goBack();
+    } catch (err) {
+      const info = errorOf(err);
+      const raw = typeof info.params.field === 'string' ? info.params.field : undefined;
+      const field = info.reason === 'DIVISION_NAME_DUPLICATE'
+        ? (duplicateDivisionField(form.divisions) ?? raw)
+        : isCoverField(raw) ? 'cover' : editErrorField(info.reason, raw);
+      showProblem({ reason: info.reason, params: info.params, field });
+    } finally {
+      // 成功時維持鎖定與轉圈到換頁（返回是非同步的），不讓第二下再送一次。
+      if (!saved) {
+        inFlight.current = false;
+        setBusy(false);
+      }
+    }
+  }
+
   async function publish(): Promise<void> {
     if (!cid || busy || inFlight.current) return;
     inFlight.current = true;
@@ -484,8 +553,9 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   /** 取消與第 1 步返回：和進頁時不同才問要不要放棄，沒填過直接走（同 CpFrame 返回）。送出中不動（同步鎖擋按下建立同一刻的取消）。 */
   async function leave(): Promise<void> {
     if (inFlight.current) return;
-    if (JSON.stringify(form) !== JSON.stringify(startForm.current)) {
-      if (!(await dangerConfirm(ct('discardCreate'), { okText: ct('discard'), danger: true }))) return;
+    // 封面在 form 裡，選好的封面自動算「填過」；上傳中 form 還沒有封面，也當填過一起問。放棄後上傳中那張成孤兒（計畫書第 5 題接受）。
+    if (coverBusy || JSON.stringify(form) !== JSON.stringify(startForm.current)) {
+      if (!(await dangerConfirm(ct(edit ? 'discardEdit' : 'discardCreate'), { okText: ct('discard'), danger: true }))) return;
       // 確認框開著時推了一筆同網址紀錄（overlay-back）：先等它退掉，返回才會退到進來前那頁、起點時的取代才蓋到建立頁那筆。
       await waitOverlayReleased();
     }
@@ -499,12 +569,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     setStep(step === 3 ? 2 : 1);
   }
 
-  const stepName = step === 1 ? ct('stepBasic') : step === 2 ? ct('stepDivisions') : ct('stepConfirm');
+  const stepName = step === 1 ? ct('stepBasic') : step === 2 ? ct('stepDivisions') : ct(edit ? 'stepConfirmEdit' : 'stepConfirm');
   // 等待說明：轉圈的按鈕下面一句，螢幕閱讀器也會唸（role="status"）
   const waitHint = waitStage ? <p class="cps-note" role="status">{ct(waitStage === 2 ? 'waitLong' : 'waitSlow')}</p> : null;
-  const hostName = form.hostType === 'club'
-    ? (clubs.find((club) => club.id === form.hostTeamId)?.name ?? '')
-    : (env.actor.displayName ?? '');
+  const hostName = edit
+    ? (form.hostType === 'club' ? (edit.competition.hostDisplay ?? '') : form.hostDisplay.trim())
+    : form.hostType === 'club'
+      ? (clubs.find((club) => club.id === form.hostTeamId)?.name ?? '')
+      : (env.actor.displayName ?? '');
 
   if (done) {
     return (
@@ -526,11 +598,11 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
 
   const draftTimes = toDraft(form, '');
 
-  const pageError = error && (lostField || fieldSpot(error.field)?.step !== step) ? error : null;
+  const pageError = error && (lostField || spotOf(error.field)?.step !== step) ? error : null;
 
   return (
     <CpFrame
-      title={ct('createTitle')}
+      title={ct(edit ? 'editTitle' : 'createTitle')}
       menu={<span class="cph-stepno">{ct('stepOf', { step })}</span>}
       onBack={step === 1 ? () => { void leave(); } : goPrev}
       backDisabled={busy}
@@ -579,10 +651,12 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   { value: 'friendly', label: ct('categoryFriendly') },
                 ]}
               />
+              {/* 編輯時主辦身分顯示但停用（後端 UPDATE_KEYS 沒有 hostType／hostTeamId） */}
               <RadioGroup
                 label={ct('hostKind')}
                 orientation="horizontal"
                 value={form.hostType}
+                disabled={!!edit}
                 onValueChange={(value) => {
                   const hostType = value === 'club' ? 'club' : 'personal';
                   patch({
@@ -590,20 +664,37 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                     hostTeamId: hostType === 'club' ? (form.hostTeamId || clubs[0]?.id || '') : form.hostTeamId,
                   });
                 }}
-                options={[
+                options={edit ? [
+                  { value: 'personal', label: ct('hostPersonalShort') },
+                  { value: 'club', label: ct('club') },
+                ] : [
                   { value: 'personal', label: ct('hostPersonalShort') },
                   ...(clubs.length > 0 ? [{ value: 'club', label: ct('hostClubOption') }] : []),
                 ]}
               />
-              {form.hostType === 'club' && clubs.length > 0 ? (
+              {form.hostType === 'club' && (edit || clubs.length > 0) ? (
                 <Select
                   id="cpf-club"
                   label={ct('club')}
                   required
+                  disabled={!!edit}
                   value={form.hostTeamId}
                   error={fieldError('hostTeamId')}
                   onValueChange={(hostTeamId) => { patch({ hostTeamId }); clearField('hostTeamId'); }}
-                  options={clubs.map((club) => ({ value: club.id, label: club.name }))}
+                  options={edit
+                    ? [{ value: form.hostTeamId, label: edit.competition.hostDisplay ?? '' }]
+                    : clubs.map((club) => ({ value: club.id, label: club.name }))}
+                />
+              ) : null}
+              {editHostName ? (
+                <Input
+                  id="cpf-host-display"
+                  label={ct('hostDisplayField')}
+                  required
+                  value={form.hostDisplay}
+                  maxLength={30}
+                  error={fieldError('hostDisplay')}
+                  onValueChange={(hostDisplay) => { patch({ hostDisplay }); clearField('hostDisplay'); }}
                 />
               ) : null}
               {form.hostType === 'club' ? (
@@ -640,20 +731,25 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           <CpCard class="cph-tight">
             <h2 class="cp3-sec-h">{ct('regPeriod')}</h2>
             <div class="cps-fields cph-pair">
-              <DateTimeField id="cp-reg-open" required label={ct('regStart')} value={form.regOpen} error={fieldError('regOpenAt')} onValueChange={(regOpen) => { patch({ regOpen }); clearField('regOpenAt'); }} />
-              <DateTimeField id="cp-reg-close" required label={ct('regEnd')} value={form.regClose} error={fieldError('regCloseAt')} onValueChange={(regClose) => { patch({ regClose }); clearField('regCloseAt'); }} />
+              <DateTimeField id="cp-reg-open" required disabled={locks?.times} label={ct('regStart')} value={form.regOpen} error={fieldError('regOpenAt')} onValueChange={(regOpen) => { patch({ regOpen }); clearField('regOpenAt'); }} />
+              <DateTimeField id="cp-reg-close" required disabled={locks?.times} label={ct('regEnd')} value={form.regClose} error={fieldError('regCloseAt')} onValueChange={(regClose) => { patch({ regClose }); clearField('regCloseAt'); }} />
             </div>
             <h2 class="cp3-sec-h">{ct('matchPeriod')}</h2>
             <div class="cps-fields cph-pair">
-              <DateTimeField id="cp-first" required label={ct('firstMatch')} value={form.firstMatch} error={fieldError('firstMatchAt')} onValueChange={(firstMatch) => { patch({ firstMatch }); clearField('firstMatchAt'); }} />
-              <DateTimeField id="cp-last" required label={ct('lastMatch')} value={form.lastMatch} error={fieldError('lastMatchAt')} onValueChange={(lastMatch) => { patch({ lastMatch }); clearField('lastMatchAt'); }} />
+              <DateTimeField id="cp-first" required disabled={locks?.times} label={ct('firstMatch')} value={form.firstMatch} error={fieldError('firstMatchAt')} onValueChange={(firstMatch) => { patch({ firstMatch }); clearField('firstMatchAt'); }} />
+              <DateTimeField id="cp-last" required disabled={locks?.times} label={ct('lastMatch')} value={form.lastMatch} error={fieldError('lastMatchAt')} onValueChange={(lastMatch) => { patch({ lastMatch }); clearField('lastMatchAt'); }} />
             </div>
+            {/* 編輯：首場已過且不是管理員，四個時間停用（後端 COMPETITION_STARTED） */}
+            {locks?.times ? <p class="cps-cap cph-hint" data-edit-lock="times">{ct('editTimesLocked')}</p> : null}
           </CpCard>
           <CpCard class="cph-tight">
             <h2 class="cp3-sec-h">{ct('venue')}</h2>
             <div class="cps-fields">
               {/* 場地照建立活動的地點欄（EventFormFields 的 event-location-control）：文字欄下一列「座標狀態＋選點鈕」，選點同一個 EventLocationPicker */}
-              {form.venues.map((venue, index) => (
+              {form.venues.map((venue, index) => {
+                // 已排賽程：進頁時就有的場地全部停用（含刪除與選點），只有新增的那幾列可改可刪
+                const venueOff = locks?.venues === true && index < (edit?.competition.venues.length ?? 0);
+                return (
                 <div class="cps-fields cph-vrow" key={index}>
                   <div class="cps-fields cph-pair">
                     <div class="cps-head-row cph-venue">
@@ -661,13 +757,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                         id={`cpf-v${index}-name`}
                         label={ct('venueName')}
                         required
+                        disabled={venueOff}
                         value={venue.name}
                         maxLength={40}
                         error={fieldError(`venues.${index}.name`)}
                         onValueChange={(name) => { patchVenue(index, { name }); clearField(`venues.${index}.name`); }}
                       />
                       {form.venues.length > 1 ? (
-                        <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} onClick={() => removeRow({ venues: form.venues.filter((_, i) => i !== index) })}>
+                        <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} disabled={venueOff} style={venueOff ? 'opacity:.5' : undefined} onClick={() => removeRow({ venues: form.venues.filter((_, i) => i !== index) })}>
                           <TrashIcon />
                         </button>
                       ) : null}
@@ -675,6 +772,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                     <Input
                       id={`cpf-v${index}-address`}
                       label={ct('venueAddress')}
+                      disabled={venueOff}
                       value={venue.address}
                       maxLength={100}
                       error={fieldError(`venues.${index}.address`)}
@@ -687,15 +785,17 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   {/* 狀態與鈕的字照建立活動 locationControlState（已設定／尚未設定地圖座標、設定／重新設定地圖座標） */}
                   <div class="cph-start cph-map">
                     <span class={`cps-sub cps-nowrap${hasPoint(venue) ? ' cph-on' : ''}`}>{ct(hasPoint(venue) ? 'mapSet' : 'mapUnset')}</span>
-                    <Button variant="secondary" size="sm" leading={<PinIcon />} onClick={() => setMapIndex(index)}>{ct(hasPoint(venue) ? 'mapRepick' : 'mapPick')}</Button>
+                    <Button variant="secondary" size="sm" leading={<PinIcon />} disabled={venueOff} onClick={() => setMapIndex(index)}>{ct(hasPoint(venue) ? 'mapRepick' : 'mapPick')}</Button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {form.venues.length < 10 ? (
                 <div class="cph-start">
                   <Button variant="secondary" size="sm" leading={<PlusIcon />} onClick={() => patch({ venues: [...form.venues, emptyVenue()] })}>{ct('addVenue')}</Button>
                 </div>
               ) : null}
+              {locks?.venues ? <p class="cps-cap" data-edit-lock="venues">{ct('editVenuesLocked')}</p> : null}
             </div>
           </CpCard>
         </>
@@ -703,7 +803,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
 
       {step === 2 ? (
         <>
-          {form.divisions.map((division, index) => (
+          {locks?.namesOnly ? <p class="cps-note" data-edit-lock="divisions">{ct('editDivLocked')}</p> : null}
+          {form.divisions.map((division, index) => {
+            // 編輯：名單鎖定只能改名稱；這一組已有報隊不能刪，人制、年齡、實名、報名費也不能改
+            // （後端 ROSTERS_LOCKED、DIVISION_HAS_ENTRIES、DIVISION_RULES_LOCKED）；隊數不能少於已核准（DIVISION_BELOW_APPROVED）。
+            const taken = edit ? divisionTaken(edit, division.dvId) : null;
+            const namesOnly = locks?.namesOnly === true;
+            const rulesOff = namesOnly || taken != null;
+            return (
             <CpCard key={index}>
               <div class="cps-head-row" style="margin-bottom:12px">
                 <h2 class="cp3-sec-h">{ct('divisionN', { n: index + 1 })}</h2>
@@ -712,6 +819,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                     type="button"
                     class="cps-iconbtn cps-iconbtn--flat cph-trash"
                     aria-label={ct('removeDivision')}
+                    disabled={namesOnly || taken != null}
+                    style={namesOnly || taken != null ? 'opacity:.5' : undefined}
                     onClick={() => removeRow({ divisions: form.divisions.filter((_, i) => i !== index) })}
                   >
                     <TrashIcon />
@@ -728,6 +837,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   error={fieldError(`divisions.${index}.name`)}
                   onValueChange={(name) => { patchDivision(index, { name }); clearField(`divisions.${index}.name`); }}
                 />
+                {taken && !namesOnly ? <p class="cps-cap" data-edit-lock="rules">{ct('reason.DIVISION_RULES_LOCKED')}</p> : null}
                 <div>
                   <span class="cps-label">{ct('playersOnField')}</span>
                   <div class="cps-chips cph-five">
@@ -736,6 +846,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                         key={count}
                         label={ct('formatN', { n: count })}
                         size="sm"
+                        disabled={rulesOff}
                         selected={division.playersOnField === count}
                         onSelect={() => {
                           const playersOnField = count;
@@ -749,14 +860,15 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 </div>
                 {/* 連續的加減器與開關：細線等高列（列高 48），左標籤、右控制 */}
                 <div class="d2-lines d2-lines--48 cph-ctl">
-                <Stepper id={`cpf-d${index}-maxTeams`} label={ct('maxTeams')} value={division.maxTeams} min={2} max={64} onValueChange={(maxTeams) => { patchDivision(index, { maxTeams }); clearDivisionNumbers(index); }} />
-                <Stepper id={`cpf-d${index}-rosterMin`} label={ct('rosterMin')} value={division.rosterMin} min={1} max={division.rosterMax} onValueChange={(rosterMin) => { patchDivision(index, { rosterMin }); clearDivisionNumbers(index); }} />
+                <Stepper id={`cpf-d${index}-maxTeams`} label={ct('maxTeams')} value={division.maxTeams} min={Math.max(2, taken?.approvedCount ?? 0)} max={64} disabled={namesOnly} onValueChange={(maxTeams) => { patchDivision(index, { maxTeams }); clearDivisionNumbers(index); }} />
+                <Stepper id={`cpf-d${index}-rosterMin`} label={ct('rosterMin')} value={division.rosterMin} min={1} max={division.rosterMax} disabled={namesOnly} onValueChange={(rosterMin) => { patchDivision(index, { rosterMin }); clearDivisionNumbers(index); }} />
                 <Stepper
                   id={`cpf-d${index}-rosterMax`}
                   label={ct('rosterMax')}
                   value={division.rosterMax}
                   min={division.playersOnField}
                   max={40}
+                  disabled={namesOnly}
                   onValueChange={(rosterMax) => {
                     patchDivision(index, { rosterMax, rosterMin: Math.min(division.rosterMin, rosterMax) });
                     clearDivisionNumbers(index);
@@ -765,6 +877,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 <Switch
                   class="cph-switch"
                   label={ct('limitAge')}
+                  disabled={rulesOff}
                   checked={division.limitAge}
                   onCheckedChange={(limitAge) => patchDivision(index, {
                     limitAge,
@@ -773,13 +886,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 />
                 {division.limitAge ? (
                   <>
-                    <Stepper id={`cpf-d${index}-minAge`} label={ct('minAge')} value={division.minAge} min={3} max={99} onValueChange={(minAge) => { patchDivision(index, { minAge }); clearDivisionNumbers(index); }} />
-                    <Stepper id={`cpf-d${index}-maxAge`} label={ct('maxAge')} value={division.maxAge} min={3} max={99} onValueChange={(maxAge) => { patchDivision(index, { maxAge }); clearDivisionNumbers(index); }} />
+                    <Stepper id={`cpf-d${index}-minAge`} label={ct('minAge')} value={division.minAge} min={3} max={99} disabled={rulesOff} onValueChange={(minAge) => { patchDivision(index, { minAge }); clearDivisionNumbers(index); }} />
+                    <Stepper id={`cpf-d${index}-maxAge`} label={ct('maxAge')} value={division.maxAge} min={3} max={99} disabled={rulesOff} onValueChange={(maxAge) => { patchDivision(index, { maxAge }); clearDivisionNumbers(index); }} />
                   </>
                 ) : null}
                 <Switch
                   class="cph-switch"
                   label={ct('requireRealName')}
+                  disabled={rulesOff}
                   checked={division.requireRealName}
                   onCheckedChange={(requireRealName) => patchDivision(index, { requireRealName })}
                 />
@@ -799,6 +913,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                     id={`cpf-d${index}-feePerTeam`}
                     label={ct('feePerTeam')}
                     type="number"
+                    disabled={rulesOff}
                     error={fieldError(`divisions.${index}.feePerTeam`)}
                     value={String(division.feePerTeam)}
                     min={0}
@@ -812,10 +927,11 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 ) : null}
               </div>
             </CpCard>
-          ))}
+            );
+          })}
           {form.divisions.length < 8 ? (
             <div class="cph-start">
-              <Button variant="secondary" size="sm" leading={<PlusIcon />} onClick={() => patch({ divisions: [...form.divisions, emptyDivision()] })}>{ct('addDivision')}</Button>
+              <Button variant="secondary" size="sm" leading={<PlusIcon />} disabled={locks?.namesOnly} onClick={() => patch({ divisions: [...form.divisions, emptyDivision()] })}>{ct('addDivision')}</Button>
             </div>
           ) : null}
         </>
@@ -827,7 +943,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
             {form.cover ? <img class="d2-hero__cover" src={form.cover.src ?? form.cover.url} alt="" width={1200} height={450} /> : null}
             <div class="cps-badges" style="margin-bottom:8px">
               <StatusTag kind="neutral" label={form.hostType === 'club' ? ct('hostClub') : ct('hostPersonal')} />
-              <StatusTag kind="neutral" label={ct('draft')} />
+              {edit ? null : <StatusTag kind="neutral" label={ct('draft')} />}
             </div>
             <h2 class="cps-title cps-title--user" style="margin-bottom:12px">{form.name.trim()}</h2>
             <dl class="cps-rows">
@@ -870,7 +986,7 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
               ))}
             </ul>
           </CpCard>
-          <p class="cps-note">{ct('draftNote')}</p>
+          {edit ? null : <p class="cps-note">{ct('draftNote')}</p>}
         </>
       ) : null}
 
@@ -898,14 +1014,16 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         {step === 1
           ? <Button variant="secondary" class="cph-narrow" onClick={() => { void leave(); }}>{ct('cancel')}</Button>
           : <Button variant="secondary" class="cph-narrow" disabled={busy} onClick={goPrev}>{ct('prev')}</Button>}
-        {step < 3 ? <Button variant="primary" onClick={goNext}>{ct('next')}</Button> : (
+        {step < 3 ? <Button variant="primary" onClick={goNext}>{ct('next')}</Button> : edit ? (
+          <Button variant="primary" loading={busy} onClick={() => { void save(); }}>{ct('saveChanges')}</Button>
+        ) : (
           <Button variant="primary" loading={busy} onClick={() => { void create(); }}>{ct('createAction')}</Button>
         )}
       </div>
       {waitHint}
       {step > 1 ? (
         <div class="cph-start">
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => { void leave(); }}>{ct('cancelCreate')}</Button>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => { void leave(); }}>{ct(edit ? 'cancelEdit' : 'cancelCreate')}</Button>
         </div>
       ) : null}
 
@@ -1017,8 +1135,97 @@ function CreateGate({
   );
 }
 
+/** 不能編輯：有合格的 cid 才給「回賽事頁」，否則回賽事列表（不拿網址上的值組路徑）。 */
+function EditDenied({ cid }: { cid?: string }): JSX.Element {
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
+  const { route } = useLocation();
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
+  return (
+    <CpFrame title={ct('editTitle')}>
+      <CpGate icon={<LockIcon />} text={ct('editNotAllowed')} load="edit-denied">
+        {cid
+          ? <Button variant="primary" onClick={() => route(`/competitions/${cid}`, true)}>{ct('backToCompetition')}</Button>
+          : <Button variant="primary" onClick={() => route('/tournaments', true)}>{ct('backToTournaments')}</Button>}
+      </CpGate>
+    </CpFrame>
+  );
+}
+
+type EditLoad =
+  | { phase: 'loading' | 'missing' | 'hidden' | 'error' }
+  | { phase: 'ready'; competition: CompetitionDoc; divisions: DivisionDoc[]; staff: StaffDoc | null };
+
+/**
+ * 編輯賽事進頁：讀這場賽事的根文件、組別與我的 staff（報隊管理同一批，不讀報隊），依後端 updateCompetition 決定能不能編輯。
+ * 未登入不讀；角色或代表俱樂部還沒定案、而且目前看起來不是主辦時先轉圈，不先說不能編輯。
+ * 已結束／已取消、下架（非管理員）、刪到一半：顯示不能編輯的狀態頁（直接開網址也一樣）。
+ */
+function EditGate({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Element {
+  const cpDict = useCompetitionsT();
+  const ct = ctOrKey(cpDict);
+  const preset = env.bundle?.competition;
+  const [load, setLoad] = useState<EditLoad>(() => (preset
+    ? { phase: 'ready', competition: preset, divisions: env.bundle?.divisions ?? [], staff: env.bundle?.staff ?? null }
+    : { phase: 'loading' }));
+  const [retry, setRetry] = useState(0);
+  const uid = env.actor.uid;
+
+  useEffect(() => {
+    if (preset || env.actor.authPending || !uid) return;
+    let alive = true;
+    setLoad({ phase: 'loading' });
+    void (async () => {
+      try {
+        const [competition, divisions, staff] = await Promise.all([
+          env.repo.getCompetition(cid),
+          env.repo.listDivisions(cid),
+          env.repo.getStaff(cid, uid),
+        ]);
+        if (alive) setLoad(competition ? { phase: 'ready', competition, divisions, staff } : { phase: 'missing' });
+      } catch (err) {
+        if (alive) setLoad({ phase: loadFailOf(err) });
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [cid, uid, env.actor.authPending, env.repo, preset, retry]);
+
+  if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
+  const spinner = <div class="cps-root" data-cp-edit="pending"><PageSpinner /></div>;
+  if (env.actor.authPending || (uid && load.phase === 'loading')) return spinner;
+  if (load.phase === 'hidden' || load.phase === 'error') {
+    return <CpLoadFailed title={ct('editTitle')} fail={load.phase} onRetry={() => setRetry((n) => n + 1)} />;
+  }
+  const isAdmin = isCpAdmin(env.actor.role);
+  const ready = load.phase === 'ready' ? load : null;
+  const canHost = ready ? canHostOrCo({
+    staffRoles: ready.staff?.roles ?? [],
+    hostType: ready.competition.hostType,
+    hostTeamId: ready.competition.hostTeamId,
+    repClubIds: representativeClubs(env.actor).map((club) => club.id),
+    isAdmin,
+  }) : false;
+  // 目前不像主辦，但角色（管理員）或代表俱樂部還在讀：等定案再判斷。
+  if (ready && !canHost && (env.actor.rolePending || (ready.competition.hostType === 'club' && env.actor.repClubsPending))) return spinner;
+  if (!ready || !canEditCompetition(ready.competition, { canHost, isAdmin })) return <EditDenied cid={cid} />;
+  return <WizardView env={env} edit={{ cid, competition: ready.competition, divisions: ready.divisions, isAdmin }} />;
+}
+
 export default function NewCompetitionPage(): JSX.Element {
   const injected = useInjectedEnv();
+  // 編輯賽事走同一頁：/competitions/new?edit=<cid>（不另加路由，首頁入口的路由表不變大）。
+  const editCid = useLocation().query.edit ?? '';
+  if (editCid) {
+    if (!isCompetitionId(editCid)) return <EditDenied />;
+    if (injected) return <EditGate env={injected} cid={editCid} />;
+    return (
+      <LiveBoundary>
+        {(actor, repo) => <EditGate env={{ actor, repo, actions: liveCpActions }} cid={editCid} />}
+      </LiveBoundary>
+    );
+  }
   if (injected) {
     return <CreateGate actor={injected.actor} repo={injected.repo}>{() => <WizardView env={injected} />}</CreateGate>;
   }

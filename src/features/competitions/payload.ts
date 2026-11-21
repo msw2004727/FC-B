@@ -1,9 +1,11 @@
 // 送出欄位只含契約列出的鍵。多送一鍵伺服器回 UNKNOWN_FIELD。
 // undefined 的選填欄不放進物件（呼叫端的 payload() 也會略過，這裡先不產生）。
 
+import { fromDatetimeLocalValue } from './format';
 import type {
   CpAddRosterByRepInput,
   CpHostCreateInput,
+  CpHostUpdateInput,
   CpJoinRosterInput,
   CpRegisterEntryInput,
   CpReportInput,
@@ -23,6 +25,8 @@ export interface VenueDraft {
 }
 
 export interface DivisionDraft {
+  /** 編輯既有組別才有（送出時保留，後端據此更新而不是新增）。建立時沒有。 */
+  dvId?: string;
   name: string;
   playersOnField: 5 | 7 | 8 | 9 | 11;
   maxTeams: number;
@@ -115,6 +119,69 @@ export function buildCreateInput(draft: WizardDraft): CpHostCreateInput {
   // 個人主辦不送 hostDisplay。後端用主站顯示名，並自己處理長度與禁用字。
   // 報名費只限俱樂部主辦（顧問 §3.257）：個人主辦一律送 0
   return { ...common, hostType: 'personal', divisions: common.divisions.map((d) => ({ ...d, feePerTeam: 0 })) };
+}
+
+/** 編輯賽事比對用的表單值（建賽精靈同一份表單）。時間是 datetime-local 字串。 */
+export interface EditDraft {
+  name: string;
+  category: CompetitionCategory;
+  hostType: 'personal' | 'club';
+  /** 個人主辦的顯示名稱；俱樂部主辦不送。 */
+  hostDisplay: string;
+  feeNote: string;
+  contactNote: string;
+  regOpen: string;
+  regClose: string;
+  firstMatch: string;
+  lastMatch: string;
+  venues: VenueDraft[];
+  divisions: DivisionDraft[];
+  cover: CompetitionCover | null;
+}
+
+function divisionRow(draft: DivisionDraft, club: boolean): DivisionInput {
+  // 報名費只限俱樂部主辦（同 buildCreateInput）：個人主辦一律 0
+  return { ...(draft.dvId ? { dvId: draft.dvId } : {}), ...divisionOf(draft), ...(club ? {} : { feePerTeam: 0 }) };
+}
+
+const coverKey = (cover: CompetitionCover | null): string => (cover ? `${cover.url} ${cover.thumb}` : '');
+
+/**
+ * 編輯賽事只送有變的鍵（後端 updateCompetition 的 UPDATE_KEYS）；完全沒變回 null，不打後端。
+ * 四個時間任一個變就四個一起送（後端 SCHEDULE_ALL_REQUIRED）；組別有變送完整清單並保留 dvId（清單外＝刪除）。
+ * 前提：呼叫前已過 step1Problem（時間都解析得了）；解析不了的時間不送。
+ */
+export function buildUpdateInput(cid: string, before: EditDraft, after: EditDraft): CpHostUpdateInput | null {
+  const out: CpHostUpdateInput = { cid };
+  const club = after.hostType === 'club';
+  const name = after.name.trim();
+  if (name !== before.name.trim()) out.name = name;
+  if (after.category !== before.category) out.category = after.category;
+  if (!club) {
+    const hostDisplay = after.hostDisplay.trim();
+    if (hostDisplay !== before.hostDisplay.trim()) out.hostDisplay = hostDisplay;
+  } else {
+    const feeNote = after.feeNote.trim();
+    if (feeNote !== before.feeNote.trim()) out.feeNote = feeNote;
+  }
+  const contactNote = after.contactNote.trim();
+  if (contactNote !== before.contactNote.trim()) out.contactNote = contactNote || null;
+  const times = [after.regOpen, after.regClose, after.firstMatch, after.lastMatch];
+  const oldTimes = [before.regOpen, before.regClose, before.firstMatch, before.lastMatch];
+  if (times.some((value, i) => value !== oldTimes[i])) {
+    const [regOpenAt, regCloseAt, firstMatchAt, lastMatchAt] = times.map(fromDatetimeLocalValue);
+    if (regOpenAt != null && regCloseAt != null && firstMatchAt != null && lastMatchAt != null) {
+      out.schedule = { regOpenAt, regCloseAt, firstMatchAt, lastMatchAt };
+    }
+  }
+  const venues = after.venues.map(venueOf);
+  if (JSON.stringify(venues) !== JSON.stringify(before.venues.map(venueOf))) out.venues = venues;
+  const divisions = after.divisions.map((row) => divisionRow(row, club));
+  if (JSON.stringify(divisions) !== JSON.stringify(before.divisions.map((row) => divisionRow(row, club)))) out.divisions = divisions;
+  if (coverKey(after.cover) !== coverKey(before.cover)) {
+    out.cover = after.cover ? { url: after.cover.url, thumb: after.cover.thumb } : null;
+  }
+  return Object.keys(out).length > 1 ? out : null;
 }
 
 function positionFields(choice: PositionChoice, positionText: string): {

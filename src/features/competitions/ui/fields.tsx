@@ -26,6 +26,7 @@ export function DateTimeField({
   onValueChange,
   error,
   required = false,
+  disabled = false,
 }: {
   id: string;
   label: string;
@@ -35,6 +36,8 @@ export function DateTimeField({
   error?: string;
   /** 必填標記與 Input、DateField 同一種（標籤後的「* 必填」）。 */
   required?: boolean;
+  /** 編輯賽事首場已過：時間不能改（停用樣式沿用 .ui-input 的 :disabled）。 */
+  disabled?: boolean;
 }): JSX.Element {
   const t = useT();
   // iOS 的時間選擇器可能只送 change、不送 input。正式環境載了 preact/compat，<input> 上的 onChange 會被改寫成 input 監聽，
@@ -50,6 +53,7 @@ export function DateTimeField({
         type="datetime-local"
         value={value}
         required={required}
+        disabled={disabled}
         aria-invalid={Boolean(error)}
         aria-describedby={error ? `${id}-error` : undefined}
         onInput={(event) => onValueChange(event.currentTarget.value)}

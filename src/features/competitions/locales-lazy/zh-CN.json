@@ -485,7 +485,8 @@
     "ageOrder": "最大年齡不可小於最小年齡",
     "map": "請重新在地圖選點",
     "address": "地址",
-    "hostDisplay": "請到個人資料設定顯示名稱"
+    "hostDisplay": "請到個人資料設定顯示名稱",
+    "outOfRange": "比賽期間須涵蓋已排的場次"
   },
   "reason": {
     "INTERNAL_PERIOD": "內部測試期間，尚未對外開放",
@@ -587,7 +588,10 @@
     "NO_CHANGE": "狀態沒有變更",
     "REPORT_NOT_FOUND": "找不到這筆檢舉",
     "UNKNOWN": "操作失敗，請稍後再試",
-    "COVER_URL_NOT_ALLOWED": "封面圖不合規定，請重新上傳"
+    "COVER_URL_NOT_ALLOWED": "封面圖不合規定，請重新上傳",
+    "DIVISION_HAS_ENTRIES": "已有報隊的組別不能刪除",
+    "DIVISION_RULES_LOCKED": "已有隊伍報名，部分規則不能改",
+    "DIVISION_BELOW_APPROVED": "隊數不能少於已核准的隊伍"
   },
   "cover": "封面圖",
   "coverUpload": "上傳封面",
@@ -602,5 +606,16 @@
   "coverBadType": "請選 JPG、PNG、WebP 或 HEIC 圖片",
   "coverTooBig": "圖片不能超過 5MB",
   "coverFailed": "封面上傳失敗，請再試一次",
-  "coverTimeout": "封面上傳逾時，請檢查網路後重新選圖"
+  "coverTimeout": "封面上傳逾時，請檢查網路後重新選圖",
+  "editTitle": "編輯賽事",
+  "saveChanges": "儲存變更",
+  "stepConfirmEdit": "確認變更",
+  "cancelEdit": "取消編輯",
+  "discardEdit": "變更不會保存，確定放棄編輯？",
+  "editSaved": "已儲存",
+  "editNotAllowed": "這場賽事目前不能編輯",
+  "editTimesLocked": "首場已開始，時間不能再改",
+  "editDivLocked": "名單已鎖定，組別只能改名稱",
+  "hostDisplayField": "主辦名稱",
+  "editVenuesLocked": "已排賽程，既有場地不能更改"
 }

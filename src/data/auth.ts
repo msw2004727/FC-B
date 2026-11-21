@@ -185,7 +185,7 @@ function emitAuth(uid: string | null): void {
   if (uid === null) {
     try {
       for (const key of Object.keys(localStorage)) {
-        if (key.startsWith('fcb:home-next:')) localStorage.removeItem(key);
+        if (key.startsWith('fcb:home-next:') || key.startsWith('fcb:cp-list:')) localStorage.removeItem(key);
       }
     } catch {
       /* 儲存空間不可用就略過 */
@@ -625,7 +625,8 @@ export interface QaClaims {
 // 'fcb:events-snapshot:'：活動列表快照以登入者 uid 分隔，內含他人的 blockedUids／creatorUid 等欄位，登出（整頁重載後是訪客）時不會再被讀到也不會被覆寫，必須在這裡清掉（顧問 §3.106，L-43）。
 // B1-05：補 'shub_qr_'（UidQrModal 的本人 QR 快取）與 admin_stealth（stealth.ts 的隱身開關），登出與清除快取共用這份清單。
 // 'fcb:home-next:'：首頁「我的下一場活動」快照（含 owner uid 與報名活動），登出與清除快取一起清（2026-11-19）。
-const ACCOUNT_STORAGE_PREFIXES = ['shub_c_', 'shub_ts_', 'shub_cache_', 'shub_qr_', 'LIFF', 'toosterx:auth', 'fcb:events-snapshot:', 'fcb:home-next:'];
+// 'fcb:cp-list:'：站內賽事清單快照（含 owner uid 與本人主辦／草稿賽事名稱），登出與清除快取一起清（2026-11-21，顧問 §3.553）。
+const ACCOUNT_STORAGE_PREFIXES = ['shub_c_', 'shub_ts_', 'shub_cache_', 'shub_qr_', 'LIFF', 'toosterx:auth', 'fcb:events-snapshot:', 'fcb:home-next:', 'fcb:cp-list:'];
 const ACCOUNT_STORAGE_EXACT_KEYS = [
   'sporthub_auto_exp_rules',
   'sporthub_auto_exp_logs',

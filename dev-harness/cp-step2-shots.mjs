@@ -23,6 +23,8 @@ const ANCHORS = {
   'host-long-pending': '三重示範青年足球俱樂部隊', 'gate-guest': '登入後才能建立賽事', 'gate-member': '建立賽事尚未開放', 'gate-error': '讀取失敗',
   'host-pending-empty': '目前沒有待審的隊伍', 'host-approved-empty': '目前沒有已核准的隊伍', 'host-rejected-empty': '目前沒有已拒絕的隊伍',
   'host-lock-all': '鎖定後各隊不能再改名單', 'roster-confirmed': '確認名單', 'detail-oneday': '比賽期間',
+  'edit-started': '首場已開始，時間不能再改', 'edit-locked': '名單已鎖定，組別只能改名稱', 'edit-denied': '這場賽事目前不能編輯',
+  'edit-1-personal': '主辦名稱', 'edit-scheduled': '已排賽程，既有場地不能更改', 'edit-3': '儲存變更', 'edit-entry-manage': '編輯賽事', 'edit-entry-detail': '編輯賽事',
   'roster-member': '登錄名單', 'roster-remove': '確定要移除', 'form-error': '送出', 'form-custom-pos': '自訂', 'form-ineligible': '只有俱樂部成員可以做這個操作',
 };
 const THEMES_ALL = ['light', 'dark'];
@@ -74,7 +76,19 @@ const SCREENS = [
   ['host-lock-all', NEW, THEMES_ALL, false],
   ['roster-confirmed', NEW, THEMES_ALL, true],
   ['detail-oneday', NEW, THEMES_ALL, true],
+  // 編輯賽事（站長 11-21）：1280 包正式內容容器（?frame=1）
+  ['edit-1', NEW, THEMES_ALL, true],
+  ['edit-1-personal', NEW, THEMES_ALL, true],
+  ['edit-2', NEW, THEMES_ALL, true],
+  ['edit-3', NEW, THEMES_ALL, true],
+  ['edit-started', NEW, THEMES_ALL, true],
+  ['edit-locked', NEW, THEMES_ALL, true],
+  ['edit-scheduled', NEW, THEMES_ALL, true],
+  ['edit-denied', NEW, THEMES_ALL, true],
+  ['edit-entry-manage', NEW, THEMES_ALL, true],
+  ['edit-entry-detail', NEW, THEMES_ALL, true],
 ];
+const FRAMED_WIDE = (name, w) => name.startsWith('edit-') && w >= 1280;
 
 const SELECTORS = 'button, .ui-badge, .ui-chip, dt, .cps-line, .cps-li__name, .cps-cap, .cps-kv span, .cps-label, .ui-input label, .ui-checkbox label, .ui-switch label, h1, h2, h3, .cps-stepname span, .cps-stepname b, .ui-stepper label'
   // 新外觀第 4 批：頁首賽事名小字、名單列名字與位置、一句話版面
@@ -101,7 +115,7 @@ for (const [name, sizes, themes, full] of SCREENS) {
       const tag = `${name}-${w}-${theme}`;
       page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });
       page.on('pageerror', (e) => report.consoleErrors.push(`${tag}: pageerror ${e.message}`));
-      await page.goto(`${BASE}/dev-harness/cp-step2.html?screen=${name}&theme=${theme}`);
+      await page.goto(`${BASE}/dev-harness/cp-step2.html?screen=${name}&theme=${theme}${FRAMED_WIDE(name, w) ? '&frame=1' : ''}`);
       try {
         await page.waitForFunction(() => window.__CPS_READY === true, null, { timeout: 25000 });
       } catch {

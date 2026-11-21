@@ -6,6 +6,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import type { ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { markHistoryRoot } from '@/core/back-guard';
+import { _resetOverlayBackForTest } from '@/core/overlay-back';
+import { AppConfirmHost, _resetAppConfirmForTest } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
 import { CpCallError } from '../data/cp-callables';
 import type { CpHostCreateInput, CpHostUpdateInput } from '../data/cp-callables';
@@ -14,7 +17,8 @@ import type { InAppListCard } from '../data/list-cards';
 import { CpEnvProvider, type CpInjectedEnv } from '../env';
 import { loadCompetitionsDict, makeCompetitionsT } from '../i18n';
 import { InAppCardList } from '../components/InAppCardList';
-import { adminActor, hostActor, idleActions, screenEnv, wizardSeed } from '../testing/screen-fixtures';
+import { adminActor, hostActor, idleActions, listInEnv, screenEnv, wizardSeed } from '../testing/screen-fixtures';
+import { InAppSection } from '../components/InAppSection';
 import { COVER_CROP, CoverField } from '../ui/cover-field';
 import CompetitionDetailPage from './CompetitionDetailPage';
 import CompetitionManagePage from './CompetitionManagePage';
@@ -232,6 +236,70 @@ function openPanel(): void {
   fireEvent.click(screen.getByRole('button', { name: '編輯賽事資訊' }));
 }
 
+// 建賽「取消」（cp-create-cancel）：封面在 form 裡，選了封面就算填過；上傳中 form 還沒封面，也一樣先問。
+describe('建賽取消與封面', () => {
+  const START = '/competitions/new';
+  const ASK = '已填的內容不會保存，確定放棄建立？';
+
+  beforeEach(() => {
+    history.replaceState(null, '', START);
+    markHistoryRoot();
+  });
+
+  afterEach(() => {
+    cleanup();
+    _resetAppConfirmForTest();
+    _resetOverlayBackForTest();
+  });
+
+  function drawBlank(upload: CpInjectedEnv['coverUpload']): void {
+    const env = screenEnv('wizard-1', idleActions());
+    render(
+      <LocationProvider>
+        <CpEnvProvider value={{ ...env, wizardSeed: undefined, coverUpload: upload }}>
+          <NewCompetitionPage />
+        </CpEnvProvider>
+        <AppConfirmHost />
+      </LocationProvider>,
+    );
+  }
+
+  const cancelBtn = () => [...document.querySelectorAll<HTMLButtonElement>('.cph-split button')].find((node) => node.textContent === '取消')!;
+  const flush = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+  it('只選了封面（其他沒填）：按取消跳「放棄建立？」；繼續填寫封面還在，放棄才離開', async () => {
+    drawBlank(okUpload());
+    await pickAndCrop();
+    await screen.findByRole('button', { name: '更換' });
+    fireEvent.click(cancelBtn());
+    await flush();
+    expect(screen.getByRole('alertdialog').textContent).toContain(ASK);
+    fireEvent.click(document.getElementById('app-confirm-cancel')!);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 150)); });
+    expect(location.pathname).toBe(START);
+    expect(document.querySelector('.cpc-pic img')?.getAttribute('src')).toBe(CROPPED);
+    fireEvent.click(cancelBtn());
+    await flush();
+    fireEvent.click(document.getElementById('app-confirm-ok')!);
+    await waitFor(() => expect(location.pathname).toBe('/tournaments'));
+  });
+
+  it('封面上傳中按取消：同一套確認；放棄後離開，上傳晚到也不寫回、不報錯', async () => {
+    let finish: (up: UploadedCover) => void = () => {};
+    drawBlank(vi.fn(() => new Promise<UploadedCover>((resolve) => { finish = resolve; })));
+    await pickAndCrop();
+    expect(screen.getByRole('status').textContent).toContain('上傳中');
+    fireEvent.click(cancelBtn());
+    await flush();
+    expect(screen.getByRole('alertdialog').textContent).toContain(ASK);
+    fireEvent.click(document.getElementById('app-confirm-ok')!);
+    await waitFor(() => expect(location.pathname).toBe('/tournaments'));
+    await act(async () => { finish({ url: URL2, thumb: THUMB2, thumbSrc: THUMB_SRC }); await Promise.resolve(); });
+    expect(location.pathname).toBe('/tournaments');
+    expect(document.getElementById('cpf-cover-error')).toBeNull();
+  });
+});
+
 describe('報隊管理：換封面、移除（按下去直接存）', () => {
   it('沒封面：選圖上傳後 update 帶 { cid, cover }，跳提示；再移除送 cover: null', async () => {
     const { env, update } = manageEnv();
@@ -418,9 +486,9 @@ describe('詳情頂部', () => {
 });
 
 describe('封面樣式不靠動畫', () => {
-  it('.d2-hero__cover 與清單縮圖的規則沒有 opacity／animation／transition（背景分頁動畫被節流也不會卡在透明）', () => {
+  it('.d2-hero__cover、清單縮圖與卡板封面的規則沒有 opacity／animation／transition（背景分頁動畫被節流也不會卡在透明）', () => {
     const css = readFileSync(resolve('src/features/competitions/competitions.css'), 'utf8');
-    const rules = css.match(/[^{}]*(?:d2-hero__cover|cpl-card__link--img)[^{}]*\{[^}]*\}/g) ?? [];
+    const rules = css.match(/[^{}]*(?:d2-hero__cover|cpl-card__link--img|cpl-sb__img|cpl-sb--img)[^{}]*\{[^}]*\}/g) ?? [];
     expect(rules.length).toBeGreaterThan(0);
     for (const rule of rules) expect(rule).not.toMatch(/opacity|animation|transition/);
   });
@@ -430,7 +498,7 @@ describe('清單卡', () => {
   it('只有帶縮圖的卡出現 56×42 縮圖；沒封面的卡版面照舊', () => {
     const card = (cid: string, thumb: string): InAppListCard => ({
       cid, name: cid, category: 'league', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
-      line: null, mine: false, ended: false, statusMark: null, thumb,
+      line: null, mine: false, ended: false, statusMark: null, thumb, cover: '',
     });
     render(
       <InAppCardList
@@ -455,10 +523,76 @@ describe('清單卡', () => {
     expect(none?.querySelector('a > .cpl-card__name')).not.toBeNull();
   });
 
+  it('卡板：有封面才在板裡放原圖（lazy、async）並加 cpl-sb--img；沒封面的卡板結構照舊；圖載不到收回沒封面的卡板', () => {
+    const board = (cid: string, cover: string): InAppListCard => ({
+      cid, name: cid, category: 'cup', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
+      line: { kind: 'deadline', date: '11/21 23:59' }, mine: false, ended: false, statusMark: null, thumb: THUMB1, cover,
+    });
+    const list = (card: InAppListCard) => (
+      <InAppCardList
+        cards={[card]}
+        ct={makeCompetitionsT({})}
+        status="open"
+        onlyMine={false}
+        showCreate={false}
+        boardCid={card.cid}
+        onStatus={() => {}}
+        onOnlyMine={() => {}}
+        onCreate={() => {}}
+        onOpen={() => {}}
+      />
+    );
+    const { unmount } = render(list(board('with', URL1)));
+    const sb = document.querySelector('[data-cid="with"] .d2-sb');
+    const img = sb?.querySelector<HTMLImageElement>('img.cpl-sb__img');
+    expect(sb?.classList.contains('cpl-sb--img')).toBe(true);
+    // 卡板用原圖、不用 224×168 縮圖；圖是板的第一個子節點，字在後面
+    expect(img?.getAttribute('src')).toBe(URL1);
+    expect(img?.getAttribute('loading')).toBe('lazy');
+    expect(img?.getAttribute('decoding')).toBe('async');
+    expect(img?.getAttribute('alt')).toBe('');
+    expect(sb?.firstElementChild).toBe(img);
+    act(() => { img!.dispatchEvent(new Event('error')); });
+    expect(document.querySelector('[data-cid="with"] img')).toBeNull();
+    expect(document.querySelector('[data-cid="with"] .d2-sb')?.className).toBe('d2-sb');
+    unmount();
+
+    render(list(board('none', '')));
+    const plain = document.querySelector('[data-cid="none"] .d2-sb');
+    expect(plain?.className).toBe('d2-sb');
+    expect(plain?.querySelector('img')).toBeNull();
+    expect(plain?.firstElementChild?.className).toBe('cpl-sb__top');
+  });
+
+  it('下架賽事：管理員看清單也一律不畫封面（卡板與一般卡都沒有圖）；沒下架的照常有圖', async () => {
+    await loadCompetitionsDict('zh-TW');
+    const env = { ...listInEnv(), actor: adminActor };
+    const orig = env.repo.listPublic.bind(env.repo);
+    // 正式查詢已帶 hidden == false；這裡故意讓下架文件混進來（例如經主辦俱樂部那條查詢），確認畫面這層也不畫
+    env.repo.listPublic = async (includeInternal?: boolean) => (await orig(includeInternal)).map((doc) => (
+      doc.id === 'live_cup' ? { ...doc, hidden: true, hiddenReason: '示範下架', cover: { url: URL1, thumb: THUMB1 } }
+        : doc.id === 'warm_lg' ? { ...doc, cover: { url: URL2, thumb: THUMB2 } } : doc));
+    render(
+      <LocationProvider>
+        <CpEnvProvider value={env}>
+          <InAppSection tab="all" active />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    // 等當日摘要回來、卡板挑出後才斷言（獨立審查 P3：只等卡片出現時卡板還沒選出，測不到卡板這條路）
+    await waitFor(() => expect(document.querySelector('[data-cid="live_cup"].cpl-card--board')).not.toBeNull());
+    const hidden = document.querySelector('[data-cid="live_cup"]');
+    expect(hidden?.querySelector('img')).toBeNull();
+    expect(hidden?.querySelector('.cpl-sb--img')).toBeNull();
+    expect(document.querySelector(`img[src="${URL1}"], img[src="${THUMB1}"]`)).toBeNull();
+    // 對照：沒下架的那張有圖（縮圖或卡板原圖）
+    expect(document.querySelector('[data-cid="warm_lg"] img')).not.toBeNull();
+  });
+
   it('縮圖載不到：改畫沒封面的版面，不留 56×42 空格', () => {
     const card: InAppListCard = {
       cid: 'bad', name: 'bad', category: 'league', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
-      line: null, mine: false, ended: false, statusMark: null, thumb: THUMB1,
+      line: null, mine: false, ended: false, statusMark: null, thumb: THUMB1, cover: '',
     };
     render(
       <InAppCardList

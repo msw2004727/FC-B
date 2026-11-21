@@ -19,8 +19,11 @@ import { setLocale } from '@/i18n/i18n';
 import { AppConfirmHost } from '@/ui/AppConfirm';
 import { ToastHost } from '@/ui/ToastHost';
 import { InAppSection } from '@/features/competitions/components/InAppSection';
+import { InAppCardList } from '@/features/competitions/components/InAppCardList';
+import type { InAppListCard } from '@/features/competitions/data/list-cards';
+import './cp-cover-board-harness.css';
 import { CpEnvProvider, type CpInjectedEnv } from '@/features/competitions/env';
-import { loadCompetitionsDict } from '@/features/competitions/i18n';
+import { ctOrKey, loadCompetitionsDict, useCompetitionsT } from '@/features/competitions/i18n';
 import { CpCallError } from '@/features/competitions/data/cp-callables';
 import type { UploadedCover } from '@/features/competitions/data/cover-upload';
 import type { CompetitionCover, CompetitionDoc } from '@/features/competitions/data/types';
@@ -35,11 +38,15 @@ const screenName = params.get('screen') || 'form-empty';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 const framed = params.get('frame') === '1';
 document.documentElement.setAttribute('data-theme', theme);
+// 卡板封面預覽：?cv=a|b|c 切三個版本（b 是 competitions.css 的寫法；a、c 由 cp-cover-board-harness.css 覆寫）；?art= 換示範圖
+document.documentElement.setAttribute('data-cv', params.get('cv') || 'b');
 
 // ── 自己畫的示範封面（1200×450；縮圖是正中央 4:3 那一塊，模擬自動裁切） ──
 const ART: Record<string, string> = {
   pitch: '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1f7a4d"/><stop offset="1" stop-color="#0f4c3a"/></linearGradient></defs><rect width="1200" height="450" fill="url(#g)"/><g fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="6"><rect x="60" y="40" width="1080" height="370"/><line x1="600" y1="40" x2="600" y2="410"/><circle cx="600" cy="225" r="80"/><rect x="60" y="130" width="150" height="190"/><rect x="990" y="130" width="150" height="190"/></g><g fill="#fff" fill-opacity=".08"><rect x="0" width="150" height="450"/><rect x="300" width="150" height="450"/><rect x="750" width="150" height="450"/><rect x="1050" width="150" height="450"/></g>',
   cup: '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2=".6"><stop offset="0" stop-color="#312e81"/><stop offset="1" stop-color="#0e7490"/></linearGradient></defs><rect width="1200" height="450" fill="url(#g)"/><circle cx="880" cy="230" r="190" fill="#fff" fill-opacity=".1"/><circle cx="880" cy="230" r="120" fill="none" stroke="#fde68a" stroke-opacity=".8" stroke-width="10"/><circle cx="300" cy="90" r="60" fill="#fde68a" fill-opacity=".35"/><path d="M0 380 L1200 260 L1200 450 L0 450Z" fill="#000" fill-opacity=".18"/>',
+  // 很亮、很雜的示範圖：白底、黃白斜紋、彩色圓點與黑白格（測字壓在亮圖上還看不看得清）
+  busy: '<rect width="1200" height="450" fill="#fff"/><g fill="#fde047">' + Array.from({ length: 16 }, (_, i) => `<path d="M${i * 90 - 200} 450 L${i * 90 + 40} 0 L${i * 90 + 85} 0 L${i * 90 - 155} 450Z"/>`).join('') + '</g><g fill="#111">' + Array.from({ length: 60 }, (_, i) => (i % 2 ? '' : `<rect x="${(i % 12) * 100}" y="${Math.floor(i / 12) * 90}" width="50" height="45"/>`)).join('') + '</g><g fill-opacity=".9">' + Array.from({ length: 40 }, (_, i) => `<circle cx="${(i * 137) % 1200}" cy="${(i * 71) % 450}" r="${18 + (i % 5) * 9}" fill="${['#ef4444', '#22c55e', '#3b82f6', '#f97316', '#ffffff'][i % 5]}"/>`).join('') + '</g>',
   dusk: '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#475569"/><stop offset="1" stop-color="#1e293b"/></linearGradient></defs><rect width="1200" height="450" fill="url(#g)"/><path d="M0 450 L260 210 L470 360 L700 160 L960 340 L1200 220 L1200 450Z" fill="#94a3b8" fill-opacity=".35"/><circle cx="930" cy="110" r="46" fill="#e2e8f0" fill-opacity=".6"/>',
 };
 
@@ -98,6 +105,103 @@ function ListIn(): ComponentChildren {
       </section>
     </div>
   );
+}
+
+// ── 卡板封面（站長 11-21）：直接畫正式 InAppCardList 兩段——有封面卡板＋沒封面卡、沒封面卡板＋有縮圖卡 ──
+function boardCard(cid: string, patch: Partial<InAppListCard>): InAppListCard {
+  return {
+    cid, name: '同榮盃', category: 'cup', phase: 'recruit', date: '12/06–12/07', venue: '新莊運動公園',
+    firstMatchAt: 1, line: { kind: 'deadline', date: '11/21 23:59' }, mine: false, ended: false, statusMark: null,
+    thumb: '', cover: '', ...patch,
+  };
+}
+
+function BoardList({ lists }: { lists: InAppListCard[][] }): ComponentChildren {
+  const ct = ctOrKey(useCompetitionsT());
+  const noop = (): void => {};
+  return (
+    <div class="legacy-ui tournaments-root" data-d2="1">
+      <section class="page active tc-page" id="page-tournaments">
+        {lists.map((cards, i) => (
+          <div class={i === 0 ? 'cvb-1' : 'cvb-2'} key={cards[0]!.cid}>
+            <InAppCardList cards={cards} ct={ct} status="open" onlyMine={false} showCreate={i === 0} boardCid={cards[0]!.cid}
+              onStatus={noop} onOnlyMine={noop} onCreate={noop} onOpen={(_cid, e) => e.preventDefault()} />
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+// 示範封面預設用 repo 內的照片（public/assets/og/sports/football.jpg，不連網），照正式裁切流程：中央 8:3 → 1200×450、WebP 0.72
+let photoCover: CompetitionCover | null = null;
+async function loadPhoto(): Promise<void> {
+  const img = new Image();
+  img.src = '/assets/og/sports/football.jpg';
+  await img.decode();
+  const sh = Math.round((img.naturalWidth * 3) / 8);
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = 450;
+  canvas.getContext('2d')?.drawImage(img, 0, (img.naturalHeight - sh) / 2, img.naturalWidth, sh, 0, 0, 1200, 450);
+  const url = canvas.toDataURL('image/webp', 0.72);
+  const t = document.createElement('canvas');
+  t.width = 224;
+  t.height = 168;
+  t.getContext('2d')?.drawImage(canvas, 300, 0, 600, 450, 0, 0, 224, 168);
+  photoCover = { url, thumb: t.toDataURL('image/webp', 0.72) };
+}
+const artName = params.get('art') || 'photo';
+const artCover = (): CompetitionCover => (artName === 'photo' && photoCover ? photoCover : cover(artName === 'photo' ? 'pitch' : artName));
+
+function BoardScreen(): ComponentChildren {
+  const c = artCover();
+  const first = [
+    boardCard('b_cover', { cover: c.url, thumb: c.thumb }),
+    boardCard('n_plain', { name: '2027 新北市青年五人制足球邀請錦標賽', category: 'league', phase: 'warm', line: { kind: 'warm', days: 3 }, date: '01/16–01/17', venue: '三重綜合運動場' }),
+  ];
+  const second = [
+    boardCard('b_plain', { name: '冬季友誼聯賽', category: 'league', phase: 'live', line: { kind: 'live', count: 4, time: '14:30' }, date: '11/21', venue: '迎風河濱球場' }),
+    boardCard('n_thumb', { name: '社區親子足球日', category: 'friendly', line: { kind: 'deadline', date: '12/01 23:59' }, date: '12/14', venue: '大佳河濱公園', thumb: cover('cup').thumb }),
+  ];
+  return <BoardList lists={[first, second]} />;
+}
+
+// 進行中卡板（兩格）＋長名稱，都有封面：看名稱壓到圖上、兩格落在圖上的樣子
+function BoardLiveScreen(): ComponentChildren {
+  const first = [boardCard('b_live', { name: '2027 新北市青年五人制足球邀請錦標賽', phase: 'live', line: { kind: 'live', count: 4, time: '14:30' }, cover: artCover().url })];
+  const second = [boardCard('b_warm', { phase: 'warm', line: { kind: 'warm', days: 3 }, cover: cover('cup').url })];
+  return <BoardList lists={[first, second]} />;
+}
+
+const LONG = '2027 新北市青年五人制足球邀請錦標賽';
+// 送審總覽（顧問 §3.548）：每段一張卡板——有封面、有封面＋長名稱（進行中兩格）、封面載不到（onError 退回）、沒封面；
+// 一般卡含已結束（有縮圖）、長名稱
+function BoardAllScreen(): ComponentChildren {
+  const c = artCover();
+  const lists = [
+    [
+      boardCard('b_cover', { cover: c.url, thumb: c.thumb }),
+      boardCard('n_done', { name: '秋季盃（已結束）', category: 'cup', phase: 'done', ended: true, line: null, date: '10/18–10/19', venue: '新莊運動公園', thumb: cover('dusk').thumb }),
+    ],
+    [
+      boardCard('b_long', { name: LONG, phase: 'live', line: { kind: 'live', count: 4, time: '14:30' }, cover: c.url }),
+      boardCard('n_long', { name: LONG, category: 'league', phase: 'warm', line: { kind: 'warm', days: 3 }, date: '01/16–01/17', venue: '三重綜合運動場' }),
+    ],
+    [boardCard('b_broken', { name: '封面載不到的盃賽', phase: 'warm', line: { kind: 'warm', days: 5 }, cover: 'data:image/webp;base64,AAAA' })],
+    [boardCard('b_plain', { name: '冬季友誼聯賽', category: 'league', phase: 'recruit', date: '12/20', venue: '迎風河濱球場' })],
+  ];
+  return <BoardList lists={lists} />;
+}
+
+// 下架：管理員看清單，下架那場（正式查詢不會帶出；這裡故意混進來）卡板與一般卡都不畫封面；沒下架的照常有縮圖
+function hiddenAdminEnv(): CpInjectedEnv {
+  const env = { ...listInEnv(), actor: adminActor };
+  const orig = env.repo.listPublic.bind(env.repo);
+  env.repo.listPublic = async (includeInternal?: boolean) => (await orig(includeInternal)).map((d) => (
+    d.id === 'live_cup' ? { ...d, name: '示範盃（已下架）', hidden: true, hiddenReason: '示範下架', cover: PITCH }
+      : d.id === 'warm_lg' ? { ...d, cover: cover('cup') } : d));
+  return env;
 }
 
 // ── 互動：照使用者操作點正式元件 ──
@@ -195,6 +299,11 @@ const SCREENS: Record<string, Screen> = {
       window.scrollTo(0, 0);
     },
   },
+  // 第 2 步（組別）：底部「上一步｜下一步」＋下方「取消建立」（cp-create-cancel），帶已選封面進來
+  'form-step2': {
+    env: () => ({ ...wizardEnv(instantUpload), preview: { wizardStep: 2 }, wizardSeed: { ...wizardSeed(), cover: PITCH } }),
+    Page: NewCompetitionPage,
+  },
   'form-confirm': {
     env: () => ({ ...wizardEnv(instantUpload), preview: { wizardStep: 3 }, wizardSeed: { ...wizardSeed(), cover: PITCH } }),
     Page: NewCompetitionPage,
@@ -242,6 +351,10 @@ const SCREENS: Record<string, Screen> = {
   'list-mixed': { env: listEnv, Page: ListIn },
   // 訪客（未登入）：清單有圖／沒圖混排、詳情有封面
   'guest-list': { env: () => ({ ...listEnv(), actor: GUEST }), Page: ListIn },
+  'list-board': { env: listInEnv, Page: BoardScreen },
+  'list-board-live': { env: listInEnv, Page: BoardLiveScreen },
+  'list-board-all': { env: listInEnv, Page: BoardAllScreen },
+  'list-hidden-admin': { env: hiddenAdminEnv, Page: ListIn },
   'guest-detail': { env: () => ({ ...withCover(screenEnv('real-live'), { cover: PITCH }), actor: GUEST }), Page: CompetitionDetailPage },
 };
 
@@ -263,6 +376,7 @@ async function start(): Promise<void> {
   await setLocale('zh-TW');
   await loadCompetitionsDict('zh-TW');
   if (framed) await import('@/ui/app-shell.css');
+  if (screenName.startsWith('list-board') && artName === 'photo') await loadPhoto();
   const root = document.getElementById('app');
   if (!root) return;
   render(

@@ -64,6 +64,8 @@ const CLEARED_KEYS = [
   'admin_stealth',
   // 2026-11-19：首頁「我的下一場活動」快照（含 owner uid）登出時一起清。
   'fcb:home-next:v1',
+  // 2026-11-21：站內賽事清單快照（含 owner uid）登出時一起清。
+  'fcb:cp-list:v1',
 ] as const;
 
 const consoleMethods = ['log', 'info', 'warn', 'error', 'debug'] as const;
@@ -534,6 +536,11 @@ const UNRELATED_KEYS = [
   'sporthub_active_sport',
   'toosterx:locale',
   'toosterx:theme',
+  // 2026-11-21 審查 P3：同為 fcb:cp- 開頭但與帳號無關，'fcb:cp-list:' 前綴不能誤清（反向鎖住前綴範圍）。
+  'fcb:cp-invite-pending',
+  'fcb:cp-inapp-seen:v1',
+  // 站內清單的訪客快照只有公開資料，刻意不跟著登出清（前綴不是 'fcb:cp-list:'）。
+  'fcb:cp-list-guest:v1',
 ] as const;
 
 function seedRegularAccountStorage(): void {

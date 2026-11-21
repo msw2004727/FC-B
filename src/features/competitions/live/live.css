@@ -662,6 +662,10 @@
   cursor: pointer;
   touch-action: manipulation;
 }
+.s4-kickoff:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
 .s4-kickoff:active { transform: scale(0.98); filter: brightness(0.92); }
 
 .s4-events {
@@ -1391,6 +1395,8 @@ button.s4-ev__main:active { opacity: 0.7; }
   text-overflow: ellipsis;
   overflow-wrap: normal;
   word-break: keep-all;
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
 }
 .s4-log__intent { font-size: 15px; line-height: 24px; font-weight: 600; color: var(--d2-text); }
 .s4-log__st { font-size: 13px; line-height: 20px; color: var(--d2-text-2); font-weight: 400; }

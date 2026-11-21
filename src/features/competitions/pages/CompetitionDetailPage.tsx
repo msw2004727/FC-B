@@ -13,7 +13,7 @@ import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
-import { canHostOrCo, canManageCompetition, canRegisterClubEntry, canRestoreCompetition, isCpAdmin } from '../access';
+import { canEditCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canRestoreCompetition, isCpAdmin } from '../access';
 import { canDeleteCompetition, isPrimaryHostView } from '../delete-access';
 import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
@@ -768,6 +768,10 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           {manage ? entryRow(ct('manageLink'), 'manage') : null}
           {hostOps ? entryRow(ct('hostSchedTitle'), 'schedule') : null}
           {hostOps ? entryRow(ct('hostListTitle'), 'matches') : null}
+          {/* 編輯賽事：建賽精靈同一份表單（/competitions/new?edit=…，不另加路由） */}
+          {canEditCompetition(competition, { canHost: hostOps, isAdmin: hostInput.isAdmin }) ? (
+            <Button variant="ghost" trailing={<NextIcon />} onClick={() => route(`/competitions/new?edit=${cid}`)}>{ct('editTitle')}</Button>
+          ) : null}
         </nav>
       ) : null}
       {error ? <CpError reason={error.reason} params={error.params} /> : null}

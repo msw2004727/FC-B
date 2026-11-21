@@ -14,6 +14,8 @@ export interface FieldProblem {
 
 export interface CheckForm {
   name: string;
+  /** 編輯個人主辦時的主辦名稱（建立時不檢查）。 */
+  hostDisplay?: string;
   hostType: 'personal' | 'club';
   hostTeamId: string;
   feeNote: string;
@@ -24,6 +26,17 @@ export interface CheckForm {
   lastMatch: string;
   venues: VenueDraft[];
   divisions: DivisionDraft[];
+}
+
+/**
+ * 編輯模式（後端 updateCompetition）：四個時間沒改就不檢查，報名已截止、首場已過的賽事也能改其他欄位；
+ * 有改時照 scheduleOf(requireFuture: false)，非管理員首場仍須晚於現在，報名截止已過不擋（編輯不發布）。
+ */
+export interface EditCheck {
+  timesChanged: boolean;
+  admin: boolean;
+  /** 個人主辦：檢查主辦名稱（1～30 字）。 */
+  hostDisplay: boolean;
 }
 
 const DAY = 86_400_000;
@@ -56,7 +69,8 @@ function intProblem(value: number, field: string, min: number, max: number): Fie
   return null;
 }
 
-function timesProblem(form: CheckForm, now: number): FieldProblem | null {
+function timesProblem(form: CheckForm, now: number, edit?: EditCheck): FieldProblem | null {
+  if (edit && !edit.timesChanged) return null;
   const rows = [
     ['regOpenAt', form.regOpen],
     ['regCloseAt', form.regClose],
@@ -78,22 +92,26 @@ function timesProblem(form: CheckForm, now: number): FieldProblem | null {
   if (lastMatchAt - firstMatchAt > 180 * DAY) return { field: 'lastMatchAt', reason: 'SCHEDULE_SPAN', params: { max: 180 } };
   if (lastMatchAt > now + 730 * DAY) return { field: 'lastMatchAt', reason: 'SCHEDULE_TOO_FAR' };
   // 後端建立草稿不擋，但發布時 publishCompetition 回 REG_CLOSED：精靈建好就發布，報名截止已過等於發布不了，先在第 1 步擋。
-  if (regCloseAt <= now) return { field: 'regCloseAt', reason: 'REG_CLOSED' };
-  if (firstMatchAt <= now) return { field: 'firstMatchAt', reason: 'SCHEDULE_PAST' };
+  if (!edit && regCloseAt <= now) return { field: 'regCloseAt', reason: 'REG_CLOSED' };
+  if (!edit?.admin && firstMatchAt <= now) return { field: 'firstMatchAt', reason: 'SCHEDULE_PAST' };
   return null;
 }
 
 /** 第 1 步：賽事名稱、俱樂部、繳費說明、聯絡文字、四個時間、場地。 */
-export function step1Problem(form: CheckForm, now: number): FieldProblem | null {
+export function step1Problem(form: CheckForm, now: number, edit?: EditCheck): FieldProblem | null {
   const name = lineProblem(form.name, 'name', 2, 60);
   if (name) return name;
+  if (edit?.hostDisplay) {
+    const host = lineProblem(form.hostDisplay ?? '', 'hostDisplay', 1, 30);
+    if (host) return host;
+  }
   if (form.hostType === 'club' && !form.hostTeamId) return { field: 'hostTeamId', reason: 'FIELD_REQUIRED' };
   if (form.hostType === 'club' && textLen(form.feeNote) > 500) {
     return { field: 'feeNote', reason: 'FIELD_LENGTH', params: { min: 0, max: 500 } };
   }
   if (/[\r\n]/.test(form.contactNote)) return { field: 'contactNote', reason: 'FIELD_FORMAT' };
   if (lineLen(form.contactNote) > 60) return { field: 'contactNote', reason: 'FIELD_LENGTH', params: { min: 0, max: 60 } };
-  const times = timesProblem(form, now);
+  const times = timesProblem(form, now, edit);
   if (times) return times;
   if (form.venues.length < 1 || form.venues.length > 10) return { field: 'venues', reason: 'FIELD_RANGE', params: { min: 1, max: 10 } };
   for (const [i, venue] of form.venues.entries()) {

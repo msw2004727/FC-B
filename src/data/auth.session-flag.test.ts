@@ -84,6 +84,25 @@ describe('登入旗標的寫入與清除（fcb:signed-in）', () => {
     expect(localStorage.getItem('sporthub_theme')).toBe('dark');
   });
 
+  it('帳號被動失效（狀態事件為 null）→ 站內賽事清單的登入者快照一起清；訪客快照（公開資料）與其他 fcb:cp- 資料不動（審查 P2-2）', () => {
+    emitState(user('U1'));
+    localStorage.setItem('fcb:cp-list:v1', '{"v":1,"owner":"uid:U1"}');
+    localStorage.setItem('fcb:cp-list-guest:v1', '{"v":1,"owner":"guest"}');
+    localStorage.setItem('fcb:cp-invite-pending', 'x');
+    localStorage.setItem('fcb:cp-inapp-seen:v1', '1');
+    emitState(null);
+    expect(localStorage.getItem('fcb:cp-list:v1')).toBeNull();
+    expect(localStorage.getItem('fcb:cp-list-guest:v1')).not.toBeNull();
+    expect(localStorage.getItem('fcb:cp-invite-pending')).toBe('x');
+    expect(localStorage.getItem('fcb:cp-inapp-seen:v1')).toBe('1');
+  });
+
+  it('登入者的狀態事件不清站內賽事清單快照', () => {
+    localStorage.setItem('fcb:cp-list:v1', '{"v":1,"owner":"uid:U1"}');
+    emitState(user('U1'));
+    expect(localStorage.getItem('fcb:cp-list:v1')).not.toBeNull();
+  });
+
   it('登入者的狀態事件不清首頁快照', () => {
     localStorage.setItem('fcb:home-next:v1', '{"v":1,"owner":"U1"}');
     emitState(user('U1'));
