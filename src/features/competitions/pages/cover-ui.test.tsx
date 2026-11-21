@@ -579,7 +579,8 @@ describe('清單卡', () => {
         </CpEnvProvider>
       </LocationProvider>,
     );
-    await waitFor(() => expect(document.querySelector('[data-cid="live_cup"]')).not.toBeNull());
+    // 等當日摘要回來、卡板挑出後才斷言（獨立審查 P3：只等卡片出現時卡板還沒選出，測不到卡板這條路）
+    await waitFor(() => expect(document.querySelector('[data-cid="live_cup"].cpl-card--board')).not.toBeNull());
     const hidden = document.querySelector('[data-cid="live_cup"]');
     expect(hidden?.querySelector('img')).toBeNull();
     expect(hidden?.querySelector('.cpl-sb--img')).toBeNull();
