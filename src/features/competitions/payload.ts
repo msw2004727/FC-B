@@ -56,13 +56,15 @@ function venueOf(draft: VenueDraft): Venue {
   const venue: Venue = { name: draft.name.trim() };
   const address = draft.address.trim();
   if (address) venue.address = address;
+  // 後端 venuesOf：沒有座標卻帶地點編號或地圖來源，回 FIELD_REQUIRED（venues.N.lat）。
+  // 只手打地址時畫面會把來源標成 manual，所以地點編號與來源只跟著座標一起送（11-21 站長建賽被擋的根因）。
   if (draft.lat != null && draft.lng != null && Number.isFinite(draft.lat) && Number.isFinite(draft.lng)) {
     venue.lat = draft.lat;
     venue.lng = draft.lng;
+    const place = draft.mapPlaceId?.trim();
+    if (place) venue.mapPlaceId = place;
+    if (draft.mapProvider) venue.mapProvider = draft.mapProvider;
   }
-  const place = draft.mapPlaceId?.trim();
-  if (place) venue.mapPlaceId = place;
-  if (draft.mapProvider) venue.mapProvider = draft.mapProvider;
   return venue;
 }
 

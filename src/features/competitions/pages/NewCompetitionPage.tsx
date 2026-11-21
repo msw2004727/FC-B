@@ -21,7 +21,6 @@ import type { LaunchDoc } from '../data/types';
 import { useInjectedEnv, type CpActor, type CpInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { clipCodePoints, fromDatetimeLocalValue, formatTaipeiDateTime } from '../format';
-import { contactNoteProblem } from '../data/flex-schedule';
 import { buildCreateInput, type DivisionDraft, type VenueDraft, type WizardDraft } from '../payload';
 import type { CompetitionCategory } from '../data/types';
 import { categoryText } from '../ui/schedule-board';
@@ -31,8 +30,104 @@ import { DateTimeField, FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending, CpRow, InfoIcon, LockIcon, PinIcon, PlusIcon, TrashIcon } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
 import { PageSpinner } from '@/ui/PageSpinner';
+import { duplicateDivisionField, fieldSpot, step1Problem, step2Problem, type FieldProblem } from './new-competition-check';
+import '../live/score-fullscreen.css';
+
+/**
+ * 建立賽事照記分頁全幅（ScoringPage.tsx 的 useScoreFullscreen、score-fullscreen.css）：掛載時 <html> 加同一個 class，
+ * 隱藏 App 頂欄、底部導覽（z-index 900）、角標與同步列，卸載時移除；避免誤觸底部導覽換頁、表單要重填（站長 11-21）。
+ * 不從 ScoringPage 匯入（會把整支記分頁帶進建賽頁的 chunk），class 名稱必須與 SCORE_FULLSCREEN_CLASS 相同。
+ */
+const FULLSCREEN_CLASS = 'cp-score-full';
 
 const FORMATS = [5, 7, 8, 9, 11] as const;
+
+/** field：後端 params.field 同一套路徑（例如 venues.0.name）；畫面有對應欄位時錯誤畫在那一欄。 */
+interface WizardError {
+  reason: string;
+  params?: Record<string, unknown>;
+  field?: string;
+}
+
+const TIME_REQUIRED_KEY: Record<string, string> = {
+  regOpenAt: 'fe.reqRegOpen',
+  regCloseAt: 'fe.reqRegClose',
+  firstMatchAt: 'fe.reqFirst',
+  lastMatchAt: 'fe.reqLast',
+};
+
+const ORDER_KEY: Record<string, string> = {
+  regCloseAt: 'fe.regClose',
+  firstMatchAt: 'fe.firstMatch',
+  lastMatchAt: 'fe.lastMatch',
+};
+
+const LABEL_KEY: Record<string, string> = {
+  address: 'fe.address',
+  feeNote: 'feeNote',
+  contactNote: 'contactField',
+  maxTeams: 'maxTeams',
+  rosterMin: 'rosterMin',
+  rosterMax: 'rosterMax',
+  minAge: 'minAge',
+  maxAge: 'maxAge',
+  feePerTeam: 'feePerTeam',
+};
+
+/** 錯誤句要說是哪一欄、怎麼改；沒有對應句子的退回後端原因的通用文案。 */
+function problemText(ct: (key: string, params?: Record<string, string | number>) => string, err: WizardError): string {
+  const f = err.field ?? '';
+  const p = err.params ?? {};
+  const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
+  const kind = f.split('.').pop() ?? '';
+  const nameKey = f.startsWith('venues.') ? 'venueName' : f.startsWith('divisions.') ? 'divisionName' : 'name';
+  const key = kind === 'name' ? nameKey : LABEL_KEY[kind];
+  const label = key ? ct(key) : '';
+  const timeKey = TIME_REQUIRED_KEY[f];
+  const orderKey = ORDER_KEY[f];
+  switch (err.reason) {
+    case 'FIELD_REQUIRED':
+      if (f === 'hostTeamId') return ct('fe.club');
+      if (timeKey) return ct(timeKey);
+      if (kind === 'address') return ct('fe.map');
+      if (label) return ct('fe.required', { field: label });
+      break;
+    case 'FIELD_LENGTH':
+      if (label) {
+        return num(p.min) > 0
+          ? ct('fe.length', { field: label, min: num(p.min), max: num(p.max) })
+          : ct('fe.max', { field: label, max: num(p.max) });
+      }
+      break;
+    case 'FIELD_RANGE':
+      // 後端「最小年齡大於最大年齡」也是 FIELD_RANGE，min 帶最小年齡（大於 3 才可能比最大年齡大）。
+      if (kind === 'maxAge' && num(p.min) > 3) return ct('fe.ageOrder');
+      if (label) return ct('fe.range', { field: label, min: num(p.min), max: num(p.max) });
+      break;
+    case 'SCHEDULE_ORDER':
+      if (orderKey) return ct(orderKey);
+      break;
+    case 'SCHEDULE_SPAN':
+      if (f === 'regCloseAt') return ct('fe.regSpan', { max: 120 });
+      if (f === 'lastMatchAt') return ct('fe.matchSpan', { max: 180 });
+      break;
+    case 'SCHEDULE_TOO_FAR':
+      return ct('fe.tooFar');
+    case 'SCHEDULE_PAST':
+      if (f === 'firstMatchAt') return ct('fe.past');
+      break;
+    case 'FIELD_TIME':
+      return ct('fe.time');
+    case 'REG_CLOSED':
+      if (f === 'regCloseAt') return ct('fe.regPast');
+      break;
+    case 'DIVISION_NAME_DUPLICATE':
+      return ct('fe.dupName');
+    default:
+      break;
+  }
+  return reasonText(ct, err.reason, err.params);
+}
 
 function emptyDivision(): DivisionDraft {
   return {
@@ -176,9 +271,12 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   const [done, setDone] = useState(preview?.wizardStep === 'done');
   const [cid, setCid] = useState('');
   const [form, setForm] = useState<FormState>(() => formFromEnv(env));
-  const [error, setError] = useState<{ reason: string; params?: Record<string, unknown>; field?: 'contactNote' } | null>(
-    preview?.wizardError ? { reason: 'BANNED_WORD' } : null,
+  const [error, setError] = useState<WizardError | null>(
+    preview?.wizardError ? { reason: 'BANNED_WORD', field: 'name' } : null,
   );
+  const [jumpTick, setJumpTick] = useState(0);
+  // 有欄位但畫面上找不到那一欄（例如俱樂部清單還在讀、下拉還沒畫）：改顯示整頁錯誤，不讓按了沒反應。
+  const [lostField, setLostField] = useState(false);
   const [busy, setBusy] = useState(false);
   const [mapIndex, setMapIndex] = useState<number | null>(null);
   const clubs = representativeClubs(env.actor);
@@ -203,6 +301,28 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     setForm((prev) => (prev.hostTeamId === first ? prev : { ...prev, hostTeamId: first }));
   }, [clubs, clubsPending, form.hostType, form.hostTeamId]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add(FULLSCREEN_CLASS);
+    return () => {
+      root.classList.remove(FULLSCREEN_CLASS);
+    };
+  }, []);
+
+  // 沒過的欄位：捲到畫面中間再聚焦。減少動態時不做平滑捲動。
+  useEffect(() => {
+    if (!jumpTick) return;
+    const spot = fieldSpot(error?.field);
+    const node = spot ? document.getElementById(spot.id) : null;
+    if (!node) {
+      if (spot) setLostField(true);
+      return;
+    }
+    const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    node.scrollIntoView?.({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    node.focus({ preventScroll: true });
+  }, [jumpTick]);
+
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
 
   function patch(partial: Partial<FormState>): void {
@@ -223,44 +343,43 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
     }));
   }
 
-  function step1Reason(): { reason: string; params?: Record<string, unknown> } | null {
-    const name = form.name.trim();
-    if (name.length < 2 || name.length > 60) return { reason: 'FIELD_LENGTH', params: { min: 2, max: 60 } };
-    if (form.hostType === 'club' && !form.hostTeamId) return { reason: 'FIELD_REQUIRED' };
-    const draft = toDraft(form, env.actor.displayName ?? '');
-    if (!draft) return { reason: 'FIELD_REQUIRED' };
-    if (!(draft.regOpenAt < draft.regCloseAt && draft.regCloseAt <= draft.firstMatchAt && draft.firstMatchAt <= draft.lastMatchAt)) {
-      return { reason: 'SCHEDULE_ORDER' };
-    }
-    if (draft.firstMatchAt <= (env.now ?? Date.now())) return { reason: 'SCHEDULE_PAST' };
-    if (form.venues.length < 1 || form.venues.some((venue) => {
-      const nameLen = venue.name.trim().length;
-      return nameLen < 1 || nameLen > 40;
-    })) return { reason: 'FIELD_REQUIRED' };
-    if (form.hostType === 'club' && form.feeNote.trim().length > 500) {
-      return { reason: 'FIELD_LENGTH', params: { min: 0, max: 500 } };
-    }
-    return null;
+  /** 欄位有問題：回到那一欄所在的步驟、錯誤畫在欄位上、捲過去聚焦。畫面上沒有對應欄位就留在原步驟顯示整頁錯誤。 */
+  function showProblem(problem: WizardError | FieldProblem): void {
+    const spot = fieldSpot(problem.field);
+    setLostField(false);
+    setError(spot ? { ...problem, field: spot.field } : problem);
+    if (!spot) return;
+    setStep(spot.step);
+    setJumpTick((n) => n + 1);
   }
 
-  function step2Reason(): { reason: string; params?: Record<string, unknown> } | null {
-    if (form.divisions.length < 1 || form.divisions.length > 8) return { reason: 'FIELD_REQUIRED' };
-    for (const division of form.divisions) {
-      const nameLen = division.name.trim().length;
-      if (nameLen < 1 || nameLen > 30) return { reason: 'FIELD_LENGTH', params: { min: 1, max: 30 } };
-      if (division.maxTeams < 2 || division.maxTeams > 64) return { reason: 'FIELD_RANGE' };
-      if (division.rosterMax < division.playersOnField || division.rosterMax > 40) return { reason: 'FIELD_RANGE' };
-      if (division.rosterMin < 1 || division.rosterMin > division.rosterMax) return { reason: 'FIELD_RANGE' };
-      if (division.feePerTeam < 0 || division.feePerTeam > 1_000_000) return { reason: 'FIELD_RANGE' };
-      if (division.limitAge && division.minAge > division.maxAge) return { reason: 'FIELD_RANGE' };
-    }
-    return null;
+  function clearField(field: string): void {
+    setError((current) => (current?.field === field ? null : current));
+  }
+
+  /** 刪除場地或組別後索引會位移：錯誤直接清掉，下次按下一步再檢查。 */
+  function removeRow(partial: Partial<FormState>): void {
+    patch(partial);
+    setError(null);
+  }
+
+  /** 加減器改值：這一組的隊數、人數、年齡錯誤都收掉（最大年齡的錯誤可能是改最小年齡修好的）。 */
+  function clearDivisionNumbers(index: number): void {
+    setError((current) => (
+      current?.field && /^divisions\.\d+\.(maxTeams|rosterMin|rosterMax|minAge|maxAge)$/.test(current.field) && current.field.startsWith(`divisions.${index}.`)
+        ? null
+        : current
+    ));
+  }
+
+  function fieldError(field: string): string | undefined {
+    return error && error.field === field ? problemText(ct, error) : undefined;
   }
 
   function goNext(): void {
-    const problem = step === 1 ? step1Reason() : step2Reason();
+    const problem = step === 1 ? step1Problem(form, env.now ?? Date.now()) : step2Problem(form);
     if (problem) {
-      setError(problem);
+      showProblem(problem);
       return;
     }
     setError(null);
@@ -268,23 +387,14 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
   }
 
   async function create(): Promise<void> {
-    // 輸入框會去掉換行並截斷。預填或其他路徑仍可能帶進不合法聯絡文字，送出前再驗一次。
-    const noteProblem = contactNoteProblem(form.contactNote);
-    if (noteProblem) {
-      setStep(1);
-      setError({
-        reason: noteProblem,
-        field: 'contactNote',
-        params: noteProblem === 'FIELD_LENGTH' ? { min: 1, max: 60 } : undefined,
-      });
+    // 第 1、2 步都過了才會到這裡；送出前再整份驗一次（預填或其他路徑可能帶進不合法的值）。
+    const problem = step1Problem(form, env.now ?? Date.now()) ?? step2Problem(form);
+    if (problem) {
+      showProblem(problem);
       return;
     }
-    const problem = step1Reason() ?? step2Reason();
     const draft = toDraft(form, env.actor.displayName ?? '');
-    if (problem || !draft || busy) {
-      if (problem) setError(problem);
-      return;
-    }
+    if (!draft || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -293,13 +403,10 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
       setDone(true);
     } catch (err) {
       const info = errorOf(err);
-      // 後端把禁用字標在 contactNote 時，錯誤要落在聯絡欄，並回到第 1 步才看得到。
-      if (info.params.field === 'contactNote') {
-        setStep(1);
-        setError({ reason: info.reason, params: info.params, field: 'contactNote' });
-        return;
-      }
-      setError(info);
+      const raw = typeof info.params.field === 'string' ? info.params.field : undefined;
+      // 重複組別名稱後端只標 divisions：找出是哪一組，落在那一組的名稱欄。
+      const field = info.reason === 'DIVISION_NAME_DUPLICATE' ? (duplicateDivisionField(form.divisions) ?? raw) : raw;
+      showProblem({ reason: info.reason, params: info.params, field });
     } finally {
       setBusy(false);
     }
@@ -343,6 +450,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
 
   const draftTimes = toDraft(form, '');
 
+  const pageError = error && (lostField || fieldSpot(error.field)?.step !== step) ? error : null;
+
   return (
     <CpFrame
       title={ct('createTitle')}
@@ -362,14 +471,13 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           <CpCard>
             <div class="cps-fields">
               <Input
+                id="cpf-name"
                 label={ct('name')}
                 required
                 value={form.name}
                 maxLength={60}
-                error={error?.field !== 'contactNote' && (error?.reason === 'BANNED_WORD' || (error?.reason === 'FIELD_LENGTH' && step === 1))
-                  ? reasonText(ct, error.reason, error.params)
-                  : undefined}
-                onValueChange={(name) => { patch({ name }); setError(null); }}
+                error={fieldError('name')}
+                onValueChange={(name) => { patch({ name }); clearField('name'); }}
               />
               <RadioGroup
                 label={ct('category')}
@@ -402,19 +510,23 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
               />
               {form.hostType === 'club' && clubs.length > 0 ? (
                 <Select
+                  id="cpf-club"
                   label={ct('club')}
                   value={form.hostTeamId}
-                  onValueChange={(hostTeamId) => patch({ hostTeamId })}
+                  error={fieldError('hostTeamId')}
+                  onValueChange={(hostTeamId) => { patch({ hostTeamId }); clearField('hostTeamId'); }}
                   options={clubs.map((club) => ({ value: club.id, label: club.name }))}
                 />
               ) : null}
               {form.hostType === 'club' ? (
                 <div>
                   <Textarea
+                    id="cpf-fee-note"
                     label={ct('feeNote')}
                     value={form.feeNote}
                     maxLength={500}
-                    onValueChange={(feeNote) => patch({ feeNote })}
+                    error={fieldError('feeNote')}
+                    onValueChange={(feeNote) => { patch({ feeNote }); clearField('feeNote'); }}
                   />
                   <p class="cps-cap cph-hint">
                     <span class="cps-line">{ct('feeHandledByHost')}</span>
@@ -423,14 +535,15 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 </div>
               ) : null}
               <Input
+                id="cpf-contact"
                 label={ct('contactField')}
                 hint={ct('publicHint')}
                 value={form.contactNote}
                 maxLength={60}
-                error={error?.field === 'contactNote' ? reasonText(ct, error.reason, error.params) : undefined}
+                error={fieldError('contactNote')}
                 onValueChange={(value) => {
                   patch({ contactNote: clipCodePoints(value.replace(/[\r\n]/g, ''), 60) });
-                  setError((current) => (current?.field === 'contactNote' ? null : current));
+                  clearField('contactNote');
                 }}
               />
               {form.hostType === 'personal' ? <p class="cps-cap cph-hint">{ct('contactEmptyHint')}</p> : null}
@@ -439,15 +552,15 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
           <CpCard>
             <h2 class="cp3-sec-h">{ct('regPeriod')}</h2>
             <div class="cps-fields">
-              <DateTimeField id="cp-reg-open" label={ct('regStart')} value={form.regOpen} onValueChange={(regOpen) => patch({ regOpen })} />
-              <DateTimeField id="cp-reg-close" label={ct('regEnd')} value={form.regClose} onValueChange={(regClose) => patch({ regClose })} />
+              <DateTimeField id="cp-reg-open" label={ct('regStart')} value={form.regOpen} error={fieldError('regOpenAt')} onValueChange={(regOpen) => { patch({ regOpen }); clearField('regOpenAt'); }} />
+              <DateTimeField id="cp-reg-close" label={ct('regEnd')} value={form.regClose} error={fieldError('regCloseAt')} onValueChange={(regClose) => { patch({ regClose }); clearField('regCloseAt'); }} />
             </div>
           </CpCard>
           <CpCard>
             <h2 class="cp3-sec-h">{ct('matchPeriod')}</h2>
             <div class="cps-fields">
-              <DateTimeField id="cp-first" label={ct('firstMatch')} value={form.firstMatch} onValueChange={(firstMatch) => patch({ firstMatch })} />
-              <DateTimeField id="cp-last" label={ct('lastMatch')} value={form.lastMatch} onValueChange={(lastMatch) => patch({ lastMatch })} />
+              <DateTimeField id="cp-first" label={ct('firstMatch')} value={form.firstMatch} error={fieldError('firstMatchAt')} onValueChange={(firstMatch) => { patch({ firstMatch }); clearField('firstMatchAt'); }} />
+              <DateTimeField id="cp-last" label={ct('lastMatch')} value={form.lastMatch} error={fieldError('lastMatchAt')} onValueChange={(lastMatch) => { patch({ lastMatch }); clearField('lastMatchAt'); }} />
             </div>
           </CpCard>
           <CpCard>
@@ -457,22 +570,29 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 <div class="cps-fields" key={index}>
                   <div class="cps-head-row cph-venue">
                     <Input
+                      id={`cpf-v${index}-name`}
                       label={ct('venueName')}
                       value={venue.name}
                       maxLength={40}
-                      onValueChange={(name) => patchVenue(index, { name })}
+                      error={fieldError(`venues.${index}.name`)}
+                      onValueChange={(name) => { patchVenue(index, { name }); clearField(`venues.${index}.name`); }}
                     />
                     {form.venues.length > 1 ? (
-                      <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} onClick={() => patch({ venues: form.venues.filter((_, i) => i !== index) })}>
+                      <button type="button" class="cps-iconbtn cps-iconbtn--flat cph-trash" aria-label={ct('removeVenue')} onClick={() => removeRow({ venues: form.venues.filter((_, i) => i !== index) })}>
                         <TrashIcon />
                       </button>
                     ) : null}
                   </div>
                   <Input
+                    id={`cpf-v${index}-address`}
                     label={ct('venueAddress')}
                     value={venue.address}
                     maxLength={100}
-                    onValueChange={(address) => patchVenue(index, { address, mapPlaceId: '', mapProvider: address === venue.address ? venue.mapProvider : 'manual' })}
+                    error={fieldError(`venues.${index}.address`)}
+                    onValueChange={(address) => {
+                      patchVenue(index, { address, mapPlaceId: '', mapProvider: address === venue.address ? venue.mapProvider : 'manual' });
+                      clearField(`venues.${index}.address`);
+                    }}
                   />
                   <div class="cph-start">
                     <Button variant="secondary" size="sm" leading={<PinIcon />} onClick={() => setMapIndex(index)}>{ct('pickOnMap')}</Button>
@@ -500,14 +620,21 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                     type="button"
                     class="cps-iconbtn cps-iconbtn--flat cph-trash"
                     aria-label={ct('removeDivision')}
-                    onClick={() => patch({ divisions: form.divisions.filter((_, i) => i !== index) })}
+                    onClick={() => removeRow({ divisions: form.divisions.filter((_, i) => i !== index) })}
                   >
                     <TrashIcon />
                   </button>
                 ) : null}
               </div>
               <div class="cps-fields">
-                <Input label={ct('divisionName')} value={division.name} maxLength={30} onValueChange={(name) => patchDivision(index, { name })} />
+                <Input
+                  id={`cpf-d${index}-name`}
+                  label={ct('divisionName')}
+                  value={division.name}
+                  maxLength={30}
+                  error={fieldError(`divisions.${index}.name`)}
+                  onValueChange={(name) => { patchDivision(index, { name }); clearField(`divisions.${index}.name`); }}
+                />
                 <div>
                   <span class="cps-label">{ct('playersOnField')}</span>
                   <div class="cps-chips cph-five">
@@ -529,17 +656,18 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 </div>
                 {/* 連續的加減器與開關：細線等高列（列高 48），左標籤、右控制 */}
                 <div class="d2-lines d2-lines--48 cph-ctl">
-                <Stepper label={ct('maxTeams')} value={division.maxTeams} min={2} max={64} onValueChange={(maxTeams) => patchDivision(index, { maxTeams })} />
-                <Stepper label={ct('rosterMin')} value={division.rosterMin} min={1} max={division.rosterMax} onValueChange={(rosterMin) => patchDivision(index, { rosterMin })} />
+                <Stepper id={`cpf-d${index}-maxTeams`} label={ct('maxTeams')} value={division.maxTeams} min={2} max={64} onValueChange={(maxTeams) => { patchDivision(index, { maxTeams }); clearDivisionNumbers(index); }} />
+                <Stepper id={`cpf-d${index}-rosterMin`} label={ct('rosterMin')} value={division.rosterMin} min={1} max={division.rosterMax} onValueChange={(rosterMin) => { patchDivision(index, { rosterMin }); clearDivisionNumbers(index); }} />
                 <Stepper
+                  id={`cpf-d${index}-rosterMax`}
                   label={ct('rosterMax')}
                   value={division.rosterMax}
                   min={division.playersOnField}
                   max={40}
-                  onValueChange={(rosterMax) => patchDivision(index, {
-                    rosterMax,
-                    rosterMin: Math.min(division.rosterMin, rosterMax),
-                  })}
+                  onValueChange={(rosterMax) => {
+                    patchDivision(index, { rosterMax, rosterMin: Math.min(division.rosterMin, rosterMax) });
+                    clearDivisionNumbers(index);
+                  }}
                 />
                 <Switch
                   class="cph-switch"
@@ -552,8 +680,8 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                 />
                 {division.limitAge ? (
                   <>
-                    <Stepper label={ct('minAge')} value={division.minAge} min={3} max={99} onValueChange={(minAge) => patchDivision(index, { minAge })} />
-                    <Stepper label={ct('maxAge')} value={division.maxAge} min={3} max={99} onValueChange={(maxAge) => patchDivision(index, { maxAge })} />
+                    <Stepper id={`cpf-d${index}-minAge`} label={ct('minAge')} value={division.minAge} min={3} max={99} onValueChange={(minAge) => { patchDivision(index, { minAge }); clearDivisionNumbers(index); }} />
+                    <Stepper id={`cpf-d${index}-maxAge`} label={ct('maxAge')} value={division.maxAge} min={3} max={99} onValueChange={(maxAge) => { patchDivision(index, { maxAge }); clearDivisionNumbers(index); }} />
                   </>
                 ) : null}
                 <Switch
@@ -563,11 +691,22 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
                   onCheckedChange={(requireRealName) => patchDivision(index, { requireRealName })}
                 />
                 </div>
+                {/* 加減器沒有自己的錯誤列：這一組的隊數、人數、年齡沒過時，錯誤句畫在控制列下面（同一套欄位錯誤樣式） */}
+                {(['maxTeams', 'rosterMin', 'rosterMax', 'minAge', 'maxAge'] as const).map((kind) => {
+                  const text = fieldError(`divisions.${index}.${kind}`);
+                  return text ? (
+                    <div class="ui-input" key={kind}>
+                      <div id={`cpf-d${index}-${kind}-error`} data-field-error aria-live="polite">{text}</div>
+                    </div>
+                  ) : null;
+                })}
                 {/* 報名費只限俱樂部主辦（顧問 §3.257，站長親口）：個人主辦不顯示費用欄 */}
                 {form.hostType === 'club' ? (
                   <Input
+                    id={`cpf-d${index}-feePerTeam`}
                     label={ct('feePerTeam')}
                     type="number"
+                    error={fieldError(`divisions.${index}.feePerTeam`)}
                     value={String(division.feePerTeam)}
                     min={0}
                     max={1000000}
@@ -641,9 +780,24 @@ function WizardView({ env }: { env: CpInjectedEnv }): JSX.Element {
         </>
       ) : null}
 
-      {error && error.field !== 'contactNote' && !(step === 1 && (error.reason === 'BANNED_WORD' || error.reason === 'FIELD_LENGTH'))
-        ? <CpError reason={error.reason} params={error.params} />
-        : null}
+      {/* 沒有對應欄位的錯誤（後端沒帶欄位、或欄位使用者改不到）：整頁一句，至少說出後端給的原因 */}
+      {pageError?.field === 'hostDisplay' ? (
+        <p class="cps-note cps-warn" role="alert">
+          <span class="cps-nowrap">{ct('fe.hostDisplay')}</span>
+          {' '}
+          <a
+            class="cps-link"
+            href="/profile"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              route('/profile');
+            }}
+          >
+            {ct('goBirthday')}
+          </a>
+        </p>
+      ) : pageError ? <p class="cps-note cps-warn" role="alert">{problemText(ct, pageError)}</p> : null}
 
       <div class="cph-split">
         {step > 1 ? <Button variant="secondary" class="cph-narrow" onClick={() => { setError(null); setStep(step === 3 ? 2 : 1); }}>{ct('prev')}</Button> : null}

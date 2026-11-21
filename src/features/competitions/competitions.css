@@ -28,6 +28,8 @@
   --d2-off-bg: #e9edf2;
   --d2-off-line: #c5cdd9;
   --d2-field-bg: #ffffff;
+  --d2-input-bg: #ffffff;
+  --d2-input-edge: #5f6b80;
   --d2-danger: #b91c1c;
   --d2-danger-line: rgba(185, 28, 28, .42);
   --d2-glass-base: linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
@@ -104,6 +106,8 @@
   --d2-off-bg: #1b212d;
   --d2-off-line: #3a4357;
   --d2-field-bg: #141924;
+  --d2-input-bg: #303a4e;
+  --d2-input-edge: #8f98aa;
   --d2-danger: #fca5a5;
   --d2-danger-line: rgba(252, 165, 165, .42);
   --d2-glass-base: linear-gradient(180deg, #262e40 0%, #171c27 100%);
@@ -286,15 +290,29 @@
 .d2-panel .ui-input input,
 .d2-panel .ui-select select,
 .d2-panel .ui-textarea textarea {
-  min-height: 44px; padding: 8px 12px; border: 0; border-radius: 12px; background: var(--d2-field-bg);
-  box-shadow: inset 0 0 0 1px var(--d2-switch-edge); color: var(--d2-text); line-height: 24px; color-scheme: var(--d2-scheme);
+  min-height: 44px; padding: 8px 12px; border: 0; border-radius: 12px; background: var(--d2-input-bg);
+  box-shadow: inset 0 0 0 1px var(--d2-input-edge); color: var(--d2-text); line-height: 24px; color-scheme: var(--d2-scheme);
   /* 全站欄位的滑過、按下底色規則權重較高；在欄位本身把那兩個色值換成欄位底，設計是平的不變色 */
-  --color-bg-hover: var(--d2-field-bg); --color-bg-active: var(--d2-field-bg);
+  /* 欄位底與框線改用 --d2-input-*（設計 11-21 10:14：原本欄位底與卡片底在深淺兩色都太接近） */
+  --color-bg-hover: var(--d2-input-bg); --color-bg-active: var(--d2-input-bg);
 }
+/* iOS Safari／LINE 的日期時間欄：原生外觀有固有最小寬度，也不畫上面的內陰影框線（站長 iPhone：超出卡片約 20px、沒有框）。
+ * 改平面外觀才吃得到 100% 寬與框線；值靠左對齊其他欄。底色不動。 */
+.cps-root .ui-input input[type^="date"],
+.d2-panel .ui-input input[type^="date"] {
+  -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%;
+}
+.cps-root .ui-input input::-webkit-date-and-time-value,
+.d2-panel .ui-input input::-webkit-date-and-time-value { min-height: 24px; text-align: left; }
+/* 錯誤欄位聚焦時仍是紅框（:focus-visible 版權重較高，蓋過下面的聚焦主色框）：建賽沒過會捲到該欄並聚焦，紅框不能不見 */
 .cps-root .ui-input [aria-invalid="true"],
 .cps-root .ui-textarea [aria-invalid="true"],
 .d2-panel .ui-select [aria-invalid="true"],
-.d2-panel .ui-textarea [aria-invalid="true"] { box-shadow: inset 0 0 0 2px var(--d2-danger); }
+.d2-panel .ui-textarea [aria-invalid="true"],
+.cps-root .ui-input [aria-invalid="true"]:focus-visible,
+.cps-root .ui-textarea [aria-invalid="true"]:focus-visible,
+.d2-panel .ui-select [aria-invalid="true"]:focus-visible,
+.d2-panel .ui-textarea [aria-invalid="true"]:focus-visible { box-shadow: inset 0 0 0 2px var(--d2-danger); }
 .cps-root .ui-input input:focus-visible,
 .cps-root .ui-select select:focus-visible,
 .cps-root .ui-textarea textarea:focus-visible,
@@ -378,7 +396,7 @@
 .d2-panel .ui-checkbox { --comp-checkbox-accent-checked: var(--d2-accent); }
 .cps-root .ui-checkbox input,
 .d2-panel .ui-checkbox input { color-scheme: var(--d2-scheme); }
-.cps-root .ui-stepper { --comp-stepper-border-default: var(--d2-switch-edge); --comp-stepper-surface-default: var(--d2-field-bg); }
+.cps-root .ui-stepper { --comp-stepper-border-default: var(--d2-input-edge); --comp-stepper-surface-default: var(--d2-input-bg); }
 .cps-root .cp3-crest.cp3-crest--txt,
 .s4-page .cp3-crest.cp3-crest--txt { background: var(--d2-line); color: var(--d2-text); box-shadow: inset 0 0 0 1px var(--d2-line-strong); font-weight: 600; }
 
@@ -497,6 +515,8 @@
   content: ''; position: fixed; z-index: -1; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
   background: var(--d2-page-bg);
 }
+/* 全幅（記分頁、建立賽事的 html.cp-score-full）沒有 App 頂欄：頁首自己讓出瀏海安全區（QA 橫幅已讓時 --qa-topbar-safe 為 0） */
+html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-inset-top, 0px)); }
 .cps-root * { box-sizing: border-box; }
 .cps-root :is(input, select, textarea) { font-size: max(16px, 1rem); }
 .cps-nowrap { white-space: nowrap; }

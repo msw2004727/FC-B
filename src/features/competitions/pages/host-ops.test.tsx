@@ -1635,7 +1635,7 @@ describe('聯絡文字', () => {
     }, NewCompetitionPage);
     fireEvent.click(screen.getByRole('button', { name: '建立賽事' }));
     expect(create).not.toHaveBeenCalled();
-    expect(fieldError('聯絡文字')).toBe('字數須介於 1 與 60 之間');
+    expect(fieldError('聯絡文字')).toBe('聯絡文字最多 60 字');
     expect(document.querySelectorAll('[data-field-error]')).toHaveLength(1);
   });
 
@@ -1668,9 +1668,10 @@ describe('聯絡文字', () => {
       wizardSeed: { ...wizardSeed(), contactNote: '賽前群組' },
     }, NewCompetitionPage);
     fireEvent.click(screen.getByRole('button', { name: '建立賽事' }));
-    expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByText('步驟 3／3')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent ?? '').toContain('名稱包含不允許的字詞');
+    // 後端標在賽事名稱：一樣跳回第 1 步，錯誤畫在名稱欄（不再停在第 3 步只留整頁一句）
+    await waitFor(() => expect(screen.getByText('步驟 1／3')).toBeTruthy());
+    expect(document.getElementById('cpf-name-error')?.textContent).toBe('名稱包含不允許的字詞');
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
 

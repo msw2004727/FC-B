@@ -1316,6 +1316,14 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return base(actions, wizardActor, undefined, { wizardStep: 1, wizardClub: true }, wizardSeed());
     case 'wizard-1-error':
       return base(actions, wizardActor, undefined, { wizardStep: 1, wizardError: true }, wizardSeed('示範官方盃'));
+    case 'wizard-1-required':
+      // 建立賽事必填示範：場地名稱沒填就按下一步（場地在第 1 步最下面，看得出有捲過去）
+      return base(actions, wizardActor, undefined, { wizardStep: 1 }, { ...wizardSeed(), venues: [{ name: '', address: '' }] });
+    case 'wizard-2-required': {
+      // 第二個組別名稱沒填就按下一步
+      const seed = wizardSeed();
+      return base(actions, wizardActor, undefined, { wizardStep: 2 }, { ...seed, divisions: seed.divisions.map((row, i) => (i === 1 ? { ...row, name: '' } : row)) });
+    }
     case 'wizard-2':
       return base(actions, wizardActor, undefined, { wizardStep: 2 }, wizardSeed());
     case 'wizard-3':

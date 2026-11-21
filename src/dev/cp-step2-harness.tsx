@@ -27,6 +27,9 @@ const params = new URLSearchParams(location.search);
 const screenName = params.get('screen') || 'wizard-1';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 const framed = params.get('frame') === '1';
+// ?nav=1：載入正式外框的 legacy/layout.css，放同樣 id 的 #top-bar、#bottom-tabs（z-index 900，含半圓凸起），看建立賽事有沒有讓開。
+// 只放外框元素、不載正式 TopBar／BottomNav 元件（會帶進登入與路由註冊模組）；只在 nav=1 時載入，其他畫面不受影響。
+const withShell = params.get('nav') === '1';
 document.documentElement.setAttribute('data-theme', theme);
 
 const PAGES: Record<string, ComponentType> = {
@@ -35,6 +38,9 @@ const PAGES: Record<string, ComponentType> = {
   'wizard-1-error': NewCompetitionPage,
   'wizard-2': NewCompetitionPage,
   'wizard-3': NewCompetitionPage,
+  // 必填沒過：按下一步後捲到該欄、欄位錯誤
+  'wizard-1-required': NewCompetitionPage,
+  'wizard-2-required': NewCompetitionPage,
   'wizard-done': NewCompetitionPage,
   'detail-rep': CompetitionDetailPage,
   'detail-member': CompetitionDetailPage,
@@ -107,7 +113,17 @@ function clickButton(name: string): void {
   node.click();
 }
 
+async function nextUntilFieldError(): Promise<void> {
+  await until('下一步', () => buttonsNamed('下一步').length > 0);
+  clickButton('下一步');
+  await until('欄位錯誤', () => !!document.querySelector('.cps-root [data-field-error]'));
+  // 平滑捲動跑完再拍
+  await new Promise((resolve) => setTimeout(resolve, 600));
+}
+
 const OPEN: Record<string, () => Promise<void>> = {
+  'wizard-1-required': nextUntilFieldError,
+  'wizard-2-required': nextUntilFieldError,
   'host-edit-open': async () => {
     await until('編輯賽事資訊鈕', () => buttonsNamed('編輯賽事資訊').length > 0);
     clickButton('編輯賽事資訊');
@@ -149,6 +165,7 @@ const Page = PAGES[screenName] ?? NewCompetitionPage;
 void start();
 
 async function start(): Promise<void> {
+  if (withShell) await import('../styles/legacy/layout.css');
   await setLocale('zh-TW');
   const root = document.getElementById('app');
   if (!root) return;
@@ -167,6 +184,12 @@ async function start(): Promise<void> {
           <Page />
         </CpEnvProvider>
       )}
+      {withShell ? (
+        <div class="legacy-ui legacy-chrome">
+          <header id="top-bar" data-shell="top">頂部列</header>
+          <nav id="bottom-tabs" data-shell="bottom">底部導覽</nav>
+        </div>
+      ) : null}
       <ToastHost />
       <AppConfirmHost />
     </LocationProvider>,
