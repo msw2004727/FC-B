@@ -50,6 +50,8 @@ export interface InAppListCard {
   statusMark: 'postponed' | 'cancelled' | null;
   /** 封面縮圖網址（224×168）；沒有封面或下架是空字串，卡片版面照舊。 */
   thumb: string;
+  /** 封面原圖網址（1200×450），只有卡板用；沒有封面或下架是空字串。 */
+  cover: string;
 }
 
 export interface MineListRow {
@@ -153,6 +155,7 @@ function cardFromDoc(
   today: TodayMatches | undefined,
 ): InAppListCard {
   const phase = competitionPhase(doc, now);
+  const shown = shownCover(doc, false);
   return {
     cid: doc.id,
     name: doc.name,
@@ -165,7 +168,8 @@ function cardFromDoc(
     mine,
     ended: phase === 'done',
     statusMark: doc.status === 'postponed' || doc.status === 'cancelled' ? doc.status : null,
-    thumb: shownCover(doc, false)?.thumb ?? '',
+    thumb: shown?.thumb ?? '',
+    cover: shown?.url ?? '',
   };
 }
 
@@ -236,6 +240,7 @@ export function assembleInAppCards(input: {
       ended: false,
       statusMark: null,
       thumb: '',
+      cover: '',
     });
   }
 

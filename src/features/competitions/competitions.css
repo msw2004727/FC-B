@@ -1378,6 +1378,15 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 .cpl-sb__cat { font-size: 12px; line-height: 16px; color: var(--d2-sb-fg2); }
 .cpl-card--board .cpl-card__name { margin-top: 5px; font-size: 19px; line-height: 28px; color: var(--d2-sb-fg); }
 .cpl-card--board .cpl-meta { color: var(--d2-sb-fg2); }
+/* 卡板封面（站長 11-21）：右邊放封面原圖，左緣斜切、由右往左淡進板底（mask 漸層）。只寫 mask-image：打包會自動補
+ * -webkit-mask-image 給 iOS／LINE（chrome87／safari14 目標）。圖在板的堆疊層最底（z-index -1、板 isolation），字一律在圖上；
+ * 分類字加暗底、全部字加陰影，亮圖雜圖也看得清 */
+.cpl-sb--img { --cv: linear-gradient(115deg, transparent 60px, #000 140px); isolation: isolate; overflow: hidden; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+.cpl-sb__img { position: absolute; top: 0; right: 0; z-index: -1; width: 60%; height: 100%; object-fit: cover; mask-image: var(--cv); }
+/* 下緣一層暗漸層（壓在圖上、字下面）：進行中卡板的第二格落在圖上也看得清；名稱與日期場地收在圖淡出前就省略 */
+.cpl-sb--img::after { content: ''; position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: 60px; background: linear-gradient(transparent, rgba(8,12,16,.75) 50%); }
+.cpl-sb--img .cpl-card__name, .cpl-sb--img .cpl-meta { max-width: calc(40% + 66px); }
+.cpl-sb--img .cpl-sb__cat { margin: -2px 0; padding: 0 7px; border-radius: 6px; background: rgba(8,12,16,.6); color: var(--d2-sb-fg); line-height: 20px; }
 
 .cpm-cap {
   margin: 0;

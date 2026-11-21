@@ -1,0 +1,5 @@
+/* 卡板封面預覽三版（只給 harness）：b 用 competitions.css 本身；a 斜切陡（75°）、淡出窄；c 斜切緩（55°）、淡出寬、圖較淡 */
+[data-cv="a"] .cpl-sb--img { --cv: linear-gradient(105deg, transparent 70px, #000 110px); }
+[data-cv="c"] .cpl-sb--img { --cv: linear-gradient(125deg, transparent 80px, rgba(0,0,0,.8) 200px); }
+/* 第二段清單不重複畫篩選列 */
+.cvb-2 .cpl-bar { display: none; }

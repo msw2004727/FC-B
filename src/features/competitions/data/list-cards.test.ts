@@ -78,6 +78,25 @@ describe('站內卡片純函式', () => {
     ], now)).toBeNull();
   });
 
+  it('封面：卡帶縮圖與原圖網址（卡板用原圖）；下架或沒封面都是空字串', () => {
+    const cover = { url: 'https://example.test/cover.webp', thumb: 'https://example.test/thumb.webp' };
+    const cards = assembleInAppCards({
+      publicDocs: [
+        { ...competition({ id: 'with', name: '有圖' }), cover },
+        { ...competition({ id: 'hidden', name: '下架' }), cover, hidden: true },
+        { ...competition({ id: 'none', name: '沒圖' }), cover: null },
+      ],
+      hosted: [],
+      mine: [{ cid: 'named', name: '只有名稱', category: 'friendly', doc: null }],
+      now: NOW,
+    });
+    const by = (cid: string) => cards.find((card) => card.cid === cid);
+    expect(by('with')).toMatchObject({ thumb: cover.thumb, cover: cover.url });
+    expect(by('hidden')).toMatchObject({ thumb: '', cover: '' });
+    expect(by('none')).toMatchObject({ thumb: '', cover: '' });
+    expect(by('named')).toMatchObject({ thumb: '', cover: '' });
+  });
+
   it('合併去重、我的與主辦做記號、沒時間的排後面；未結束仍含未知階段', () => {
     const early = competition({ id: 'early', name: '較早', firstMatchAt: taipeiMs(2026, 12, 1, 8, 0) });
     const later = competition({ id: 'later', name: '較晚', firstMatchAt: taipeiMs(2027, 3, 1, 8, 0) });
@@ -213,6 +232,7 @@ describe('站內卡片純函式', () => {
       ended: false,
       statusMark: null,
       thumb: '',
+      cover: '',
     };
     const card = (partial: Partial<InAppListCard> & Pick<InAppListCard, 'cid'>): InAppListCard => ({ ...base, ...partial });
     const LIVE = { kind: 'live', count: 3, time: '14:30' } as const;

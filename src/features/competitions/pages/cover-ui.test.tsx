@@ -485,9 +485,9 @@ describe('詳情頂部', () => {
 });
 
 describe('封面樣式不靠動畫', () => {
-  it('.d2-hero__cover 與清單縮圖的規則沒有 opacity／animation／transition（背景分頁動畫被節流也不會卡在透明）', () => {
+  it('.d2-hero__cover、清單縮圖與卡板封面的規則沒有 opacity／animation／transition（背景分頁動畫被節流也不會卡在透明）', () => {
     const css = readFileSync(resolve('src/features/competitions/competitions.css'), 'utf8');
-    const rules = css.match(/[^{}]*(?:d2-hero__cover|cpl-card__link--img)[^{}]*\{[^}]*\}/g) ?? [];
+    const rules = css.match(/[^{}]*(?:d2-hero__cover|cpl-card__link--img|cpl-sb__img|cpl-sb--img)[^{}]*\{[^}]*\}/g) ?? [];
     expect(rules.length).toBeGreaterThan(0);
     for (const rule of rules) expect(rule).not.toMatch(/opacity|animation|transition/);
   });
@@ -497,7 +497,7 @@ describe('清單卡', () => {
   it('只有帶縮圖的卡出現 56×42 縮圖；沒封面的卡版面照舊', () => {
     const card = (cid: string, thumb: string): InAppListCard => ({
       cid, name: cid, category: 'league', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
-      line: null, mine: false, ended: false, statusMark: null, thumb,
+      line: null, mine: false, ended: false, statusMark: null, thumb, cover: '',
     });
     render(
       <InAppCardList
@@ -522,10 +522,51 @@ describe('清單卡', () => {
     expect(none?.querySelector('a > .cpl-card__name')).not.toBeNull();
   });
 
+  it('卡板：有封面才在板裡放原圖（lazy、async）並加 cpl-sb--img；沒封面的卡板結構照舊；圖載不到收回沒封面的卡板', () => {
+    const board = (cid: string, cover: string): InAppListCard => ({
+      cid, name: cid, category: 'cup', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
+      line: { kind: 'deadline', date: '11/21 23:59' }, mine: false, ended: false, statusMark: null, thumb: THUMB1, cover,
+    });
+    const list = (card: InAppListCard) => (
+      <InAppCardList
+        cards={[card]}
+        ct={makeCompetitionsT({})}
+        status="open"
+        onlyMine={false}
+        showCreate={false}
+        boardCid={card.cid}
+        onStatus={() => {}}
+        onOnlyMine={() => {}}
+        onCreate={() => {}}
+        onOpen={() => {}}
+      />
+    );
+    const { unmount } = render(list(board('with', URL1)));
+    const sb = document.querySelector('[data-cid="with"] .d2-sb');
+    const img = sb?.querySelector<HTMLImageElement>('img.cpl-sb__img');
+    expect(sb?.classList.contains('cpl-sb--img')).toBe(true);
+    // 卡板用原圖、不用 224×168 縮圖；圖是板的第一個子節點，字在後面
+    expect(img?.getAttribute('src')).toBe(URL1);
+    expect(img?.getAttribute('loading')).toBe('lazy');
+    expect(img?.getAttribute('decoding')).toBe('async');
+    expect(img?.getAttribute('alt')).toBe('');
+    expect(sb?.firstElementChild).toBe(img);
+    act(() => { img!.dispatchEvent(new Event('error')); });
+    expect(document.querySelector('[data-cid="with"] img')).toBeNull();
+    expect(document.querySelector('[data-cid="with"] .d2-sb')?.className).toBe('d2-sb');
+    unmount();
+
+    render(list(board('none', '')));
+    const plain = document.querySelector('[data-cid="none"] .d2-sb');
+    expect(plain?.className).toBe('d2-sb');
+    expect(plain?.querySelector('img')).toBeNull();
+    expect(plain?.firstElementChild?.className).toBe('cpl-sb__top');
+  });
+
   it('縮圖載不到：改畫沒封面的版面，不留 56×42 空格', () => {
     const card: InAppListCard = {
       cid: 'bad', name: 'bad', category: 'league', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
-      line: null, mine: false, ended: false, statusMark: null, thumb: THUMB1,
+      line: null, mine: false, ended: false, statusMark: null, thumb: THUMB1, cover: '',
     };
     render(
       <InAppCardList
