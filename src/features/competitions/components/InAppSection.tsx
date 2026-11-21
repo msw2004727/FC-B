@@ -43,6 +43,7 @@ import {
 import {
   canReadCpListSnapshot,
   canWriteCpListSnapshot,
+  dropCpListSnapshot,
   dropForeignCpListSnapshot,
   readCpListSnapshot,
   writeCpListSnapshot,
@@ -147,7 +148,7 @@ function SectionBody({
   const [snap, setSnap] = useState<CpListSnapshot | null>(null);
   const snapShown = useRef(false);
   // 目前畫面上的伺服器清單是替誰、哪個範圍讀的，公開清單有沒有讀成功。寫快照只看這份。
-  const fresh = useRef<{ uid: string | null; scope: CpListScope; publicOk: boolean } | null>(null);
+  const fresh = useRef<{ uid: string | null; scope: CpListScope; publicOk: boolean; mineOk: boolean } | null>(null);
   // 登入狀態確定時重試寫快照（清單比登入確認早回來時）。
   const [authTick, setAuthTick] = useState(0);
   // 換帳號的第一個畫面就要藏起上一個人的清單，不能等 effect。
@@ -195,6 +196,8 @@ function SectionBody({
         setHostQuery(null);
         setSnap(null);
         snapShown.current = false;
+        // 伺服器明確判定看不到：這位使用者的快照以後也用不到，刪掉（審查 P3）。
+        if (snapshot) dropCpListSnapshot(actor.uid);
         setPhase('hidden');
         return;
       }
@@ -215,8 +218,14 @@ function SectionBody({
         }
       }
       let publicOk = true;
+      let mineOk = true;
       const [items, listed] = await Promise.all([
-        actor.uid ? repo.listMine(actor.uid).catch(() => [] as CpMineItem[]) : Promise.resolve([] as CpMineItem[]),
+        actor.uid
+          ? repo.listMine(actor.uid).catch(() => {
+            mineOk = false;
+            return [] as CpMineItem[];
+          })
+          : Promise.resolve([] as CpMineItem[]),
         repo.listPublic(isTester || isAdmin).catch(() => {
           publicOk = false;
           return [] as CompetitionDoc[];
@@ -226,7 +235,7 @@ function SectionBody({
       if (!alive) return;
       // 公開清單讀取失敗而畫面上是快照：保留快照（不把清單換成空的），也不寫。
       if (!publicOk && snapShown.current) return;
-      fresh.current = { uid: actor.uid, scope, publicOk };
+      fresh.current = { uid: actor.uid, scope, publicOk, mineOk };
       snapShown.current = false;
       setSnap(null);
       setBaseMine(dedupeMine(namedMine));
@@ -276,7 +285,8 @@ function SectionBody({
   useEffect(() => {
     if (!snapshot || phase !== 'ready') return;
     const meta = fresh.current;
-    if (!meta || !meta.publicOk || meta.uid !== actor.uid) return;
+    // 公開清單或我的清單有一份讀取失敗：不拿這半份清單蓋掉快照。
+    if (!meta || !meta.publicOk || !meta.mineOk || meta.uid !== actor.uid) return;
     if (!canWriteCpListSnapshot(actor.uid, snapshot.confirmedUid())) return;
     writeCpListSnapshot(actor.uid, meta.scope, { publicDocs, hosted, mine: baseMine });
     // eslint-disable-next-line react-hooks/exhaustive-deps

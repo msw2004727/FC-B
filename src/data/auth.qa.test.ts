@@ -536,6 +536,11 @@ const UNRELATED_KEYS = [
   'sporthub_active_sport',
   'toosterx:locale',
   'toosterx:theme',
+  // 2026-11-21 審查 P3：同為 fcb:cp- 開頭但與帳號無關，'fcb:cp-list:' 前綴不能誤清（反向鎖住前綴範圍）。
+  'fcb:cp-invite-pending',
+  'fcb:cp-inapp-seen:v1',
+  // 站內清單的訪客快照只有公開資料，刻意不跟著登出清（前綴不是 'fcb:cp-list:'）。
+  'fcb:cp-list-guest:v1',
 ] as const;
 
 function seedRegularAccountStorage(): void {

@@ -7,7 +7,11 @@
  * - 當日摘要（今天 N 場、下一場）不存：快照畫面上進行中的卡不寫重點句、不放記分板，等讀回再補（照既有「摘要沒結果先不放板」）。
  * - 帳號區隔：記錄存它的帳號（訪客 'guest'）；帳號不符只跳過不用（守門在 InAppSection：登入者要登入模組確認的帳號
  *   與畫面使用者相同才讀才寫；訪客在登入狀態未定或確定是訪客時才讀 guest 快照）。確定登入狀態後發現是別人的快照就刪掉。
- *   主動登出與「清除快取」由 data/auth.ts 的帳號清單（'fcb:cp-list:' 前綴）一起清。
+ * - 登入者與訪客分兩個鍵（審查 P2-2）：登入者的 'fcb:cp-list:v1' 在主動登出、「清除快取」、被動失效（Auth 狀態變成無人）時
+ *   都由 data/auth.ts 清掉（'fcb:cp-list:' 前綴）；訪客的 'fcb:cp-list-guest:v1' 只有公開資料、沒有帳號歸屬（同首頁公開快照），
+ *   不跟著清——訪客每次開頁 Auth 都會先通知一次「無人」，訪客快照若用同一個前綴會在讀到之前就被清掉。
+ * - 賽事 id 要是 cp_＋20 碼英數（後端 CID_RE，同 pages/edit-competition.ts#isCompetitionId），不合格整筆丟掉。
+ * - 閘門判定看不到時，InAppSection 刪掉這位使用者的快照。
  * - 範圍區隔：測試者／管理員讀得到內部賽（scope 'internal'），一般人只有公開（'public'）；範圍不符不用。
  * - 下架（hidden）與刪除中（deletingAt）的賽事寫入時不帶、讀出時再擋一次。訪客快照另外只留公開、狀態是公開狀態、不是「我的」的賽事
  *   （寫入與讀出各過一次）。
@@ -20,7 +24,12 @@ import { categoryOf } from './present';
 import { firstVenueName, mergeInAppDocs, type InAppListDoc, type InAppListInput } from './list-cards';
 import type { CompetitionCover, CompetitionDoc, CompetitionStatus } from './types';
 
+/** 登入者的快照（帳號資料，登出與被動失效時清）。 */
 export const CP_LIST_SNAPSHOT_KEY = 'fcb:cp-list:v1';
+/** 訪客的快照（只有公開資料，不跟著登出清）。前綴刻意不是 'fcb:cp-list:'。 */
+export const CP_LIST_GUEST_SNAPSHOT_KEY = 'fcb:cp-list-guest:v1';
+/** 後端 CID_RE（pages/edit-competition.ts#isCompetitionId 同一條）。這裡不 import 那個頁面模組，免得帶進清單分塊。 */
+const CID_RE = /^cp_[A-Za-z0-9]{20}$/;
 export const CP_LIST_SNAPSHOT_FORMAT = 1;
 export const CP_LIST_SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000;
 export const CP_LIST_SNAPSHOT_FUTURE_SKEW_MS = 60_000;
@@ -30,7 +39,6 @@ export const CP_LIST_SNAPSHOT_FUTURE_SKEW_MS = 60_000;
  */
 export const CP_LIST_SNAPSHOT_MAX_CHARS = 200_000;
 const MAX_ROWS = 400;
-const MAX_ID_CHARS = 200;
 const MAX_NAME_CHARS = 500;
 
 /** 測試者／管理員（listPublic 帶 includeInternal）是 'internal'，其餘是 'public'。 */
@@ -111,7 +119,7 @@ function num(value: unknown): number | null {
 function projectRow(raw: unknown): SnapRow | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
-  const id = str(o.id, MAX_ID_CHARS);
+  const id = typeof o.id === 'string' && CID_RE.test(o.id) ? o.id : null;
   const name = str(o.name, MAX_NAME_CHARS);
   const status = STATUSES.find((value) => value === o.status);
   const regOpenAt = num(o.regOpenAt);
@@ -146,22 +154,26 @@ function projectRow(raw: unknown): SnapRow | null {
 function projectName(raw: unknown): SnapName | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
-  const cid = str(o.cid, MAX_ID_CHARS);
+  const cid = typeof o.cid === 'string' && CID_RE.test(o.cid) ? o.cid : null;
   const name = str(o.name, MAX_NAME_CHARS);
   return cid && name ? { cid, name, category: categoryOf({ category: o.category }) } : null;
 }
 
-function removeSnapshot(): void {
+function keyOf(uid: string | null): string {
+  return uid ? CP_LIST_SNAPSHOT_KEY : CP_LIST_GUEST_SNAPSHOT_KEY;
+}
+
+function removeSnapshot(key: string): void {
   try {
-    localStorage.removeItem(CP_LIST_SNAPSHOT_KEY);
+    localStorage.removeItem(key);
   } catch {
     /* 忽略 */
   }
 }
 
-function readEnvelope(): Partial<Envelope> | null {
+function readEnvelope(key: string): Partial<Envelope> | null {
   try {
-    const raw = localStorage.getItem(CP_LIST_SNAPSHOT_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw || raw.length > CP_LIST_SNAPSHOT_MAX_CHARS) return null;
     const parsed = JSON.parse(raw) as Partial<Envelope> | null;
     return parsed && typeof parsed === 'object' ? parsed : null;
@@ -190,8 +202,14 @@ export function canWriteCpListSnapshot(uid: string | null, confirmed: string | n
  */
 export function dropForeignCpListSnapshot(confirmed: string | null | undefined): void {
   if (confirmed === undefined) return;
-  const parsed = readEnvelope();
-  if (parsed && parsed.owner !== ownerOf(confirmed)) removeSnapshot();
+  // 只看登入者的鍵；訪客的鍵只有公開資料。
+  const parsed = readEnvelope(CP_LIST_SNAPSHOT_KEY);
+  if (parsed && parsed.owner !== ownerOf(confirmed)) removeSnapshot(CP_LIST_SNAPSHOT_KEY);
+}
+
+/** 刪掉這位使用者（訪客是 null）的快照：閘門判定看不到時用。 */
+export function dropCpListSnapshot(uid: string | null): void {
+  removeSnapshot(keyOf(uid));
 }
 
 /** 讀快照：帳號、範圍、版本不符，過期，或沒有任何一張可畫的卡，回 null。 */
@@ -200,7 +218,7 @@ export function readCpListSnapshot(
   scope: CpListScope,
   nowMs: number = Date.now(),
 ): CpListSnapshot | null {
-  const parsed = readEnvelope();
+  const parsed = readEnvelope(keyOf(uid));
   if (!parsed || parsed.v !== CP_LIST_SNAPSHOT_FORMAT) return null;
   if (parsed.owner !== ownerOf(uid) || parsed.scope !== scope) return null;
   if (typeof parsed.savedAt !== 'number' || !Number.isFinite(parsed.savedAt)) return null;
@@ -272,19 +290,19 @@ export function writeCpListSnapshot(
   }
   const names: SnapName[] = guest ? [] : merged.names.map((row) => ({ cid: row.cid, name: row.name, category: row.category }));
   if ((rows.length === 0 && names.length === 0) || rows.length > MAX_ROWS || names.length > MAX_ROWS) {
-    removeSnapshot();
+    removeSnapshot(keyOf(uid));
     return;
   }
   try {
     const payload: Envelope = { v: CP_LIST_SNAPSHOT_FORMAT, owner: ownerOf(uid), scope, savedAt: nowMs, rows, names };
     const text = JSON.stringify(payload);
     if (text.length > CP_LIST_SNAPSHOT_MAX_CHARS) {
-      removeSnapshot();
+      removeSnapshot(keyOf(uid));
       return;
     }
-    localStorage.setItem(CP_LIST_SNAPSHOT_KEY, text);
+    localStorage.setItem(keyOf(uid), text);
   } catch {
     // 容量滿或停用：盡量刪掉舊的，免得留著比剛讀回還舊的快照。
-    removeSnapshot();
+    removeSnapshot(keyOf(uid));
   }
 }

@@ -146,6 +146,13 @@ function env(seed: Seed): CpInjectedEnv {
   return { actor, repo, actions: idleActions(), now: NOW, listSnapshot: { confirmedUid: () => actor.uid } } as CpInjectedEnv;
 }
 
+const SNAP_COMPS = [
+  live('cp_liveCup0000000000000', '示範盃五人制足球賽', 'cup', '示範運動公園'),
+  warm('cp_warmLg00000000000000', '冬季聯賽'),
+  recruit('cp_recFr000000000000000', '新春迎新友誼賽'),
+];
+const SNAP_SUMMARY = { cp_liveCup0000000000000: todayShard() };
+
 interface Screen { seed: Seed; viewer?: 'member' | 'manager' | 'guest'; cards?: TournamentCard[]; ext?: CplState['ext']; hint?: boolean }
 const OFF: Seed = { isPublic: false };
 const SCREENS: Record<string, Screen> = {
@@ -169,8 +176,9 @@ const SCREENS: Record<string, Screen> = {
   'in-menu-two': { seed: { comps: [...BASIC, done('done_a', '秋季聯賽'), done('done_b', '中秋友誼盃')] } },
   'in-loading': { seed: { hang: true }, hint: true },
   // 本機清單快照：上次存的有一場後來被下架（讀回後消失）；in-nosnap 是同樣延遲、沒有快照的對照。
-  'in-snap': { seed: { snap: [live('live_cup', '示範盃五人制足球賽', 'cup', '示範運動公園'), warm('warm_lg', '冬季聯賽'), recruit('rec_fr', '新春迎新友誼賽'), recruit('gone_fr', '已下架的舊友誼賽')] } },
-  'in-nosnap': { seed: { snap: 'off' } },
+  // 快照只收合格賽事 id（cp_＋20 碼），這兩個畫面的賽事用合格 id。
+  'in-snap': { seed: { comps: SNAP_COMPS, summary: SNAP_SUMMARY, snap: [...SNAP_COMPS, recruit('cp_goneFr00000000000000', '已下架的舊友誼賽')] } },
+  'in-nosnap': { seed: { comps: SNAP_COMPS, summary: SNAP_SUMMARY, snap: 'off' } },
   // 外部（有切換）
   ext: { seed: {} },
   'ext-admin': { seed: {}, viewer: 'manager' },

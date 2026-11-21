@@ -181,7 +181,7 @@ function emitAuth(uid: string | null): void {
   if (uid === null) {
     try {
       for (const key of Object.keys(localStorage)) {
-        if (key.startsWith('fcb:home-next:')) localStorage.removeItem(key);
+        if (key.startsWith('fcb:home-next:') || key.startsWith('fcb:cp-list:')) localStorage.removeItem(key);
       }
     } catch {
       /* 儲存空間不可用就略過 */
