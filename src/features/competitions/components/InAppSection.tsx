@@ -12,10 +12,16 @@
 // ASSUMPTION: 同一場賽事公開清單與我的清單都有時，以公開文件為準
 // （公開文件是最新根文件，我的索引名稱可能過期）。
 // 正式頁等閘門通過才查代表俱樂部；沒過時 teams 一筆都不讀。
+// 本機清單快照（data/list-snapshot.ts，顧問 §3.553）：閘門通過後、清單讀回前先畫上次的清單（只在閘門允許顯示站內時才讀）；
+// 讀回（公開清單成功）就整份換成伺服器結果，快照裡已下架、已刪除的卡在這一次就消失；公開清單讀取失敗時保留快照畫面、不寫。
+// 快照畫面不讀當日摘要、不放記分板（進行中的卡不寫「今天 N 場／下一場」），讀回後才照常讀摘要片。
+// 寫入只用這次讀回的清單，登入狀態確定且就是畫面使用者才寫（守門同活動列表）。
 
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
+import { getLastKnownAuthUid } from '@/data/auth';
+import { on } from '@/core/events';
 import { useViewer } from '@/features/profile/data/viewer';
 import { ctOrKey, useCompetitionsT } from '../i18n';
 import { CpI18nPending } from '../ui/shell';
@@ -34,7 +40,16 @@ import {
   type MineListRow,
   type TodayMatches,
 } from '../data/list-cards';
-import type { CpActor } from '../env';
+import {
+  canReadCpListSnapshot,
+  canWriteCpListSnapshot,
+  dropForeignCpListSnapshot,
+  readCpListSnapshot,
+  writeCpListSnapshot,
+  type CpListScope,
+  type CpListSnapshot,
+} from '../data/list-snapshot';
+import type { CpActor, CpListSnapshotPorts } from '../env';
 import { useInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { representativeClubs } from '../rep-clubs';
@@ -87,6 +102,11 @@ export interface InAppSectionProps {
 
 export type CpGateReason = 'denied';
 
+/** 正式頁的快照守門：登入模組確認的帳號。 */
+const LIVE_SNAPSHOT: CpListSnapshotPorts = { confirmedUid: () => getLastKnownAuthUid() };
+const NO_TODAY: ReadonlyMap<string, TodayMatches> = new Map();
+const NO_SETTLED: ReadonlySet<string> = new Set();
+
 function SectionBody({
   actor,
   repo,
@@ -95,6 +115,7 @@ function SectionBody({
   active,
   onGate,
   onReady,
+  snapshot,
 }: {
   actor: CpActor;
   repo: CompetitionsRepo;
@@ -103,6 +124,8 @@ function SectionBody({
   active: boolean;
   onGate?: (open: boolean, reason?: CpGateReason) => void;
   onReady?: () => void;
+  /** null：不讀不寫本機清單快照（注入環境沒開）。 */
+  snapshot: CpListSnapshotPorts | null;
 }): JSX.Element | null {
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
@@ -120,6 +143,13 @@ function SectionBody({
   const [hostQuery, setHostQuery] = useState<{ publicOnly: boolean } | null>(null);
   // 同 cid 同日只讀一次。失敗的 promise 會從這裡拿掉。不監聽。
   const shardCache = useRef(new Map<string, Promise<TodayMatches | null>>());
+  // 讀回前先畫的上次清單。讀回後、換帳號、閘門沒過都清成 null。
+  const [snap, setSnap] = useState<CpListSnapshot | null>(null);
+  const snapShown = useRef(false);
+  // 目前畫面上的伺服器清單是替誰、哪個範圍讀的，公開清單有沒有讀成功。寫快照只看這份。
+  const fresh = useRef<{ uid: string | null; scope: CpListScope; publicOk: boolean } | null>(null);
+  // 登入狀態確定時重試寫快照（清單比登入確認早回來時）。
+  const [authTick, setAuthTick] = useState(0);
   // 換帳號的第一個畫面就要藏起上一個人的清單，不能等 effect。
   const appliedUid = useRef(actor.uid);
   const uidStale = appliedUid.current !== actor.uid;
@@ -143,6 +173,9 @@ function SectionBody({
       setTodayByCid(new Map());
       setTodaySettled(new Set());
       shardCache.current.clear();
+      setSnap(null);
+      snapShown.current = false;
+      fresh.current = null;
     }
     void (async () => {
       const launch = await repo.getLaunch();
@@ -160,6 +193,8 @@ function SectionBody({
         if (!alive) return;
         onGateRef.current?.(false, 'denied');
         setHostQuery(null);
+        setSnap(null);
+        snapShown.current = false;
         setPhase('hidden');
         return;
       }
@@ -167,12 +202,33 @@ function SectionBody({
       // unmount 之後不得再通知外層去查俱樂部。
       if (!alive) return;
       onGateRef.current?.(true);
+      const scope: CpListScope = isTester || isAdmin ? 'internal' : 'public';
+      // 閘門通過、伺服器清單還沒畫過：先畫本機快照（帳號與範圍都要相符）。
+      if (snapshot && !fresh.current) {
+        const confirmed = snapshot.confirmedUid();
+        dropForeignCpListSnapshot(confirmed);
+        const stored = canReadCpListSnapshot(actor.uid, confirmed) ? readCpListSnapshot(actor.uid, scope) : null;
+        if (stored) {
+          snapShown.current = true;
+          setSnap(stored);
+          onReadyRef.current?.();
+        }
+      }
+      let publicOk = true;
       const [items, listed] = await Promise.all([
         actor.uid ? repo.listMine(actor.uid).catch(() => [] as CpMineItem[]) : Promise.resolve([] as CpMineItem[]),
-        repo.listPublic(isTester || isAdmin).catch(() => [] as CompetitionDoc[]),
+        repo.listPublic(isTester || isAdmin).catch(() => {
+          publicOk = false;
+          return [] as CompetitionDoc[];
+        }),
       ]);
       const namedMine = await Promise.all(items.map((item) => resolveMine(repo, item)));
       if (!alive) return;
+      // 公開清單讀取失敗而畫面上是快照：保留快照（不把清單換成空的），也不寫。
+      if (!publicOk && snapShown.current) return;
+      fresh.current = { uid: actor.uid, scope, publicOk };
+      snapShown.current = false;
+      setSnap(null);
       setBaseMine(dedupeMine(namedMine));
       setPublicDocs(listed.filter((doc) => doc.name));
       setHostQuery({ publicOnly: !isTester && !isAdmin });
@@ -182,6 +238,8 @@ function SectionBody({
       if (!alive) return;
       onGateRef.current?.(false);
       setHostQuery(null);
+      setSnap(null);
+      snapShown.current = false;
       setPhase('hidden');
     });
     return () => {
@@ -214,16 +272,34 @@ function SectionBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hostQuery, repKey, repo]);
 
+  // 伺服器清單讀回後寫快照（之後主辦清單到了再寫一次）。只用伺服器結果，不拿快照回寫。
+  useEffect(() => {
+    if (!snapshot || phase !== 'ready') return;
+    const meta = fresh.current;
+    if (!meta || !meta.publicOk || meta.uid !== actor.uid) return;
+    if (!canWriteCpListSnapshot(actor.uid, snapshot.confirmedUid())) return;
+    writeCpListSnapshot(actor.uid, meta.scope, { publicDocs, hosted, mine: baseMine });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, publicDocs, hosted, baseMine, authTick, snapshot]);
+  useEffect(() => (snapshot ? on('auth:changed', () => setAuthTick((value) => value + 1)) : undefined), [snapshot]);
+
+  const showingSnap = phase === 'loading' && snap !== null;
+  // 快照畫面不帶當日摘要（顧問條件 6）：進行中的卡沒有重點句，記分板等讀回後的摘要結果。
   const cards = useMemo(
-    () => assembleInAppCards({ publicDocs, hosted, mine: baseMine, now, todayByCid }),
-    [publicDocs, hosted, baseMine, now, todayByCid],
+    () => (showingSnap && snap
+      ? assembleInAppCards({ ...snap, now, todayByCid: NO_TODAY })
+      : assembleInAppCards({ publicDocs, hosted, mine: baseMine, now, todayByCid })),
+    [showingSnap, snap, publicDocs, hosted, baseMine, now, todayByCid],
   );
   const visible = useMemo(
     () => filterInAppCards(cards, tab, status, onlyMine),
     [cards, tab, status, onlyMine],
   );
   // 卡板那一張移到第一張；boardCid 傳給 InAppCardList 換成卡板長相。
-  const board = useMemo(() => pickInAppBoard(visible, todaySettled), [visible, todaySettled]);
+  const board = useMemo(
+    () => pickInAppBoard(visible, showingSnap ? NO_SETTLED : todaySettled),
+    [visible, showingSnap, todaySettled],
+  );
   // 空字串＝現在沒有畫在畫面上的進行中卡（含來源切到外部、字典未到）。
   const liveKey = !uidStale && phase === 'ready' && active && cpDict.ct
     ? visible.filter((card) => card.phase === 'live').map((card) => card.cid).join('\n')
@@ -277,7 +353,7 @@ function SectionBody({
     };
   }, [liveKey, now, repo]);
 
-  if (uidStale || phase !== 'ready') return null;
+  if (uidStale || (phase !== 'ready' && !showingSnap)) return null;
   if (!active) return null;
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const showCreate = !!actor.uid && !actor.authPending;
@@ -329,6 +405,7 @@ function LiveInApp(props: InAppSectionProps): JSX.Element {
           active={props.active !== false}
           onGate={report}
           onReady={props.onReady}
+          snapshot={LIVE_SNAPSHOT}
         />
       )}
     </LiveBoundary>
@@ -348,6 +425,7 @@ export function InAppSection(props: InAppSectionProps): JSX.Element | null {
         active={props.active !== false}
         onGate={props.onGate}
         onReady={props.onReady}
+        snapshot={injected.listSnapshot ?? null}
       />
     );
   }

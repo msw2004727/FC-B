@@ -54,6 +54,15 @@ export interface InAppListCard {
   cover: string;
 }
 
+/**
+ * 組卡只看根文件的這些欄位（本機清單快照 list-snapshot.ts 也只存這些，讀回後照同一條路組卡）。
+ * 場地只看名稱（firstVenueName）。
+ */
+export type InAppListDoc = Pick<
+  CompetitionDoc,
+  'id' | 'name' | 'category' | 'status' | 'regOpenAt' | 'regCloseAt' | 'firstMatchAt' | 'lastMatchAt' | 'endedAt' | 'hidden' | 'cover'
+> & { venues: readonly { name: string }[] };
+
 export interface MineListRow {
   cid: string;
   name: string;
@@ -100,7 +109,7 @@ export function formatInAppDates(doc: Pick<CompetitionDoc, 'firstMatchAt' | 'las
 }
 
 /** 第一個有名稱的場地；沒有就是空字串。 */
-export function firstVenueName(doc: Pick<CompetitionDoc, 'venues'>): string {
+export function firstVenueName(doc: { venues: readonly { name: string }[] }): string {
   return doc.venues.find((item) => item.name.trim())?.name.trim() ?? '';
 }
 
@@ -149,7 +158,7 @@ export function statusLineFor(
 }
 
 function cardFromDoc(
-  doc: CompetitionDoc,
+  doc: InAppListDoc,
   mine: boolean,
   now: number,
   today: TodayMatches | undefined,
@@ -191,46 +200,63 @@ function compareCards(a: InAppListCard, b: InAppListCard): number {
   return a.cid < b.cid ? -1 : a.cid > b.cid ? 1 : 0;
 }
 
-export function assembleInAppCards(input: {
-  publicDocs: readonly CompetitionDoc[];
-  hosted: readonly CompetitionDoc[];
-  mine: readonly MineListRow[];
-  now: number;
-  todayByCid?: ReadonlyMap<string, TodayMatches>;
-}): InAppListCard[] {
+/** 組卡的來源：公開清單、代表俱樂部主辦、我的賽事（cpMine）。 */
+export interface InAppListInput<D extends InAppListDoc = InAppListDoc> {
+  publicDocs: readonly D[];
+  hosted: readonly D[];
+  mine: readonly (Omit<MineListRow, 'doc'> & { doc: D | null })[];
+}
+
+/**
+ * 三份來源以 cid 去重（公開文件先放，同一場後面的主辦或我的文件不覆蓋），標出哪些是我的。
+ * names 是沒有文件、只有名稱的「我的賽事」。組卡與本機清單快照共用這一份合併規則。
+ */
+export function mergeInAppDocs<D extends InAppListDoc>(input: InAppListInput<D>): {
+  docs: { doc: D; mine: boolean }[];
+  names: { cid: string; name: string; category: CompetitionCategory }[];
+} {
   const mineIds = new Set(input.mine.map((row) => row.cid));
   const hostedIds = new Set(input.hosted.map((doc) => doc.id));
-  const docs = new Map<string, CompetitionDoc>();
+  const docs = new Map<string, D>();
 
-  function remember(doc: CompetitionDoc): void {
+  function remember(doc: D): void {
     if (!doc.name || docs.has(doc.id)) return;
     docs.set(doc.id, doc);
   }
 
-  // 公開文件先放。同一場後面的主辦或我的文件不覆蓋。
   for (const doc of input.publicDocs) remember(doc);
   for (const doc of input.hosted) remember(doc);
   for (const row of input.mine) {
     if (row.doc) remember(row.doc);
   }
 
-  const cards: InAppListCard[] = [];
-  for (const doc of docs.values()) {
-    cards.push(cardFromDoc(
-      doc,
-      mineIds.has(doc.id) || hostedIds.has(doc.id),
-      input.now,
-      input.todayByCid?.get(doc.id),
-    ));
-  }
-
+  const names: { cid: string; name: string; category: CompetitionCategory }[] = [];
   for (const row of input.mine) {
     const name = row.name.trim();
     if (!name || docs.has(row.cid)) continue;
+    names.push({ cid: row.cid, name, category: categoryOf(row) });
+  }
+  return {
+    docs: [...docs.values()].map((doc) => ({ doc, mine: mineIds.has(doc.id) || hostedIds.has(doc.id) })),
+    names,
+  };
+}
+
+export function assembleInAppCards(input: InAppListInput & {
+  now: number;
+  todayByCid?: ReadonlyMap<string, TodayMatches>;
+}): InAppListCard[] {
+  const merged = mergeInAppDocs(input);
+  const cards: InAppListCard[] = [];
+  for (const { doc, mine } of merged.docs) {
+    cards.push(cardFromDoc(doc, mine, input.now, input.todayByCid?.get(doc.id)));
+  }
+
+  for (const row of merged.names) {
     cards.push({
       cid: row.cid,
-      name,
-      category: categoryOf(row),
+      name: row.name,
+      category: row.category,
       phase: null,
       date: '',
       venue: '',

@@ -124,6 +124,13 @@ export interface CpInjectedEnv {
   signIn?: () => Promise<void>;
   /** 封面上傳（裁好的 data URL → 兩個下載網址）。省略時動態載入 data/cover-upload.ts 傳到 Storage；測試與 harness 換假的。 */
   coverUpload?: (dataUrl: string) => Promise<UploadedCover>;
+  /** 站內清單本機快照（data/list-snapshot.ts）。省略＝注入環境不讀不寫快照；正式頁一律開。 */
+  listSnapshot?: CpListSnapshotPorts;
+}
+
+/** 站內清單快照的守門來源。confirmedUid：登入模組確認的帳號（未定 undefined、沒登入 null）。 */
+export interface CpListSnapshotPorts {
+  confirmedUid: () => string | null | undefined;
 }
 
 const CpEnvContext = createContext<CpInjectedEnv | null>(null);

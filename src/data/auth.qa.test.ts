@@ -64,6 +64,8 @@ const CLEARED_KEYS = [
   'admin_stealth',
   // 2026-11-19：首頁「我的下一場活動」快照（含 owner uid）登出時一起清。
   'fcb:home-next:v1',
+  // 2026-11-21：站內賽事清單快照（含 owner uid）登出時一起清。
+  'fcb:cp-list:v1',
 ] as const;
 
 const consoleMethods = ['log', 'info', 'warn', 'error', 'debug'] as const;

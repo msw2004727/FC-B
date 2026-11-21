@@ -34,6 +34,7 @@ import { taipeiMs } from '@/features/competitions/format';
 import type { CompetitionDoc, CpMineItem, SummaryEntry } from '@/features/competitions/data/types';
 import { AUTH_HINT_KEY } from '@/data/auth-hint';
 import { CP_INAPP_HINT_KEY } from '@/features/tournaments/inapp-hint';
+import { writeCpListSnapshot } from '@/features/competitions/data/list-snapshot';
 import type { CplState } from './cp-list-fakes/state';
 import TournamentsPage from '@/features/tournaments/pages/TournamentsPage';
 
@@ -119,7 +120,15 @@ interface Seed {
   isPublic?: boolean;
   hang?: boolean;
   guest?: boolean;
+  /** 本機清單快照（站內清單先畫上次內容）：有值時先把這幾場寫成上次的快照，並開快照讀寫。 */
+  snap?: CompetitionDoc[] | 'off';
 }
+// 快照量測／截圖用：網址 &delay=毫秒 讓公開清單與我的清單晚這麼久才回（模擬行動網路的 Firestore 查詢）、
+// &launchDelay=毫秒 讓開賽閘門晚回；&hold=1 讓清單一直不回（截快照畫面）。
+const LIST_DELAY = Number(params.get('delay') || 0);
+const LAUNCH_DELAY = Number(params.get('launchDelay') || 0);
+const HOLD = params.get('hold') === '1';
+const wait = (ms: number) => new Promise<void>((done) => { setTimeout(done, ms); });
 function env(seed: Seed): CpInjectedEnv {
   const repo = createFakeCpRepo({
     launch: { isPublic: seed.isPublic ?? true, bannedWords: [] },
@@ -129,7 +138,12 @@ function env(seed: Seed): CpInjectedEnv {
   });
   if (seed.hang) repo.getLaunch = () => new Promise(() => undefined);
   const actor = seed.guest ? { ...memberActor, uid: null } : memberActor;
-  return { actor, repo, actions: idleActions(), now: NOW } as CpInjectedEnv;
+  if (!seed.snap) return { actor, repo, actions: idleActions(), now: NOW } as CpInjectedEnv;
+  const { getLaunch, listPublic, listMine } = repo;
+  repo.getLaunch = async () => { await wait(LAUNCH_DELAY); return getLaunch.call(repo); };
+  repo.listPublic = async (inc) => { await (HOLD ? new Promise(() => undefined) : wait(LIST_DELAY)); return listPublic.call(repo, inc); };
+  repo.listMine = async (uid) => { await wait(LIST_DELAY); return listMine.call(repo, uid); };
+  return { actor, repo, actions: idleActions(), now: NOW, listSnapshot: { confirmedUid: () => actor.uid } } as CpInjectedEnv;
 }
 
 interface Screen { seed: Seed; viewer?: 'member' | 'manager' | 'guest'; cards?: TournamentCard[]; ext?: CplState['ext']; hint?: boolean }
@@ -154,6 +168,9 @@ const SCREENS: Record<string, Screen> = {
   'in-menu-empty': { seed: {} },
   'in-menu-two': { seed: { comps: [...BASIC, done('done_a', '秋季聯賽'), done('done_b', '中秋友誼盃')] } },
   'in-loading': { seed: { hang: true }, hint: true },
+  // 本機清單快照：上次存的有一場後來被下架（讀回後消失）；in-nosnap 是同樣延遲、沒有快照的對照。
+  'in-snap': { seed: { snap: [live('live_cup', '示範盃五人制足球賽', 'cup', '示範運動公園'), warm('warm_lg', '冬季聯賽'), recruit('rec_fr', '新春迎新友誼賽'), recruit('gone_fr', '已下架的舊友誼賽')] } },
+  'in-nosnap': { seed: { snap: 'off' } },
   // 外部（有切換）
   ext: { seed: {} },
   'ext-admin': { seed: {}, viewer: 'manager' },
@@ -181,6 +198,9 @@ const screen = SCREENS[screenName] ?? SCREENS.in!;
 };
 try {
   localStorage.clear();
+  if (Array.isArray(screen.seed.snap)) {
+    writeCpListSnapshot('uid_member', 'public', { publicDocs: screen.seed.snap, hosted: [], mine: [] });
+  }
   if (screen.hint) {
     localStorage.setItem(AUTH_HINT_KEY, '1');
     localStorage.setItem(CP_INAPP_HINT_KEY, '1');
