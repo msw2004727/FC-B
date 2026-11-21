@@ -17,7 +17,8 @@ import type { InAppListCard } from '../data/list-cards';
 import { CpEnvProvider, type CpInjectedEnv } from '../env';
 import { loadCompetitionsDict, makeCompetitionsT } from '../i18n';
 import { InAppCardList } from '../components/InAppCardList';
-import { adminActor, hostActor, idleActions, screenEnv, wizardSeed } from '../testing/screen-fixtures';
+import { adminActor, hostActor, idleActions, listInEnv, screenEnv, wizardSeed } from '../testing/screen-fixtures';
+import { InAppSection } from '../components/InAppSection';
 import { COVER_CROP, CoverField } from '../ui/cover-field';
 import CompetitionDetailPage from './CompetitionDetailPage';
 import CompetitionManagePage from './CompetitionManagePage';
@@ -561,6 +562,30 @@ describe('清單卡', () => {
     expect(plain?.className).toBe('d2-sb');
     expect(plain?.querySelector('img')).toBeNull();
     expect(plain?.firstElementChild?.className).toBe('cpl-sb__top');
+  });
+
+  it('下架賽事：管理員看清單也一律不畫封面（卡板與一般卡都沒有圖）；沒下架的照常有圖', async () => {
+    await loadCompetitionsDict('zh-TW');
+    const env = { ...listInEnv(), actor: adminActor };
+    const orig = env.repo.listPublic.bind(env.repo);
+    // 正式查詢已帶 hidden == false；這裡故意讓下架文件混進來（例如經主辦俱樂部那條查詢），確認畫面這層也不畫
+    env.repo.listPublic = async (includeInternal?: boolean) => (await orig(includeInternal)).map((doc) => (
+      doc.id === 'live_cup' ? { ...doc, hidden: true, hiddenReason: '示範下架', cover: { url: URL1, thumb: THUMB1 } }
+        : doc.id === 'warm_lg' ? { ...doc, cover: { url: URL2, thumb: THUMB2 } } : doc));
+    render(
+      <LocationProvider>
+        <CpEnvProvider value={env}>
+          <InAppSection tab="all" active />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    await waitFor(() => expect(document.querySelector('[data-cid="live_cup"]')).not.toBeNull());
+    const hidden = document.querySelector('[data-cid="live_cup"]');
+    expect(hidden?.querySelector('img')).toBeNull();
+    expect(hidden?.querySelector('.cpl-sb--img')).toBeNull();
+    expect(document.querySelector(`img[src="${URL1}"], img[src="${THUMB1}"]`)).toBeNull();
+    // 對照：沒下架的那張有圖（縮圖或卡板原圖）
+    expect(document.querySelector('[data-cid="warm_lg"] img')).not.toBeNull();
   });
 
   it('縮圖載不到：改畫沒封面的版面，不留 56×42 空格', () => {

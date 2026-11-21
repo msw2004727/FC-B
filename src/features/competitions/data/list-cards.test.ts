@@ -78,7 +78,7 @@ describe('站內卡片純函式', () => {
     ], now)).toBeNull();
   });
 
-  it('封面：卡帶縮圖與原圖網址（卡板用原圖）；下架或沒封面都是空字串', () => {
+  it('封面：卡帶縮圖與原圖網址（卡板用原圖）；下架（含主辦查詢帶進來的）或沒封面都是空字串', () => {
     const cover = { url: 'https://example.test/cover.webp', thumb: 'https://example.test/thumb.webp' };
     const cards = assembleInAppCards({
       publicDocs: [
@@ -86,7 +86,8 @@ describe('站內卡片純函式', () => {
         { ...competition({ id: 'hidden', name: '下架' }), cover, hidden: true },
         { ...competition({ id: 'none', name: '沒圖' }), cover: null },
       ],
-      hosted: [],
+      // 主辦俱樂部那條查詢不濾下架：下架的也一樣不帶封面（清單沒有管理員例外）
+      hosted: [{ ...competition({ id: 'hosted_hidden', name: '主辦下架', hostTeamId: 'club_a' }), cover, hidden: true }],
       mine: [{ cid: 'named', name: '只有名稱', category: 'friendly', doc: null }],
       now: NOW,
     });
@@ -94,6 +95,7 @@ describe('站內卡片純函式', () => {
     expect(by('with')).toMatchObject({ thumb: cover.thumb, cover: cover.url });
     expect(by('hidden')).toMatchObject({ thumb: '', cover: '' });
     expect(by('none')).toMatchObject({ thumb: '', cover: '' });
+    expect(by('hosted_hidden')).toMatchObject({ thumb: '', cover: '' });
     expect(by('named')).toMatchObject({ thumb: '', cover: '' });
   });
 

@@ -1,18 +1,28 @@
 #!/usr/bin/env node
 // 卡板封面三版預覽截圖（站長 11-21）：對已打包的 cp-cover harness（vite preview）截 list-board 等畫面，
-// 版本 a／b／c × 360 與 1280（?frame=1）× 淺色／深色；另截亮雜示範圖（art=busy）各版 360 深色。
+// 版本 a／b／c × 360 與 1280（?frame=1）× 淺色／深色：送審總覽（有封面、長名稱、封面載不到、沒封面、已結束）與下架（管理員）；
+// 另截亮雜示範圖（art=busy）360 深色。
 // 檢查 console 錯誤、對外請求（一律擋下）、橫向溢出、破圖、卡片文字被動斷行。
-// 用法：node dev-harness/cp-cover-board-shots.mjs <輸出資料夾> [base url，預設 http://localhost:5298]
+// 用法：node dev-harness/cp-cover-board-shots.mjs <輸出資料夾> [base url，預設 http://localhost:5298] [--cv=b]
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 
-const OUT = resolve(process.argv[2] || 'cp-cover-board-shots');
-const BASE = process.argv[3] || 'http://localhost:5298';
+const ARGS = process.argv.slice(2);
+const FLAGS = Object.fromEntries(ARGS.filter((a) => a.startsWith('--')).map((a) => { const [k, v] = a.slice(2).split('='); return [k, v ?? '']; }));
+const POS = ARGS.filter((a) => !a.startsWith('--'));
+const OUT = resolve(POS[0] || 'cp-cover-board-shots');
+const BASE = POS[1] || 'http://localhost:5298';
+// --cv=b 只拍某幾版（預設 a,b,c）
+const CVS = (FLAGS.cv || 'a,b,c').split(',');
+const SHORT = { 'list-board-all': 'all', 'list-board-live': 'live', 'list-hidden-admin': 'hidden' };
 const JOBS = [];
-for (const cv of ['a', 'b', 'c']) {
-  for (const w of [360, 1280]) for (const theme of ['light', 'dark']) JOBS.push({ cv, w, theme, screen: 'list-board', art: 'photo' });
-  JOBS.push({ cv, w: 360, theme: 'dark', screen: 'list-board', art: 'busy' });
+for (const cv of CVS) {
+  for (const w of [360, 1280]) for (const theme of ['light', 'dark']) {
+    JOBS.push({ cv, w, theme, screen: 'list-board-all', art: 'photo' });
+    JOBS.push({ cv, w, theme, screen: 'list-hidden-admin', art: 'photo' });
+  }
+  JOBS.push({ cv, w: 360, theme: 'dark', screen: 'list-board-all', art: 'busy' });
   JOBS.push({ cv, w: 360, theme: 'dark', screen: 'list-board-live', art: 'busy' });
   JOBS.push({ cv, w: 360, theme: 'dark', screen: 'list-board-live', art: 'photo' });
 }
@@ -31,7 +41,7 @@ for (const job of JOBS) {
     return route.abort();
   });
   const page = await ctx.newPage();
-  const tag = `cv-${cv}-${screen === 'list-board' ? 'list' : 'live'}-${art}-${w}-${theme}`;
+  const tag = screen === 'list-hidden-admin' ? `cv-${cv}-hidden-admin-${w}-${theme}` : `cv-${cv}-${SHORT[screen]}-${art}-${w}-${theme}`;
   page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });
   page.on('pageerror', (e) => report.consoleErrors.push(`${tag}: pageerror ${e.message}`));
   await page.goto(`${BASE}/dev-harness/cp-cover.html?screen=${screen}&theme=${theme}&cv=${cv}&art=${art}${w >= 1280 ? '&frame=1' : ''}`);
@@ -69,7 +79,7 @@ for (const job of JOBS) {
   }));
   report.boards.push({ tag, boards });
   const file = `${tag}.png`;
-  await page.screenshot({ path: join(OUT, file), fullPage: w < 1280 });
+  await page.screenshot({ path: join(OUT, file), fullPage: true });
   report.shots.push(file);
   await ctx.close();
 }

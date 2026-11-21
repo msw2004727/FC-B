@@ -116,20 +116,18 @@ function boardCard(cid: string, patch: Partial<InAppListCard>): InAppListCard {
   };
 }
 
-function BoardList({ second, first }: { first: InAppListCard[]; second: InAppListCard[] }): ComponentChildren {
+function BoardList({ lists }: { lists: InAppListCard[][] }): ComponentChildren {
   const ct = ctOrKey(useCompetitionsT());
   const noop = (): void => {};
-  const list = (cards: InAppListCard[], cls: string) => (
-    <div class={cls}>
-      <InAppCardList cards={cards} ct={ct} status="open" onlyMine={false} showCreate={cls === 'cvb-1'} boardCid={cards[0]!.cid}
-        onStatus={noop} onOnlyMine={noop} onCreate={noop} onOpen={(_cid, e) => e.preventDefault()} />
-    </div>
-  );
   return (
     <div class="legacy-ui tournaments-root" data-d2="1">
       <section class="page active tc-page" id="page-tournaments">
-        {list(first, 'cvb-1')}
-        {list(second, 'cvb-2')}
+        {lists.map((cards, i) => (
+          <div class={i === 0 ? 'cvb-1' : 'cvb-2'} key={cards[0]!.cid}>
+            <InAppCardList cards={cards} ct={ct} status="open" onlyMine={false} showCreate={i === 0} boardCid={cards[0]!.cid}
+              onStatus={noop} onOnlyMine={noop} onCreate={noop} onOpen={(_cid, e) => e.preventDefault()} />
+          </div>
+        ))}
       </section>
     </div>
   );
@@ -166,14 +164,44 @@ function BoardScreen(): ComponentChildren {
     boardCard('b_plain', { name: '冬季友誼聯賽', category: 'league', phase: 'live', line: { kind: 'live', count: 4, time: '14:30' }, date: '11/21', venue: '迎風河濱球場' }),
     boardCard('n_thumb', { name: '社區親子足球日', category: 'friendly', line: { kind: 'deadline', date: '12/01 23:59' }, date: '12/14', venue: '大佳河濱公園', thumb: cover('cup').thumb }),
   ];
-  return <BoardList first={first} second={second} />;
+  return <BoardList lists={[first, second]} />;
 }
 
 // 進行中卡板（兩格）＋長名稱，都有封面：看名稱壓到圖上、兩格落在圖上的樣子
 function BoardLiveScreen(): ComponentChildren {
   const first = [boardCard('b_live', { name: '2027 新北市青年五人制足球邀請錦標賽', phase: 'live', line: { kind: 'live', count: 4, time: '14:30' }, cover: artCover().url })];
   const second = [boardCard('b_warm', { phase: 'warm', line: { kind: 'warm', days: 3 }, cover: cover('cup').url })];
-  return <BoardList first={first} second={second} />;
+  return <BoardList lists={[first, second]} />;
+}
+
+const LONG = '2027 新北市青年五人制足球邀請錦標賽';
+// 送審總覽（顧問 §3.548）：每段一張卡板——有封面、有封面＋長名稱（進行中兩格）、封面載不到（onError 退回）、沒封面；
+// 一般卡含已結束（有縮圖）、長名稱
+function BoardAllScreen(): ComponentChildren {
+  const c = artCover();
+  const lists = [
+    [
+      boardCard('b_cover', { cover: c.url, thumb: c.thumb }),
+      boardCard('n_done', { name: '秋季盃（已結束）', category: 'cup', phase: 'done', ended: true, line: null, date: '10/18–10/19', venue: '新莊運動公園', thumb: cover('dusk').thumb }),
+    ],
+    [
+      boardCard('b_long', { name: LONG, phase: 'live', line: { kind: 'live', count: 4, time: '14:30' }, cover: c.url }),
+      boardCard('n_long', { name: LONG, category: 'league', phase: 'warm', line: { kind: 'warm', days: 3 }, date: '01/16–01/17', venue: '三重綜合運動場' }),
+    ],
+    [boardCard('b_broken', { name: '封面載不到的盃賽', phase: 'warm', line: { kind: 'warm', days: 5 }, cover: 'data:image/webp;base64,AAAA' })],
+    [boardCard('b_plain', { name: '冬季友誼聯賽', category: 'league', phase: 'recruit', date: '12/20', venue: '迎風河濱球場' })],
+  ];
+  return <BoardList lists={lists} />;
+}
+
+// 下架：管理員看清單，下架那場（正式查詢不會帶出；這裡故意混進來）卡板與一般卡都不畫封面；沒下架的照常有縮圖
+function hiddenAdminEnv(): CpInjectedEnv {
+  const env = { ...listInEnv(), actor: adminActor };
+  const orig = env.repo.listPublic.bind(env.repo);
+  env.repo.listPublic = async (includeInternal?: boolean) => (await orig(includeInternal)).map((d) => (
+    d.id === 'live_cup' ? { ...d, name: '示範盃（已下架）', hidden: true, hiddenReason: '示範下架', cover: PITCH }
+      : d.id === 'warm_lg' ? { ...d, cover: cover('cup') } : d));
+  return env;
 }
 
 // ── 互動：照使用者操作點正式元件 ──
@@ -325,6 +353,8 @@ const SCREENS: Record<string, Screen> = {
   'guest-list': { env: () => ({ ...listEnv(), actor: GUEST }), Page: ListIn },
   'list-board': { env: listInEnv, Page: BoardScreen },
   'list-board-live': { env: listInEnv, Page: BoardLiveScreen },
+  'list-board-all': { env: listInEnv, Page: BoardAllScreen },
+  'list-hidden-admin': { env: hiddenAdminEnv, Page: ListIn },
   'guest-detail': { env: () => ({ ...withCover(screenEnv('real-live'), { cover: PITCH }), actor: GUEST }), Page: CompetitionDetailPage },
 };
 
