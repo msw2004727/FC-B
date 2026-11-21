@@ -942,6 +942,7 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 
 /* 第 3 步詳情：class 對照預覽 harness 的 cp3-*。字級只用字級 token。
  * 隊徽底色與分類漸層用 category-tokens，不在這裡重抄色值。 */
+.cps-root .ui-radio__text,
 .cps-root .ui-radio-group__label,
 .cps-root .ui-tabs__label { white-space: nowrap; }
 
@@ -1386,8 +1387,11 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 }
 .cpm-warn {
   margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
   font-size: var(--font-size-body-sm);
   line-height: var(--line-height-body-sm);
+  font-weight: 700;
 }
 /* 撞期警示（新外觀卡 2-5）：提示列的長相（中性底＋三角驚嘆號），是內容句子可以折行；
  * 撞期句由「原因　時間　對戰」三段以空白分開；窄螢幕只在段落之間換行，不把隊名拆成兩行 */
