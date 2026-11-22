@@ -22,6 +22,7 @@ import { InAppSection } from '@/features/competitions/components/InAppSection';
 import { InAppCardList } from '@/features/competitions/components/InAppCardList';
 import type { InAppListCard } from '@/features/competitions/data/list-cards';
 import './cp-cover-board-harness.css';
+import './cp-cover-allcards-harness.css';
 import { CpEnvProvider, type CpInjectedEnv } from '@/features/competitions/env';
 import { ctOrKey, loadCompetitionsDict, useCompetitionsT } from '@/features/competitions/i18n';
 import { CpCallError } from '@/features/competitions/data/cp-callables';
@@ -40,6 +41,9 @@ const framed = params.get('frame') === '1';
 document.documentElement.setAttribute('data-theme', theme);
 // 卡板封面預覽：?cv=a|b|c 切三個版本（b 是 competitions.css 的寫法；a、c 由 cp-cover-board-harness.css 覆寫）；?art= 換示範圖
 document.documentElement.setAttribute('data-cv', params.get('cv') || 'b');
+// 一般卡封面（站長 11-22）：?ac=1 淡進卡底（competitions.css 本身）、2 淺色疊白霧、3 有封面卡改深底（2、3 由 cp-cover-allcards-harness.css 覆寫）；
+// ?src=thumb 一般卡改用 224×168 縮圖（比清晰度）
+document.documentElement.setAttribute('data-ac', params.get('ac') || '1');
 
 // ── 自己畫的示範封面（1200×450；縮圖是正中央 4:3 那一塊，模擬自動裁切） ──
 const ART: Record<string, string> = {
@@ -192,6 +196,33 @@ function BoardAllScreen(): ComponentChildren {
     [boardCard('b_plain', { name: '冬季友誼聯賽', category: 'league', phase: 'recruit', date: '12/20', venue: '迎風河濱球場' })],
   ];
   return <BoardList lists={lists} />;
+}
+
+// 一般卡也放封面（站長 11-22）：卡板＋多張有封面一般卡（招募、進行中、長名稱、已結束）＋沒封面＋封面載不到
+function AllCardsScreen(): ComponentChildren {
+  const c = artCover();
+  const pick = (x: CompetitionCover): string => (params.get('src') === 'thumb' ? x.thumb : x.url);
+  const busy = artName === 'busy';
+  const other = (art: string): CompetitionCover => (busy ? c : cover(art));
+  const lists = [[
+    boardCard('b_cover', { cover: c.url, thumb: c.thumb }),
+    boardCard('n_recruit', { name: '社區親子足球日', category: 'friendly', line: { kind: 'deadline', date: '12/01 23:59' }, date: '12/14', venue: '大佳河濱公園', cover: pick(other('cup')) }),
+    boardCard('n_live', { name: '冬季友誼聯賽', category: 'league', phase: 'live', line: { kind: 'live', count: 3, time: '14:30' }, date: '11/22', venue: '迎風河濱球場', cover: pick(c) }),
+    boardCard('n_long', { name: LONG, category: 'league', phase: 'warm', line: { kind: 'warm', days: 3 }, date: '01/16–01/17', venue: '三重綜合運動場', cover: pick(other('pitch')) }),
+    boardCard('n_plain', { name: '週末五人制交流賽', category: 'friendly', phase: 'warm', line: { kind: 'warm', days: 6 }, date: '11/29', venue: '青年公園' }),
+    boardCard('n_done', { name: '秋季盃（已結束）', phase: 'done', ended: true, line: null, date: '10/18–10/19', venue: '新莊運動公園', cover: pick(other('dusk')) }),
+    boardCard('n_broken', { name: '封面載不到的友誼賽', category: 'friendly', line: { kind: 'deadline', date: '12/05 23:59' }, date: '12/12', venue: '華中河濱公園', cover: 'data:image/webp;base64,AAAA' }),
+  ]];
+  return <BoardList lists={lists} />;
+}
+
+// 流量實測（顧問 11-22）：30 張都有封面、每張不同網址（repo 內圖片加查詢字串），看 loading=lazy 首屏實際抓幾張
+function AllCards30Screen(): ComponentChildren {
+  const cards = Array.from({ length: 30 }, (_, i) => boardCard(`c${i}`, {
+    name: `示範賽事 ${i + 1}`, cover: `/assets/og/sports/football.jpg?n=${i}`, thumb: `/assets/og/sports/football.jpg?t=${i}`,
+    phase: 'warm', line: { kind: 'warm', days: 3 },
+  }));
+  return <BoardList lists={[cards]} />;
 }
 
 // 下架：管理員看清單，下架那場（正式查詢不會帶出；這裡故意混進來）卡板與一般卡都不畫封面；沒下架的照常有縮圖
@@ -354,6 +385,8 @@ const SCREENS: Record<string, Screen> = {
   'list-board': { env: listInEnv, Page: BoardScreen },
   'list-board-live': { env: listInEnv, Page: BoardLiveScreen },
   'list-board-all': { env: listInEnv, Page: BoardAllScreen },
+  'list-all-cards': { env: listInEnv, Page: AllCardsScreen },
+  'list-30': { env: listInEnv, Page: AllCards30Screen },
   'list-hidden-admin': { env: hiddenAdminEnv, Page: ListIn },
   'guest-detail': { env: () => ({ ...withCover(screenEnv('real-live'), { cover: PITCH }), actor: GUEST }), Page: CompetitionDetailPage },
 };
@@ -376,7 +409,7 @@ async function start(): Promise<void> {
   await setLocale('zh-TW');
   await loadCompetitionsDict('zh-TW');
   if (framed) await import('@/ui/app-shell.css');
-  if (screenName.startsWith('list-board') && artName === 'photo') await loadPhoto();
+  if ((screenName.startsWith('list-board') || screenName === 'list-all-cards') && artName === 'photo') await loadPhoto();
   const root = document.getElementById('app');
   if (!root) return;
   render(

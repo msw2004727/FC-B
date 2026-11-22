@@ -162,8 +162,9 @@ describe('開關打開時的來源與讀取', () => {
     push.mockRestore();
     expect(await screen.findByText('2027 春季聯賽')).toBeTruthy();
     expect(document.querySelector('[data-inapp="mock"]')?.getAttribute('data-active')).toBe('0');
-    // 新外觀（清-3）：外部列沒有膠囊、分類不上色，看得到分類字。
-    expect(document.querySelector('[data-card-id="tc_league"] .cpl-xrow__cat')?.textContent).toBe('聯賽');
+    // 站長 11-22 外部清單改回大卡片：分類是右下角的分類色膠囊。
+    expect(document.querySelector('[data-card-id="tc_league"] .cpl-xcard__chip')?.textContent).toBe('聯賽');
+    expect(document.querySelector('[data-card-id="tc_league"] .cpl-xcard__chip')?.classList.contains('cpl-xcard__chip--l')).toBe(true);
 
     fireEvent.click(screen.getByRole('tab', { name: '盃賽' }));
     expect(screen.getByText('FEDA CUP 2026 飛達盃')).toBeTruthy();

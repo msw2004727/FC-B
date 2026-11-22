@@ -236,6 +236,8 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
   events: EventDoc[];
   loading: boolean;
   error: boolean;
+  /** 這一輪向伺服器的讀取還沒結束（不論畫面上有沒有上次資料）。首頁用來顯示「更新中」；既有欄位不受影響。 */
+  refreshing: boolean;
   retry: () => void;
 } {
   // 照 A stale-first：有上次資料就先畫，背景向伺服器更新；只有完全沒資料時才顯示載入中／錯誤。
@@ -336,6 +338,7 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
     events: sortEvents(listed.filter((event) => !isEventInEndedTab(event, now))),
     loading,
     error,
+    refreshing: pending,
     retry,
   };
 }

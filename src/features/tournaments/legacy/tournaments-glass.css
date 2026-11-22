@@ -1,7 +1,8 @@
 /* 賽事清單頁的頁面底色與返回鈕（2026-11-13 站長：與活動頁同一風格）。
  * 色值、光澤與投影照 events/components/legacy/timeline-card-extra.css 與 activity-head.css；
  * 不用 backdrop-filter、不自創 CSS 變數、不用 color-mix。本檔路徑含 /legacy/，打包時自動加上 .legacy-ui。
- * 新外觀清-3（11-21）：資料夾頁籤、外層面板、大圖卡、膠囊、壓在圖上的編輯鈕的玻璃規則整組刪掉（清單改由 list-v2.css 畫），只留這六條。 */
+ * 新外觀清-3（11-21）：資料夾頁籤、外層面板、大圖卡、膠囊、壓在圖上的編輯鈕的玻璃規則整組刪掉（清單改由 list-v2.css 畫），只留這六條；
+ * 11-22 返回鈕深色那條併進色票，剩五條。 */
 
 /* ── 頁面底層：同活動頁；新增／編輯表單用 portal 畫在 body，不受影響（做法同首頁、俱樂部） ── */
 .legacy-ui.tournaments-root::before {
@@ -28,10 +29,10 @@
   top: 0;
   left: 0;
   border-color: transparent;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%),
-    linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
-  box-shadow: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
+  /* 光澤、底色、投影改讀 list-v2.css 的色票（外層一律 data-d2，淺深兩組值與原本這裡寫死的逐字相同），
+   * 深色另一條刪掉（站長 11-22 外部清單改回大卡片時騰樣式預算；取代原本淺深各寫一份字面值）。 */
+  background: var(--d2-glass-gloss), var(--d2-glass-base);
+  box-shadow: var(--d2-glass-sh);
 }
 #page-tournaments .page-header .back-btn::after {
   content: '';
@@ -41,10 +42,4 @@
   bottom: -5px;
   left: -5px;
   border-radius: 50%;
-}
-[data-theme="dark"] #page-tournaments .page-header .back-btn {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%),
-    linear-gradient(180deg, #262e40 0%, #171c27 100%);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
 }

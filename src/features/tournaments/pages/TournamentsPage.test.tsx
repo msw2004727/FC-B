@@ -121,7 +121,7 @@ const MANAGER = viewer({
 });
 
 function names(): string[] {
-  return Array.from(document.querySelectorAll('.cpl-xrow__name')).map((el) => el.textContent ?? '');
+  return Array.from(document.querySelectorAll('.cpl-xcard__name')).map((el) => el.textContent ?? '');
 }
 
 async function renderLoaded(): Promise<void> {
@@ -261,8 +261,8 @@ describe('清單與讀取預算', () => {
     expect(status.textContent).toContain('載入中...');
     expect(status.getAttribute('aria-busy')).toBeNull();
     expect(status.parentElement?.getAttribute('aria-busy')).toBe('true');
-    expect(document.querySelectorAll('.cpl-xskel__row')).toHaveLength(3);
-    expect(document.querySelector('.cpl-xrow')).toBeNull();
+    expect(document.querySelectorAll('.reg-loading-skeleton-row')).toHaveLength(3);
+    expect(document.querySelector('.cpl-xcard')).toBeNull();
     release({ docs: DOCS.map((d) => ({ id: d.id, data: () => d.data })) });
     await waitFor(() => expect(names().length).toBe(3));
     expect(document.querySelector('.reg-loading')).toBeNull();
@@ -285,14 +285,14 @@ describe('管理按鈕（與寫入同一個判斷）', () => {
   it('一般用戶看不到「＋ 新增賽事」與鉛筆', async () => {
     await renderLoaded();
     expect(screen.queryByText('＋ 新增賽事')).toBeNull();
-    expect(document.querySelectorAll('.cpl-xrow__edit').length).toBe(0);
+    expect(document.querySelectorAll('.cpl-xcard__edit').length).toBe(0);
   });
 
   it('沒有權限碼的 coach 也看不到', async () => {
     mockUseViewer.mockReturnValue(viewer({ uid: 'u_coach', role: 'coach' }));
     await renderLoaded();
     expect(screen.queryByText('＋ 新增賽事')).toBeNull();
-    expect(document.querySelectorAll('.cpl-xrow__edit').length).toBe(0);
+    expect(document.querySelectorAll('.cpl-xcard__edit').length).toBe(0);
   });
 
   it('只有 admin.tournaments.entry 的 coach 看不到（.entry 不是動作授權）', async () => {
@@ -303,7 +303,7 @@ describe('管理按鈕（與寫入同一個判斷）', () => {
     }));
     await renderLoaded();
     expect(screen.queryByText('＋ 新增賽事')).toBeNull();
-    expect(document.querySelectorAll('.cpl-xrow__edit').length).toBe(0);
+    expect(document.querySelectorAll('.cpl-xcard__edit').length).toBe(0);
   });
 
   it.each([
@@ -313,7 +313,7 @@ describe('管理按鈕（與寫入同一個判斷）', () => {
     mockUseViewer.mockReturnValue(v);
     await renderLoaded();
     expect(screen.getByText('＋ 新增賽事')).toBeTruthy();
-    expect(document.querySelectorAll('.cpl-xrow__edit').length).toBe(3);
+    expect(document.querySelectorAll('.cpl-xcard__edit').length).toBe(3);
   });
 });
 
@@ -418,7 +418,7 @@ describe('新增、編輯、刪除', () => {
 
   it('鉛筆開同一份表單帶入原值；編輯送出', async () => {
     await renderLoaded();
-    fireEvent.click(document.querySelector('[data-card-id="tc_feda"] .cpl-xrow__edit') as HTMLElement);
+    fireEvent.click(document.querySelector('[data-card-id="tc_feda"] .cpl-xcard__edit') as HTMLElement);
     expect(screen.getByText('編輯賽事')).toBeTruthy();
     expect((document.getElementById('tc-name') as HTMLInputElement).value).toBe('FEDA CUP 2026 飛達盃');
     expect((document.getElementById('tc-type') as HTMLSelectElement).value).toBe('cup');
@@ -436,7 +436,7 @@ describe('新增、編輯、刪除', () => {
 
   it('刪除要確認；取消不刪，確定才刪並移出清單', async () => {
     await renderLoaded();
-    fireEvent.click(document.querySelector('[data-card-id="tc_feda"] .cpl-xrow__edit') as HTMLElement);
+    fireEvent.click(document.querySelector('[data-card-id="tc_feda"] .cpl-xcard__edit') as HTMLElement);
 
     mockConfirm.mockResolvedValueOnce(false);
     fireEvent.click(screen.getByText('刪除'));
@@ -486,11 +486,11 @@ describe('回訪先顯示（記憶體快取，顧問 §3.233 ①）', () => {
     render(<TournamentsPage />);
     expect(names().length).toBe(3);
     expect(screen.queryByText('＋ 新增賽事')).toBeNull();
-    expect(document.querySelectorAll('.cpl-xrow__edit').length).toBe(0);
+    expect(document.querySelectorAll('.cpl-xcard__edit').length).toBe(0);
 
     await act(async () => { release(docsOf(DOCS)); });
     await waitFor(() => expect(screen.getByText('＋ 新增賽事')).toBeTruthy());
-    expect(document.querySelectorAll('.cpl-xrow__edit').length).toBe(3);
+    expect(document.querySelectorAll('.cpl-xcard__edit').length).toBe(3);
   });
 
   it('換帳號不用前一個帳號的快取', async () => {
@@ -506,7 +506,7 @@ describe('回訪先顯示（記憶體快取，顧問 §3.233 ①）', () => {
   it('伺服器回來刪掉的卡片立即消失；寫入後的本機更新也回寫快取', async () => {
     mockUseViewer.mockReturnValue(MANAGER);
     await renderLoaded();
-    fireEvent.click(document.querySelector('[data-card-id="tc_feda"] .cpl-xrow__edit') as HTMLElement);
+    fireEvent.click(document.querySelector('[data-card-id="tc_feda"] .cpl-xcard__edit') as HTMLElement);
     fireEvent.click(await screen.findByText('刪除'));
     await waitFor(() => expect(names()).not.toContain('FEDA CUP 2026 飛達盃'));
     cleanup();
@@ -572,7 +572,7 @@ describe('回訪先顯示（記憶體快取，顧問 §3.233 ①）', () => {
     mockUseViewer.mockReturnValue(MANAGER);
     mockDelete.mockRejectedValueOnce(new Error('denied'));
     await renderLoaded();
-    fireEvent.click(document.querySelector('[data-card-id="tc_feda"] .cpl-xrow__edit') as HTMLElement);
+    fireEvent.click(document.querySelector('[data-card-id="tc_feda"] .cpl-xcard__edit') as HTMLElement);
     fireEvent.click(await screen.findByText('刪除'));
     await waitFor(() => expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ tone: 'error' })));
     cleanup();

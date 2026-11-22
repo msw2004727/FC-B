@@ -93,18 +93,18 @@ function InCard({ card, ct, board, onOpen }: {
   const cat = ct(CAT_KEY[card.category]);
   const href = `/competitions/${card.cid}`;
   const open = (event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => onOpen(card.cid, event);
-  // 縮圖或卡板封面載不到：改畫沒封面的版面（不留空格）。記網址，換新網址再試。
-  const [brokenThumb, setBrokenThumb] = useState<string | null>(null);
-  const thumb = card.thumb && card.thumb !== brokenThumb ? card.thumb : '';
+  // 封面載不到：改畫沒封面的版面（不留空格）。記網址，換新網址再試。
+  const [brokenCover, setBrokenCover] = useState<string | null>(null);
+  // 站長 11-21／11-22：卡板與一般卡右半邊都放封面（1200×450 原圖，與詳情頁同一張、點進去不再下載），斜切、由右往左淡進卡底
+  const cover = card.cover && card.cover !== brokenCover ? card.cover : '';
+  const img = cover ? <img class="cpl-sb__img" src={cover} alt="" loading="lazy" decoding="async" onError={() => setBrokenCover(cover)} /> : null;
   // 卡板只會是 pickInAppBoard 挑出來的那一張（沒有整場延期或取消、有階段、有重點句）。
   if (board && card.phase && card.line) {
-    // 站長 11-21：卡板右半邊放封面（1200×450 原圖，與詳情頁同一張、點進去不再下載），斜切、由右往左淡進板底
-    const cover = card.cover && card.cover !== brokenThumb ? card.cover : '';
     return (
       <div class="cpl-card cpl-card--board" data-cid={card.cid} data-phase={card.phase}>
         <a class="cpl-card__link" href={href} onClick={open}>
           <div class={`d2-sb${card.phase === 'live' ? ' d2-sb--lit' : ''}${cover ? ' cpl-sb--img' : ''}`}>
-            {cover ? <img class="cpl-sb__img" src={cover} alt="" loading="lazy" decoding="async" onError={() => setBrokenThumb(cover)} /> : null}
+            {img}
             <div class="cpl-sb__top">
               <span class="d2-sb__st"><i />{ct(statusKey(card.phase))}</span>
               <span class="cpl-sb__cat">{cat}</span>
@@ -143,15 +143,8 @@ function InCard({ card, ct, board, onOpen }: {
   );
   return (
     <div class={`cpl-card${card.ended ? ' ended' : ''}`} data-cid={card.cid} data-phase={card.phase ?? 'unknown'}>
-      {/* 有封面才在右邊放 56×42 縮圖（沿用外部清單同一格 list-v2.css 的 .cpl-xrow__img）；沒封面版面一行不動 */}
-      {thumb ? (
-        <a class="cpl-card__link cpl-card__link--img" href={href} onClick={open}>
-          <div>{text}</div>
-          <img class="cpl-xrow__img" src={thumb} alt="" loading="lazy" decoding="async" onError={() => setBrokenThumb(thumb)} />
-        </a>
-      ) : (
-        <a class="cpl-card__link" href={href} onClick={open}>{text}</a>
-      )}
+      {/* 有封面才加 cpl-sb--img（與卡板共用遮罩規則）；沒封面版面一行不動 */}
+      <a class={`cpl-card__link${cover ? ' cpl-sb--img' : ''}`} href={href} onClick={open}>{img}{text}</a>
     </div>
   );
 }
