@@ -3,6 +3,8 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/preact';
 import { _resetFirebaseForTest } from '@/data/firebase';
 import { getEventsRepo } from '@/features/events/data/events-repo';
 import { _resetUseEventsForTest } from '@/features/events/data/use-events';
+import { EVENTS_SNAPSHOT_STORAGE_KEY, writeEventsSnapshot } from '@/features/events/data/events-snapshot-cache';
+import type { EventDoc } from '@/features/events/data/types';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { loadActiveAnnouncements } from '../data/announcements';
 import { loadActiveBanners, type BannerDeps, type BannerDoc } from '../data/banners';
@@ -667,14 +669,55 @@ describe('HomePage 首屏快照：運動統計', () => {
     expect(container.querySelector('#home-sport-entry')?.textContent ?? '').not.toMatch(/\d+\s*活動/);
   });
 
-  it('30 分鐘內的快照照一般樣式顯示：數字不變淡、沒有「更新中」', () => {
+  // 站長 2026-11-22 選方案一：取代原「30 分鐘內沒有「更新中」」——畫上次數字而背景還在讀就顯示，變淡仍只在超過 30 分鐘。
+  it('30 分鐘內的快照、活動還在讀：數字不變淡，但標題旁顯示「更新中」；新資料到了提示消失', async () => {
     writeSportsSnapshot(guestRowsOf({ football: 7 }), Date.now() - 29 * MIN);
-    mockEvents(() => new Promise(() => undefined));
+    const pending = deferred<unknown>();
+    mockEvents(() => pending.promise, [ev('n1'), ev('n2')]);
 
     const { container } = render(<HomePage />);
 
     expect(footballCount(container)).toBe('7 活動');
     expect(container.querySelector('#home-sport-entry')?.classList.contains('is-stale')).toBe(false);
+    expect(container.querySelector('.home-dashboard-title-row .home-refresh-pill')?.textContent).toBe('更新中');
+
+    await act(async () => {
+      pending.resolve(['events']);
+    });
+    await waitFor(() => expect(footballCount(container)).toBe('2 活動'));
+    expect(container.querySelector('#home-sport-entry')?.classList.contains('is-stale')).toBe(false);
+    expect(container.querySelector('.home-dashboard-title-row .home-refresh-pill')).toBeNull();
+  });
+
+  it('畫的是上次讀到的活動（本機活動快照）而背景還在讀：顯示「更新中」、不變淡；讀完後提示消失', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer(null));
+    writeEventsSnapshot(null, [ev('s1'), ev('s2'), ev('s3')] as EventDoc[]);
+    const pending = deferred<unknown>();
+    mockEvents(() => pending.promise, [ev('n1')]);
+
+    try {
+      const { container } = render(<HomePage />);
+
+      expect(footballCount(container)).toBe('3 活動');
+      expect(container.querySelector('#home-sport-entry')?.classList.contains('is-stale')).toBe(false);
+      expect(container.querySelector('.home-dashboard-title-row .home-refresh-pill')?.textContent).toBe('更新中');
+
+      await act(async () => {
+        pending.resolve(['events']);
+      });
+      await waitFor(() => expect(footballCount(container)).toBe('1 活動'));
+      expect(container.querySelector('.home-dashboard-title-row .home-refresh-pill')).toBeNull();
+    } finally {
+      localStorage.removeItem(EVENTS_SNAPSHOT_STORAGE_KEY);
+    }
+  });
+
+  it('沒有任何上次資料、活動還在讀：只顯示「載入中…」，不顯示「更新中」', () => {
+    mockEvents(() => new Promise(() => undefined));
+
+    const { container } = render(<HomePage />);
+
+    expect(container.querySelector('#home-sport-entry .reg-loading')?.textContent).toBe('載入中…');
     expect(container.querySelector('.home-dashboard-title-row .home-refresh-pill')).toBeNull();
   });
 
