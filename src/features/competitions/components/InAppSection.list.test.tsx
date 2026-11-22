@@ -666,6 +666,18 @@ describe('清單卡刪除鈕（站長 11-22）', () => {
     competitions: [
       competition({ id: 'rec_lg', name: '招募聯賽', category: 'league', hostType: 'personal', hostTeamId: null }),
       competition({ id: 'rec_cup', name: '招募盃', category: 'cup', hostType: 'personal', hostTeamId: null }),
+      competition({
+        id: 'live_fr', name: '進行友誼', category: 'friendly', hostType: 'personal', hostTeamId: null,
+        regCloseAt: taipeiMs(2026, 12, 1, 23, 59), firstMatchAt: NOW - 60 * 60 * 1000, lastMatchAt: NOW + 24 * 60 * 60 * 1000,
+      }),
+      competition({
+        id: 'live_pp', name: '延期進行', category: 'cup', hostType: 'personal', hostTeamId: null, status: 'postponed',
+        regCloseAt: taipeiMs(2026, 12, 1, 23, 59), firstMatchAt: NOW - 60 * 60 * 1000, lastMatchAt: NOW + 24 * 60 * 60 * 1000,
+      }),
+      competition({
+        id: 'done_lg', name: '結束聯賽', category: 'league', hostType: 'personal', hostTeamId: null,
+        regCloseAt: taipeiMs(2026, 9, 1, 23, 59), firstMatchAt: taipeiMs(2026, 10, 3, 8, 0), lastMatchAt: taipeiMs(2026, 11, 21, 18, 0),
+      }),
     ],
   });
   function draw(actor: typeof adminActor, deleteCompetition = vi.fn(async ({ cid }: { cid: string }) => ({ cid, deleted: true as const }))) {
@@ -716,7 +728,14 @@ describe('清單卡刪除鈕（站長 11-22）', () => {
   it('管理員：右下角刪除鈕 → 第一次確認取消不刪；確認後第二次要勾選、等 0.6 秒才刪，刪完卡片消失', async () => {
     const { deleteCompetition } = draw(adminActor);
     expect(await screen.findByText('招募聯賽')).toBeTruthy();
-    expect(document.querySelectorAll('.cpl-del')).toHaveLength(2);
+    // 進行中（含整場延期但階段仍是進行中）不放；招募兩張與已結束各一個（站長 11-22）
+    await screen.findByText('結束聯賽');
+    expect(document.querySelector('[data-cid="live_fr"]')).not.toBeNull();
+    expect(document.querySelector('[data-cid="live_fr"] .cpl-del')).toBeNull();
+    expect(document.querySelector('[data-cid="live_pp"][data-phase="live"][data-mark="postponed"]')).not.toBeNull();
+    expect(document.querySelector('[data-cid="live_pp"] .cpl-del')).toBeNull();
+    expect(document.querySelector('[data-cid="done_lg"] .cpl-del')).not.toBeNull();
+    expect(document.querySelectorAll('.cpl-del')).toHaveLength(3);
     const del = () => document.querySelector('[data-cid="rec_lg"] .cpl-del') as HTMLButtonElement;
     expect(del().getAttribute('aria-label')).toBe('刪除賽事：招募聯賽');
     // 按鈕不在連結裡
