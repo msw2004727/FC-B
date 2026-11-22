@@ -5,8 +5,8 @@
  * 站內卡、卡板、站內選單在 competitions.css；這裡只寫頁面層與兩側共用的篩選列、開關。
  * 刪除外部賽事的確認框（清-5）畫在頁面最上層：色票兩條另列 .cp-danger-confirm #app-confirm-modal，只在旗標掛著時生效。
  * 外部賽事名稱是外面來的內容：可以換行、不截斷（overflow-wrap: break-word，舊版 Safari 不認 anywhere）。
- * 外部清單（站長 11-22）改回 11-21 新外觀前的大卡片（d785a9e2 的 tc-card 外觀），改名 cpl-xcard 不與俱樂部卡 .tc-card 撞名；
- * 卡面、分類膠囊的深淺色值放在下面兩條色票（--d2-xc-*、--d2-cat-*，competitions.css 沒有同名變數）。 */
+ * 外部清單（站長 11-22）外觀照 0.20261121a（8bbf5cea）的大卡片，改名 cpl-x* 不與俱樂部卡 .tc-card 撞名；
+ * 面板、卡面、膠囊的深淺色值放在下面兩條色票（--d2-xp-*、--d2-xc-*、--d2-chip-*，competitions.css 沒有同名變數）。 */
 
 .tournaments-root[data-d2],
 .cp-danger-confirm #app-confirm-modal {
@@ -28,8 +28,6 @@
   --d2-glass-base: linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
   --d2-glass-gloss: linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%);
   --d2-glass-sh: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
-  --d2-graphite-switch: #475569;
-  --d2-graphite-on: #ffffff;
   --d2-graphite-soft: rgba(71, 85, 105, .1);
   --d2-graphite-line: rgba(71, 85, 105, .36);
   --d2-thumb-end-op: .6;
@@ -37,12 +35,10 @@
   --d2-xc-tint: rgba(13, 148, 136, .07);
   --d2-xc-sh: rgba(13, 148, 136, .38);
   --d2-xc-in: inset 0 1px 0 rgba(255,255,255,.75), inset 0 -6px 12px -6px rgba(13,148,136,.16);
-  --d2-cat-l: #2563eb;
-  --d2-cat-l-bg: rgba(37, 99, 235, .12);
-  --d2-cat-c: #b45309;
-  --d2-cat-c-bg: rgba(245, 158, 11, .16);
-  --d2-cat-f: #7c3aed;
-  --d2-cat-f-bg: rgba(124, 58, 237, .12);
+  --d2-xp-band: linear-gradient(180deg, rgba(255,255,255,.95) 0, rgba(255,255,255,.3) 34px, rgba(255,255,255,0) 40px);
+  --d2-xp-sh: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
+  --d2-chip-bg: linear-gradient(180deg, rgba(255,255,255,.7) 0%, rgba(255,255,255,0) 60%), rgba(13,148,136,.12);
+  --d2-chip-ln: rgba(13, 148, 136, .3);
 }
 [data-theme="dark"] .tournaments-root[data-d2],
 [data-theme="dark"].cp-danger-confirm #app-confirm-modal {
@@ -64,8 +60,6 @@
   --d2-glass-base: linear-gradient(180deg, #262e40 0%, #171c27 100%);
   --d2-glass-gloss: linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%);
   --d2-glass-sh: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
-  --d2-graphite-switch: #7c8aa0;
-  --d2-graphite-on: #0d1017;
   --d2-graphite-soft: rgba(203, 213, 225, .12);
   --d2-graphite-line: rgba(203, 213, 225, .32);
   --d2-thumb-end-op: .45;
@@ -73,12 +67,10 @@
   --d2-xc-tint: rgba(13, 148, 136, .13);
   --d2-xc-sh: rgba(0, 0, 0, .75);
   --d2-xc-in: inset 0 1px 0 rgba(255,255,255,.2), inset 0 -6px 12px -6px rgba(13,148,136,.3);
-  --d2-cat-l: #93c5fd;
-  --d2-cat-l-bg: rgba(96, 165, 250, .18);
-  --d2-cat-c: #fcd34d;
-  --d2-cat-c-bg: rgba(251, 191, 36, .18);
-  --d2-cat-f: #c4b5fd;
-  --d2-cat-f-bg: rgba(167, 139, 250, .2);
+  --d2-xp-band: linear-gradient(180deg, rgba(255,255,255,.11) 0, rgba(255,255,255,.03) 34px, rgba(255,255,255,0) 40px);
+  --d2-xp-sh: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
+  --d2-chip-bg: linear-gradient(180deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,0) 60%), rgba(52,211,153,.16);
+  --d2-chip-ln: rgba(52, 211, 153, .36);
 }
 
 /* 手機寬度清單左右 16px（外框本身 8px，這裡補 8px）；600px 以上照外框現況 */
@@ -104,9 +96,12 @@
 }
 #page-tournaments .cpl-src button.on { order: 1; font-size: 19px; line-height: 28px; font-weight: 700; color: var(--d2-text); text-align: left; cursor: default; }
 #page-tournaments .cpl-src button:not(.on) { order: 2; position: relative; z-index: 0; margin-left: auto; padding: 0 12px; font-size: 13px; line-height: 20px; font-weight: 600; cursor: pointer; }
+/* 玻璃面三處共用一條（11-22 併範圍騰樣式預算：切換小膠囊、分類分段、站內骨架卡；取代三條各寫一次） */
+#page-tournaments .cpl-src button:not(.on)::before, #page-tournaments .cpl-seg, #page-tournaments .cpl-skel__card {
+  background: var(--d2-glass-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh);
+}
 #page-tournaments .cpl-src button:not(.on)::before {
   content: ''; position: absolute; z-index: -1; top: 6px; right: 0; bottom: 6px; left: 0; border-radius: 999px;
-  background: var(--d2-glass-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh);
 }
 /* 看外部時（外部那顆是第二顆）標題降成灰；回站內的小膠囊是外部頁唯一的青綠 */
 #page-tournaments .cpl-src button.on:last-child { color: var(--d2-text-2); }
@@ -117,7 +112,6 @@
 /* 分類分段：與第 0 批分段切換同一組數字（清單頁手寫分頁鈕、要先畫，所以在這裡再寫一次） */
 #page-tournaments .cpl-seg {
   display: flex; align-items: center; height: 40px; margin: 0 0 10px; border-radius: 12px;
-  background: var(--d2-glass-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh);
 }
 #page-tournaments .cpl-seg__tab {
   position: relative; z-index: 0; flex: 1 1 0; min-width: 0; height: 44px; margin: -2px 0; padding: 0; border: 0; background: none;
@@ -140,12 +134,6 @@
 #page-tournaments .cpl-bar > .d2-dd { margin-top: -4px; margin-bottom: -4px; }
 #page-tournaments .cpl-bar > .ui-button { flex: 0 0 auto; min-inline-size: 0; margin-top: -4px; margin-bottom: -4px; padding: 0 14px; color: var(--comp-button-foreground-default); }
 #page-tournaments .cpl-bar > .ui-button::before { top: 4px; bottom: 4px; }
-#page-tournaments.d2-ext .cpl-bar > .ui-button {
-  --comp-button-background-default: var(--d2-graphite-switch);
-  --comp-button-background-hover: var(--d2-graphite-switch);
-  --comp-button-background-active: var(--d2-graphite-switch);
-  --comp-button-foreground-default: var(--d2-graphite-on);
-}
 /* 開關：舊站標記，軌道尺寸不動；輸入框改成看不見但在原位，鍵盤停得到、有焦點框（規格第 10 節第 11 題） */
 #page-tournaments .cpl-sw { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin: -4px 0; white-space: nowrap; cursor: pointer; }
 #page-tournaments .cpl-sw > span:first-child { font-size: 13px; line-height: 20px; font-weight: 400; color: var(--d2-text-2); }
@@ -153,13 +141,12 @@
 #page-tournaments .cpl-sw .toggle-switch input { display: block; position: absolute; top: 0; left: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 #page-tournaments .cpl-sw .toggle-slider { background: var(--d2-line); box-shadow: inset 0 0 0 1px var(--d2-switch-edge); }
 #page-tournaments .cpl-sw input:checked + .toggle-slider { background: var(--d2-accent); box-shadow: none; }
-#page-tournaments.d2-ext .cpl-sw input:checked + .toggle-slider { background: var(--d2-graphite-switch); }
 #page-tournaments .cpl-sw input:focus-visible + .toggle-slider { outline: 2px solid var(--d2-accent); outline-offset: 2px; }
 
 /* 站內載入中：「載入中...」一行（與篩選列同高）＋三塊空的玻璃卡（卡板 146、玻璃卡 88），沒有動畫、不畫灰條 */
 #page-tournaments .cpl-skel .reg-loading { min-height: 36px; margin: 0 0 10px; padding: 0; font-size: 13px; line-height: 20px; color: var(--d2-text-2); }
 #page-tournaments .cpl-skel .reg-loading::before { border-color: var(--d2-line-strong); border-top-color: var(--d2-accent); }
-#page-tournaments .cpl-skel__card { height: 88px; margin-bottom: 10px; border-radius: 14px; background: var(--d2-glass-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh); }
+#page-tournaments .cpl-skel__card { height: 88px; margin-bottom: 10px; border-radius: 14px; }
 #page-tournaments .cpl-skel__card:first-child { height: 146px; }
 
 /* 外部清單訊息（沒有資料、讀取失敗） */
@@ -168,36 +155,47 @@
 /* 站內卡右邊的 56×42 縮圖（InAppCardList 沿用這一格；外部清單已不用） */
 #page-tournaments .cpl-xrow__img { flex: 0 0 auto; width: 56px; height: 42px; border-radius: 8px; object-fit: cover; }
 
-/* 外部大卡片（11-21 前的樣子）：點整張開連結；上方 8:3 封面（沒圖是同尺寸淡灰塊），下方名稱、日期與分類膠囊；
- * 外框圓角 14px、頂緣亮線（::after）、文字列上半光澤、底部主色內光與投影；已結束整張灰階淡化 */
-#page-tournaments .cpl-xcard { position: relative; margin-bottom: 12px; }
+/* 外部清單（站長 11-22）：外觀照 0.20261121a（8bbf5cea）的 .tc-panel／.tc-toolbar／.tc-status／.tc-card 一族，數值逐項照抄；
+ * 深淺色不同的值放在上面兩條色票（--d2-xp-*、--d2-xc-*、--d2-chip-*）。面板左上角原本接資料夾頁籤是直角，
+ * 頁籤已換成分段切換，這裡四角都 12px。0.20261121a 那幾條本來就不限定頁面（class 是賽事頁專屬），這裡同樣不加 #page-tournaments、權重與當時相同；
+ * 當時限定頁面的光澤、編輯鈕、連結外框維持 #page-tournaments。 */
+.cpl-xpanel { position: relative; margin-bottom: 10px; padding: 12px 10px 4px; border-radius: 12px; background: var(--d2-xp-band), var(--d2-glass-base); box-shadow: var(--d2-xp-sh); }
+.cpl-xcreate { display: flex; justify-content: flex-end; margin: 0 0 10px; }
+.cpl-xtool { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 10px; font-size: .8rem; color: var(--text-muted); }
+#page-tournaments .cpl-xtool label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.cpl-xstatus { padding: 1rem .5rem; text-align: center; font-size: .85rem; color: var(--text-muted); }
+#page-tournaments .cpl-xstatus .outline-btn { margin-top: .5rem; }
+.cpl-xcard { position: relative; margin-bottom: 12px; }
 #page-tournaments .cpl-xcard__link {
-  position: relative; display: block; overflow: hidden; border: 1px solid; border-color: var(--d2-xc-line); border-radius: 14px;
+  position: relative; display: block; overflow: hidden; border: 1px solid; border-color: var(--d2-xc-line); border-radius: var(--radius);
   background: linear-gradient(90deg, var(--d2-xc-tint), rgba(13,148,136,0) 65%), var(--d2-glass-base);
   box-shadow: 0 8px 18px -10px var(--d2-xc-sh); color: inherit; text-decoration: none;
 }
 #page-tournaments .cpl-xcard__link::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: inherit; box-shadow: var(--d2-xc-in); pointer-events: none; }
-#page-tournaments .cpl-xcard.ended .cpl-xcard__link { filter: grayscale(1); opacity: .6; }
-#page-tournaments .cpl-xcard__img { display: block; width: 100%; aspect-ratio: 8 / 3; object-fit: cover; background: var(--bg-elevated); }
-#page-tournaments .cpl-xcard__body { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; background: var(--d2-glass-gloss); }
-#page-tournaments .cpl-xcard__text { min-width: 0; }
-#page-tournaments .cpl-xcard__name { font-size: 15px; line-height: 22px; font-weight: 700; color: var(--d2-text); overflow-wrap: break-word; }
-#page-tournaments .cpl-xcard__date { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--d2-text-2); font-variant-numeric: tabular-nums; }
-/* 分類膠囊：聯賽、盃賽、友誼賽各自的分類色；外框是字色 35%（與舊版各分類外框色同值） */
-#page-tournaments .cpl-xcard__chip { position: relative; flex-shrink: 0; padding: 3px 8px; border-radius: 999px; font-size: 12px; line-height: 16px; font-weight: 700; white-space: nowrap; }
-#page-tournaments .cpl-xcard__chip::before { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px currentColor; opacity: .35; }
-#page-tournaments .cpl-xcard__chip--l { color: var(--d2-cat-l); background: var(--d2-cat-l-bg); }
-#page-tournaments .cpl-xcard__chip--c { color: var(--d2-cat-c); background: var(--d2-cat-c-bg); }
-#page-tournaments .cpl-xcard__chip--f { color: var(--d2-cat-f); background: var(--d2-cat-f-bg); }
-/* 編輯鈕（管理者）：封面右上角深色玻璃圓鈕 36px，點擊區補到 44px */
+.cpl-xcard.ended .cpl-xcard__link { filter: grayscale(1); opacity: .6; }
+.cpl-xcard__img { display: block; width: 100%; aspect-ratio: 8 / 3; object-fit: cover; background: var(--bg-elevated); }
+.cpl-xcard__body { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; background: var(--d2-glass-gloss); }
+.cpl-xcard__text { min-width: 0; }
+.cpl-xcard__name { font-weight: 700; font-size: .95rem; color: var(--text-primary); overflow-wrap: break-word; }
+.cpl-xcard__date { margin-top: 3px; font-size: .75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.cpl-xcard__chip {
+  flex-shrink: 0; padding: 3px 8px; border-radius: var(--radius-full); background: var(--d2-chip-bg); box-shadow: inset 0 0 0 1px var(--d2-chip-ln);
+  color: var(--accent); font-size: .7rem; white-space: nowrap;
+}
+/* 分類色（閘門通過時才有這三個 class）：顏色讀 category-tokens.css 的 --cat-*（站內區塊的 competitions.css 匯入，
+ * 閘門只會由已載入的站內區塊打開，所以一定在）；外框是字色 35%，與 0.20261121a 的外框色同值 */
+.cpl-xcard__chip--l { color: var(--cat-league); background: var(--cat-league-bg); }
+.cpl-xcard__chip--c { color: var(--cat-cup); background: var(--cat-cup-bg); }
+.cpl-xcard__chip--f { color: var(--cat-friendly); background: var(--cat-friendly-bg); }
+.cpl-xcard__chip[class*="chip--"] { position: relative; box-shadow: none; font-weight: 700; }
+.cpl-xcard__chip[class*="chip--"]::before { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px currentColor; opacity: .35; }
 #page-tournaments .cpl-xcard__edit {
   position: absolute; top: 8px; right: 8px; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px;
-  padding: 0; border: 0; border-radius: 50%; color: #fff; cursor: pointer;
+  border: 0; border-radius: 50%; cursor: pointer;
   background: linear-gradient(180deg, rgba(255,255,255,.24) 0%, rgba(255,255,255,.06) 46%, rgba(255,255,255,0) 54%), rgba(0,0,0,.45);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 4px 10px -4px rgba(0,0,0,.5);
 }
 #page-tournaments .cpl-xcard__edit::after { content: ''; position: absolute; top: -4px; right: -4px; bottom: -4px; left: -4px; border-radius: 50%; }
-#page-tournaments .cpl-xcard__edit:focus-visible { outline: 2px solid var(--d2-accent); outline-offset: 2px; }
 
 /* 刪除外部賽事的危險確認框（清-5，第 1a 批 3.12）：旗標 class 與兩條樣式與站內賽事那份（competitions.css）逐字相同 */
 .cp-danger-confirm #app-confirm-modal .app-confirm-ok{background:var(--d2-field-bg);color:var(--d2-danger);box-shadow:inset 0 0 0 1.5px var(--d2-danger);font-weight:700}

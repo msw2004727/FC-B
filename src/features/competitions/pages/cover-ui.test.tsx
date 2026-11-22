@@ -488,21 +488,21 @@ describe('詳情頂部', () => {
 describe('封面樣式不靠動畫', () => {
   it('.d2-hero__cover、清單縮圖與卡板封面的規則沒有 opacity／animation／transition（背景分頁動畫被節流也不會卡在透明）', () => {
     const css = readFileSync(resolve('src/features/competitions/competitions.css'), 'utf8');
-    const rules = css.match(/[^{}]*(?:d2-hero__cover|cpl-sb__img|cpl-sb--img)[^{}]*\{[^}]*\}/g) ?? [];
+    const rules = css.match(/[^{}]*(?:d2-hero__cover|cpl-card__link--img|cpl-sb__img|cpl-sb--img)[^{}]*\{[^}]*\}/g) ?? [];
     expect(rules.length).toBeGreaterThan(0);
     for (const rule of rules) expect(rule).not.toMatch(/opacity|animation|transition/);
   });
 });
 
 describe('清單卡', () => {
-  it('一般卡（站長 11-22 統一）：有封面才放原圖（lazy、async）並加 cpl-sb--img，不再出 56×42 縮圖；沒封面的卡版面照舊', () => {
-    const card = (cid: string, cover: string): InAppListCard => ({
+  it('只有帶縮圖的卡出現 56×42 縮圖；沒封面的卡版面照舊', () => {
+    const card = (cid: string, thumb: string): InAppListCard => ({
       cid, name: cid, category: 'league', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
-      line: null, mine: false, ended: false, statusMark: null, thumb: cover ? THUMB1 : '', cover,
+      line: null, mine: false, ended: false, statusMark: null, thumb, cover: '',
     });
     render(
       <InAppCardList
-        cards={[card('with', URL1), card('none', '')]}
+        cards={[card('with', THUMB1), card('none', '')]}
         ct={makeCompetitionsT({})}
         status="open"
         onlyMine={false}
@@ -515,15 +515,8 @@ describe('清單卡', () => {
     );
     const with_ = document.querySelector('[data-cid="with"]');
     const none = document.querySelector('[data-cid="none"]');
-    const img = with_?.querySelector<HTMLImageElement>('a > img.cpl-sb__img');
-    expect(img?.getAttribute('src')).toBe(URL1);
-    expect(img?.getAttribute('loading')).toBe('lazy');
-    expect(img?.getAttribute('decoding')).toBe('async');
-    expect(with_?.querySelector('img.cpl-xrow__img')).toBeNull();
-    expect(with_?.querySelector('a')?.className).toBe('cpl-card__link cpl-sb--img');
-    // 圖是連結的第一個子節點，字照舊直接在連結底下
-    expect(with_?.querySelector('a')?.firstElementChild).toBe(img);
-    expect(with_?.querySelector('a > .cpl-card__name')).not.toBeNull();
+    expect(with_?.querySelector('img.cpl-xrow__img')?.getAttribute('src')).toBe(THUMB1);
+    expect(with_?.querySelector('a')?.className).toBe('cpl-card__link cpl-card__link--img');
     expect(none?.querySelector('img')).toBeNull();
     expect(none?.querySelector('a')?.className).toBe('cpl-card__link');
     // 沒封面的卡結構與改版前相同：連結底下直接是名稱與分類列
@@ -596,10 +589,10 @@ describe('清單卡', () => {
     expect(document.querySelector('[data-cid="warm_lg"] img')).not.toBeNull();
   });
 
-  it('一般卡封面載不到：改畫沒封面的版面，不留空格', () => {
+  it('縮圖載不到：改畫沒封面的版面，不留 56×42 空格', () => {
     const card: InAppListCard = {
       cid: 'bad', name: 'bad', category: 'league', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
-      line: null, mine: false, ended: false, statusMark: null, thumb: THUMB1, cover: URL1,
+      line: null, mine: false, ended: false, statusMark: null, thumb: THUMB1, cover: '',
     };
     render(
       <InAppCardList

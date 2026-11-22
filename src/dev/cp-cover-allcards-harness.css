@@ -1,7 +1,0 @@
-/* 一般卡封面預覽替代版（只給 harness）：ac=1 是 competitions.css 本身（淡進卡片自己的底）；
- * ac=2 淺色主題的圖最高只到 50%（像疊一層白霧）；ac=3 有封面的一般卡改成記分板的深底與淺字（深淺主題都是） */
-[data-theme="light"][data-ac="2"] .cpl-card__link.cpl-sb--img { --cv: linear-gradient(115deg, transparent 60px, rgba(0,0,0,.5) 140px); }
-[data-ac="3"] .cpl-card__link.cpl-sb--img { background: var(--d2-sb-bg-off); box-shadow: var(--d2-sb-sh); text-shadow: 0 1px 3px rgba(0,0,0,.7); }
-[data-ac="3"] .cpl-card__link.cpl-sb--img .cpl-card__name, [data-ac="3"] .cpl-card__link.cpl-sb--img .cpl-line { color: var(--d2-sb-fg); }
-[data-ac="3"] .cpl-card__link.cpl-sb--img .cpl-meta, [data-ac="3"] .cpl-card__link.cpl-sb--img .cpl-st { color: var(--d2-sb-fg2); }
-[data-ac="3"] .cpl-card__link.cpl-sb--img .cpl-meta__cat { border-color: var(--d2-sb-line); }

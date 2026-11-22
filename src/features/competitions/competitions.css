@@ -274,7 +274,7 @@
 .cps-root .ui-badge__label,
 .s4-page .ui-badge__label { white-space: nowrap; overflow-wrap: normal; }
 .cps-root .d2-tag--live,
-.cpl-card .cpl-st--live { background: var(--d2-sb-bg); color: var(--d2-sb-now); font-weight: 700; box-shadow: var(--d2-sb-sh-lit); text-shadow: none; }
+.cpl-card .cpl-st--live { background: var(--d2-sb-bg); color: var(--d2-sb-now); font-weight: 700; box-shadow: var(--d2-sb-sh-lit); }
 .cps-root .d2-tag--live::before,
 .cpl-card .cpl-st--live::before { content: ''; flex: 0 0 auto; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--d2-sb-now); }
 .cps-root .d2-tag--cancelled { color: var(--d2-danger); box-shadow: inset 0 0 0 1px var(--d2-danger-line); }
@@ -1384,14 +1384,9 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 .cpl-sb--img { --cv: linear-gradient(115deg, transparent 60px, #000 140px); isolation: isolate; overflow: hidden; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
 .cpl-sb__img { position: absolute; top: 0; right: 0; z-index: -1; width: 60%; height: 100%; object-fit: cover; mask-image: var(--cv); }
 /* 下緣一層暗漸層（壓在圖上、字下面）：進行中卡板的第二格落在圖上也看得清；名稱與日期場地收在圖淡出前就省略 */
-.d2-sb.cpl-sb--img::after { content: ''; position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: 60px; background: linear-gradient(transparent, rgba(8,12,16,.75) 50%); }
+.cpl-sb--img::after { content: ''; position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: 60px; background: linear-gradient(transparent, rgba(8,12,16,.75) 50%); }
 .cpl-sb--img .cpl-card__name, .cpl-sb--img .cpl-meta { max-width: calc(40% + 66px); }
 .cpl-sb--img .cpl-sb__cat { margin: -2px 0; padding: 0 7px; border-radius: 6px; background: rgba(8,12,16,.6); color: var(--d2-sb-fg); line-height: 20px; }
-/* 一般卡有封面（站長 11-22 統一）：同一組遮罩淡進卡片自己的底；字的陰影改成卡底色的光暈（淺色卡是白光、深色卡是暗光），
- * 重點句改靠左接在狀態後（不壓在圖最清楚的右邊）；已結束的圖轉灰 */
-.cpl-card__link.cpl-sb--img { text-shadow: 0 0 4px var(--d2-field-bg), 0 0 2px var(--d2-field-bg); }
-.cpl-sb--img .cpl-card__top { justify-content: flex-start; }
-.cpl-card.ended .cpl-sb__img { filter: grayscale(1); }
 
 .cpm-cap {
   margin: 0;
@@ -1553,8 +1548,11 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 .cpa-detail { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; }
 .cpa-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; color: var(--d2-text-2); font-size: var(--font-size-body-sm); font-variant-numeric: tabular-nums; }
 
-/* 賽事封面圖（計畫書「賽事封面圖」第一階段）。站內清單卡的封面在上面卡板那段（.cpl-sb--img，站長 11-22 起一般卡也用，取代 56×42 縮圖）。
+/* 賽事封面圖（計畫書「賽事封面圖」第一階段）。清單縮圖沿用 list-v2.css 的 .cpl-xrow__img（56×42），這裡只排版；沒封面的卡不帶 --img。
  * 上傳中的轉圈沿用全站欄位的 [data-field-spinner]（ui/form-controls.css），圖示線條寫在 SVG 屬性上 */
+.cpl-card__link--img { display: flex; align-items: center; gap: 12px; }
+.cpl-card__link--img > div { flex: 1; min-width: 0; }
+.cpl-card.ended .cpl-xrow__img { opacity: var(--d2-thumb-end-op); }
 /* 詳情頂部（記分板上面）、建賽確認頁、封面欄預覽：8:3，載入前是淡底 */
 .d2-hero__cover, .cpc-pic img { display: block; width: 100%; height: auto; aspect-ratio: 8 / 3; object-fit: cover; border-radius: 11px; background: var(--d2-line); }
 .d2-hero__cover { margin-bottom: 6px; }
