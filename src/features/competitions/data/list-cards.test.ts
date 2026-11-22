@@ -10,6 +10,7 @@ import {
   formatInAppDates,
   isTrulyLive,
   passesInAppStatus,
+  pickInAppBoard,
   statusLineFor,
   todayFromShard,
   type InAppListCard,
@@ -77,14 +78,12 @@ describe('站內卡片純函式', () => {
     ], now)).toBeNull();
   });
 
-  it('封面：卡只帶一個清單用圖（這批一律原圖 url）；下架（含主辦查詢帶進來的）或沒封面都是空字串', () => {
+  it('封面：卡帶縮圖與原圖網址（卡板用原圖）；下架（含主辦查詢帶進來的）或沒封面都是空字串', () => {
     const cover = { url: 'https://example.test/cover.webp', thumb: 'https://example.test/thumb.webp' };
-    const card = 'https://example.test/card.webp';
     const cards = assembleInAppCards({
       publicDocs: [
         { ...competition({ id: 'with', name: '有圖' }), cover },
-        { ...competition({ id: 'card', name: '有卡片圖' }), cover: { ...cover, card } },
-        { ...competition({ id: 'hidden', name: '下架' }), cover: { ...cover, card }, hidden: true },
+        { ...competition({ id: 'hidden', name: '下架' }), cover, hidden: true },
         { ...competition({ id: 'none', name: '沒圖' }), cover: null },
       ],
       // 主辦俱樂部那條查詢不濾下架：下架的也一樣不帶封面（清單沒有管理員例外）
@@ -92,11 +91,12 @@ describe('站內卡片純函式', () => {
       mine: [{ cid: 'named', name: '只有名稱', category: 'friendly', doc: null }],
       now: NOW,
     });
-    const by = (cid: string) => cards.find((item) => item.cid === cid);
-    expect(by('with')?.cover).toBe(cover.url);
-    expect(by('card')?.cover).toBe(cover.url);
-    expect(by('card')).not.toHaveProperty('thumb');
-    for (const cid of ['hidden', 'none', 'hosted_hidden', 'named']) expect(by(cid)?.cover).toBe('');
+    const by = (cid: string) => cards.find((card) => card.cid === cid);
+    expect(by('with')).toMatchObject({ thumb: cover.thumb, cover: cover.url });
+    expect(by('hidden')).toMatchObject({ thumb: '', cover: '' });
+    expect(by('none')).toMatchObject({ thumb: '', cover: '' });
+    expect(by('hosted_hidden')).toMatchObject({ thumb: '', cover: '' });
+    expect(by('named')).toMatchObject({ thumb: '', cover: '' });
   });
 
   it('合併去重、我的與主辦做記號、沒時間的排後面；未結束仍含未知階段', () => {
@@ -220,4 +220,109 @@ describe('站內卡片純函式', () => {
     expect(isTrulyLive(cards[0]!)).toBe(true);
   });
 
+  describe('卡板判定', () => {
+    const base: InAppListCard = {
+      cid: 'x',
+      name: 'x',
+      category: 'league',
+      phase: 'recruit',
+      date: '',
+      venue: '',
+      firstMatchAt: 1000,
+      line: null,
+      mine: false,
+      ended: false,
+      statusMark: null,
+      thumb: '',
+      cover: '',
+    };
+    const card = (partial: Partial<InAppListCard> & Pick<InAppListCard, 'cid'>): InAppListCard => ({ ...base, ...partial });
+    const LIVE = { kind: 'live', count: 3, time: '14:30' } as const;
+    const TODAY = { kind: 'today', count: 2 } as const;
+    const WARM = { kind: 'warm', days: 3 } as const;
+    const DEADLINE = { kind: 'deadline', date: '12/20 23:59' } as const;
+    const ids = (list: readonly InAppListCard[]): string[] => list.map((item) => item.cid);
+
+    it('一場進行中、今天有比賽：它是卡板、在最上面', () => {
+      const list = [card({ cid: 'warm', phase: 'warm', line: WARM }), card({ cid: 'live', phase: 'live', line: LIVE })];
+      const out = pickInAppBoard(list, new Set(['live']));
+      expect(out.boardCid).toBe('live');
+      expect(ids(out.cards)).toEqual(['live', 'warm']);
+    });
+
+    it('兩場以上進行中、今天都有比賽：首場最早的是卡板，其餘緊接在後、順序不變', () => {
+      const list = [
+        card({ cid: 'b_new', phase: 'live', line: LIVE, firstMatchAt: 300 }),
+        card({ cid: 'a_old', phase: 'live', line: TODAY, firstMatchAt: 100 }),
+        card({ cid: 'c_mid', phase: 'live', line: LIVE, firstMatchAt: 200 }),
+        card({ cid: 'warm', phase: 'warm', line: WARM, firstMatchAt: 50 }),
+      ];
+      const out = pickInAppBoard(list, new Set(['b_new', 'a_old', 'c_mid']));
+      expect(out.boardCid).toBe('a_old');
+      expect(ids(out.cards)).toEqual(['a_old', 'b_new', 'c_mid', 'warm']);
+    });
+
+    it('進行中今天都沒比賽（或讀取失敗）、另有預熱中：預熱中的是卡板，進行中的排第二起', () => {
+      const list = [
+        card({ cid: 'live', phase: 'live', line: null }),
+        card({ cid: 'warm', phase: 'warm', line: WARM }),
+        card({ cid: 'recruit', phase: 'recruit', line: DEADLINE }),
+      ];
+      const out = pickInAppBoard(list, new Set(['live']));
+      expect(out.boardCid).toBe('warm');
+      expect(ids(out.cards)).toEqual(['warm', 'live', 'recruit']);
+    });
+
+    it('沒有進行中：預熱中優先於招募中；同一種取首場最早，再平手取 cid 小的', () => {
+      const mixed = [
+        card({ cid: 'r1', phase: 'recruit', line: DEADLINE, firstMatchAt: 10 }),
+        card({ cid: 'w_late', phase: 'warm', line: WARM, firstMatchAt: 500 }),
+        card({ cid: 'w_b', phase: 'warm', line: WARM, firstMatchAt: 200 }),
+        card({ cid: 'w_a', phase: 'warm', line: WARM, firstMatchAt: 200 }),
+      ];
+      const out = pickInAppBoard(mixed, new Set());
+      expect(out.boardCid).toBe('w_a');
+      expect(ids(out.cards)).toEqual(['w_a', 'r1', 'w_late', 'w_b']);
+      const recruitOnly = [
+        card({ cid: 'r_late', phase: 'recruit', line: DEADLINE, firstMatchAt: 900 }),
+        card({ cid: 'r_early', phase: 'recruit', line: DEADLINE, firstMatchAt: 100 }),
+      ];
+      expect(pickInAppBoard(recruitOnly, new Set()).boardCid).toBe('r_early');
+    });
+
+    it('等待：有一張真的在進行中的卡摘要還沒有結果，就先不放板、清單原樣', () => {
+      const list = [
+        card({ cid: 'live_a', phase: 'live', line: LIVE }),
+        card({ cid: 'live_b', phase: 'live', line: null }),
+        card({ cid: 'warm', phase: 'warm', line: WARM }),
+      ];
+      const waiting = pickInAppBoard(list, new Set(['live_a']));
+      expect(waiting.boardCid).toBeNull();
+      expect(waiting.cards).toBe(list);
+      expect(pickInAppBoard(list, new Set(['live_a', 'live_b'])).boardCid).toBe('live_a');
+    });
+
+    it('延期的進行中卡不必等、也沒有資格；已取消、已結束、只有名稱、沒有重點句的都沒有資格', () => {
+      const postponedLive = card({ cid: 'pp', phase: 'live', line: LIVE, statusMark: 'postponed' });
+      expect(pickInAppBoard([postponedLive, card({ cid: 'warm', phase: 'warm', line: WARM })], new Set()).boardCid)
+        .toBe('warm');
+      const none = [
+        postponedLive,
+        card({ cid: 'pp_warm', phase: 'warm', line: WARM, statusMark: 'postponed' }),
+        card({ cid: 'cx', phase: 'done', line: null, statusMark: 'cancelled', ended: true }),
+        card({ cid: 'done', phase: 'done', line: null, ended: true }),
+        card({ cid: 'named', phase: null, line: null, firstMatchAt: null }),
+        card({ cid: 'recruit_no_line', phase: 'recruit', line: null }),
+      ];
+      const out = pickInAppBoard(none, new Set());
+      expect(out.boardCid).toBeNull();
+      expect(out.cards).toBe(none);
+    });
+
+    it('篩選成已結束：沒有板；空清單也沒有板', () => {
+      const doneOnly = [card({ cid: 'd1', phase: 'done', ended: true }), card({ cid: 'd2', phase: 'done', ended: true })];
+      expect(pickInAppBoard(doneOnly, new Set()).boardCid).toBeNull();
+      expect(pickInAppBoard([], new Set()).boardCid).toBeNull();
+    });
+  });
 });

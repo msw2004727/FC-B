@@ -73,6 +73,11 @@ export function externalChipClass(type: unknown, themed: boolean): string {
   return `cpl-xcard__chip cpl-xcard__chip--${EXTERNAL_CHIP[type]}`;
 }
 
+/** 沒有封面圖時的底：聯賽、盃賽、友誼賽各自的分類色漸層（外部卡整張底圖，顧問 §3.577）；外部字串不進 class。 */
+function externalCoverClass(type: unknown): string {
+  return type === 'league' || type === 'cup' || type === 'friendly' ? `cpl-xcard__img cpl-xcard__img--${EXTERNAL_CHIP[type]}` : 'cpl-xcard__img';
+}
+
 interface InAppSlotProps {
   tab: TournamentCardTab;
   /** 閘門開著且目前選站內時才畫卡。外部來源時元件留著，避免重讀。 */
@@ -523,7 +528,7 @@ export default function TournamentsPage(): JSX.Element {
                   >
                     {card.image
                       ? <img class="cpl-xcard__img" src={card.image} alt="" loading="lazy" />
-                      : <div class="cpl-xcard__img" aria-hidden="true" />}
+                      : <div class={externalCoverClass(card.type)} aria-hidden="true" />}
                     <div class="cpl-xcard__body">
                       <div class="cpl-xcard__text">
                         <div class="cpl-xcard__name">{card.name}</div>

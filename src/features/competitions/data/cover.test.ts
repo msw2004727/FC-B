@@ -1,6 +1,6 @@
 // 賽事封面讀取端：根文件 cover 欄的解析、下架時畫不畫、清單只在有封面時帶縮圖。
 import { describe, expect, it } from 'vitest';
-import { coverOf, listImage, shownCover } from './cover';
+import { coverOf, shownCover } from './cover';
 import { competitionFromDoc } from './cp-repo';
 import { assembleInAppCards } from './list-cards';
 import { competition, NOW } from '../testing/screen-fixtures';
@@ -8,26 +8,6 @@ import { competition, NOW } from '../testing/screen-fixtures';
 const URL1 = 'https://firebasestorage.googleapis.com/v0/b/b1/o/images%2Fcompetitions%2Fc_aaaaaaaaaaaaaaaa%2Fcover_1700000000000.webp?alt=media&token=t';
 const THUMB1 = 'https://firebasestorage.googleapis.com/v0/b/b1/o/images%2Fcompetitions%2Fc_aaaaaaaaaaaaaaaa%2Fthumb_1700000000000.webp?alt=media&token=t';
 const COVER = { url: URL1, thumb: THUMB1 };
-const CARD1 = 'https://firebasestorage.googleapis.com/v0/b/b1/o/images%2Fcompetitions%2Fc_aaaaaaaaaaaaaaaa%2Fcard_1700000000000.webp?alt=media&token=t';
-
-describe('card（800×300 清單卡圖，選填）', () => {
-  it('coverOf 收合格的 card；不合格的 card 只當沒有，url、thumb 照收', () => {
-    expect(coverOf({ ...COVER, card: CARD1 })).toEqual({ ...COVER, card: CARD1 });
-    for (const bad of ['https://evil.example/card.webp', 'http://firebasestorage.googleapis.com/v0/b/b1/o/x', 1, null, '']) {
-      expect(coverOf({ ...COVER, card: bad })).toEqual(COVER);
-    }
-    // card 合格也救不了缺 thumb 的封面
-    expect(coverOf({ url: URL1, card: CARD1 })).toBeNull();
-  });
-
-  it('listImage：這批一律用原圖 url（有 card 也不用，後端部署後再切）；沒有封面是空字串', () => {
-    expect(listImage({ ...COVER, card: CARD1 })).toBe(URL1);
-    expect(listImage(COVER)).toBe(URL1);
-    expect(listImage(null)).toBe('');
-    expect(listImage(undefined)).toBe('');
-  });
-
-});
 
 describe('coverOf：根文件 cover 欄', () => {
   it('兩個網址都是 Firebase Storage 下載網址才收', () => {
@@ -82,22 +62,20 @@ describe('shownCover：下架時主辦看不到、管理員照畫', () => {
 });
 
 describe('清單卡縮圖', () => {
-  it('清單用圖：一律原圖 url；沒封面、下架是空字串', () => {
+  it('有封面才帶縮圖；沒封面、下架是空字串', () => {
     const cards = assembleInAppCards({
       publicDocs: [
         competition({ id: 'with', name: '有封面', cover: COVER }),
-        competition({ id: 'card', name: '有卡片圖', cover: { ...COVER, card: CARD1 } }),
         competition({ id: 'none', name: '沒封面' }),
       ],
-      hosted: [competition({ id: 'hidden', name: '下架中', hidden: true, cover: { ...COVER, card: CARD1 } })],
+      hosted: [competition({ id: 'hidden', name: '下架中', hidden: true, cover: COVER })],
       mine: [{ cid: 'named', name: '只有名稱', category: 'league', doc: null }],
       now: NOW,
     });
-    const img = (cid: string) => cards.find((card) => card.cid === cid)?.cover;
-    expect(img('with')).toBe(URL1);
-    expect(img('card')).toBe(URL1);
-    expect(img('none')).toBe('');
-    expect(img('hidden')).toBe('');
-    expect(img('named')).toBe('');
+    const thumb = (cid: string) => cards.find((card) => card.cid === cid)?.thumb;
+    expect(thumb('with')).toBe(THUMB1);
+    expect(thumb('none')).toBe('');
+    expect(thumb('hidden')).toBe('');
+    expect(thumb('named')).toBe('');
   });
 });

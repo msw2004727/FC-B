@@ -9,11 +9,11 @@
 // ASSUMPTION: 只看我的關閉時是公開、cpMine、代表俱樂部主辦的聯集，以 cid 去重。打開時只留後兩者。
 // ASSUMPTION: 排序先放「真的在進行中」（進行中且沒有整場延期或取消），其餘照首場時間新到舊；
 // 沒有時間的排後面，再用 cid 固定順序（站長 11-20 定案，取代原本只看首場新到舊）。
-// 站長 11-22 起每一張都是記分板卡（原本 pickInAppBoard 只挑一張移到第一張，已移除）；順序照 compareCards 不變（進行中最上面）。
+// 卡板（pickInAppBoard）只從畫面上這一份清單挑一張移到第一張，不另讀資料。
 
 import type { CompetitionCategory, CompetitionDoc, SummaryEntry } from './types';
 import { categoryOf, competitionPhase, type CompetitionPhase } from './present';
-import { listImage, shownCover } from './cover';
+import { shownCover } from './cover';
 import { formatTaipeiShort, taipeiParts } from '../format';
 
 export type InAppTab = 'all' | CompetitionCategory;
@@ -48,10 +48,9 @@ export interface InAppListCard {
   ended: boolean;
   /** 整場延期或取消時，列表膠囊改顯示這個，不再用階段。 */
   statusMark: 'postponed' | 'cancelled' | null;
-  /**
-   * 清單用圖（data/cover.ts#listImage：800×300 的 card，舊封面退回原圖）；卡板與一般卡同一張，
-   * 賽事從一般卡變成卡板不會重新下載。沒有封面或下架是空字串，卡片版面照舊。
-   */
+  /** 封面縮圖網址（224×168）；沒有封面或下架是空字串，卡片版面照舊。 */
+  thumb: string;
+  /** 封面原圖網址（1200×450），只有卡板用；沒有封面或下架是空字串。 */
   cover: string;
 }
 
@@ -165,6 +164,7 @@ function cardFromDoc(
   today: TodayMatches | undefined,
 ): InAppListCard {
   const phase = competitionPhase(doc, now);
+  const shown = shownCover(doc, false);
   return {
     cid: doc.id,
     name: doc.name,
@@ -177,7 +177,8 @@ function cardFromDoc(
     mine,
     ended: phase === 'done',
     statusMark: doc.status === 'postponed' || doc.status === 'cancelled' ? doc.status : null,
-    cover: listImage(shownCover(doc, false)),
+    thumb: shown?.thumb ?? '',
+    cover: shown?.url ?? '',
   };
 }
 
@@ -264,12 +265,58 @@ export function assembleInAppCards(input: InAppListInput & {
       mine: true,
       ended: false,
       statusMark: null,
+      thumb: '',
       cover: '',
     });
   }
 
   cards.sort(compareCards);
   return cards;
+}
+
+const BOARD_RANK: Partial<Record<CompetitionPhase, number>> = { live: 0, warm: 1, recruit: 2 };
+
+/**
+ * 卡板判定。輸入是目前畫面上這一份清單（分類、階段、只看我的都篩過）。
+ * 資格：沒有整場延期或取消、階段是進行中／預熱中／招募中、而且有重點句（有重點句才有真的數字）。
+ * 順位：進行中 → 預熱中 → 招募中；同一種取首場最早；再相同取 cid 小的。
+ * 等待：畫面上任何一張真的在進行中的卡，當日摘要還沒有結果（成功、空片、失敗都算有結果），就先不放板，
+ * 免得板子先給預熱中的卡、摘要回來又跳給進行中的卡。
+ * 回傳選中的那一張移到第一張、其餘順序不變的清單；沒有板時 boardCid 是 null、清單原樣。
+ */
+export function pickInAppBoard(
+  cards: readonly InAppListCard[],
+  todaySettled: ReadonlySet<string>,
+): { cards: readonly InAppListCard[]; boardCid: string | null } {
+  if (cards.some((card) => isTrulyLive(card) && !todaySettled.has(card.cid))) {
+    return { cards, boardCid: null };
+  }
+  let best: InAppListCard | null = null;
+  let bestRank = 0;
+  for (const card of cards) {
+    if (card.statusMark !== null || card.phase == null || card.line == null) continue;
+    const rank = BOARD_RANK[card.phase];
+    if (rank == null) continue;
+    if (best == null || rank < bestRank || (rank === bestRank && boardBefore(card, best))) {
+      best = card;
+      bestRank = rank;
+    }
+  }
+  if (!best) return { cards, boardCid: null };
+  const board = best;
+  return { cards: [board, ...cards.filter((card) => card !== board)], boardCid: board.cid };
+}
+
+/** 同一順位裡 a 是否該排在 b 前面：首場早的先；沒有時間的排後；再用 cid。 */
+function boardBefore(a: InAppListCard, b: InAppListCard): boolean {
+  const ta = a.firstMatchAt;
+  const tb = b.firstMatchAt;
+  if (ta !== tb) {
+    if (ta == null) return false;
+    if (tb == null) return true;
+    return ta < tb;
+  }
+  return a.cid < b.cid;
 }
 
 export function passesInAppStatus(card: Pick<InAppListCard, 'phase'>, filter: InAppStatusFilter): boolean {

@@ -138,21 +138,19 @@ describe('閘門通過後、讀回前先畫快照', () => {
 });
 
 describe('條件 6：快照畫面不帶當日摘要', () => {
-  it('快照上進行中的卡直接是記分板卡、數字格先預留不畫、不讀摘要片；讀回後才讀摘要並畫數字格（卡不換版面）', async () => {
+  it('快照上進行中的卡沒有重點句、沒有記分板、不讀摘要片；讀回後才讀摘要並放記分板', async () => {
     writeCpListSnapshot(null, 'public', { publicDocs: [live, warm], hosted: [], mine: [] });
     const { repo, release } = slowRepo([live, warm]);
     show({ repo, listSnapshot: guestPorts(null) });
     await waitFor(() => expect(shownCids()).toContain('livecup'));
     const card = document.querySelector(`[data-cid="${C('livecup')}"]`);
-    expect(card?.classList.contains('cpl-card--board')).toBe(true);
-    expect(card?.querySelector('.d2-sb--lit .d2-sb__st')?.textContent).toContain('進行中');
-    expect(card?.querySelector('.cpl-cells--wait')).not.toBeNull();
-    expect(card?.querySelector('.d2-num')).toBeNull();
+    expect(card?.querySelector('.cpl-st--live')?.textContent).toContain('進行中');
+    expect(card?.querySelector('.cpl-line')).toBeNull();
+    expect(document.querySelector('.cpl-card--board')).toBeNull();
     await flush();
     expect(repo.calls()).not.toContain('getSummaryShard');
     await release();
-    await waitFor(() => expect(document.querySelector(`[data-cid="${C('livecup')}"] .d2-num`)).not.toBeNull());
-    expect(document.querySelector(`[data-cid="${C('livecup')}"] .cpl-cells--wait`)).toBeNull();
+    await waitFor(() => expect(document.querySelector('.cpl-card--board')?.getAttribute('data-cid')).toBe(C('livecup')));
     expect(repo.calls()).toContain('getSummaryShard');
     expect(document.querySelector(`[data-cid="${C('livecup')}"] .d2-num`)?.textContent).toBe('13:00');
   });

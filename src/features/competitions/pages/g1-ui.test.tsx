@@ -746,9 +746,7 @@ describe('整場延期與取消', () => {
         onOpen={() => undefined}
       />,
     );
-    // 站長 11-22 起每張都是記分板卡：狀態寫在板的左上
-    const states = [...document.querySelectorAll('.d2-sb__st')].map((el) => el.textContent ?? '');
-    expect(states.some((t) => t.includes('已延期'))).toBe(true);
-    expect(states.some((t) => t.includes('已取消'))).toBe(true);
+    expect(document.querySelector('.cpl-st--postponed')?.textContent).toContain('已延期');
+    expect(document.querySelector('.cpl-st--cancelled')?.textContent).toContain('已取消');
   });
 });

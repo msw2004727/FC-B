@@ -488,35 +488,21 @@ describe('詳情頂部', () => {
 describe('封面樣式不靠動畫', () => {
   it('.d2-hero__cover、清單縮圖與卡板封面的規則沒有 opacity／animation／transition（背景分頁動畫被節流也不會卡在透明）', () => {
     const css = readFileSync(resolve('src/features/competitions/competitions.css'), 'utf8');
-    const rules = css.match(/[^{}]*(?:d2-hero__cover|cpl-sb__img|cpl-sb--img)[^{}]*\{[^}]*\}/g) ?? [];
+    const rules = css.match(/[^{}]*(?:d2-hero__cover|cpl-card__link--img|cpl-sb__img|cpl-sb--img)[^{}]*\{[^}]*\}/g) ?? [];
     expect(rules.length).toBeGreaterThan(0);
     for (const rule of rules) expect(rule).not.toMatch(/opacity|animation|transition/);
   });
 });
 
-describe('狀態邊框色（站長 11-22，顧問 §3.576）', () => {
-  it('邊框色只掛在卡片根節點的 data-phase／data-mark，不掛在 .cpl-sb--img：沒有封面的卡也有狀態邊框；進行中框線 2px', () => {
-    const css = readFileSync(resolve('src/features/competitions/competitions.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-    const edgeRules = css.match(/[^{}]*\{[^}]*--st-edge:[^}]*\}/g) ?? [];
-    const selectors = edgeRules.map((rule) => rule.slice(0, rule.indexOf('{')).trim());
-    for (const sel of ['.cpl-card[data-phase="recruit"]', '.cpl-card[data-phase="warm"]', '.cpl-card[data-phase="live"]', '.cpl-card[data-mark="postponed"]', '.cpl-card[data-mark="cancelled"]']) {
-      expect(selectors.some((s) => s.endsWith(sel))).toBe(true);
-    }
-    for (const sel of selectors) expect(sel).not.toContain('cpl-sb--img');
-    expect(css).toMatch(/\.cpl-card__link \{[^}]*box-shadow: inset 0 0 0 var\(--st-w, 1\.5px\) var\(--st-edge\)/);
-    expect(css).toMatch(/\.cpl-card\[data-phase="live"\] \{[^}]*--st-w: 2px/);
-  });
-});
-
 describe('清單卡', () => {
-  it('一般卡（站長 11-22 統一）：有封面才放清單用圖並加 cpl-sb--img，不再出 56×42 縮圖；沒封面的卡版面照舊', () => {
-    const card = (cid: string, cover: string): InAppListCard => ({
+  it('只有帶縮圖的卡出現 56×42 縮圖；沒封面的卡版面照舊', () => {
+    const card = (cid: string, thumb: string): InAppListCard => ({
       cid, name: cid, category: 'league', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
-      line: null, mine: false, ended: false, statusMark: null, cover,
+      line: null, mine: false, ended: false, statusMark: null, thumb, cover: '',
     });
     render(
       <InAppCardList
-        cards={[card('with', URL1), card('none', '')]}
+        cards={[card('with', THUMB1), card('none', '')]}
         ct={makeCompetitionsT({})}
         status="open"
         onlyMine={false}
@@ -529,27 +515,18 @@ describe('清單卡', () => {
     );
     const with_ = document.querySelector('[data-cid="with"]');
     const none = document.querySelector('[data-cid="none"]');
-    const img = with_?.querySelector<HTMLImageElement>('.d2-sb > img.cpl-sb__img');
-    expect(img?.getAttribute('src')).toBe(URL1);
-    expect(img?.getAttribute('width')).toBe('800');
-    expect(img?.getAttribute('height')).toBe('300');
-    expect(img?.getAttribute('decoding')).toBe('async');
-    expect(img?.hasAttribute('srcset')).toBe(false);
-    expect(with_?.querySelector('img.cpl-xrow__img')).toBeNull();
-    // 每張都是記分板卡（站長 11-22）：圖是板的第一個子節點，字在後面
-    expect(with_?.querySelector('.d2-sb')?.className).toBe('d2-sb cpl-sb--img');
-    expect(with_?.querySelector('.d2-sb')?.firstElementChild).toBe(img);
-    expect(with_?.querySelector('.d2-sb > .cpl-card__name')).not.toBeNull();
+    expect(with_?.querySelector('img.cpl-xrow__img')?.getAttribute('src')).toBe(THUMB1);
+    expect(with_?.querySelector('a')?.className).toBe('cpl-card__link cpl-card__link--img');
     expect(none?.querySelector('img')).toBeNull();
-    expect(none?.querySelector('.d2-sb')?.className).toBe('d2-sb');
-    // 沒封面：純深色記分板卡（板底下直接是名稱）
-    expect(none?.querySelector('.d2-sb > .cpl-card__name')).not.toBeNull();
+    expect(none?.querySelector('a')?.className).toBe('cpl-card__link');
+    // 沒封面的卡結構與改版前相同：連結底下直接是名稱與分類列
+    expect(none?.querySelector('a > .cpl-card__name')).not.toBeNull();
   });
 
-  it('卡板：有封面才在板裡放清單用圖並加 cpl-sb--img（第一張有圖的卡：eager＋fetchpriority=high）；沒封面的卡板結構照舊；圖載不到收回沒封面的卡板', () => {
+  it('卡板：有封面才在板裡放原圖（lazy、async）並加 cpl-sb--img；沒封面的卡板結構照舊；圖載不到收回沒封面的卡板', () => {
     const board = (cid: string, cover: string): InAppListCard => ({
       cid, name: cid, category: 'cup', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
-      line: { kind: 'deadline', date: '11/21 23:59' }, mine: false, ended: false, statusMark: null, cover,
+      line: { kind: 'deadline', date: '11/21 23:59' }, mine: false, ended: false, statusMark: null, thumb: THUMB1, cover,
     });
     const list = (card: InAppListCard) => (
       <InAppCardList
@@ -558,6 +535,7 @@ describe('清單卡', () => {
         status="open"
         onlyMine={false}
         showCreate={false}
+        boardCid={card.cid}
         onStatus={() => {}}
         onOnlyMine={() => {}}
         onCreate={() => {}}
@@ -568,10 +546,9 @@ describe('清單卡', () => {
     const sb = document.querySelector('[data-cid="with"] .d2-sb');
     const img = sb?.querySelector<HTMLImageElement>('img.cpl-sb__img');
     expect(sb?.classList.contains('cpl-sb--img')).toBe(true);
-    // 卡板用清單用圖（卡資料的 cover）；圖是板的第一個子節點，字在後面
+    // 卡板用原圖、不用 224×168 縮圖；圖是板的第一個子節點，字在後面
     expect(img?.getAttribute('src')).toBe(URL1);
-    expect(img?.getAttribute('loading')).toBe('eager');
-    expect(img?.getAttribute('fetchpriority')).toBe('high');
+    expect(img?.getAttribute('loading')).toBe('lazy');
     expect(img?.getAttribute('decoding')).toBe('async');
     expect(img?.getAttribute('alt')).toBe('');
     expect(sb?.firstElementChild).toBe(img);
@@ -612,99 +589,10 @@ describe('清單卡', () => {
     expect(document.querySelector('[data-cid="warm_lg"] img')).not.toBeNull();
   });
 
-  describe('載入策略（顧問設計稿「卡片縮圖與載入策略」第 6 節）', () => {
-    const many = (n: number, noCoverAt: number[] = []): InAppListCard[] => Array.from({ length: n }, (_, i) => ({
-      cid: `c${i}`, name: `c${i}`, category: 'league', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
-      line: null, mine: false, ended: false, statusMark: null, cover: noCoverAt.includes(i) ? '' : `${URL1}&n=${i}`,
-    }));
-    const drawList = (cards: InAppListCard[]) => render(
-      <InAppCardList cards={cards} ct={makeCompetitionsT({})} status="open" onlyMine={false} showCreate={false}
-        onStatus={() => {}} onOnlyMine={() => {}} onCreate={() => {}} onOpen={() => {}} />,
-    );
-    const imgOf = (cid: string) => document.querySelector<HTMLImageElement>(`[data-cid="${cid}"] img.cpl-sb__img`);
-    afterEach(() => { Reflect.deleteProperty(navigator, 'connection'); });
-
-    it('前 3 張「有圖的」卡 eager（沒圖的卡不算名額），第 1 張 fetchpriority=high；其餘 lazy＋async', () => {
-      drawList(many(6, [1]));
-      expect(imgOf('c1')).toBeNull();
-      expect(['c0', 'c2', 'c3', 'c4', 'c5'].map((cid) => imgOf(cid)?.getAttribute('loading'))).toEqual(['eager', 'eager', 'eager', 'lazy', 'lazy']);
-      expect(imgOf('c0')?.getAttribute('fetchpriority')).toBe('high');
-      for (const cid of ['c2', 'c3', 'c4', 'c5']) expect(imgOf(cid)?.hasAttribute('fetchpriority')).toBe(false);
-      for (const cid of ['c0', 'c2', 'c3', 'c4', 'c5']) expect(imgOf(cid)?.getAttribute('decoding')).toBe('async');
-    });
-
-    it.each([
-      ['saveData', { saveData: true }],
-      ['2g', { effectiveType: '2g' }],
-      ['slow-2g', { effectiveType: 'slow-2g' }],
-    ])('省流量（%s）：只畫前 3 張有圖的卡，第 4 張起用沒有圖的版面', (_label, connection) => {
-      Object.defineProperty(navigator, 'connection', { value: connection, configurable: true });
-      drawList(many(5));
-      expect(['c0', 'c1', 'c2'].every((cid) => imgOf(cid) !== null)).toBe(true);
-      for (const cid of ['c3', 'c4']) {
-        expect(imgOf(cid)).toBeNull();
-        expect(document.querySelector(`[data-cid="${cid}"] a`)?.className).toBe('cpl-card__link');
-      }
-    });
-
-    it('4g、沒有 saveData：照常全部畫（捲到才載）', () => {
-      Object.defineProperty(navigator, 'connection', { value: { effectiveType: '4g', saveData: false }, configurable: true });
-      drawList(many(5));
-      expect(imgOf('c4')?.getAttribute('loading')).toBe('lazy');
-    });
-  });
-
-  it('任何狀態都是同一種深色記分板卡（站長 11-22）：有封面就有 cpl-sb--img，不退回淺色卡或小縮圖', () => {
-    const base = { name: 'x', category: 'cup' as const, date: '12/06', venue: '場地', firstMatchAt: 1, mine: false, ended: false, statusMark: null, cover: URL1 };
-    const states: InAppListCard[] = [
-      { ...base, cid: 'recruit', phase: 'recruit', line: { kind: 'deadline', date: '12/01 23:59' } },
-      { ...base, cid: 'warm', phase: 'warm', line: { kind: 'warm', days: 3 } },
-      { ...base, cid: 'live', phase: 'live', line: { kind: 'live', count: 2, time: '14:30' } },
-      { ...base, cid: 'live_wait', phase: 'live', line: null },
-      { ...base, cid: 'done', phase: 'done', line: null, ended: true },
-      { ...base, cid: 'postponed', phase: 'warm', line: { kind: 'warm', days: 3 }, statusMark: 'postponed' },
-      { ...base, cid: 'cancelled', phase: 'done', line: null, statusMark: 'cancelled' },
-      { ...base, cid: 'noline', phase: null, line: null },
-    ];
-    render(
-      <InAppCardList cards={states} ct={makeCompetitionsT({})} status="all" onlyMine={false} showCreate={false}
-        onStatus={() => {}} onOnlyMine={() => {}} onCreate={() => {}} onOpen={() => {}} />,
-    );
-    for (const c of states) {
-      const el = document.querySelector(`[data-cid="${c.cid}"]`);
-      expect(el?.classList.contains('cpl-card--board')).toBe(true);
-      expect(el?.querySelector('.d2-sb')?.classList.contains('cpl-sb--img')).toBe(true);
-      expect(el?.querySelector('.d2-sb > img.cpl-sb__img')?.getAttribute('src')).toBe(URL1);
-    }
-    expect(document.querySelector('.cpl-xrow__img, .cpl-card__link--img')).toBeNull();
-  });
-
-  it('招募中（沒延期取消）才有光軌掛點；動態載入後掛上光軌，卸載不殘留 style 與光軌；各狀態有自己的 data-phase／data-mark（邊框色）', async () => {
-    const base = { name: 'x', category: 'cup' as const, date: '', venue: '', firstMatchAt: 1, mine: false, ended: false, cover: '' };
-    const cards: InAppListCard[] = [
-      { ...base, cid: 'r', phase: 'recruit', statusMark: null, line: { kind: 'deadline', date: '12/01 23:59' } },
-      { ...base, cid: 'w', phase: 'warm', statusMark: null, line: { kind: 'warm', days: 3 } },
-      { ...base, cid: 'p', phase: 'recruit', statusMark: 'postponed', line: null },
-      { ...base, cid: 'c', phase: 'done', statusMark: 'cancelled', line: null },
-    ];
-    const view = render(
-      <InAppCardList cards={cards} ct={makeCompetitionsT({})} status="all" onlyMine={false} showCreate={false}
-        onStatus={() => {}} onOnlyMine={() => {}} onCreate={() => {}} onOpen={() => {}} />,
-    );
-    expect([...document.querySelectorAll('.cpl-fx-slot')].map((el) => el.closest('[data-cid]')?.getAttribute('data-cid'))).toEqual(['r']);
-    expect(document.querySelector('[data-cid="p"]')?.getAttribute('data-mark')).toBe('postponed');
-    expect(document.querySelector('[data-cid="c"]')?.getAttribute('data-mark')).toBe('cancelled');
-    expect(document.querySelector('[data-cid="w"]')?.hasAttribute('data-mark')).toBe(false);
-    await waitFor(() => expect(document.querySelector('.cpl-fx-slot .burst')).not.toBeNull());
-    view.unmount();
-    expect(document.querySelector('style[data-cpl-fx-instance]')).toBeNull();
-    expect(document.getElementById('cpl-recruit-fx-style')).toBeNull();
-  });
-
-  it('一般卡封面載不到：改畫沒封面的版面，不留空格', () => {
+  it('縮圖載不到：改畫沒封面的版面，不留 56×42 空格', () => {
     const card: InAppListCard = {
       cid: 'bad', name: 'bad', category: 'league', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,
-      line: null, mine: false, ended: false, statusMark: null, cover: URL1,
+      line: null, mine: false, ended: false, statusMark: null, thumb: THUMB1, cover: '',
     };
     render(
       <InAppCardList
@@ -723,7 +611,7 @@ describe('清單卡', () => {
     act(() => { img.dispatchEvent(new Event('error')); });
     const el = document.querySelector('[data-cid="bad"]');
     expect(el?.querySelector('img')).toBeNull();
-    expect(el?.querySelector('.d2-sb')?.className).toBe('d2-sb');
-    expect(el?.querySelector('.d2-sb > .cpl-card__name')).not.toBeNull();
+    expect(el?.querySelector('a')?.className).toBe('cpl-card__link');
+    expect(el?.querySelector('a > .cpl-card__name')).not.toBeNull();
   });
 });
