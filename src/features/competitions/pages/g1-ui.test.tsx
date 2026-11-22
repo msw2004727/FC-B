@@ -309,10 +309,20 @@ describe('取消單場與結束賽事', () => {
     expect(screen.queryByText(hint)).toBeNull();
   });
 
-  it('沒有場次、延期或草稿不顯示結束賽事', () => {
-    draw(hostEnv([]), HostMatchesPage);
-    expect(screen.queryByRole('button', { name: '結束賽事' })).toBeNull();
-    cleanup();
+  it('沒有場次也能結束賽事（站長 11-23）：未確認 0 場，送出只有賽事 id 與原因', async () => {
+    const endCompetition = vi.fn(async () => ({}));
+    draw(hostEnv([], { ...idleActions(), endCompetition }), HostMatchesPage);
+    expect(screen.getByText('請先排賽程')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '結束賽事' }));
+    const dialog = screen.getByRole('dialog', { name: '結束賽事' });
+    expect(within(dialog).getByText('未確認 0 場')).toBeTruthy();
+    fireEvent.input(areaOf(/結束原因/), { target: { value: '只用來報名，不在系統排賽程' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '確認結束' }));
+    expect(endCompetition).toHaveBeenCalledWith({ cid: 'cup', reason: '只用來報名，不在系統排賽程' });
+    await waitFor(() => expect(screen.queryByRole('button', { name: '結束賽事' })).toBeNull());
+  });
+
+  it('延期或草稿不顯示結束賽事', () => {
 
     const postponed = hostEnv([match({ id: 'mt_1', status: 'scheduled' })]);
     if (postponed.bundle) {
