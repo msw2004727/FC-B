@@ -1349,13 +1349,14 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 /* 站內清單容器最小高度：清單頁吃到舊站 .page 的 overflow，卡片少時展開的站內選單會被裁（規格 3.6：篩選列 36＋4＋選單 272＋16） */
 [data-inapp="competitions"] { min-height: 328px; }
 .cpl-card { margin-bottom: 10px; }
-.cpl-card__link { display: block; padding: 6px; background: var(--d2-glass-base); box-shadow: inset 0 0 0 1.5px var(--st-edge), var(--d2-glass-sh); color: var(--d2-text); text-decoration: none; }
-/* 狀態邊框色（站長 11-22）：每種狀態只設 --st-edge，共用上面那條框線；已結束、取消、沒有階段是中性灰。 */
+.cpl-card__link { display: block; padding: 6px; background: var(--d2-glass-base); box-shadow: inset 0 0 0 var(--st-w, 1.5px) var(--st-edge), var(--d2-glass-sh); color: var(--d2-text); text-decoration: none; }
+/* 狀態邊框色（站長 11-22）：每種狀態只設 --st-edge，共用上面那條框線；已結束、取消、沒有階段是中性灰。
+ * 進行中框線加粗到 2px（顧問 §3.576：和招募中的青綠一眼可辨，不新增色票）。有沒有封面都一樣（規則不掛在 .cpl-sb--img）。 */
 .cpl-card { --st-edge: rgba(148, 163, 184, .45); }
 .cpl-card[data-phase="recruit"] { --st-edge: #2dd4bf; }
 .cpl-card[data-phase="warm"] { --st-edge: #60a5fa; }
-.cpl-card[data-phase="live"] { --st-edge: var(--d2-sb-now); }
-.cpl-card[data-mark="postponed"] { --st-edge: #f59e0b; }
+.cpl-card[data-phase="live"] { --st-edge: var(--d2-sb-now); --st-w: 2px; }
+.cpl-card[data-mark="postponed"] { --st-edge: #f59e0b; --st-w: 1.5px; }
 .cpl-card[data-mark="cancelled"] { --st-edge: rgba(148, 163, 184, .45); }
 .cpl-card[data-mark="cancelled"] .d2-sb__st { color: var(--d2-sb-alarm); }
 .cpl-card .d2-sb { --sb-pad: 11px 14px; }

@@ -494,6 +494,20 @@ describe('封面樣式不靠動畫', () => {
   });
 });
 
+describe('狀態邊框色（站長 11-22，顧問 §3.576）', () => {
+  it('邊框色只掛在卡片根節點的 data-phase／data-mark，不掛在 .cpl-sb--img：沒有封面的卡也有狀態邊框；進行中框線 2px', () => {
+    const css = readFileSync(resolve('src/features/competitions/competitions.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const edgeRules = css.match(/[^{}]*\{[^}]*--st-edge:[^}]*\}/g) ?? [];
+    const selectors = edgeRules.map((rule) => rule.slice(0, rule.indexOf('{')).trim());
+    for (const sel of ['.cpl-card[data-phase="recruit"]', '.cpl-card[data-phase="warm"]', '.cpl-card[data-phase="live"]', '.cpl-card[data-mark="postponed"]', '.cpl-card[data-mark="cancelled"]']) {
+      expect(selectors.some((s) => s.endsWith(sel))).toBe(true);
+    }
+    for (const sel of selectors) expect(sel).not.toContain('cpl-sb--img');
+    expect(css).toMatch(/\.cpl-card__link \{[^}]*box-shadow: inset 0 0 0 var\(--st-w, 1\.5px\) var\(--st-edge\)/);
+    expect(css).toMatch(/\.cpl-card\[data-phase="live"\] \{[^}]*--st-w: 2px/);
+  });
+});
+
 describe('清單卡', () => {
   it('一般卡（站長 11-22 統一）：有封面才放清單用圖並加 cpl-sb--img，不再出 56×42 縮圖；沒封面的卡版面照舊', () => {
     const card = (cid: string, cover: string): InAppListCard => ({
