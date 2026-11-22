@@ -268,7 +268,6 @@ describe('條件 4：版本、時效、上限、讀寫失敗', () => {
     localStorage.setItem(CP_LIST_SNAPSHOT_KEY, JSON.stringify(env));
     const cards = assembleInAppCards({ ...readCpListSnapshot('uid_a', 'public', NOW)!, now: NOW });
     expect(cards.map((card) => card.cid)).toEqual([C('pub')]);
-    expect(cards[0]!.thumb).toBe('');
     expect(cards[0]!.cover).toBe('');
   });
 });

@@ -38,9 +38,8 @@ async function pickStatus(value: string): Promise<void> {
 function infoOf(cid: string): string {
   const el = document.querySelector(`[data-cid="${cid}"]`);
   if (!el) return '';
-  const line = el.querySelector('.cpl-line');
-  if (line) return line.textContent ?? '';
-  return [...el.querySelectorAll('.d2-cell')]
+  // 進行中摘要未回時預留的那一列（.cpl-cells--wait）不算內容
+  return [...el.querySelectorAll('.d2-cells:not(.cpl-cells--wait) .d2-cell')]
     .map((cell) => `${cell.querySelector('.d2-cell__k')?.textContent ?? ''} ${cell.querySelector('.d2-cell__v')?.textContent ?? ''}`)
     .join(DOT);
 }
@@ -54,7 +53,6 @@ function card(partial: Partial<InAppListCard> & Pick<InAppListCard, 'cid' | 'nam
     mine: false,
     ended: partial.phase === 'done',
     statusMark: null,
-    thumb: '',
     cover: '',
     ...partial,
   };
@@ -101,19 +99,19 @@ describe('站內卡文案與分類小標', () => {
         onOpen={() => {}}
       />,
     );
+    // 站長 11-22（顧問 §3.565）：每一張都是記分板卡；重點句拆成數字格、分類在板的右上
     const live = document.querySelector('[data-cid="live"]');
-    expect(live?.querySelector('.cpl-st--live')?.textContent).toContain('進行中');
-    expect(live?.querySelector('.cpl-line')?.textContent).toBe(`今天 3 場${DOT}下一場 14:30`);
-    expect(live?.querySelector('.cpl-meta__cat')?.textContent).toBe('盃賽');
+    expect(live?.querySelector('.d2-sb.d2-sb--lit .d2-sb__st')?.textContent).toContain('進行中');
+    expect(infoOf('live')).toBe(`下一場 14:30${DOT}今天 3場`);
+    expect(live?.querySelector('.cpl-sb__cat')?.textContent).toBe('盃賽');
     expect(live?.querySelector('.cpl-meta__date')?.textContent).toBe(`2027/01/09 ${EN} 01/10`);
     expect(live?.querySelector('.cpl-meta__venue')?.textContent).toBe('示範運動公園');
     expect(document.querySelector('img, [class*="cover"], [class*="chip"], .tc-card, .tc-chip')).toBeNull();
-    expect(document.querySelector('[data-cid="count"] .cpl-line')?.textContent).toBe('今天 2 場');
+    expect(infoOf('count')).toBe('今天 2場');
     const done = document.querySelector('[data-cid="done"]');
     expect(done?.classList.contains('ended')).toBe(true);
-    expect(done?.querySelector('.cpl-line')).toBeNull();
-    // 沒傳 boardCid 就沒有板
-    expect(document.querySelector('.cpl-card--board, .d2-sb')).toBeNull();
+    expect(done?.querySelector('.d2-cells')).toBeNull();
+    expect([...document.querySelectorAll('[data-cid]')].every((el) => el.classList.contains('cpl-card--board') && el.querySelector('.d2-sb'))).toBe(true);
     const menu = screen.getByRole('button', { name: /^狀態 / });
     const listId = menu.getAttribute('aria-controls') ?? '';
     expect(listId).not.toBe('cpl-status');
@@ -127,7 +125,7 @@ describe('站內卡文案與分類小標', () => {
 });
 
 describe('卡板與狀態標籤（清-4）', () => {
-  function list(cards: InAppListCard[], boardCid: string | null, ct: ReturnType<typeof makeCompetitionsT>) {
+  function list(cards: InAppListCard[], ct: ReturnType<typeof makeCompetitionsT>) {
     return (
       <InAppCardList
         cards={cards}
@@ -135,7 +133,6 @@ describe('卡板與狀態標籤（清-4）', () => {
         status="open"
         onlyMine={false}
         showCreate
-        boardCid={boardCid}
         onStatus={() => {}}
         onOnlyMine={() => {}}
         onCreate={() => {}}
@@ -144,7 +141,7 @@ describe('卡板與狀態標籤（清-4）', () => {
     );
   }
 
-  it('兩場進行中：只有第一張是亮燈卡板（狀態、分類、名稱、日期・場地、數字格）；第二張是玻璃卡帶 cpl-st--live 與整句', async () => {
+  it('兩場進行中：兩張都是亮燈記分板卡（狀態、分類、名稱、日期・場地、數字格）（站長 11-22 每張都是板）', async () => {
     const dict = await loadCompetitionsDict('zh-TW');
     render(
       <InAppCardList
@@ -156,7 +153,6 @@ describe('卡板與狀態標籤（清-4）', () => {
         status="open"
         onlyMine={false}
         showCreate
-        boardCid="a"
         onStatus={() => {}}
         onOnlyMine={() => {}}
         onCreate={() => {}}
@@ -164,7 +160,7 @@ describe('卡板與狀態標籤（清-4）', () => {
       />,
     );
     const boards = document.querySelectorAll('.cpl-card--board');
-    expect(boards).toHaveLength(1);
+    expect(boards).toHaveLength(2);
     const a = document.querySelector('[data-inapp] > .cpl-card');
     expect(a?.getAttribute('data-cid')).toBe('a');
     expect(a?.querySelector('.d2-sb.d2-sb--lit')).toBeTruthy();
@@ -178,9 +174,8 @@ describe('卡板與狀態標籤（清-4）', () => {
     expect(infoOf('a')).toBe(`下一場 14:30${DOT}今天 3場`);
     expect(a?.querySelector('a')?.getAttribute('href')).toBe('/competitions/a');
     const b = document.querySelector('[data-cid="b"]');
-    expect(b?.classList.contains('cpl-card--board')).toBe(false);
-    expect(b?.querySelector('.cpl-st--live')?.textContent).toBe('進行中');
-    expect(b?.querySelector('.cpl-line')?.textContent).toBe('今天 2 場');
+    expect(b?.querySelector('.d2-sb.d2-sb--lit .d2-sb__st')?.textContent).toBe('進行中');
+    expect(infoOf('b')).toBe('今天 2場');
     // 「建立賽事」在篩選列最後一個
     expect(document.querySelector('.cpl-toolbar')?.lastElementChild?.textContent).toBe('建立賽事');
   });
@@ -189,7 +184,7 @@ describe('卡板與狀態標籤（清-4）', () => {
     const dict = await loadCompetitionsDict('zh-TW');
     const ct = makeCompetitionsT(dict);
     const one = (c: InAppListCard) => (
-      <InAppCardList cards={[c]} ct={ct} status="open" onlyMine={false} showCreate={false} boardCid={c.cid}
+      <InAppCardList cards={[c]} ct={ct} status="open" onlyMine={false} showCreate={false}
         onStatus={() => {}} onOnlyMine={() => {}} onCreate={() => {}} onOpen={() => {}} />
     );
     const view = render(one(card({ cid: 'w', name: '預熱', category: 'league', phase: 'warm', line: { kind: 'warm', days: 3 } })));
@@ -202,7 +197,7 @@ describe('卡板與狀態標籤（清-4）', () => {
     expect(infoOf('r')).toBe('報名截止 12/20 23:59');
   });
 
-  it('已延期、已取消：沿用 cpl-st--postponed／--cancelled，不畫重點句', async () => {
+  it('已延期、已取消：板上狀態寫已延期／已取消、不亮燈、不畫數字格', async () => {
     const dict = await loadCompetitionsDict('zh-TW');
     render(
       <InAppCardList
@@ -220,19 +215,19 @@ describe('卡板與狀態標籤（清-4）', () => {
         onOpen={() => {}}
       />,
     );
-    expect(document.querySelector('[data-cid="pp"] .cpl-st--postponed')?.textContent).toBe('已延期');
-    expect(document.querySelector('[data-cid="pp"] .cpl-line')).toBeNull();
-    expect(document.querySelector('[data-cid="cc"] .cpl-st--cancelled')?.textContent).toBe('已取消');
-    expect(document.querySelector('.cpl-st i')).toBeNull();
+    expect(document.querySelector('[data-cid="pp"] .d2-sb__st')?.textContent).toBe('已延期');
+    expect(document.querySelector('[data-cid="pp"] .d2-cells')).toBeNull();
+    expect(document.querySelector('[data-cid="cc"] .d2-sb__st')?.textContent).toBe('已取消');
+    expect(document.querySelector('.d2-sb--lit')).toBeNull();
   });
 
-  it('沒有日期的舊「我的賽事」：最後一行只有分類', async () => {
+  it('沒有日期的舊「我的賽事」：板上只有分類與名稱，沒有日期列與數字格', async () => {
     const ct = makeCompetitionsT(await loadCompetitionsDict('zh-TW'));
-    render(list([card({ cid: 'n', name: '只有名稱', category: 'friendly', phase: null })], null, ct));
-    expect(document.querySelector('[data-cid="n"] .cpl-meta__cat')?.textContent).toBe('友誼賽');
-    const meta = document.querySelector('[data-cid="n"] .cpl-meta');
-    expect(meta?.children).toHaveLength(1);
-    expect(document.querySelector('[data-cid="n"] .cpl-card__top')).toBeNull();
+    render(list([card({ cid: 'n', name: '只有名稱', category: 'friendly', phase: null })], ct));
+    expect(document.querySelector('[data-cid="n"] .cpl-sb__cat')?.textContent).toBe('友誼賽');
+    expect(document.querySelector('[data-cid="n"] .d2-sb__st')?.textContent).toBe('');
+    expect(document.querySelector('[data-cid="n"] .cpl-meta')).toBeNull();
+    expect(document.querySelector('[data-cid="n"] .d2-cells')).toBeNull();
   });
 });
 
@@ -301,12 +296,14 @@ describe('站內清單篩選不重讀', () => {
     const rec = document.querySelector('[data-cid="rec_lg"]');
     expect(rec?.querySelector('.cpl-meta__date')?.textContent).toBe(`2027/01/09 ${EN} 01/10`);
     expect(rec?.querySelector('.cpl-meta__venue')?.textContent).toBe('示範球場');
-    expect(rec?.querySelector('.cpl-line')?.textContent).toBe(`報名截止${IDE}12/20 23:59`);
-    expect(rec?.querySelector('.cpl-st--recruit')?.textContent).toContain('招募中');
+    expect(infoOf('rec_lg')).toBe('報名截止 12/20 23:59');
+    expect(rec?.querySelector('.d2-sb__st')?.textContent).toContain('招募中');
 
     const live = document.querySelector('[data-cid="live_fr"]');
-    expect(live?.querySelector('.cpl-st--live')?.textContent).toContain('進行中');
-    expect(live?.querySelector('.cpl-line')).toBeNull();
+    expect(live?.querySelector('.d2-sb--lit .d2-sb__st')?.textContent).toContain('進行中');
+    // 摘要還沒回：不畫數字格，只預留那一列的高度
+    expect(infoOf('live_fr')).toBe('');
+    expect(live?.querySelector('.cpl-cells--wait')).not.toBeNull();
     expect(live?.querySelector('img')).toBeNull();
     expect(screen.getByText('只屬於我')).toBeTruthy();
     expect(screen.getByRole('button', { name: '建立賽事' })).toBeTruthy();
@@ -319,15 +316,15 @@ describe('站內清單篩選不重讀', () => {
     const reads = repo.calls().slice();
     expect(reads).toEqual(['getLaunch', 'listMine', 'listPublic', 'getSummaryShard']);
 
-    // 進行中那張今天沒有場次（沒有重點句），摘要有結果後預熱中那張成為卡板、移到第一張；整句拆成數字格。
-    await waitFor(() => expect(document.querySelector('[data-inapp] > .cpl-card')?.getAttribute('data-cid')).toBe('warm_cup'));
+    // 每張都是記分板卡（站長 11-22）：進行中那張今天沒有場次仍在最上面、預留數字格高度；預熱中那張也是板、不亮燈。
+    expect(document.querySelector('[data-inapp] > .cpl-card')?.getAttribute('data-cid')).toBe('live_fr');
     const warm = document.querySelector('[data-cid="warm_cup"]');
     expect(warm?.classList.contains('cpl-card--board')).toBe(true);
     expect(warm?.querySelector('.d2-sb--lit')).toBeNull();
     expect(warm?.querySelector('.d2-sb__st')?.textContent).toBe('預熱中');
     expect(warm?.querySelector('.cpl-sb__cat')?.textContent).toBe('盃賽');
     expect(infoOf('warm_cup')).toBe('距開賽 3天');
-    expect(document.querySelectorAll('.cpl-card--board')).toHaveLength(1);
+    expect(document.querySelectorAll('.cpl-card--board')).toHaveLength(document.querySelectorAll('.cpl-card').length);
 
     await pickStatus('warm');
     expect(document.querySelector('[data-cid="warm_cup"]')).toBeTruthy();
@@ -337,8 +334,8 @@ describe('站內清單篩選不重讀', () => {
     await pickStatus('done');
     const done = document.querySelector('[data-cid="done_lg"]');
     expect(done?.classList.contains('ended')).toBe(true);
-    expect(done?.querySelector('.cpl-st--done')?.textContent).toContain('已結束');
-    expect(done?.querySelector('.cpl-line')).toBeNull();
+    expect(done?.querySelector('.d2-sb__st')?.textContent).toContain('已結束');
+    expect(done?.querySelector('.d2-cells')).toBeNull();
     expect(document.querySelector('[data-cid="warm_cup"]')).toBeNull();
 
     await pickStatus('all');
@@ -471,12 +468,11 @@ describe('進行中卡當日摘要', () => {
         `live_cup:${shard}`,
         `live_empty:${shard}`,
       ]);
-      // 三張首場同時，卡板取 cid 小的 live_cup（數字格）；live_lg 回到玻璃卡整句；空片那張沒有重點句。
+      // 每張都是記分板卡：有摘要的畫數字格；空片那張不畫、維持預留高度。
       expect(infoOf('live_cup')).toBe('今天 2場');
-      expect(document.querySelector('[data-cid="live_cup"]')?.classList.contains('cpl-card--board')).toBe(true);
-      expect(infoOf('live_lg')).toBe(`今天 3 場${DOT}下一場 14:00`);
-      expect(document.querySelector('[data-cid="live_lg"] .cpl-st--live')).toBeTruthy();
+      expect(infoOf('live_lg')).toBe(`下一場 14:00${DOT}今天 3場`);
       expect(infoOf('live_empty')).toBe('');
+      expect(document.querySelector('[data-cid="live_empty"] .cpl-cells--wait')).not.toBeNull();
     });
     expect(document.querySelector('[data-cid="done_lg"]')).toBeNull();
     expect(seen.some((row) => row.startsWith('done_lg'))).toBe(false);
@@ -577,7 +573,7 @@ describe('進行中卡當日摘要', () => {
     });
   });
 
-  it('卡板：進行中排最上面；摘要回來前不換位置，回來是空片時預熱中那張移到第一張；讀取次數不變', async () => {
+  it('進行中排最上面；摘要回來（空片）也不換位置、不換版面（每張都是板，取代原本只挑一張卡板）；讀取次數不變', async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -611,9 +607,14 @@ describe('進行中卡當日摘要', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(order()).toEqual(['live_fr', 'warm_cup']);
+    const before = document.querySelector('[data-cid="live_fr"] .d2-sb')?.className;
     release();
-    await waitFor(() => expect(order()).toEqual(['warm_cup', 'live_fr']));
-    expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(1);
+    await waitFor(() => expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(1));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(order()).toEqual(['live_fr', 'warm_cup']);
+    expect(document.querySelector('[data-cid="live_fr"] .d2-sb')?.className).toBe(before);
   });
 });
 
