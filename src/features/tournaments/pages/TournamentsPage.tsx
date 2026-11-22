@@ -2,8 +2,8 @@
 import '../tournaments.css';
 // 頁面底色與返回鈕（2026-11-13，與活動頁同一風格；只套 #page-tournaments）
 import '../legacy/tournaments-glass.css';
-// 清單頁新外觀「記分板」（清-3）：色票子集、標題列、分類分段、篩選列、外部清單、骨架。不依賴站內區塊的樣式先載到。
-// （清-3 拿掉 category-tokens.css 的匯入：清單頁已經沒有任何規則用分類色。）
+// 清單頁新外觀「記分板」（清-3）：色票子集、標題列、分類分段、篩選列、外部大卡片、骨架。不依賴站內區塊的樣式先載到。
+// （外部卡分類膠囊的顏色寫在 list-v2.css 色票裡，不匯入 category-tokens.css。）
 import '../list-v2.css';
 import '@/styles/legacy/reg-loading.css';
 import type { ComponentType, JSX } from 'preact';
@@ -62,6 +62,15 @@ export const COMPETITIONS_GATE_TIMEOUT_MS = 2_000;
  * 取代前一版「與 TOURNAMENTS_LOAD_TIMEOUT_MS 同值」）。
  */
 export const COMPETITIONS_PREFER_IN_CAP_MS = 12_000;
+
+/**
+ * 外部卡分類膠囊的顏色 class：只認 league／cup／friendly，各給一個字母（與 list-v2.css 的 --d2-cat-l／c／f 對應）；
+ * 其他類型不加顏色 class，外部字串不進 class。
+ */
+const EXTERNAL_CHIP = { league: 'l', cup: 'c', friendly: 'f' } as const;
+export function externalChipClass(type: unknown): string {
+  return type === 'league' || type === 'cup' || type === 'friendly' ? `cpl-xcard__chip cpl-xcard__chip--${EXTERNAL_CHIP[type]}` : 'cpl-xcard__chip';
+}
 
 interface InAppSlotProps {
   tab: TournamentCardTab;
@@ -370,13 +379,10 @@ export default function TournamentsPage(): JSX.Element {
   // 沒有切換時（功能開關關閉、閘門沒過、?src=ext 判定中）標題「賽事」看得見，其餘版面與有切換時相同。
   const extTinted = showSourceTabs && source === 'ext';
   const editIcon = (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
     </svg>
-  );
-  const leaveIcon = (
-    <svg class="cpl-xrow__go" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 17L17 7M9 7h8v8" /></svg>
   );
 
   return (
@@ -459,9 +465,9 @@ export default function TournamentsPage(): JSX.Element {
             </div>
           ) : null}
           {showInApp || pendingIn ? null : (
-          <div class="cpl-xlist">
-            {/* 「＋ 新增賽事」在外部清單框內篩選列最右邊，與站內「建立賽事」同一個位置，切換分頁不跳動
-                （站長 11-20：取代原本放在分類分頁列、與「建立賽事」同時出現兩顆新增鈕）。 */}
+          <>
+            {/* 外部清單改回 11-21 新外觀前的大卡片（站長 11-22，取代 cpl-xlist 淡底框＋cpl-xrow 橫列小縮圖）。
+                篩選列與「＋ 新增賽事」維持新外觀的 cpl-bar：與站內「建立賽事」同一個位置，切換分頁不跳動（站長 11-20）。 */}
             <div class="cpl-bar">
               <label class="cpl-sw">
                 <span>{t('tournaments.showEnded')}</span>
@@ -481,11 +487,13 @@ export default function TournamentsPage(): JSX.Element {
             </div>
 
             {state === 'loading' && cards.length === 0 ? (
-              <div class="cpl-xskel" aria-busy="true">
-                <div class="reg-loading cpl-vh" role="status">{t('tournaments.loading')}</div>
-                <div class="cpl-xskel__row" aria-hidden="true" />
-                <div class="cpl-xskel__row" aria-hidden="true" />
-                <div class="cpl-xskel__row" aria-hidden="true" />
+              <div aria-busy="true">
+                <div class="reg-loading" role="status" style="white-space:nowrap">{t('tournaments.loading')}</div>
+                <div class="reg-loading-skeleton" aria-hidden="true">
+                  <div class="reg-loading-skeleton-row" />
+                  <div class="reg-loading-skeleton-row" />
+                  <div class="reg-loading-skeleton-row" />
+                </div>
               </div>
             ) : null}
             {state === 'error' ? (
@@ -502,32 +510,28 @@ export default function TournamentsPage(): JSX.Element {
 
             {visible.map((card) => {
               const ended = isTournamentCardEnded(card, todayKey);
-              // 分類只放文字；card.type 不進任何 class（外部資料，不認得的字串也不會變成 class）。
-              const catLabel = t(`tournaments.tab.${card.type}`);
               return (
-                <div key={card.id} class={`cpl-xrow${ended ? ' ended' : ''}${canManage ? ' cpl-xrow--edit' : ''}`} data-card-id={card.id}>
+                <div key={card.id} class={`cpl-xcard${ended ? ' ended' : ''}`} data-card-id={card.id}>
                   <a
-                    class="cpl-xrow__link"
+                    class="cpl-xcard__link"
                     href={card.url}
                     onClick={(event) => handleCardClick(event, card.url)}
                   >
-                    {/* 沒有照片時放同尺寸的預設縮圖（分類名第一個字），每列名稱左緣對齊（顧問 §3.494 補記） */}
                     {card.image
-                      ? <img class="cpl-xrow__img" src={card.image} alt="" loading="lazy" />
-                      : <div class="cpl-xrow__img cpl-xrow__ph" aria-hidden="true">{Array.from(catLabel)[0] ?? ''}</div>}
-                    <div class="cpl-xrow__body">
-                      <div class="cpl-xrow__name">{card.name}{canManage ? leaveIcon : null}</div>
-                      <div class="cpl-xrow__meta">
-                        <span class="cpl-xrow__cat">{catLabel}</span>
-                        <span class="cpl-xrow__date">{formatCardDates(card)}</span>
+                      ? <img class="cpl-xcard__img" src={card.image} alt="" loading="lazy" />
+                      : <div class="cpl-xcard__img" aria-hidden="true" />}
+                    <div class="cpl-xcard__body">
+                      <div class="cpl-xcard__text">
+                        <div class="cpl-xcard__name">{card.name}</div>
+                        <div class="cpl-xcard__date">{formatCardDates(card)}</div>
                       </div>
+                      <span class={externalChipClass(card.type)}>{t(`tournaments.tab.${card.type}`)}</span>
                     </div>
-                    {canManage ? null : leaveIcon}
                   </a>
                   {canManage ? (
                     <button
                       type="button"
-                      class="cps-iconbtn cpl-xrow__edit"
+                      class="cpl-xcard__edit"
                       aria-label={t('tournaments.edit')}
                       onClick={() => openEditor(card)}
                     >
@@ -537,7 +541,7 @@ export default function TournamentsPage(): JSX.Element {
                 </div>
               );
             })}
-          </div>
+          </>
           )}
         </div>
 

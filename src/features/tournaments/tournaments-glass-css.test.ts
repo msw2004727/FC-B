@@ -55,8 +55,8 @@ describe('tournaments-glass.css：賽事頁液態光澤', () => {
   const raw = withoutComments(readFileSync(resolve(process.cwd(), GLASS), 'utf8'));
 
   it('每條規則都限定在賽事頁（#page-tournaments 或外層 .tournaments-root）', () => {
-    // 清-3 之後只剩頁面底色三條與返回鈕三條。
-    expect(rules.length).toBeGreaterThanOrEqual(6);
+    // 清-3 之後只剩頁面底色三條與返回鈕三條；11-22 返回鈕深色那條併進 list-v2.css 色票，剩五條。
+    expect(rules.length).toBeGreaterThanOrEqual(5);
     for (const r of rules) expect(r.selector, r.selector).toMatch(/#page-tournaments|\.legacy-ui\.tournaments-root/);
   });
 
