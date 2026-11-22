@@ -591,6 +591,11 @@ describe('純函式：buildUpdateInput、step1Problem（編輯）、editErrorFie
     const cover = { url: 'https://x/a', thumb: 'https://x/b' };
     expect(buildUpdateInput('cup', before, { ...before, cover })).toEqual({ cid: 'cup', cover });
     expect(buildUpdateInput('cup', { ...before, cover }, { ...before, cover: null })).toEqual({ cid: 'cup', cover: null });
+    // 800×300 card：換上帶 card 的封面送三鍵；同一張含 card 的封面沒變回 null；只差 card 也算變
+    const withCard = { ...cover, card: 'https://x/c' };
+    expect(buildUpdateInput('cup', before, { ...before, cover: withCard })).toEqual({ cid: 'cup', cover: withCard });
+    expect(buildUpdateInput('cup', { ...before, cover: withCard }, { ...before, cover: { ...withCard } })).toBeNull();
+    expect(buildUpdateInput('cup', { ...before, cover }, { ...before, cover: withCard })).toEqual({ cid: 'cup', cover: withCard });
   });
 
   it('個人主辦的組別報名費一律送 0；改分類只送 category', () => {

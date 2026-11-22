@@ -178,7 +178,7 @@ export function makeCoverThumb(coverDataUrl: string, deps: CoverUploadDeps = {})
   });
 }
 
-/** 整張封面（裁切器已是 8:3）等比縮成 800×300 清單卡片圖，不裁切。 */
+/** 整張封面縮成 800×300 清單卡片圖、不裁切（前提：裁切器固定輸出 8:3 的 1200×450，所以是等比）。 */
 export function makeCoverCard(coverDataUrl: string, deps: CoverUploadDeps = {}): Promise<string> {
   return renderCover(coverDataUrl, deps, CARD_WIDTH, CARD_HEIGHT, (w, h) => [0, 0, w, h]);
 }
