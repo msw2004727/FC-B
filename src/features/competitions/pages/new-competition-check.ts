@@ -159,7 +159,7 @@ export function step2Problem(form: CheckForm): FieldProblem | null {
 export function fieldSpot(field: string | undefined): { step: 1 | 2; field: string; id: string } | null {
   if (!field) return null;
   const fixed: Record<string, string> = {
-    // 封面三種 field（cover、cover.url、cover.thumb）呼叫端先收成 cover；聚焦「上傳封面」框或「更換」。
+    // 封面四種 field（cover、cover.url、cover.thumb、cover.card）呼叫端先收成 cover；聚焦「上傳封面」框或「更換」。
     cover: 'cpf-cover',
     name: 'cpf-name',
     hostTeamId: 'cpf-club',

@@ -30,7 +30,7 @@ import { FeeLine } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending, DownIcon, NextIcon } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
 import { CoverField, type CoverShown } from '../ui/cover-field';
-import { shownCover } from '../data/cover';
+import { coverInput, shownCover } from '../data/cover';
 import { toast } from '@/ui/Toast';
 
 const INFO_TOGGLE_ID = 'cp-comp-info-toggle';
@@ -379,11 +379,11 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   /** 封面換新或移除：按下去直接存（同分類）。失敗丟回 CoverField，錯誤畫在封面那一格、畫面維持原本的封面。 */
   async function saveCover(next: CoverShown | null): Promise<void> {
-    await env.actions.update({ cid, cover: next ? { url: next.url, thumb: next.thumb } : null });
+    await env.actions.update({ cid, cover: next ? coverInput(next) : null });
     setCoverLocal(next);
     setBundle((current) => current?.competition ? {
       ...current,
-      competition: { ...current.competition, cover: next ? { url: next.url, thumb: next.thumb } : null },
+      competition: { ...current.competition, cover: next ? coverInput(next) : null },
     } : current);
     toast.show({ message: ct(next ? 'coverSaved' : 'coverRemoved') });
   }

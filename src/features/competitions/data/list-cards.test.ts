@@ -77,7 +77,7 @@ describe('站內卡片純函式', () => {
     ], now)).toBeNull();
   });
 
-  it('封面：卡只帶一個清單用圖（這批一律原圖 url）；下架（含主辦查詢帶進來的）或沒封面都是空字串', () => {
+  it('封面：卡只帶一個清單用圖（有 card 用 card、舊賽事退原圖 url）；下架（含主辦查詢帶進來的）或沒封面都是空字串', () => {
     const cover = { url: 'https://example.test/cover.webp', thumb: 'https://example.test/thumb.webp' };
     const card = 'https://example.test/card.webp';
     const cards = assembleInAppCards({
@@ -94,7 +94,7 @@ describe('站內卡片純函式', () => {
     });
     const by = (cid: string) => cards.find((item) => item.cid === cid);
     expect(by('with')?.cover).toBe(cover.url);
-    expect(by('card')?.cover).toBe(cover.url);
+    expect(by('card')?.cover).toBe(card);
     expect(by('card')).not.toHaveProperty('thumb');
     for (const cid of ['hidden', 'none', 'hosted_hidden', 'named']) expect(by(cid)?.cover).toBe('');
   });

@@ -33,11 +33,16 @@ export function coverOf(raw: unknown): CompetitionCover | null {
 }
 
 /**
- * 清單用圖（每張記分板卡同一張）。顧問 11-22 決議這批一律用原圖 url（800×300 card 等後端部署後再切：改成 cover.card ?? cover.url）。
+ * 清單用圖（每張記分板卡同一張）：有 800×300 card 用 card，舊賽事沒有 card 退回原圖 url（cpHost 自 cphost-00004-fol 起收 card）。
  * 沒封面是空字串。
  */
 export function listImage(cover: CompetitionCover | null | undefined): string {
-  return cover ? cover.url : '';
+  return cover ? cover.card ?? cover.url : '';
+}
+
+/** 送給 cpHost 的 cover 欄：url、thumb，有 card 才帶 card（不送 null，舊資料形狀不變）。 */
+export function coverInput(cover: CompetitionCover): CompetitionCover {
+  return cover.card ? { url: cover.url, thumb: cover.thumb, card: cover.card } : { url: cover.url, thumb: cover.thumb };
 }
 
 /**
