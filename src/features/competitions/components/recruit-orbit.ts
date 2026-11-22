@@ -20,8 +20,8 @@ const FALLBACK_H = 146;
 
 /** 顏色：多分頁提示銅金原樣（顧問 §3.576 選 A；青綠 B 只留在 harness 的 ?fx=b 比較用）。 */
 export const RECRUIT_FX_CSS = `
-.cpl-fx-slot{position:absolute;inset:0;pointer-events:none;z-index:2;overflow:hidden;border-radius:14px;--c1:#f3c876;--c2:#c58a33;--tint:#fde68a}
-.cpl-fx-slot>.orbit{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.cpl-fx-slot{position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;z-index:2;overflow:hidden;border-radius:14px;--c1:#f3c876;--c2:#c58a33;--tint:#fde68a}
+.cpl-fx-slot>.orbit{position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible}
 .cpl-fx-slot>.orbit rect{fill:none;stroke-linecap:round}
 .cpl-fx-slot>.orbit .base{stroke:none}
 .cpl-fx-slot>.orbit .tail{stroke:var(--c1);stroke-width:3;opacity:.4;filter:blur(3px)}
