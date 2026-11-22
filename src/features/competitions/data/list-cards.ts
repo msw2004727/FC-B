@@ -49,8 +49,8 @@ export interface InAppListCard {
   /** 整場延期或取消時，列表膠囊改顯示這個，不再用階段。 */
   statusMark: 'postponed' | 'cancelled' | null;
   /**
-   * 清單用圖（data/cover.ts#listImage：800×300 的 card，舊封面退回原圖）；卡板與一般卡同一張，
-   * 賽事從一般卡變成卡板不會重新下載。沒有封面或下架是空字串，卡片版面照舊。
+   * 清單用圖（data/cover.ts#listImage：這批一律原圖 url，800×300 card 等後端部署後再切）；
+   * 每張記分板卡都用這一張。沒有封面或下架是空字串，卡片版面照舊（純深色板）。
    */
   cover: string;
 }

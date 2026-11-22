@@ -1,6 +1,6 @@
 // 站內賽事卡（新外觀清-4，第 1a 批規格 3.5、3.6、3.9）。站長 11-22（顧問 §3.565）：每一張都是記分板卡
 // （一圈玻璃框包一塊深色記分板，原本只有 pickInAppBoard 挑的那一張），取代「淺色一般卡＋小縮圖」；有封面就在板後
-// 套 B 版斜切淡出。重點句拆成數字格（結構化資料，不解析字串、不多讀）；進行中的當日摘要沒回來前預留那一列的高度。
+// 套直切由右往左淡出（11-22 由斜切改直切）。重點句拆成數字格（結構化資料，不解析字串、不多讀）；進行中的當日摘要沒回來前預留那一列的高度。
 // 篩選列：站內自己的選單（ui/menu-select）＋「只看我的」＋最右邊「建立賽事」（第 2 步既有入口，文案沿用）。
 // 保留 cpl-card、cpl-card--board、ended、data-cid、data-phase（測試在用）；不再輸出 tc-card 一族與 tc-chip。
 
@@ -105,7 +105,7 @@ function InCard({ card, ct, imgRank, lean, onOpen }: {
   const open = (event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => onOpen(card.cid, event);
   // 封面載不到：改畫沒封面的版面（不留空格）。記網址，換新網址再試。
   const [brokenCover, setBrokenCover] = useState<string | null>(null);
-  // 站長 11-21／11-22：板的右半邊放清單用圖（800×300 card，舊封面退回原圖），斜切、由右往左淡進板底
+  // 站長 11-21／11-22：板的右半邊放清單用圖（data/cover.ts#listImage，這批是原圖 url），直切、由右往左淡進板底
   const eager = imgRank >= 0 && imgRank < EAGER_IMAGES;
   const cover = card.cover && card.cover !== brokenCover && (eager || !lean) ? card.cover : '';
   // 寬高寫實際像素（圖是絕對定位、不佔版面，載入前後不跳）；不用 srcset、不做 preload（設計稿第 6 節）。

@@ -99,8 +99,11 @@ export function startRecruitFx(root: HTMLElement): () => void {
   const still = prefersReducedMotion();
   const visible = new Set<HTMLElement>();
   const running = new Map<HTMLElement, () => void>();
+  let gone = false;
 
   const sync = (): void => {
+    // 整組清理後還可能收到已排隊的舊 IntersectionObserver 回呼：不能再掛回（審查 P2-1）。
+    if (gone) return;
     const want = document.hidden ? [] : slots.filter((slot) => visible.has(slot)).slice(0, MAX_ACTIVE);
     for (const [slot, stop] of running) {
       if (!want.includes(slot)) {
@@ -131,7 +134,6 @@ export function startRecruitFx(root: HTMLElement): () => void {
   }
   document.addEventListener('visibilitychange', sync);
 
-  let gone = false;
   return () => {
     if (gone) return;
     gone = true;

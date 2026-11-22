@@ -6,7 +6,7 @@
 // 進行中、而且此刻畫在畫面上的卡，各讀一次當日摘要片（getSummaryShard，不監聽）。
 // 同 cid 同日的成功結果留在這頁的記憶體；失敗不留，卡片再出現才重讀。
 // 不讀積分榜、隊徽、摘要全集。已結束卡不顯示冠軍。
-// 卡板等畫面上真的在進行中的卡，當日摘要都有結果（讀到、空片、失敗）才判定；只記結果，不多讀。
+// 每張都是記分板卡（站長 11-22）：進行中卡的摘要沒回來前，卡片預留那一列的高度，不等摘要才換版面。
 // ASSUMPTION: 沒有名稱的項目不顯示 id。單筆讀取失敗略過，不讓整區消失。
 // ASSUMPTION: 有名稱的 cpMine 不再讀賽事文件。
 // ASSUMPTION: 同一場賽事公開清單與我的清單都有時，以公開文件為準
@@ -136,7 +136,6 @@ function SectionBody({
   const [status, setStatus] = useState<InAppStatusFilter>('open');
   const [onlyMine, setOnlyMine] = useState(false);
   const [todayByCid, setTodayByCid] = useState<ReadonlyMap<string, TodayMatches>>(() => new Map());
-  // 當日摘要已有結果的 cid（成功、空片、失敗都記）。卡板判定用，不影響讀取時機與次數。
   // null＝閘門還沒通過，不要為了俱樂部主辦去讀。
   const [hostQuery, setHostQuery] = useState<{ publicOnly: boolean } | null>(null);
   // 同 cid 同日只讀一次。失敗的 promise 會從這裡拿掉。不監聽。
