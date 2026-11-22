@@ -43,6 +43,7 @@ const URL1 = 'https://firebasestorage.googleapis.com/v0/b/b1/o/images%2Fcompetit
 const THUMB1 = 'https://firebasestorage.googleapis.com/v0/b/b1/o/images%2Fcompetitions%2Fc_aaaaaaaaaaaaaaaa%2Fthumb_1700000000000.webp?alt=media&token=t';
 const URL2 = URL1.replace(/c_a{16}/, 'c_bbbbbbbbbbbbbbbb');
 const THUMB2 = THUMB1.replace(/c_a{16}/, 'c_bbbbbbbbbbbbbbbb');
+const CARD2 = THUMB2.replace('thumb_', 'card_');
 const COVER = { url: URL1, thumb: THUMB1 };
 const THUMB_SRC = 'data:image/webp;base64,VEhVTUI=';
 
@@ -74,7 +75,7 @@ function draw(env: CpInjectedEnv, Page: ComponentType) {
 }
 
 function okUpload(url = URL2, thumb = THUMB2) {
-  return vi.fn(async (_d: string): Promise<UploadedCover> => ({ url, thumb, thumbSrc: THUMB_SRC }));
+  return vi.fn(async (_d: string): Promise<UploadedCover> => ({ url, thumb, card: CARD2, thumbSrc: THUMB_SRC }));
 }
 
 function fileInput(): HTMLInputElement {
@@ -196,7 +197,7 @@ describe('建賽送出', () => {
     expect(document.querySelector('.d2-hero__cover')?.getAttribute('src')).toBe(CROPPED);
     fireEvent.click(screen.getByRole('button', { name: '建立賽事' }));
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
-    expect(create.mock.calls[0]![0].cover).toEqual({ url: URL2, thumb: THUMB2 });
+    expect(create.mock.calls[0]![0].cover).toEqual({ url: URL2, thumb: THUMB2, card: CARD2 });
   });
 
   it.each([
@@ -294,7 +295,7 @@ describe('建賽取消與封面', () => {
     expect(screen.getByRole('alertdialog').textContent).toContain(ASK);
     fireEvent.click(document.getElementById('app-confirm-ok')!);
     await waitFor(() => expect(location.pathname).toBe('/tournaments'));
-    await act(async () => { finish({ url: URL2, thumb: THUMB2, thumbSrc: THUMB_SRC }); await Promise.resolve(); });
+    await act(async () => { finish({ url: URL2, thumb: THUMB2, card: CARD2, thumbSrc: THUMB_SRC }); await Promise.resolve(); });
     expect(location.pathname).toBe('/tournaments');
     expect(document.getElementById('cpf-cover-error')).toBeNull();
   });
@@ -307,7 +308,7 @@ describe('報隊管理：換封面、移除（按下去直接存）', () => {
     draw({ ...env, coverUpload: okUpload() }, CompetitionManagePage);
     openPanel();
     await pickAndCrop();
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ cid: 'cup', cover: { url: URL2, thumb: THUMB2 } }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ cid: 'cup', cover: { url: URL2, thumb: THUMB2, card: CARD2 } }));
     await screen.findByRole('button', { name: '更換' });
     expect(show).toHaveBeenCalledWith({ message: '已更新封面' });
     expect(document.querySelector('.cpc-pic img')?.getAttribute('src')).toBe(CROPPED);
@@ -373,8 +374,8 @@ describe('報隊管理：換封面、移除（按下去直接存）', () => {
     fireEvent.click(toggle);
     fireEvent.click(done);
     expect(document.querySelector('.cpc')).not.toBeNull();
-    await act(async () => { finish({ url: URL2, thumb: THUMB2, thumbSrc: THUMB_SRC }); });
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ cid: 'cup', cover: { url: URL2, thumb: THUMB2 } }));
+    await act(async () => { finish({ url: URL2, thumb: THUMB2, card: CARD2, thumbSrc: THUMB_SRC }); });
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ cid: 'cup', cover: { url: URL2, thumb: THUMB2, card: CARD2 } }));
     await screen.findByRole('button', { name: '更換' });
     expect(toggle.disabled).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: '完成' }));

@@ -24,9 +24,9 @@ export interface CoverShown extends CompetitionCover {
 
 export type CoverUploader = (dataUrl: string) => Promise<UploadedCover>;
 
-/** 後端 cover 欄的 field：cover、cover.url、cover.thumb。 */
+/** 後端 cover 欄的 field：cover、cover.url、cover.thumb、cover.card。 */
 export function isCoverField(field: unknown): boolean {
-  return field === 'cover' || field === 'cover.url' || field === 'cover.thumb';
+  return field === 'cover' || field === 'cover.url' || field === 'cover.thumb' || field === 'cover.card';
 }
 
 /** 封面相關的錯誤句。UNKNOWN_FIELD＝cpHost 還沒有封面欄（舊後端）；結構錯誤與網址不合格都請重新上傳。 */
@@ -198,7 +198,7 @@ export function CoverField({
       }
       if (!mounted.current || id !== request.current) return;
       try {
-        await onChange({ url: up.url, thumb: up.thumb, src: dataUrl, thumbSrc: up.thumbSrc });
+        await onChange({ url: up.url, thumb: up.thumb, card: up.card, src: dataUrl, thumbSrc: up.thumbSrc });
       } catch (err) {
         const info = errorOf(err);
         if (mounted.current) setLocalError(coverProblemText(ct, info.reason, info.params));

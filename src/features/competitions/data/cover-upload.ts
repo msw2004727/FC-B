@@ -1,10 +1,11 @@
 // 賽事封面上傳（計畫書「賽事封面圖」做法甲、第 1 題與第 3 題）。只由 ui/cover-field.tsx 在選圖後動態載入，不進首頁入口。
 //
 // 流程：ImageCropper 已裁成 8:3、1200×450（WebP 0.72，不支援 WebP 的舊 WebView 退 JPEG）→ 這裡取正中央 4:3
-// 縮成 224×168 清單縮圖（WebP 0.72，退 JPEG 0.8，同 core/image-compress.ts 的參數）→ 兩張傳到同一個
-// images/competitions/c_{16 碼}/ 資料夾 → 拿兩個下載網址，交給 cpHost 驗證後寫入。
+// 縮成 224×168 縮圖、整張等比縮成 800×300 清單卡片圖（都是 WebP 0.72，退 JPEG 0.8，同 core/image-compress.ts
+// 的參數）→ 三張傳到同一個 images/competitions/c_{16 碼}/ 資料夾 → 拿三個下載網址，交給 cpHost 驗證後寫入
+// （card 是顧問設計稿「賽事封面-卡片縮圖與載入策略」§5.1；cpHost 自 cphost-00004-fol 起收 card）。
 // - 資料夾鍵前端亂數產生：不放 cid（建立前還沒有）、不放 uid（根文件刻意不存建立者，§3.251 (c)）。
-// - 路徑格式與後端 functions-cp validate.ts#coverOf 的 COVER_PATH_RE 相同，兩張必須同一個資料夾。
+// - 路徑格式與後端 functions-cp validate.ts#coverOf 的 COVER_PATH_RE 相同，三張必須同一個資料夾。
 // - 每張都要 < 2MB（Storage 規則 images/** 的上限，另要求 image/*）；格式只會是 webp 或 jpg（後端只收這兩種）。
 // - 上傳方式沿用活動封面與外部賽事卡：getStorageUploadTargets 依序試上傳 bucket、預設 bucket，一年快取。
 // - 第一階段不刪舊圖（用戶端規則刪不掉）：換圖、建立失敗、放棄表單都會留下孤兒物件（計畫書第 5 題）。
@@ -15,6 +16,8 @@ export const COVER_WIDTH = 1200;
 export const COVER_HEIGHT = 450;
 export const THUMB_WIDTH = 224;
 export const THUMB_HEIGHT = 168;
+export const CARD_WIDTH = 800;
+export const CARD_HEIGHT = 300;
 export const COVER_QUALITY = 0.72;
 export const COVER_JPEG_QUALITY = 0.8;
 /** Storage 規則 images/**：request.resource.size < 2MB。 */
@@ -22,7 +25,7 @@ export const COVER_MAX_BYTES = 2 * 1024 * 1024;
 
 const FOLDER_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 export const COVER_FOLDER_RE = /^c_[a-z0-9]{16}$/;
-export const COVER_PATH_RE = /^images\/competitions\/(c_[a-z0-9]{16})\/(cover|thumb)_[0-9]{13}\.(webp|jpg)$/;
+export const COVER_PATH_RE = /^images\/competitions\/(c_[a-z0-9]{16})\/(cover|thumb|card)_[0-9]{13}\.(webp|jpg)$/;
 
 export type CoverUploadErrorCode = 'format' | 'too-large' | 'image' | 'upload' | 'timeout';
 
@@ -39,6 +42,8 @@ export class CoverUploadError extends Error {
 export interface UploadedCover extends CompetitionCover {
   /** 本機縮圖（data URL），上傳後立刻顯示，不必再下載一次。 */
   thumbSrc: string;
+  /** 800×300 清單卡片圖的下載網址（新上傳一律有）。 */
+  card: string;
 }
 
 /** 把一張 data URL 傳到某個物件路徑，回下載網址；失敗丟錯。 */
@@ -75,7 +80,7 @@ export interface CoverUploadDeps {
 }
 
 /**
- * 整次上傳（縮圖＋兩張＋換 bucket）最多等 60 秒，超過丟 CoverUploadError('timeout')，封面欄可重選。
+ * 整次上傳（縮圖＋三張＋換 bucket）最多等 60 秒，超過丟 CoverUploadError('timeout')，封面欄可重選。
  * 不用 SDK 的 maxUploadRetryTime：它設在 FirebaseStorage instance 上（預設約 10 分鐘），而 getStorage(app, bucket)
  * 對同一個 bucket 回同一個 instance，活動封面、外部賽事卡也共用，改了會影響全站其他上傳。所以在這裡自己計時；
  * 代價是 uploadString 無法取消，逾時後背景那支請求可能稍後才傳完而成為孤兒（第一階段本來就接受孤兒，計畫書第 5 題）。
@@ -110,7 +115,7 @@ export function dataUrlBytes(dataUrl: string): number {
   return Math.floor((body.length * 3) / 4) - pad;
 }
 
-export function coverPath(folder: string, kind: 'cover' | 'thumb', at: number, ext: 'webp' | 'jpg'): string {
+export function coverPath(folder: string, kind: 'cover' | 'thumb' | 'card', at: number, ext: 'webp' | 'jpg'): string {
   return `images/competitions/${folder}/${kind}_${at}.${ext}`;
 }
 
@@ -127,8 +132,14 @@ function defaultCreateCanvas(): CoverCanvasLike {
   return document.createElement('canvas') as unknown as CoverCanvasLike;
 }
 
-/** 封面正中央 4:3 那一塊縮成 224×168；WebP 0.72，環境不支援 WebP 時退 JPEG 0.8。 */
-export async function makeCoverThumb(coverDataUrl: string, deps: CoverUploadDeps = {}): Promise<string> {
+/** 把封面的一塊（pick 依原圖寬高回 [sx, sy, sw, sh]）畫成 W×H；WebP 0.72，環境不支援 WebP 時退 JPEG 0.8。 */
+async function renderCover(
+  coverDataUrl: string,
+  deps: CoverUploadDeps,
+  outW: number,
+  outH: number,
+  pick: (w: number, h: number) => [number, number, number, number],
+): Promise<string> {
   let image: CoverImageLike;
   try {
     image = await (deps.loadImage ?? defaultLoadImage)(coverDataUrl);
@@ -138,18 +149,16 @@ export async function makeCoverThumb(coverDataUrl: string, deps: CoverUploadDeps
   const w = image.naturalWidth || image.width;
   const h = image.naturalHeight || image.height;
   if (!(w > 0 && h > 0)) throw new CoverUploadError('image', 'cover size invalid');
-  // 取正中央、比例 4:3 的最大區塊（橫圖切左右、直圖切上下）。
-  const sw = Math.min(w, (h * 4) / 3);
-  const sh = (sw * 3) / 4;
+  const [sx, sy, sw, sh] = pick(w, h);
   const canvas = (deps.createCanvas ?? defaultCreateCanvas)();
   try {
-    canvas.width = THUMB_WIDTH;
-    canvas.height = THUMB_HEIGHT;
+    canvas.width = outW;
+    canvas.height = outH;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new CoverUploadError('image', 'canvas 2d unavailable');
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(image as never, (w - sw) / 2, (h - sh) / 2, sw, sh, 0, 0, THUMB_WIDTH, THUMB_HEIGHT);
+    ctx.drawImage(image as never, sx, sy, sw, sh, 0, 0, outW, outH);
     const webp = canvas.toDataURL('image/webp', COVER_QUALITY);
     return coverExt(webp) === 'webp' ? webp : canvas.toDataURL('image/jpeg', COVER_JPEG_QUALITY);
   } finally {
@@ -157,6 +166,21 @@ export async function makeCoverThumb(coverDataUrl: string, deps: CoverUploadDeps
     canvas.width = 0;
     canvas.height = 0;
   }
+}
+
+/** 封面正中央 4:3 那一塊縮成 224×168。 */
+export function makeCoverThumb(coverDataUrl: string, deps: CoverUploadDeps = {}): Promise<string> {
+  return renderCover(coverDataUrl, deps, THUMB_WIDTH, THUMB_HEIGHT, (w, h) => {
+    // 取正中央、比例 4:3 的最大區塊（橫圖切左右、直圖切上下）。
+    const sw = Math.min(w, (h * 4) / 3);
+    const sh = (sw * 3) / 4;
+    return [(w - sw) / 2, (h - sh) / 2, sw, sh];
+  });
+}
+
+/** 整張封面縮成 800×300 清單卡片圖、不裁切（前提：裁切器固定輸出 8:3 的 1200×450，所以是等比）。 */
+export function makeCoverCard(coverDataUrl: string, deps: CoverUploadDeps = {}): Promise<string> {
+  return renderCover(coverDataUrl, deps, CARD_WIDTH, CARD_HEIGHT, (w, h) => [0, 0, w, h]);
 }
 
 async function defaultTargets(): Promise<CoverPut[]> {
@@ -182,7 +206,7 @@ function checkedExt(dataUrl: string): 'webp' | 'jpg' {
 }
 
 /**
- * 裁好的封面 → 產生縮圖 → 兩張傳到同一個資料夾、同一個 bucket。第一個 bucket 有任一張失敗就整組改試下一個；
+ * 裁好的封面 → 產生縮圖與卡片圖 → 三張傳到同一個資料夾、同一個 bucket。第一個 bucket 有任一張失敗就整組改試下一個；
  * 全部失敗丟 CoverUploadError('upload')；整次超過 COVER_UPLOAD_TIMEOUT_MS 丟 CoverUploadError('timeout')。
  * 已傳上去的那張成為孤兒（第一階段不刪）。
  */
@@ -197,13 +221,13 @@ export async function uploadCompetitionCover(coverDataUrl: string, deps: CoverUp
     }, deps.timeoutMs ?? COVER_UPLOAD_TIMEOUT_MS);
   });
   try {
-    return await Promise.race([uploadBoth(coverDataUrl, coverType, deps, () => expired), deadline]);
+    return await Promise.race([uploadAll(coverDataUrl, coverType, deps, () => expired), deadline]);
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function uploadBoth(
+async function uploadAll(
   coverDataUrl: string,
   coverType: 'webp' | 'jpg',
   deps: CoverUploadDeps,
@@ -211,10 +235,13 @@ async function uploadBoth(
 ): Promise<UploadedCover> {
   const thumbSrc = await makeCoverThumb(coverDataUrl, deps);
   const thumbType = checkedExt(thumbSrc);
+  const cardSrc = await makeCoverCard(coverDataUrl, deps);
+  const cardType = checkedExt(cardSrc);
   const folder = newCoverFolder(deps.randomBytes);
   const at = (deps.now ?? Date.now)();
   const coverAt = coverPath(folder, 'cover', at, coverType);
   const thumbAt = coverPath(folder, 'thumb', at, thumbType);
+  const cardAt = coverPath(folder, 'card', at, cardType);
   let targets: CoverPut[];
   try {
     targets = await (deps.targets ?? defaultTargets)();
@@ -228,7 +255,9 @@ async function uploadBoth(
       const url = await put(coverDataUrl, coverAt);
       if (expired()) break;
       const thumb = await put(thumbSrc, thumbAt);
-      return { url, thumb, thumbSrc };
+      if (expired()) break;
+      const card = await put(cardSrc, cardAt);
+      return { url, thumb, card, thumbSrc };
     } catch {
       // 同活動封面：這個 bucket 失敗就試下一個。
     }

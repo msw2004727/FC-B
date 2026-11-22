@@ -129,7 +129,7 @@ interface CpHostCommon {
   /** 公開聯絡文字。空白不送，伺服器寫 null。 */
   contactNote?: string;
   /**
-   * 封面圖兩個下載網址。沒選封面時不帶這個鍵（不是帶 null）：尚未支援封面的舊 cpHost 收到 cover 鍵會整筆回
+   * 封面圖下載網址（url、thumb，card 選填）。沒選封面時不帶這個鍵（不是帶 null）：尚未支援封面的舊 cpHost 收到 cover 鍵會整筆回
    * UNKNOWN_FIELD，前端比後端先上時一般建賽才不會失敗。
    */
   cover?: CompetitionCover;

@@ -72,7 +72,7 @@ export interface DivisionInput {
 export interface CompetitionCover {
   url: string;
   thumb: string;
-  /** 清單卡用的 800×300（顧問設計稿「卡片縮圖與載入策略」第 5 節）；選填、讀取端先認，上傳與清單取圖等後端部署後再接。 */
+  /** 清單卡用的 800×300（顧問設計稿「卡片縮圖與載入策略」第 5 節）；選填，新上傳一律有，舊賽事沒有。 */
   card?: string;
 }
 

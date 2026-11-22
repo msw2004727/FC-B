@@ -337,7 +337,7 @@ function WizardView({ env, edit }: { env: CpInjectedEnv; edit?: EditSource }): J
   const inFlight = useRef(false);
   const waitStage = useWaitStage(busy);
   const [mapIndex, setMapIndex] = useState<number | null>(null);
-  // 封面上傳中：第 1 步「下一步」先擋（建立時一定要有兩個網址或完全不帶）。
+  // 封面上傳中：第 1 步「下一步」先擋（建立時一定要有完整網址組或完全不帶）。
   const [coverBusy, setCoverBusy] = useState(false);
   const clubs = representativeClubs(env.actor);
   // ASSUMPTION: repClubsPending 省略＝清單已定案。還在讀時空陣列不改回個人，晚到的俱樂部仍要補上。

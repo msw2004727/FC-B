@@ -1,5 +1,5 @@
 // 賽事封面上傳：資料夾鍵、路徑格式（與後端 functions-cp validate.ts#coverOf 同一條規則）、縮圖尺寸與格式、
-// 2MB 上限、兩張同資料夾同 bucket、bucket 失敗改試下一個。
+// 2MB 上限、三張（封面、縮圖、800×300 卡片圖）同資料夾同 bucket、bucket 失敗改試下一個。
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   COVER_MAX_BYTES,
@@ -9,6 +9,7 @@ import {
   coverExt,
   coverPath,
   dataUrlBytes,
+  makeCoverCard,
   makeCoverThumb,
   newCoverFolder,
   uploadCompetitionCover,
@@ -17,8 +18,8 @@ import {
   type CoverUploadDeps,
 } from './cover-upload';
 
-/** 後端 functions-cp/src/cp/validate.ts 的 COVER_PATH_RE（cp-cover-backend＠5812ea349）逐字抄來對照。 */
-const BACKEND_COVER_PATH_RE = /^images\/competitions\/(c_[a-z0-9]{16})\/(cover|thumb)_[0-9]{13}\.(?:webp|jpg)$/;
+/** 後端 functions-cp/src/cp/validate.ts 的 COVER_PATH_RE（cp-cover-backend＠0253ed24b，cphost-00004-fol）逐字抄來對照。 */
+const BACKEND_COVER_PATH_RE = /^images\/competitions\/(c_[a-z0-9]{16})\/(cover|thumb|card)_[0-9]{13}\.(?:webp|jpg)$/;
 
 const WEBP = 'data:image/webp;base64,UklGRg==';
 const JPEG = 'data:image/jpeg;base64,/9j/4A==';
@@ -125,28 +126,43 @@ describe('清單縮圖', () => {
     expect(out.types).toEqual(['image/webp@0.72', 'image/jpeg@0.8']);
   });
 
+  it('卡片圖：整張等比縮成 800×300、不裁切，WebP 0.72；不支援 WebP 退 JPEG 0.8', async () => {
+    const out: Drawn = { args: [], size: [0, 0], types: [] };
+    await expect(makeCoverCard(WEBP, deps({}, out))).resolves.toBe(WEBP);
+    expect(out.size).toEqual([800, 300]);
+    expect(out.args).toEqual([0, 0, 1200, 450, 0, 0, 800, 300]);
+    expect(out.types).toEqual(['image/webp@0.72']);
+    const old: Drawn = { args: [], size: [0, 0], types: [] };
+    await expect(makeCoverCard(JPEG, { ...deps({}, old), createCanvas: fakeCanvas(old, false) })).resolves.toBe(JPEG);
+    expect(old.types).toEqual(['image/webp@0.72', 'image/jpeg@0.8']);
+  });
+
   it('讀不到圖丟 image', async () => {
+    await expect(makeCoverCard(WEBP, deps({ loadImage: async () => { throw new Error('x'); } }))).rejects.toMatchObject({ code: 'image' });
     await expect(makeCoverThumb(WEBP, deps({ loadImage: async () => { throw new Error('x'); } }))).rejects.toMatchObject({ code: 'image' });
   });
 });
 
 describe('uploadCompetitionCover', () => {
-  it('兩張傳到同一個資料夾、同一個 bucket、同一個毫秒，網址照後端要的格式回傳', async () => {
+  it('三張傳到同一個資料夾、同一個 bucket、同一個毫秒，網址照後端要的格式回傳', async () => {
     const puts: string[] = [];
     const put: CoverPut = async (_data, path) => { puts.push(path); return storageUrl(path); };
     const randomBytes = countingBytes();
     const result = await uploadCompetitionCover(WEBP, deps({ targets: async () => [put], randomBytes }));
-    expect(puts).toHaveLength(2);
-    // 資料夾只產生一次（newCoverFolder 每次呼叫 randomBytes(16) 一次），兩張共用
+    expect(puts).toHaveLength(3);
+    // 資料夾只產生一次（newCoverFolder 每次呼叫 randomBytes(16) 一次），三張共用
     expect(randomBytes).toHaveBeenCalledTimes(1);
     expect(randomBytes).toHaveBeenCalledWith(16);
-    const [cover, thumb] = puts.map((p) => BACKEND_COVER_PATH_RE.exec(p));
+    const [cover, thumb, card] = puts.map((p) => BACKEND_COVER_PATH_RE.exec(p));
     expect(cover?.[2]).toBe('cover');
     expect(thumb?.[2]).toBe('thumb');
+    expect(card?.[2]).toBe('card');
     expect(cover?.[1]).toBe(thumb?.[1]);
+    expect(card?.[1]).toBe(cover?.[1]);
     expect(puts[0]).toBe(`images/competitions/${cover?.[1]}/cover_1700000000123.webp`);
     expect(puts[1]).toBe(`images/competitions/${cover?.[1]}/thumb_1700000000123.webp`);
-    expect(result).toEqual({ url: storageUrl(puts[0]!), thumb: storageUrl(puts[1]!), thumbSrc: WEBP });
+    expect(puts[2]).toBe(`images/competitions/${cover?.[1]}/card_1700000000123.webp`);
+    expect(result).toEqual({ url: storageUrl(puts[0]!), thumb: storageUrl(puts[1]!), card: storageUrl(puts[2]!), thumbSrc: WEBP });
   });
 
   it('JPEG 封面（舊 WebView）路徑副檔名是 .jpg', async () => {
@@ -154,7 +170,7 @@ describe('uploadCompetitionCover', () => {
     const out: Drawn = { args: [], size: [0, 0], types: [] };
     const put: CoverPut = async (_data, path) => { puts.push(path); return storageUrl(path); };
     await uploadCompetitionCover(JPEG, { ...deps({ targets: async () => [put] }), createCanvas: fakeCanvas(out, false) });
-    expect(puts.map((p) => p.split('.').pop())).toEqual(['jpg', 'jpg']);
+    expect(puts.map((p) => p.split('.').pop())).toEqual(['jpg', 'jpg', 'jpg']);
     for (const p of puts) expect(p).toMatch(BACKEND_COVER_PATH_RE);
   });
 
@@ -167,10 +183,25 @@ describe('uploadCompetitionCover', () => {
     const justUnder = `data:image/webp;base64,${'A'.repeat(Math.floor(((COVER_MAX_BYTES - 1) * 4) / 3))}`;
     expect(dataUrlBytes(justUnder)).toBeLessThan(COVER_MAX_BYTES);
     await expect(uploadCompetitionCover(justUnder, deps({ targets: async () => [put] }))).resolves.toMatchObject({ url: 'x' });
-    expect(put).toHaveBeenCalledTimes(2);
+    expect(put).toHaveBeenCalledTimes(3);
   });
 
-  it('第一個 bucket 任一張失敗，整組改傳第二個 bucket（兩張仍同資料夾）', async () => {
+  it('第一個 bucket 卡片圖失敗，整組改傳第二個 bucket（三張仍同資料夾）', async () => {
+    const first: string[] = [];
+    const second: string[] = [];
+    const a: CoverPut = async (_d, path) => {
+      first.push(path);
+      if (path.includes('/card_')) throw new Error('quota');
+      return storageUrl(path, 'a');
+    };
+    const b: CoverPut = async (_d, path) => { second.push(path); return storageUrl(path, 'b'); };
+    const result = await uploadCompetitionCover(WEBP, deps({ targets: async () => [a, b] }));
+    expect(first).toHaveLength(3);
+    expect(second).toEqual(first);
+    expect([result.url, result.thumb, result.card].every((u) => u.includes('/v0/b/b/'))).toBe(true);
+  });
+
+  it('第一個 bucket 縮圖失敗，整組改傳第二個 bucket', async () => {
     const first: string[] = [];
     const second: string[] = [];
     const a: CoverPut = async (_d, path) => {
@@ -181,7 +212,8 @@ describe('uploadCompetitionCover', () => {
     const b: CoverPut = async (_d, path) => { second.push(path); return storageUrl(path, 'b'); };
     const result = await uploadCompetitionCover(WEBP, deps({ targets: async () => [a, b] }));
     expect(first).toHaveLength(2);
-    expect(second).toEqual(first);
+    expect(second).toHaveLength(3);
+    expect(second.slice(0, 2)).toEqual(first);
     expect(result.url).toContain('/v0/b/b/');
     expect(result.thumb).toContain('/v0/b/b/');
   });
@@ -229,6 +261,24 @@ describe('上傳逾時（不改全站共用的 SDK maxUploadRetryTime，自己�
     await vi.advanceTimersByTimeAsync(0);
     expect(paths).toHaveLength(1);
     expect(paths[0]).toContain('/cover_');
+  });
+
+  it('縮圖那張逾時後才傳完：不再傳卡片圖', async () => {
+    vi.useFakeTimers();
+    let finish: (url: string) => void = () => {};
+    const paths: string[] = [];
+    const slow: CoverPut = (_d, path) => {
+      paths.push(path);
+      if (path.includes('/cover_')) return Promise.resolve(storageUrl(path));
+      return new Promise<string>((resolve) => { finish = resolve; });
+    };
+    const result = uploadCompetitionCover(WEBP, deps({ targets: async () => [slow], timeoutMs: 1000 })).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await result).toMatchObject({ code: 'timeout' });
+    finish('late');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(paths).toHaveLength(2);
+    expect(paths[1]).toContain('/thumb_');
   });
 
   it('時間內完成：正常回傳，計時器清掉', async () => {

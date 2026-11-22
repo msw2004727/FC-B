@@ -122,7 +122,7 @@ export interface CpInjectedEnv {
   wizardSeed?: WizardSeed;
   /** 接受邀請頁與檢舉的登入。省略時用站內既有的 signIn（LINE 登入，回跳到目前網址）。 */
   signIn?: () => Promise<void>;
-  /** 封面上傳（裁好的 data URL → 兩個下載網址）。省略時動態載入 data/cover-upload.ts 傳到 Storage；測試與 harness 換假的。 */
+  /** 封面上傳（裁好的 data URL → 原圖、縮圖、卡片圖三個下載網址）。省略時動態載入 data/cover-upload.ts 傳到 Storage；測試與 harness 換假的。 */
   coverUpload?: (dataUrl: string) => Promise<UploadedCover>;
   /** 站內清單本機快照（data/list-snapshot.ts）。省略＝注入環境不讀不寫快照；正式頁一律開。 */
   listSnapshot?: CpListSnapshotPorts;

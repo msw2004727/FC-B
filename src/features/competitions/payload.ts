@@ -1,6 +1,7 @@
 // 送出欄位只含契約列出的鍵。多送一鍵伺服器回 UNKNOWN_FIELD。
 // undefined 的選填欄不放進物件（呼叫端的 payload() 也會略過，這裡先不產生）。
 
+import { coverInput } from './data/cover';
 import { fromDatetimeLocalValue } from './format';
 import type {
   CpAddRosterByRepInput,
@@ -108,7 +109,7 @@ export function buildCreateInput(draft: WizardDraft): CpHostCreateInput {
     divisions: draft.divisions.map(divisionOf),
     category: draft.category,
     ...(contactNote ? { contactNote } : {}),
-    ...(draft.cover ? { cover: { url: draft.cover.url, thumb: draft.cover.thumb } } : {}),
+    ...(draft.cover ? { cover: coverInput(draft.cover) } : {}),
   };
   if (draft.hostType === 'club') {
     const feeNote = draft.feeNote.trim();
@@ -144,7 +145,7 @@ function divisionRow(draft: DivisionDraft, club: boolean): DivisionInput {
   return { ...(draft.dvId ? { dvId: draft.dvId } : {}), ...divisionOf(draft), ...(club ? {} : { feePerTeam: 0 }) };
 }
 
-const coverKey = (cover: CompetitionCover | null): string => (cover ? `${cover.url} ${cover.thumb}` : '');
+const coverKey = (cover: CompetitionCover | null): string => (cover ? `${cover.url} ${cover.thumb} ${cover.card ?? ''}` : '');
 
 /**
  * 編輯賽事只送有變的鍵（後端 updateCompetition 的 UPDATE_KEYS）；完全沒變回 null，不打後端。
@@ -179,7 +180,7 @@ export function buildUpdateInput(cid: string, before: EditDraft, after: EditDraf
   const divisions = after.divisions.map((row) => divisionRow(row, club));
   if (JSON.stringify(divisions) !== JSON.stringify(before.divisions.map((row) => divisionRow(row, club)))) out.divisions = divisions;
   if (coverKey(after.cover) !== coverKey(before.cover)) {
-    out.cover = after.cover ? { url: after.cover.url, thumb: after.cover.thumb } : null;
+    out.cover = after.cover ? coverInput(after.cover) : null;
   }
   return Object.keys(out).length > 1 ? out : null;
 }

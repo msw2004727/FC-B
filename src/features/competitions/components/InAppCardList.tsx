@@ -105,7 +105,7 @@ function InCard({ card, ct, imgRank, lean, onOpen }: {
   const open = (event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => onOpen(card.cid, event);
   // 封面載不到：改畫沒封面的版面（不留空格）。記網址，換新網址再試。
   const [brokenCover, setBrokenCover] = useState<string | null>(null);
-  // 站長 11-21／11-22：板的右半邊放清單用圖（data/cover.ts#listImage，這批是原圖 url），直切、由右往左淡進板底
+  // 站長 11-21／11-22：板的右半邊放清單用圖（data/cover.ts#listImage：card，舊賽事退原圖），直切、由右往左淡進板底
   const eager = imgRank >= 0 && imgRank < EAGER_IMAGES;
   const cover = card.cover && card.cover !== brokenCover && (eager || !lean) ? card.cover : '';
   // 寬高寫實際像素（圖是絕對定位、不佔版面，載入前後不跳）；不用 srcset、不做 preload（設計稿第 6 節）。

@@ -1,6 +1,6 @@
 // 賽事封面讀取端：根文件 cover 欄的解析、下架時畫不畫、清單只在有封面時帶縮圖。
 import { describe, expect, it } from 'vitest';
-import { coverOf, listImage, shownCover } from './cover';
+import { coverInput, coverOf, listImage, shownCover } from './cover';
 import { competitionFromDoc } from './cp-repo';
 import { assembleInAppCards } from './list-cards';
 import { competition, NOW } from '../testing/screen-fixtures';
@@ -20,11 +20,18 @@ describe('card（800×300 清單卡圖，選填）', () => {
     expect(coverOf({ url: URL1, card: CARD1 })).toBeNull();
   });
 
-  it('listImage：這批一律用原圖 url（有 card 也不用，後端部署後再切）；沒有封面是空字串', () => {
-    expect(listImage({ ...COVER, card: CARD1 })).toBe(URL1);
+  it('listImage：有 card 用 card，舊賽事沒有 card 退原圖 url；沒有封面是空字串', () => {
+    expect(listImage({ ...COVER, card: CARD1 })).toBe(CARD1);
     expect(listImage(COVER)).toBe(URL1);
     expect(listImage(null)).toBe('');
     expect(listImage(undefined)).toBe('');
+  });
+
+  it('coverInput：有 card 送三鍵，沒有 card 只送 url、thumb（不送 card: null／undefined 鍵）', () => {
+    expect(coverInput({ ...COVER, card: CARD1 })).toEqual({ url: URL1, thumb: THUMB1, card: CARD1 });
+    expect(Object.keys(coverInput(COVER))).toEqual(['url', 'thumb']);
+    // 本機預覽欄位（src、thumbSrc）不送
+    expect(coverInput({ ...COVER, card: CARD1, src: 'data:x', thumbSrc: 'data:y' } as never)).toEqual({ url: URL1, thumb: THUMB1, card: CARD1 });
   });
 
 });
@@ -82,7 +89,7 @@ describe('shownCover：下架時主辦看不到、管理員照畫', () => {
 });
 
 describe('清單卡縮圖', () => {
-  it('清單用圖：一律原圖 url；沒封面、下架是空字串', () => {
+  it('清單用圖：有 card 用 card、舊賽事退原圖 url；沒封面、下架是空字串', () => {
     const cards = assembleInAppCards({
       publicDocs: [
         competition({ id: 'with', name: '有封面', cover: COVER }),
@@ -95,7 +102,7 @@ describe('清單卡縮圖', () => {
     });
     const img = (cid: string) => cards.find((card) => card.cid === cid)?.cover;
     expect(img('with')).toBe(URL1);
-    expect(img('card')).toBe(URL1);
+    expect(img('card')).toBe(CARD1);
     expect(img('none')).toBe('');
     expect(img('hidden')).toBe('');
     expect(img('named')).toBe('');
