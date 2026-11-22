@@ -64,12 +64,13 @@ export const COMPETITIONS_GATE_TIMEOUT_MS = 2_000;
 export const COMPETITIONS_PREFER_IN_CAP_MS = 12_000;
 
 /**
- * 外部卡分類膠囊的顏色 class：只認 league／cup／friendly，各給一個字母（與 list-v2.css 的 --d2-cat-l／c／f 對應）；
- * 其他類型不加顏色 class，外部字串不進 class。
+ * 外部卡分類膠囊的 class（照 0.20261121a）：閘門通過（有站內／外部切換）時聯賽、盃賽、友誼賽各上分類色，
+ * 各給一個字母（list-v2.css 對應 category-tokens.css 的 --cat-*）；閘門沒過時一律主色膠囊。外部字串不進 class。
  */
 const EXTERNAL_CHIP = { league: 'l', cup: 'c', friendly: 'f' } as const;
-export function externalChipClass(type: unknown): string {
-  return type === 'league' || type === 'cup' || type === 'friendly' ? `cpl-xcard__chip cpl-xcard__chip--${EXTERNAL_CHIP[type]}` : 'cpl-xcard__chip';
+export function externalChipClass(type: unknown, themed: boolean): string {
+  if (!themed || (type !== 'league' && type !== 'cup' && type !== 'friendly')) return 'cpl-xcard__chip';
+  return `cpl-xcard__chip cpl-xcard__chip--${EXTERNAL_CHIP[type]}`;
 }
 
 interface InAppSlotProps {
@@ -465,11 +466,17 @@ export default function TournamentsPage(): JSX.Element {
             </div>
           ) : null}
           {showInApp || pendingIn ? null : (
-          <>
-            {/* 外部清單改回 11-21 新外觀前的大卡片（站長 11-22，取代 cpl-xlist 淡底框＋cpl-xrow 橫列小縮圖）。
-                篩選列與「＋ 新增賽事」維持新外觀的 cpl-bar：與站內「建立賽事」同一個位置，切換分頁不跳動（站長 11-20）。 */}
-            <div class="cpl-bar">
-              <label class="cpl-sw">
+          <div class="cpl-xpanel">
+            {/* 外部清單的外觀照 0.20261121a（8bbf5cea，11-21 01:00 正式站）：玻璃面板、「＋ 新增賽事」一列靠右、
+                「顯示已結束」一列靠右、大卡片（站長 11-22，取代 cpl-xlist 淡底框＋cpl-xrow 橫列小縮圖）。
+                class 改名 cpl-x*，不與俱樂部卡 .tc-card 撞名；「＋ 新增賽事」只在外部分頁（站長 11-20）。 */}
+            {canManage ? (
+              <div class="cpl-xcreate">
+                <Button variant="primary" size="sm" id="tc-add-btn" onClick={() => openEditor(null)}>{t('tournaments.add')}</Button>
+              </div>
+            ) : null}
+            <div class="cpl-xtool">
+              <label>
                 <span>{t('tournaments.showEnded')}</span>
                 <span class="toggle-switch">
                   <input
@@ -481,9 +488,6 @@ export default function TournamentsPage(): JSX.Element {
                   <span class="toggle-slider" />
                 </span>
               </label>
-              {canManage ? (
-                <Button variant="primary" size="sm" id="tc-add-btn" onClick={() => openEditor(null)}>{t('tournaments.add')}</Button>
-              ) : null}
             </div>
 
             {state === 'loading' && cards.length === 0 ? (
@@ -497,15 +501,15 @@ export default function TournamentsPage(): JSX.Element {
               </div>
             ) : null}
             {state === 'error' ? (
-              <div class="cpl-xmsg" role="alert">
+              <div class="cpl-xstatus" role="alert">
                 <p>{t('tournaments.loadError')}</p>
-                <Button variant="secondary" size="sm" onClick={() => void load()}>
+                <button type="button" class="outline-btn" onClick={() => void load()}>
                   {t('tournaments.retry')}
-                </Button>
+                </button>
               </div>
             ) : null}
             {state === 'ready' && visible.length === 0 ? (
-              <p class="cpl-xmsg">{t('tournaments.empty')}</p>
+              <p class="cpl-xstatus">{t('tournaments.empty')}</p>
             ) : null}
 
             {visible.map((card) => {
@@ -525,7 +529,7 @@ export default function TournamentsPage(): JSX.Element {
                         <div class="cpl-xcard__name">{card.name}</div>
                         <div class="cpl-xcard__date">{formatCardDates(card)}</div>
                       </div>
-                      <span class={externalChipClass(card.type)}>{t(`tournaments.tab.${card.type}`)}</span>
+                      <span class={externalChipClass(card.type, inAppOpen)}>{t(`tournaments.tab.${card.type}`)}</span>
                     </div>
                   </a>
                   {canManage ? (
@@ -541,7 +545,7 @@ export default function TournamentsPage(): JSX.Element {
                 </div>
               );
             })}
-          </>
+          </div>
           )}
         </div>
 
