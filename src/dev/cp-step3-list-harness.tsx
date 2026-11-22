@@ -79,6 +79,8 @@ const EXT_FULLBG: TournamentCard[] = [
   ext('tc_f3', '北區社區足球聯賽', 'league', '2026-12-12', '2027-02-27'),
   ext('tc_f4', '週末三對三友誼賽', 'friendly', '2026-12-06', '2026-12-06'),
   ext('tc_f5', '二〇二七年新北市三重區春季社區五人制足球邀請賽', 'cup', '2026-12-27', '2027-01-03'),
+  // 極端長名稱（三行以上）：卡片跟著長高，不省略
+  ext('tc_f8', '二〇二七年新北市三重區春季社區五人制足球邀請賽暨青少年交流友誼賽與親子足球體驗營（第二梯次）', 'league', '2027-04-10', '2027-04-12', busy()),
   ext('tc_f6', '2026 秋季邀請賽', 'cup', '2026-10-09', '2026-10-11', thumb('#2563eb', '#22c55e')),
   ext('tc_f7', '夏季五人制聯賽', 'league', '2026-08-01', '2026-08-30'),
 ];
@@ -213,6 +215,7 @@ const SCREENS: Record<string, Screen> = {
   // 總收尾示範缺口：編輯已有封面圖的外部卡（表單的封面預覽圖）。圖用本機開發伺服器的 /og.png（表單只收 http(s) 網址）。
   // 整張底圖示意：有圖、亮色雜亂封面、沒圖三種分類、長名稱、已結束有圖／沒圖（管理者看得到鉛筆）
   'ext-fullbg': { seed: {}, viewer: 'manager', cards: EXT_FULLBG },
+  'ext-fullbg-guest': { seed: {}, viewer: 'guest', cards: EXT_FULLBG },
   'ext-edit-image': { seed: {}, viewer: 'manager', cards: [ext('tc_img', '2027 全國青年足球公開賽', 'cup', '2027-03-12', '2027-03-14', `${location.origin}/og.png`)] },
   // 沒有切換（閘門沒過；與功能開關關閉、閘門不回應的標記相同，見 TournamentsPage.no-switch-parity.test.tsx）
   'gate-off': { seed: OFF },

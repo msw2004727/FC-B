@@ -157,15 +157,17 @@
 #page-tournaments .cpl-xtool label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .cpl-xstatus { padding: 1rem .5rem; text-align: center; font-size: .85rem; color: var(--text-muted); }
 #page-tournaments .cpl-xstatus .outline-btn { margin-top: .5rem; }
-/* 整張底圖示意（站長 11-22，cp-ext-fullbg，未上線）：封面圖鋪滿整張卡，上面一層由上往下加深的半透明遮罩，
+/* 外部卡整張底圖（站長 11-22，顧問 §3.577）：封面圖鋪滿整張卡，上面一層由上往下加深的半透明遮罩，
  * 名稱、日期、分類膠囊壓在圖的下緣、白字；卡面一律是深色底，淺深主題只差外框與投影。
- * 沒圖：分類色漸層（同站內預設封面的三組色）。已結束：整張灰階、遮罩更深。長名稱可換行，卡片跟著長高。 */
+ * 沒圖：分類色漸層（同站內預設封面的三組色）。已結束：整張灰階、遮罩加深、文字 80%，不另外淡化。
+ * 高度：一格的格線，::before 撐出寬度的一半（2:1，舊版 Safari 也認）、文字區疊在同一格靠下；名稱很長時這一格跟著長高，
+ * 外部名稱照舊不省略。文字欄右緣在分類膠囊左邊、也在鉛筆鈕左邊，長名稱不會蓋到兩者。 */
 .cpl-xcard { position: relative; margin-bottom: 12px; }
 #page-tournaments .cpl-xcard__link {
-  position: relative; z-index: 0; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; min-height: 150px; aspect-ratio: 2 / 1;
-  overflow: hidden; border: 1px solid; border-color: var(--d2-xc-line); border-radius: var(--radius); background: #334155;
+  position: relative; z-index: 0; display: grid; overflow: hidden; border: 1px solid; border-color: var(--d2-xc-line); border-radius: var(--radius); background: #334155;
   box-shadow: 0 8px 18px -10px var(--d2-xc-sh); color: #fff; text-decoration: none;
 }
+#page-tournaments .cpl-xcard__link::before { content: ''; grid-area: 1 / 1; padding-top: 50%; }
 #page-tournaments .cpl-xcard__link::after {
   content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: -1; pointer-events: none;
   background: linear-gradient(180deg, rgba(2,6,23,.1) 0%, rgba(2,6,23,.38) 45%, rgba(2,6,23,.86) 100%);
@@ -177,7 +179,7 @@
 .cpl-xcard__img--l { background: linear-gradient(120deg, #1e3a8a, #3b82f6); }
 .cpl-xcard__img--c { background: linear-gradient(120deg, #92400e, #f59e0b); }
 .cpl-xcard__img--f { background: linear-gradient(120deg, #4c1d95, #8b5cf6); }
-.cpl-xcard__body { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 12px; }
+.cpl-xcard__body { grid-area: 1 / 1; align-self: end; display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 12px; background: linear-gradient(rgba(2,6,23,0), rgba(2,6,23,.4) 16px, rgba(2,6,23,.62) 40px); }
 .cpl-xcard__text { min-width: 0; }
 .cpl-xcard__name { font-weight: 700; font-size: .95rem; color: #fff; overflow-wrap: break-word; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
 .cpl-xcard__date { margin-top: 3px; font-size: .75rem; color: rgba(255,255,255,.88); font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0,0,0,.5); }

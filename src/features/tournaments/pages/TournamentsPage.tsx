@@ -73,7 +73,7 @@ export function externalChipClass(type: unknown, themed: boolean): string {
   return `cpl-xcard__chip cpl-xcard__chip--${EXTERNAL_CHIP[type]}`;
 }
 
-/** 沒有封面圖時的底：聯賽、盃賽、友誼賽各自的分類色漸層（整張底圖示意）；外部字串不進 class。 */
+/** 沒有封面圖時的底：聯賽、盃賽、友誼賽各自的分類色漸層（外部卡整張底圖，顧問 §3.577）；外部字串不進 class。 */
 function externalCoverClass(type: unknown): string {
   return type === 'league' || type === 'cup' || type === 'friendly' ? `cpl-xcard__img cpl-xcard__img--${EXTERNAL_CHIP[type]}` : 'cpl-xcard__img';
 }
