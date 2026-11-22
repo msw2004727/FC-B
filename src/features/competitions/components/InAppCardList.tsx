@@ -102,7 +102,7 @@ function InCard({ card, ct, imgRank, lean, onOpen, onDelete }: {
   /** 省流量模式：只畫前 EAGER_IMAGES 張的圖，其餘用沒有圖的版面。 */
   lean: boolean;
   onOpen: (cid: string, event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => void;
-  /** 管理員以上才有（站長 11-22）：右下角垃圾桶，按了先問第一次。 */
+  /** 管理員以上才有（站長 11-22）：右下角垃圾桶，按了先問第一次；進行中的卡不放。 */
   onDelete?: (cid: string, name: string) => void;
 }): JSX.Element {
   const cat = ct(CAT_KEY[card.category]);
@@ -158,8 +158,9 @@ function InCard({ card, ct, imgRank, lean, onOpen, onDelete }: {
           ) : null}
         </div>
       </a>
-      {/* 刪除鈕在連結外面（按鈕不能包在連結裡）；只有名稱的舊「我的賽事」沒有文件，不畫 */}
-      {onDelete && card.phase ? (
+      {/* 刪除鈕在連結外面（按鈕不能包在連結裡）；只有名稱的舊「我的賽事」沒有文件，不畫。
+          進行中（phase live，含整場延期／取消但階段仍是 live）一律不放，要刪從詳情頁（站長 11-22 按鈕答覆） */}
+      {onDelete && card.phase && card.phase !== 'live' ? (
         <button type="button" class="cpl-del" aria-label={`${ct('deleteComp')}：${card.name}`} onClick={() => onDelete(card.cid, card.name)}>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></svg>
         </button>
