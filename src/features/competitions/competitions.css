@@ -1328,11 +1328,12 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
  * class 是清單才有的新名字，不帶根節點前綴。 */
 /* 狀態頁籤（站長 11-22，取代下拉選單）：一列平分、選中的用分段切換的選中色 */
 .cpl-tabs { display: flex; height: 44px; margin: 0 0 8px; padding: 3px; border-radius: 10px; background: var(--d2-glass-base); box-shadow: var(--d2-glass-sh); }
-.cpl-tab { flex: 1 1 0; min-width: 0; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--d2-text-2); white-space: nowrap; cursor: pointer; }
-.cpl-tab[aria-pressed="true"] { background: var(--d2-seg-on); box-shadow: inset 0 0 0 1px var(--d2-accent-line); color: var(--d2-seg-fg); font-weight: 700; }
+/* 父層前綴（0,2,0）：正式打包舊站 .legacy-ui button（0,1,1）會把字色、底色蓋成繼承（顧問 11-22 staging 實量） */
+.cpl-tabs > .cpl-tab { flex: 1 1 0; min-width: 0; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--d2-text-2); white-space: nowrap; cursor: pointer; }
+.cpl-tabs > .cpl-tab[aria-pressed="true"] { background: var(--d2-seg-on); box-shadow: inset 0 0 0 1px var(--d2-accent-line); color: var(--d2-seg-fg); font-weight: 700; }
 .cpl-card { position: relative; margin-bottom: 10px; }
 /* 管理員刪除鈕（站長 11-22）：右下角圓鈕，外觀 32、點擊區 44 */
-.cpl-del { position: absolute; z-index: 3; right: 12px; bottom: 12px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: #fca5a5; cursor: pointer; }
+.cpl-card > .cpl-del { position: absolute; z-index: 3; right: 12px; bottom: 12px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: #fca5a5; cursor: pointer; }
 .cpl-del::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: rgba(15,23,42,.6); box-shadow: inset 0 0 0 1px rgba(248,113,113,.5); }
 .cpl-del svg { position: relative; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .cpl-del:focus-visible { outline: 2px solid #f87171; outline-offset: -2px; border-radius: 50%; }
