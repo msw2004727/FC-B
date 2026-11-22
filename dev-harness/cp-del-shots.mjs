@@ -24,6 +24,16 @@ for (const theme of ['light', 'dark']) {
   await page.goto(`${BASE}/dev-harness/cp-cover.html?screen=list-admin-del&theme=${theme}`);
   await page.waitForSelector('.cpl-del', { timeout: 15000 });
   await page.waitForTimeout(500);
+  // 正式打包的舊站 base.css `button`（經 legacyCssScope 變 .legacy-ui button，0,1,1）；harness 沒載舊站樣式，這裡照抄一條，實量字色（顧問 11-22）
+  await page.addStyleTag({ content: '.legacy-ui button { cursor: pointer; font-family: inherit; border: none; background: none; color: inherit; }' });
+  await page.waitForTimeout(100);
+  report.computed = report.computed || {};
+  report.computed[theme] = await page.evaluate(() => {
+    const del = document.querySelector('.cpl-del');
+    const tab = document.querySelector('.cpl-tab:not([aria-pressed="true"])');
+    const on = document.querySelector('.cpl-tab[aria-pressed="true"]');
+    return { insideLegacyUi: !!del.closest('.legacy-ui'), delColor: getComputedStyle(del).color, tabColor: getComputedStyle(tab).color, tabOnColor: getComputedStyle(on).color, tabOnBg: getComputedStyle(on).backgroundColor, inherited: getComputedStyle(del.parentElement).color };
+  });
   report.delButtons[theme] = await page.locator('.cpl-del').count();
   await page.screenshot({ path: join(OUT, `list-${theme}.png`) });
   await page.locator('.cpl-del').first().click();

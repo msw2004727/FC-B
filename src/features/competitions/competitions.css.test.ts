@@ -132,3 +132,14 @@ describe('積分榜欄寬（實量覆核 7.3；新外觀卡 3-4 改成 <table>�
     expect(css).toMatch(/\.cp-tbl td\.rk \{[^}]*overflow: visible;/);
   });
 });
+
+describe('清單頁籤與刪除鈕壓過舊站 .legacy-ui button（顧問 11-22 staging 實量：淺色垃圾桶字色被蓋成繼承）', () => {
+  // 正式打包時舊站 base.css 的 `button { … color: inherit; background: none; }` 會變成 `.legacy-ui button`（0,1,1），
+  // 單一 class（0,1,0）的按鈕規則字色會輸；這兩個按鈕一律用父層前綴（0,2,0）。
+  it('沒有只寫單一 class 的 .cpl-tab／.cpl-del 規則，前綴規則帶字色', () => {
+    const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');
+    expect(css).not.toMatch(/(^|\n)\.cpl-(tab|del)(\[[^\]]*\])? \{/);
+    expect(css).toMatch(/\.cpl-tabs > \.cpl-tab \{[^}]*color: var\(--d2-text-2\);/);
+    expect(css).toMatch(/\.cpl-card > \.cpl-del \{[^}]*color: #fca5a5;/);
+  });
+});
