@@ -59,6 +59,29 @@ const EXT_CARDS: TournamentCard[] = [
   // 已結束、沒有照片：預設縮圖也要跟著變淡
   ext('tc_e', '夏季五人制聯賽', 'league', '2026-08-01', '2026-08-30'),
 ];
+// 整張底圖示意（站長 11-22）：亮色雜亂封面（白底、黃色塊、細字樣與線條），看壓在圖上的字是否清楚。
+function busy(): string {
+  const parts = ['<rect width="320" height="180" fill="#fffbea"/>'];
+  const cols = ['#fde047', '#f97316', '#22d3ee', '#a3e635', '#f472b6', '#ffffff', '#facc15'];
+  for (let i = 0; i < 26; i++) {
+    const x = (i * 53) % 320;
+    const y = (i * 37) % 180;
+    parts.push(`<rect x="${x}" y="${y}" width="${30 + (i % 5) * 14}" height="${16 + (i % 4) * 10}" fill="${cols[i % cols.length]}" fill-opacity=".85" transform="rotate(${(i % 7) * 9 - 27} ${x} ${y})"/>`);
+  }
+  for (let i = 0; i < 9; i++) parts.push(`<text x="${(i * 41) % 300}" y="${20 + i * 19}" font-size="14" font-weight="700" fill="${i % 2 ? '#ffffff' : '#fef08a'}">GOAL 2027</text>`);
+  for (let i = 0; i < 12; i++) parts.push(`<line x1="0" y1="${i * 16}" x2="320" y2="${i * 16 + 40}" stroke="#ffffff" stroke-width="3"/>`);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180">${parts.join('')}</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+const EXT_FULLBG: TournamentCard[] = [
+  ext('tc_f1', '2027 全國青年足球公開賽', 'cup', '2027-03-12', '2027-03-14', thumb('#e11d48', '#f59e0b')),
+  ext('tc_f2', '陽光盃夏季沙灘足球嘉年華', 'friendly', '2027-06-05', '2027-06-06', busy()),
+  ext('tc_f3', '北區社區足球聯賽', 'league', '2026-12-12', '2027-02-27'),
+  ext('tc_f4', '週末三對三友誼賽', 'friendly', '2026-12-06', '2026-12-06'),
+  ext('tc_f5', '二〇二七年新北市三重區春季社區五人制足球邀請賽', 'cup', '2026-12-27', '2027-01-03'),
+  ext('tc_f6', '2026 秋季邀請賽', 'cup', '2026-10-09', '2026-10-11', thumb('#2563eb', '#22c55e')),
+  ext('tc_f7', '夏季五人制聯賽', 'league', '2026-08-01', '2026-08-30'),
+];
 const EXT_LONG: TournamentCard[] = [
   ext('tc_l1', '二〇二七年新北市三重區春季社區五人制足球邀請賽', 'cup', '2026-12-27', '2027-01-03'),
   ext('tc_l2', 'FEDA CUP 2027 Taiwan International Youth Football Festival', 'league', '2027-04-02', '2027-04-05', thumb('#7c3aed', '#06b6d4')),
@@ -188,6 +211,8 @@ const SCREENS: Record<string, Screen> = {
   'ext-error': { seed: {}, ext: 'error' },
   'ext-delete': { seed: {}, viewer: 'manager' },
   // 總收尾示範缺口：編輯已有封面圖的外部卡（表單的封面預覽圖）。圖用本機開發伺服器的 /og.png（表單只收 http(s) 網址）。
+  // 整張底圖示意：有圖、亮色雜亂封面、沒圖三種分類、長名稱、已結束有圖／沒圖（管理者看得到鉛筆）
+  'ext-fullbg': { seed: {}, viewer: 'manager', cards: EXT_FULLBG },
   'ext-edit-image': { seed: {}, viewer: 'manager', cards: [ext('tc_img', '2027 全國青年足球公開賽', 'cup', '2027-03-12', '2027-03-14', `${location.origin}/og.png`)] },
   // 沒有切換（閘門沒過；與功能開關關閉、閘門不回應的標記相同，見 TournamentsPage.no-switch-parity.test.tsx）
   'gate-off': { seed: OFF },

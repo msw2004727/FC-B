@@ -32,13 +32,9 @@
   --d2-graphite-line: rgba(71, 85, 105, .36);
   --d2-thumb-end-op: .6;
   --d2-xc-line: rgba(190, 200, 214, .9);
-  --d2-xc-tint: rgba(13, 148, 136, .07);
   --d2-xc-sh: rgba(13, 148, 136, .38);
-  --d2-xc-in: inset 0 1px 0 rgba(255,255,255,.75), inset 0 -6px 12px -6px rgba(13,148,136,.16);
   --d2-xp-band: linear-gradient(180deg, rgba(255,255,255,.95) 0, rgba(255,255,255,.3) 34px, rgba(255,255,255,0) 40px);
   --d2-xp-sh: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
-  --d2-chip-bg: linear-gradient(180deg, rgba(255,255,255,.7) 0%, rgba(255,255,255,0) 60%), rgba(13,148,136,.12);
-  --d2-chip-ln: rgba(13, 148, 136, .3);
 }
 [data-theme="dark"] .tournaments-root[data-d2],
 [data-theme="dark"].cp-danger-confirm #app-confirm-modal {
@@ -64,13 +60,9 @@
   --d2-graphite-line: rgba(203, 213, 225, .32);
   --d2-thumb-end-op: .45;
   --d2-xc-line: rgba(255,255,255,.06) rgba(255,255,255,.06) rgba(0,0,0,.45);
-  --d2-xc-tint: rgba(13, 148, 136, .13);
   --d2-xc-sh: rgba(0, 0, 0, .75);
-  --d2-xc-in: inset 0 1px 0 rgba(255,255,255,.2), inset 0 -6px 12px -6px rgba(13,148,136,.3);
   --d2-xp-band: linear-gradient(180deg, rgba(255,255,255,.11) 0, rgba(255,255,255,.03) 34px, rgba(255,255,255,0) 40px);
   --d2-xp-sh: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
-  --d2-chip-bg: linear-gradient(180deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,0) 60%), rgba(52,211,153,.16);
-  --d2-chip-ln: rgba(52, 211, 153, .36);
 }
 
 /* 手機寬度清單左右 16px（外框本身 8px，這裡補 8px）；600px 以上照外框現況 */
@@ -165,33 +157,41 @@
 #page-tournaments .cpl-xtool label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .cpl-xstatus { padding: 1rem .5rem; text-align: center; font-size: .85rem; color: var(--text-muted); }
 #page-tournaments .cpl-xstatus .outline-btn { margin-top: .5rem; }
+/* 整張底圖示意（站長 11-22，cp-ext-fullbg，未上線）：封面圖鋪滿整張卡，上面一層由上往下加深的半透明遮罩，
+ * 名稱、日期、分類膠囊壓在圖的下緣、白字；卡面一律是深色底，淺深主題只差外框與投影。
+ * 沒圖：分類色漸層（同站內預設封面的三組色）。已結束：整張灰階、遮罩更深。長名稱可換行，卡片跟著長高。 */
 .cpl-xcard { position: relative; margin-bottom: 12px; }
 #page-tournaments .cpl-xcard__link {
-  position: relative; display: block; overflow: hidden; border: 1px solid; border-color: var(--d2-xc-line); border-radius: var(--radius);
-  background: linear-gradient(90deg, var(--d2-xc-tint), rgba(13,148,136,0) 65%), var(--d2-glass-base);
-  box-shadow: 0 8px 18px -10px var(--d2-xc-sh); color: inherit; text-decoration: none;
+  position: relative; z-index: 0; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; min-height: 150px; aspect-ratio: 2 / 1;
+  overflow: hidden; border: 1px solid; border-color: var(--d2-xc-line); border-radius: var(--radius); background: #334155;
+  box-shadow: 0 8px 18px -10px var(--d2-xc-sh); color: #fff; text-decoration: none;
 }
-#page-tournaments .cpl-xcard__link::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: inherit; box-shadow: var(--d2-xc-in); pointer-events: none; }
-.cpl-xcard.ended .cpl-xcard__link { filter: grayscale(1); opacity: .6; }
-.cpl-xcard__img { display: block; width: 100%; aspect-ratio: 8 / 3; object-fit: cover; background: var(--bg-elevated); }
-.cpl-xcard__body { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; background: var(--d2-glass-gloss); }
+#page-tournaments .cpl-xcard__link::after {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg, rgba(2,6,23,.1) 0%, rgba(2,6,23,.38) 45%, rgba(2,6,23,.86) 100%);
+}
+.cpl-xcard.ended .cpl-xcard__link { filter: grayscale(1); }
+.cpl-xcard.ended .cpl-xcard__body { opacity: .8; }
+#page-tournaments .cpl-xcard.ended .cpl-xcard__link::after { background: linear-gradient(180deg, rgba(2,6,23,.45) 0%, rgba(2,6,23,.6) 42%, rgba(2,6,23,.88) 100%); }
+#page-tournaments .cpl-xcard__img { position: absolute; top: 0; left: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; }
+.cpl-xcard__img--l { background: linear-gradient(120deg, #1e3a8a, #3b82f6); }
+.cpl-xcard__img--c { background: linear-gradient(120deg, #92400e, #f59e0b); }
+.cpl-xcard__img--f { background: linear-gradient(120deg, #4c1d95, #8b5cf6); }
+.cpl-xcard__body { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 12px; }
 .cpl-xcard__text { min-width: 0; }
-.cpl-xcard__name { font-weight: 700; font-size: .95rem; color: var(--text-primary); overflow-wrap: break-word; }
-.cpl-xcard__date { margin-top: 3px; font-size: .75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.cpl-xcard__name { font-weight: 700; font-size: .95rem; color: #fff; overflow-wrap: break-word; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
+.cpl-xcard__date { margin-top: 3px; font-size: .75rem; color: rgba(255,255,255,.88); font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
 .cpl-xcard__chip {
-  flex-shrink: 0; padding: 3px 8px; border-radius: var(--radius-full); background: var(--d2-chip-bg); box-shadow: inset 0 0 0 1px var(--d2-chip-ln);
-  color: var(--accent); font-size: .7rem; white-space: nowrap;
+  flex-shrink: 0; padding: 3px 8px; border-radius: var(--radius-full); background: rgba(15,23,42,.62); box-shadow: inset 0 0 0 1px rgba(255,255,255,.32);
+  color: #fff; font-size: .7rem; font-weight: 700; white-space: nowrap;
 }
-/* 分類色（閘門通過時才有這三個 class）：顏色讀 category-tokens.css 的 --cat-*（站內區塊的 competitions.css 匯入，
- * 閘門只會由已載入的站內區塊打開，所以一定在）；外框是字色 35%，與 0.20261121a 的外框色同值 */
-.cpl-xcard__chip--l { color: var(--cat-league); background: var(--cat-league-bg); }
-.cpl-xcard__chip--c { color: var(--cat-cup); background: var(--cat-cup-bg); }
-.cpl-xcard__chip--f { color: var(--cat-friendly); background: var(--cat-friendly-bg); }
-.cpl-xcard__chip[class*="chip--"] { position: relative; box-shadow: none; font-weight: 700; }
-.cpl-xcard__chip[class*="chip--"]::before { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px currentColor; opacity: .35; }
+/* 分類色（閘門通過時才有這三個 class）：深底上用亮的那組分類色，外框是字色 50% */
+.cpl-xcard__chip--l { color: #93c5fd; box-shadow: inset 0 0 0 1px rgba(147,197,253,.5); }
+.cpl-xcard__chip--c { color: #fcd34d; box-shadow: inset 0 0 0 1px rgba(252,211,77,.5); }
+.cpl-xcard__chip--f { color: #c4b5fd; box-shadow: inset 0 0 0 1px rgba(196,181,253,.5); }
 #page-tournaments .cpl-xcard__edit {
   position: absolute; top: 8px; right: 8px; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px;
-  border: 0; border-radius: 50%; cursor: pointer;
+  border: 0; border-radius: 50%; color: #fff; cursor: pointer;
   background: linear-gradient(180deg, rgba(255,255,255,.24) 0%, rgba(255,255,255,.06) 46%, rgba(255,255,255,0) 54%), rgba(0,0,0,.45);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 4px 10px -4px rgba(0,0,0,.5);
 }
