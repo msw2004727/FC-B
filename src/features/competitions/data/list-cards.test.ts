@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { taipeiMs } from '../format';
+import { formatTaipeiShort, taipeiMs } from '../format';
 import { competition, NOW } from '../testing/screen-fixtures';
 import type { SummaryEntry } from './types';
 import {
@@ -38,6 +38,17 @@ describe('站內卡片純函式', () => {
     expect(statusLineFor(doc, 'live', NOW, { count: 3, time: '  ' })).toEqual({ kind: 'today', count: 3 });
     expect(statusLineFor(doc, 'live', NOW, { count: 3, time: null })).toEqual({ kind: 'today', count: 3 });
     expect(statusLineFor(doc, 'done', NOW, { count: 2, time: '09:00' })).toBeNull();
+  });
+
+  it('即將開放（站長 11-22）：招募階段且報名還沒開始寫開放時間、卡片帶 soon；開始那一刻起改回報名截止', () => {
+    const doc = competition();
+    const before = doc.regOpenAt - 1;
+    expect(statusLineFor(doc, 'recruit', before, undefined)).toEqual({ kind: 'opens', date: formatTaipeiShort(doc.regOpenAt) });
+    expect(statusLineFor(doc, 'recruit', doc.regOpenAt, undefined)).toEqual({ kind: 'deadline', date: '12/20 23:59' });
+    const at = (now: number) => assembleInAppCards({ publicDocs: [doc], hosted: [], mine: [], now })[0];
+    expect(at(before)).toMatchObject({ phase: 'recruit', soon: true, line: { kind: 'opens' } });
+    expect(at(doc.regOpenAt)).toMatchObject({ phase: 'recruit', soon: false, line: { kind: 'deadline' } });
+    expect(at(taipeiMs(2026, 12, 21, 12, 0))?.soon).toBe(false);
   });
 
   it('當日摘要片：場數是片長；下一場是時間 ≥ now 且 scheduled 的最早一場', () => {

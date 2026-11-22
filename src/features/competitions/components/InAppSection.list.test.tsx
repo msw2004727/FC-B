@@ -1,6 +1,7 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { AppConfirmHost, _resetAppConfirmForTest } from '@/ui/AppConfirm';
 import type { InAppListCard } from '../data/list-cards';
 import { summaryShardIdOf } from '../data/schedule-load';
 import type { SummaryEntry } from '../data/types';
@@ -8,7 +9,8 @@ import { CpEnvProvider } from '../env';
 import { taipeiMs } from '../format';
 import { loadCompetitionsDict, makeCompetitionsT } from '../i18n';
 import { createFakeCpRepo } from '../testing/fake-cp-repo';
-import { NOW, competition, idleActions, memberActor } from '../testing/screen-fixtures';
+import { CpCallError } from '../data/cp-callables';
+import { NOW, adminActor, competition, idleActions, memberActor } from '../testing/screen-fixtures';
 import { InAppCardList } from './InAppCardList';
 import { InAppSection } from './InAppSection';
 
@@ -26,11 +28,13 @@ afterEach(() => {
 
 const STATUS_LABEL: Record<string, string> = { open: '未結束', recruit: '招募中', warm: '預熱中', live: '進行中', done: '已結束', all: '全部' };
 
-/** 狀態選單（清-4 起是站內自己的選單）：打開、點那一列。 */
+/** 狀態頁籤（站長 11-22 起取代下拉選單）：點那一格。 */
+function statusTabs(): HTMLElement {
+  return screen.getByRole('group', { name: '狀態' });
+}
 async function pickStatus(value: string): Promise<void> {
-  fireEvent.click(screen.getByRole('button', { name: /^狀態 / }));
   await act(async () => {
-    fireEvent.click(screen.getByRole('option', { name: STATUS_LABEL[value] }));
+    fireEvent.click(within(statusTabs()).getByRole('button', { name: STATUS_LABEL[value] }));
   });
 }
 
@@ -112,14 +116,10 @@ describe('站內卡文案與分類小標', () => {
     expect(done?.classList.contains('ended')).toBe(true);
     expect(done?.querySelector('.d2-cells')).toBeNull();
     expect([...document.querySelectorAll('[data-cid]')].every((el) => el.classList.contains('cpl-card--board') && el.querySelector('.d2-sb'))).toBe(true);
-    const menu = screen.getByRole('button', { name: /^狀態 / });
-    const listId = menu.getAttribute('aria-controls') ?? '';
-    expect(listId).not.toBe('cpl-status');
-    expect(listId.length).toBeGreaterThan(0);
+    expect(statusTabs().querySelectorAll('button')).toHaveLength(5);
     const onlyMine = screen.getByRole('checkbox', { name: '只看我的' });
     expect(onlyMine.id).not.toBe('cpl-only-mine');
     expect(onlyMine.id.length).toBeGreaterThan(0);
-    expect(listId).not.toBe(onlyMine.id);
     expect(document.querySelector('[class*="amber"]')).toBeNull();
   });
 });
@@ -274,7 +274,7 @@ describe('站內清單篩選不重讀', () => {
     });
   }
 
-  it('預設未結束，切狀態、分類、只看我的都不加查詢', async () => {
+  it('預設全部（站長 11-22），切狀態、分類、只看我的都不加查詢', async () => {
     const repo = repoFor();
     const env = { actor: memberActor, repo, actions: idleActions(), now: NOW };
     const view = render(
@@ -285,13 +285,10 @@ describe('站內清單篩選不重讀', () => {
       </LocationProvider>,
     );
     expect(await screen.findByText('招募聯賽')).toBeTruthy();
-    const menu = screen.getByRole('button', { name: /^狀態 / });
-    expect(menu.getAttribute('aria-label')).toBe('狀態 未結束');
-    const listbox = document.getElementById(menu.getAttribute('aria-controls') ?? '');
-    expect([...(listbox?.querySelectorAll('[role="option"]') ?? [])].map((option) => option.textContent)).toEqual([
-      '未結束', '招募中', '預熱中', '進行中', '已結束', '全部',
-    ]);
-    expect(document.querySelector('[data-cid="done_lg"]')).toBeNull();
+    const tabs = [...statusTabs().querySelectorAll('button')];
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['全部', '招募中', '預熱中', '進行中', '已結束']);
+    expect(tabs.map((tab) => tab.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false', 'false']);
+    expect(document.querySelector('[data-cid="done_lg"]')).toBeTruthy();
 
     const rec = document.querySelector('[data-cid="rec_lg"]');
     expect(rec?.querySelector('.cpl-meta__date')?.textContent).toBe(`2027/01/09 ${EN} 01/10`);
@@ -343,7 +340,9 @@ describe('站內清單篩選不重讀', () => {
     expect(document.querySelector('[data-cid="rec_lg"]')).toBeTruthy();
     expect(document.querySelector('[data-cid="mine_only"]')).toBeTruthy();
 
-    await pickStatus('open');
+    await pickStatus('recruit');
+    expect(document.querySelector('[data-cid="done_lg"]')).toBeNull();
+    await pickStatus('all');
     fireEvent.click(screen.getByRole('checkbox', { name: '只看我的' }));
     expect(screen.getByText('只屬於我')).toBeTruthy();
     expect(document.querySelector('[data-cid="rec_lg"]')).toBeNull();
@@ -474,14 +473,15 @@ describe('進行中卡當日摘要', () => {
       expect(infoOf('live_empty')).toBe('');
       expect(document.querySelector('[data-cid="live_empty"] .cpl-cells--wait')).not.toBeNull();
     });
-    expect(document.querySelector('[data-cid="done_lg"]')).toBeNull();
+    // 預設全部（站長 11-22）：已結束的卡在畫面上，但不讀當日摘要。
+    expect(document.querySelector('[data-cid="done_lg"]')).not.toBeNull();
     expect(seen.some((row) => row.startsWith('done_lg'))).toBe(false);
     expect(repo.calls()).toHaveLength(3 + 3);
 
     view.rerender(section(repo, 'league'));
     view.rerender(section(repo, 'all'));
     await pickStatus('done');
-    await pickStatus('open');
+    await pickStatus('all');
     fireEvent.click(screen.getByRole('checkbox', { name: '只看我的' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '只看我的' }));
     await act(async () => {
@@ -566,7 +566,7 @@ describe('進行中卡當日摘要', () => {
     expect(infoOf('live_fr')).toBe('');
     await pickStatus('warm');
     fail = false;
-    await pickStatus('open');
+    await pickStatus('all');
     await waitFor(() => {
       expect(repo.calls().filter((name) => name === 'getSummaryShard')).toHaveLength(2);
       expect(infoOf('live_fr')).toBe(`下一場 13:00${DOT}今天 1場`);
@@ -654,5 +654,102 @@ describe('站內 0 場的空狀態', () => {
       />,
     );
     expect(screen.queryByText('目前沒有站內賽事')).toBeNull();
+  });
+});
+
+describe('清單卡刪除鈕（站長 11-22）', () => {
+  afterEach(() => {
+    _resetAppConfirmForTest();
+  });
+  const docs = () => createFakeCpRepo({
+    launch: { isPublic: true, bannedWords: [] },
+    competitions: [
+      competition({ id: 'rec_lg', name: '招募聯賽', category: 'league', hostType: 'personal', hostTeamId: null }),
+      competition({ id: 'rec_cup', name: '招募盃', category: 'cup', hostType: 'personal', hostTeamId: null }),
+    ],
+  });
+  function draw(actor: typeof adminActor, deleteCompetition = vi.fn(async ({ cid }: { cid: string }) => ({ cid, deleted: true as const }))) {
+    const repo = docs();
+    render(
+      <LocationProvider>
+        <CpEnvProvider value={{ actor, repo, actions: { ...idleActions(), deleteCompetition }, now: NOW }}>
+          <InAppSection />
+        </CpEnvProvider>
+        <AppConfirmHost />
+      </LocationProvider>,
+    );
+    return { repo, deleteCompetition };
+  }
+
+  it('一般用戶看不到刪除鈕', async () => {
+    draw(memberActor);
+    expect(await screen.findByText('招募聯賽')).toBeTruthy();
+    expect(document.querySelector('.cpl-del')).toBeNull();
+  });
+
+  it('管理員身分還在確認（rolePending）時不畫刪除鈕', async () => {
+    draw({ ...adminActor, rolePending: true });
+    expect(await screen.findByText('招募聯賽')).toBeTruthy();
+    expect(document.querySelector('.cpl-del')).toBeNull();
+  });
+
+  it('刪到一半（伺服器已封鎖）：確認框改寫繼續刪除、卡片留著（審查 P3-4）', async () => {
+    const deleteCompetition = vi.fn(async (): Promise<{ cid: string; deleted: true }> => { throw new CpCallError('INTERNAL', {}); });
+    const { repo } = draw(adminActor, deleteCompetition);
+    expect(await screen.findByText('招募聯賽')).toBeTruthy();
+    const orig = repo.getCompetition.bind(repo);
+    repo.getCompetition = async (cid: string) => {
+      const doc = await orig(cid);
+      return doc ? { ...doc, hidden: true, deletingAt: NOW } : doc;
+    };
+    fireEvent.click(document.querySelector('[data-cid="rec_lg"] .cpl-del') as HTMLButtonElement);
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getAllByRole('button').at(-1)!);
+    const ack = await screen.findByRole('checkbox', { name: '我了解刪除後無法復原' });
+    fireEvent.click(ack);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 700)); });
+    fireEvent.click(screen.getAllByRole('button', { name: '刪除賽事' }).at(-1) as HTMLButtonElement);
+    await waitFor(() => expect(deleteCompetition).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: '繼續刪除' }).length).toBeGreaterThan(0));
+    expect(document.querySelector('[data-cid="rec_lg"]')).not.toBeNull();
+  });
+
+  it('管理員：右下角刪除鈕 → 第一次確認取消不刪；確認後第二次要勾選、等 0.6 秒才刪，刪完卡片消失', async () => {
+    const { deleteCompetition } = draw(adminActor);
+    expect(await screen.findByText('招募聯賽')).toBeTruthy();
+    expect(document.querySelectorAll('.cpl-del')).toHaveLength(2);
+    const del = () => document.querySelector('[data-cid="rec_lg"] .cpl-del') as HTMLButtonElement;
+    expect(del().getAttribute('aria-label')).toBe('刪除賽事：招募聯賽');
+    // 按鈕不在連結裡
+    expect(del().closest('a')).toBeNull();
+
+    // 第一次確認：取消 → 不開第二個框、不刪
+    fireEvent.click(del());
+    const first = await screen.findByRole('alertdialog');
+    expect(first.textContent).toContain('要刪除「招募聯賽」嗎？');
+    // 確認框按鈕：取消在左、確定在右
+    fireEvent.click(within(first).getAllByRole('button')[0]!);
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(screen.queryByRole('checkbox', { name: '我了解刪除後無法復原' })).toBeNull();
+
+    // 第一次確認通過 → 第二次確認框
+    fireEvent.click(del());
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getAllByRole('button').at(-1)!);
+    const ack = await screen.findByRole('checkbox', { name: '我了解刪除後無法復原' });
+    const confirmBtn = () => screen.getAllByRole('button', { name: '刪除賽事' }).at(-1) as HTMLButtonElement;
+    fireEvent.click(confirmBtn());
+    expect(deleteCompetition).not.toHaveBeenCalled();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fireEvent.click(ack);
+      await act(async () => { vi.advanceTimersByTime(700); });
+    } finally {
+      vi.useRealTimers();
+    }
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 650)); });
+    fireEvent.click(confirmBtn());
+    await waitFor(() => expect(deleteCompetition).toHaveBeenCalledWith({ cid: 'rec_lg' }));
+    await waitFor(() => expect(document.querySelector('[data-cid="rec_lg"]')).toBeNull());
+    expect(document.querySelector('[data-cid="rec_cup"]')).not.toBeNull();
+    expect(deleteCompetition).toHaveBeenCalledTimes(1);
   });
 });

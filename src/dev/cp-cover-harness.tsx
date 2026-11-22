@@ -48,6 +48,8 @@ document.documentElement.setAttribute('data-ac', params.get('ac') || '1');
 if (params.get('lean') === '1') Object.defineProperty(navigator, 'connection', { value: { saveData: true }, configurable: true });
 // 招募中光軌顏色比較：?fx=b 青綠（預設 a＝多分頁提示銅金），覆寫在 cp-cover-allcards-harness.css
 document.documentElement.setAttribute('data-fx', params.get('fx') || 'a');
+// 即將開放框線色預覽（站長 11-22）：?sc=a 紫（competitions.css 本身）、b 淡青、c 中性灰（b、c 由 cp-cover-allcards-harness.css 覆寫）
+document.documentElement.setAttribute('data-sc', params.get('sc') || 'a');
 
 // ── 自己畫的示範封面（1200×450；縮圖是正中央 4:3 那一塊，模擬自動裁切） ──
 const ART: Record<string, string> = {
@@ -255,6 +257,21 @@ function StatesScreen(): ComponentChildren {
   return <BoardList lists={lists} />;
 }
 
+// 即將開放（站長 11-22）：和招募中、預熱中、延期、已結束並排比對；有封面與沒封面各一張
+function SoonScreen(): ComponentChildren {
+  const none = params.get('nocover') === '1';
+  const img = (art: string): string => (none ? '' : art === 'photo' ? artCover().url : cover(art).url);
+  const lists = [[
+    boardCard('o_soon', { name: '2027 春季五人制聯賽', category: 'league', soon: true, line: { kind: 'opens', date: '12/01 10:00' }, date: '01/16–01/17', venue: '三重綜合運動場', cover: img('photo') }),
+    boardCard('o_soon2', { name: '週末友誼盃', category: 'friendly', soon: true, line: { kind: 'opens', date: '11/28 20:00' }, date: '12/13', venue: '青年公園', cover: '' }),
+    boardCard('o_recruit', { cover: img('cup') }),
+    boardCard('o_warm', { name: '週末五人制交流賽', category: 'friendly', phase: 'warm', line: { kind: 'warm', days: 6 }, date: '11/29', venue: '青年公園', cover: img('pitch') }),
+    boardCard('o_pp', { name: '延期的聯賽', category: 'league', phase: 'warm', statusMark: 'postponed', line: { kind: 'warm', days: 3 }, date: '12/06', venue: '迎風河濱球場', cover: img('cup') }),
+    boardCard('o_done', { name: '秋季盃', phase: 'done', ended: true, line: null, date: '10/18–10/19', venue: '新莊運動公園', cover: img('dusk') }),
+  ]];
+  return <BoardList lists={lists} />;
+}
+
 // 下架：管理員看清單，下架那場（正式查詢不會帶出；這裡故意混進來）卡板與一般卡都不畫封面；沒下架的照常有縮圖
 function hiddenAdminEnv(): CpInjectedEnv {
   const env = { ...listInEnv(), actor: adminActor };
@@ -416,9 +433,12 @@ const SCREENS: Record<string, Screen> = {
   'list-board-live': { env: listInEnv, Page: BoardLiveScreen },
   'list-board-all': { env: listInEnv, Page: BoardAllScreen },
   'list-all-cards': { env: listInEnv, Page: AllCardsScreen },
+  'list-soon': { env: listInEnv, Page: SoonScreen },
   'list-states': { env: listInEnv, Page: StatesScreen },
   'list-30': { env: listInEnv, Page: AllCards30Screen },
   'list-hidden-admin': { env: hiddenAdminEnv, Page: ListIn },
+  // 清單卡刪除鈕（站長 11-22）：管理員看站內清單，右下角垃圾桶；動作是假的（idleActions）
+  'list-admin-del': { env: () => ({ ...listInEnv(), actor: adminActor }), Page: ListIn },
   'guest-detail': { env: () => ({ ...withCover(screenEnv('real-live'), { cover: PITCH }), actor: GUEST }), Page: CompetitionDetailPage },
 };
 
@@ -440,7 +460,7 @@ async function start(): Promise<void> {
   await setLocale('zh-TW');
   await loadCompetitionsDict('zh-TW');
   if (framed) await import('@/ui/app-shell.css');
-  if ((screenName.startsWith('list-board') || screenName === 'list-all-cards' || screenName === 'list-states') && artName === 'photo') await loadPhoto();
+  if ((screenName.startsWith('list-board') || screenName === 'list-all-cards' || screenName === 'list-states' || screenName === 'list-soon') && artName === 'photo') await loadPhoto();
   const root = document.getElementById('app');
   if (!root) return;
   render(

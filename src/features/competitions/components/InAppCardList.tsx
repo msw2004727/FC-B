@@ -1,16 +1,14 @@
 // 站內賽事卡（新外觀清-4，第 1a 批規格 3.5、3.6、3.9）。站長 11-22（顧問 §3.565）：每一張都是記分板卡
 // （一圈玻璃框包一塊深色記分板，原本只有 pickInAppBoard 挑的那一張），取代「淺色一般卡＋小縮圖」；有封面就在板後
 // 套直切由右往左淡出（11-22 由斜切改直切）。重點句拆成數字格（結構化資料，不解析字串、不多讀）；進行中的當日摘要沒回來前預留那一列的高度。
-// 篩選列：站內自己的選單（ui/menu-select）＋「只看我的」＋最右邊「建立賽事」（第 2 步既有入口，文案沿用）。
+// 篩選列：狀態頁籤（站長 11-22，取代 ui/menu-select 選單）另一列；這一列是「只看我的」＋最右邊「建立賽事」（第 2 步既有入口，文案沿用）。
 // 保留 cpl-card、cpl-card--board、ended、data-cid、data-phase（測試在用）；不再輸出 tc-card 一族與 tc-chip。
 
 import type { JSX } from 'preact';
 import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { Button } from '@/ui/Button';
-import { MenuSelect } from '../ui/menu-select';
 import type { CompetitionsT } from '../i18n';
 import type { InAppListCard, InAppStatusFilter, InAppStatusLine } from '../data/list-cards';
-import { IN_APP_STATUS_FILTERS } from '../data/list-cards';
 import type { CompetitionCategory } from '../data/types';
 import type { CompetitionPhase } from '../data/present';
 
@@ -26,6 +24,9 @@ function statusKey(phase: CompetitionPhase): 'recruiting' | 'statusWarm' | 'stat
   if (phase === 'live') return 'statusLive';
   return 'statusDone';
 }
+
+/** 狀態頁籤（站長 11-22）：全部在最前且是預設；「未結束」不再單獨一格。 */
+const STATUS_TABS: readonly InAppStatusFilter[] = ['all', 'recruit', 'warm', 'live', 'done'];
 
 const FILTER_KEY: Record<InAppStatusFilter, 'statusOpen' | 'recruiting' | 'statusWarm' | 'statusLive' | 'statusDone' | 'filterAll'> = {
   open: 'statusOpen',
@@ -66,7 +67,9 @@ function BoardCells({ ct, line }: { ct: CompetitionsT; line: InAppStatusLine }):
     ? [ct('boardToday'), String(line.count), unit('matchUnit')]
     : line.kind === 'warm'
       ? [ct('boardToStart'), String(line.days), unit('boardDayUnit')]
-      : [ct('boardDeadline'), line.date, null];
+      : line.kind === 'opens'
+        ? [ct('boardOpens'), line.date, null]
+        : [ct('boardDeadline'), line.date, null];
   return (
     <div class="d2-cells d2-cells--row">
       <div class="d2-cell">
@@ -77,9 +80,9 @@ function BoardCells({ ct, line }: { ct: CompetitionsT; line: InAppStatusLine }):
   );
 }
 
-/** 招募中（沒有延期或取消）的卡才有光軌與星芒。 */
+/** 招募中（沒有延期或取消、報名已開始）的卡才有光軌與星芒。 */
 function isRecruitFx(card: InAppListCard): boolean {
-  return card.phase === 'recruit' && card.statusMark === null;
+  return card.phase === 'recruit' && card.statusMark === null && !card.soon;
 }
 
 /** 清單裡前幾張有圖的卡立即載入（顧問設計稿「卡片縮圖與載入策略」第 6 節）；其餘捲到才載。 */
@@ -91,7 +94,7 @@ export function saveDataMode(): boolean {
   return !!c && (c.saveData === true || c.effectiveType === '2g' || c.effectiveType === 'slow-2g');
 }
 
-function InCard({ card, ct, imgRank, lean, onOpen }: {
+function InCard({ card, ct, imgRank, lean, onOpen, onDelete }: {
   card: InAppListCard;
   ct: CompetitionsT;
   /** 這張是清單裡第幾張有圖的卡（0 起算）；沒圖是 -1。 */
@@ -99,6 +102,8 @@ function InCard({ card, ct, imgRank, lean, onOpen }: {
   /** 省流量模式：只畫前 EAGER_IMAGES 張的圖，其餘用沒有圖的版面。 */
   lean: boolean;
   onOpen: (cid: string, event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => void;
+  /** 管理員以上才有（站長 11-22）：右下角垃圾桶，按了先問第一次。 */
+  onDelete?: (cid: string, name: string) => void;
 }): JSX.Element {
   const cat = ct(CAT_KEY[card.category]);
   const href = `/competitions/${card.cid}`;
@@ -128,13 +133,15 @@ function InCard({ card, ct, imgRank, lean, onOpen }: {
     ? ct('compPostponed')
     : card.statusMark === 'cancelled'
       ? ct('cancelled')
-      : card.phase
-        ? ct(statusKey(card.phase))
-        : '';
+      : card.soon
+        ? ct('statusSoon')
+        : card.phase
+          ? ct(statusKey(card.phase))
+          : '';
   const lit = card.phase === 'live' && card.statusMark === null;
   // data-mark：整場延期或取消（邊框色、灰罩、取消紅字吃這個）；招募中才放光軌掛點（recruit-orbit.ts 動態載入後填）。
   return (
-    <div class={`cpl-card cpl-card--board${card.ended ? ' ended' : ''}`} data-cid={card.cid} data-phase={card.phase ?? 'unknown'} data-mark={card.statusMark ?? undefined}>
+    <div class={`cpl-card cpl-card--board${card.ended ? ' ended' : ''}`} data-cid={card.cid} data-phase={card.phase ?? 'unknown'} data-mark={card.statusMark ?? undefined} data-soon={card.soon && card.statusMark === null ? '' : undefined}>
       <a class="cpl-card__link" href={href} onClick={open}>
         {isRecruitFx(card) ? <i class="cpl-fx-slot" aria-hidden="true" /> : null}
         <div class={`d2-sb${lit ? ' d2-sb--lit' : ''}${cover ? ' cpl-sb--img' : ''}`}>
@@ -151,6 +158,12 @@ function InCard({ card, ct, imgRank, lean, onOpen }: {
           ) : null}
         </div>
       </a>
+      {/* 刪除鈕在連結外面（按鈕不能包在連結裡）；只有名稱的舊「我的賽事」沒有文件，不畫 */}
+      {onDelete && card.phase ? (
+        <button type="button" class="cpl-del" aria-label={`${ct('deleteComp')}：${card.name}`} onClick={() => onDelete(card.cid, card.name)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></svg>
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -165,6 +178,7 @@ export function InAppCardList({
   onOnlyMine,
   onCreate,
   onOpen,
+  onDelete,
 }: {
   cards: readonly InAppListCard[];
   ct: CompetitionsT;
@@ -175,6 +189,7 @@ export function InAppCardList({
   onOnlyMine: (value: boolean) => void;
   onCreate: () => void;
   onOpen: (cid: string, event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => void;
+  onDelete?: (cid: string, name: string) => void;
 }): JSX.Element {
   const onlyMineId = useId();
   const listRef = useRef<HTMLDivElement>(null);
@@ -200,13 +215,15 @@ export function InAppCardList({
   let rank = 0;
   return (
     <div data-inapp="competitions" ref={listRef}>
+      {/* 站長 11-22：狀態改成頁籤（取代下拉選單），預設全部 */}
+      <div class="cpl-tabs" role="group" aria-label={ct('statusLabel')}>
+        {STATUS_TABS.map((value) => (
+          <button key={value} type="button" class="cpl-tab" aria-pressed={status === value} onClick={() => onStatus(value)}>
+            {ct(FILTER_KEY[value])}
+          </button>
+        ))}
+      </div>
       <div class="cpl-bar cpl-toolbar">
-        <MenuSelect<InAppStatusFilter>
-          label={ct('statusLabel')}
-          value={status}
-          options={IN_APP_STATUS_FILTERS.map((value) => ({ value, label: ct(FILTER_KEY[value]) }))}
-          onChange={onStatus}
-        />
         <label class="cpl-sw" for={onlyMineId}>
           <span>{ct('onlyMine')}</span>
           <span class="toggle-switch">
@@ -223,7 +240,7 @@ export function InAppCardList({
         {showCreate ? <Button variant="primary" size="sm" onClick={onCreate}>{ct('createAction')}</Button> : null}
       </div>
       {cards.map((card) => (
-        <InCard key={card.cid} card={card} ct={ct} imgRank={card.cover ? rank++ : -1} lean={lean} onOpen={onOpen} />
+        <InCard key={card.cid} card={card} ct={ct} imgRank={card.cover ? rank++ : -1} lean={lean} onOpen={onOpen} onDelete={onDelete} />
       ))}
       {/* 站長 11-21 預設站內後，站內 0 場時訪客第一眼不能是空白（顧問 11-21）：一行空狀態，沿用外部清單的 cpl-xmsg。 */}
       {cards.length === 0 ? <p class="cpl-xmsg">{ct('listEmpty')}</p> : null}
