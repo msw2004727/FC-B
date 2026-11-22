@@ -42,8 +42,10 @@ document.documentElement.setAttribute('data-theme', theme);
 // 卡板封面預覽：?cv=a|b|c 切三個版本（b 是 competitions.css 的寫法；a、c 由 cp-cover-board-harness.css 覆寫）；?art= 換示範圖
 document.documentElement.setAttribute('data-cv', params.get('cv') || 'b');
 // 一般卡封面（站長 11-22）：?ac=1 淡進卡底（competitions.css 本身）、2 淺色疊白霧、3 有封面卡改深底（2、3 由 cp-cover-allcards-harness.css 覆寫）；
-// ?src=thumb 一般卡改用 224×168 縮圖（比清晰度）
+// ?src=url 一般卡改用 1200×450 原圖（舊封面沒有 card 的樣子）、?src=thumb 改用 224×168 縮圖（比清晰度）；預設 800×300 card
 document.documentElement.setAttribute('data-ac', params.get('ac') || '1');
+// ?lean=1 模擬 Android 省流量模式（navigator.connection.saveData）：清單只載前 3 張圖
+if (params.get('lean') === '1') Object.defineProperty(navigator, 'connection', { value: { saveData: true }, configurable: true });
 
 // ── 自己畫的示範封面（1200×450；縮圖是正中央 4:3 那一塊，模擬自動裁切） ──
 const ART: Record<string, string> = {
@@ -59,7 +61,7 @@ function svg(art: string, viewBox: string, w: number, h: number): string {
 }
 
 function cover(art: string): CompetitionCover {
-  return { url: svg(art, '0 0 1200 450', 1200, 450), thumb: svg(art, '300 0 600 450', 224, 168) };
+  return { url: svg(art, '0 0 1200 450', 1200, 450), thumb: svg(art, '300 0 600 450', 224, 168), card: svg(art, '0 0 1200 450', 800, 300) };
 }
 
 const PITCH = cover('pitch');
@@ -67,7 +69,7 @@ const PITCH = cover('pitch');
 const GUEST = { ...memberActor, uid: null, memberClubIds: [], repClubs: [] };
 
 // ── 上傳：假的（不連 Storage） ──
-const instantUpload = async (dataUrl: string): Promise<UploadedCover> => ({ url: dataUrl, thumb: PITCH.thumb, thumbSrc: PITCH.thumb });
+const instantUpload = async (dataUrl: string): Promise<UploadedCover> => ({ url: dataUrl, thumb: PITCH.thumb, card: PITCH.card!, thumbSrc: PITCH.thumb });
 const neverUpload = (): Promise<UploadedCover> => new Promise(() => {});
 const failUpload = async (): Promise<UploadedCover> => { throw new Error('offline'); };
 // 逾時：同 data/cover-upload.ts 的 CoverUploadError('timeout')（這裡不載入那支模組，只給同樣的 name／code）。
@@ -116,7 +118,7 @@ function boardCard(cid: string, patch: Partial<InAppListCard>): InAppListCard {
   return {
     cid, name: '同榮盃', category: 'cup', phase: 'recruit', date: '12/06–12/07', venue: '新莊運動公園',
     firstMatchAt: 1, line: { kind: 'deadline', date: '11/21 23:59' }, mine: false, ended: false, statusMark: null,
-    thumb: '', cover: '', ...patch,
+    cover: '', ...patch,
   };
 }
 
@@ -128,7 +130,7 @@ function BoardList({ lists }: { lists: InAppListCard[][] }): ComponentChildren {
       <section class="page active tc-page" id="page-tournaments">
         {lists.map((cards, i) => (
           <div class={i === 0 ? 'cvb-1' : 'cvb-2'} key={cards[0]!.cid}>
-            <InAppCardList cards={cards} ct={ct} status="open" onlyMine={false} showCreate={i === 0} boardCid={cards[0]!.cid}
+            <InAppCardList cards={cards} ct={ct} status="open" onlyMine={false} showCreate={i === 0}
               onStatus={noop} onOnlyMine={noop} onCreate={noop} onOpen={(_cid, e) => e.preventDefault()} />
           </div>
         ))}
@@ -153,7 +155,11 @@ async function loadPhoto(): Promise<void> {
   t.width = 224;
   t.height = 168;
   t.getContext('2d')?.drawImage(canvas, 300, 0, 600, 450, 0, 0, 224, 168);
-  photoCover = { url, thumb: t.toDataURL('image/webp', 0.72) };
+  const k = document.createElement('canvas');
+  k.width = 800;
+  k.height = 300;
+  k.getContext('2d')?.drawImage(canvas, 0, 0, 1200, 450, 0, 0, 800, 300);
+  photoCover = { url, thumb: t.toDataURL('image/webp', 0.72), card: k.toDataURL('image/webp', 0.72) };
 }
 const artName = params.get('art') || 'photo';
 const artCover = (): CompetitionCover => (artName === 'photo' && photoCover ? photoCover : cover(artName === 'photo' ? 'pitch' : artName));
@@ -161,12 +167,12 @@ const artCover = (): CompetitionCover => (artName === 'photo' && photoCover ? ph
 function BoardScreen(): ComponentChildren {
   const c = artCover();
   const first = [
-    boardCard('b_cover', { cover: c.url, thumb: c.thumb }),
+    boardCard('b_cover', { cover: c.card }),
     boardCard('n_plain', { name: '2027 新北市青年五人制足球邀請錦標賽', category: 'league', phase: 'warm', line: { kind: 'warm', days: 3 }, date: '01/16–01/17', venue: '三重綜合運動場' }),
   ];
   const second = [
     boardCard('b_plain', { name: '冬季友誼聯賽', category: 'league', phase: 'live', line: { kind: 'live', count: 4, time: '14:30' }, date: '11/21', venue: '迎風河濱球場' }),
-    boardCard('n_thumb', { name: '社區親子足球日', category: 'friendly', line: { kind: 'deadline', date: '12/01 23:59' }, date: '12/14', venue: '大佳河濱公園', thumb: cover('cup').thumb }),
+    boardCard('n_thumb', { name: '社區親子足球日', category: 'friendly', line: { kind: 'deadline', date: '12/01 23:59' }, date: '12/14', venue: '大佳河濱公園', cover: cover('cup').card }),
   ];
   return <BoardList lists={[first, second]} />;
 }
@@ -185,8 +191,8 @@ function BoardAllScreen(): ComponentChildren {
   const c = artCover();
   const lists = [
     [
-      boardCard('b_cover', { cover: c.url, thumb: c.thumb }),
-      boardCard('n_done', { name: '秋季盃（已結束）', category: 'cup', phase: 'done', ended: true, line: null, date: '10/18–10/19', venue: '新莊運動公園', thumb: cover('dusk').thumb }),
+      boardCard('b_cover', { cover: c.card }),
+      boardCard('n_done', { name: '秋季盃（已結束）', category: 'cup', phase: 'done', ended: true, line: null, date: '10/18–10/19', venue: '新莊運動公園', cover: cover('dusk').card }),
     ],
     [
       boardCard('b_long', { name: LONG, phase: 'live', line: { kind: 'live', count: 4, time: '14:30' }, cover: c.url }),
@@ -201,11 +207,12 @@ function BoardAllScreen(): ComponentChildren {
 // 一般卡也放封面（站長 11-22）：卡板＋多張有封面一般卡（招募、進行中、長名稱、已結束）＋沒封面＋封面載不到
 function AllCardsScreen(): ComponentChildren {
   const c = artCover();
-  const pick = (x: CompetitionCover): string => (params.get('src') === 'thumb' ? x.thumb : x.url);
+  const src = params.get('src');
+  const pick = (x: CompetitionCover): string => (src === 'thumb' ? x.thumb : src === 'url' ? x.url : x.card!);
   const busy = artName === 'busy';
   const other = (art: string): CompetitionCover => (busy ? c : cover(art));
   const lists = [[
-    boardCard('b_cover', { cover: c.url, thumb: c.thumb }),
+    boardCard('b_cover', { cover: c.card }),
     boardCard('n_recruit', { name: '社區親子足球日', category: 'friendly', line: { kind: 'deadline', date: '12/01 23:59' }, date: '12/14', venue: '大佳河濱公園', cover: pick(other('cup')) }),
     boardCard('n_live', { name: '冬季友誼聯賽', category: 'league', phase: 'live', line: { kind: 'live', count: 3, time: '14:30' }, date: '11/22', venue: '迎風河濱球場', cover: pick(c) }),
     boardCard('n_long', { name: LONG, category: 'league', phase: 'warm', line: { kind: 'warm', days: 3 }, date: '01/16–01/17', venue: '三重綜合運動場', cover: pick(other('pitch')) }),
@@ -216,10 +223,10 @@ function AllCardsScreen(): ComponentChildren {
   return <BoardList lists={lists} />;
 }
 
-// 流量實測（顧問 11-22）：30 張都有封面、每張不同網址（repo 內圖片加查詢字串），看 loading=lazy 首屏實際抓幾張
+// 流量實測（顧問 11-22）：30 張都有封面、每張不同網址（假的 Storage 網址，量測腳本攔下來回真實大小的圖），看首屏與捲到底各抓幾張
 function AllCards30Screen(): ComponentChildren {
   const cards = Array.from({ length: 30 }, (_, i) => boardCard(`c${i}`, {
-    name: `示範賽事 ${i + 1}`, cover: `/assets/og/sports/football.jpg?n=${i}`, thumb: `/assets/og/sports/football.jpg?t=${i}`,
+    name: `示範賽事 ${i + 1}`, cover: `https://firebasestorage.googleapis.com/v0/b/demo/o/card-${i}?alt=media`,
     phase: 'warm', line: { kind: 'warm', days: 3 },
   }));
   return <BoardList lists={[cards]} />;

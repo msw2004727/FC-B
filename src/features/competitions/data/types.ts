@@ -68,10 +68,12 @@ export interface DivisionInput {
   feePerTeam?: number;
 }
 
-/** 賽事封面的兩個 Firebase Storage 下載網址（同一個 images/competitions/c_… 資料夾）。 */
+/** 賽事封面的 Firebase Storage 下載網址（同一個 images/competitions/c_… 資料夾）。 */
 export interface CompetitionCover {
   url: string;
   thumb: string;
+  /** 清單卡用的 800×300（顧問設計稿「卡片縮圖與載入策略」第 5 節）；選填、讀取端先認，上傳與清單取圖等後端部署後再接。 */
+  card?: string;
 }
 
 /** 根文件。沒有 hostUid（主辦身分在 staff/{uid}.roles）。 */
@@ -87,7 +89,7 @@ export interface CompetitionDoc {
   statusReason: string | null;
   hidden: boolean;
   /**
-   * 封面圖（主辦上傳，選填；url 1200×450、thumb 224×168）。舊文件沒有這欄。
+   * 封面圖（主辦上傳，選填；url 1200×450、thumb 224×168、card 800×300 選填）。舊文件沒有這欄。
    * 下架時主辦仍讀得到，畫面用 data/cover.ts#shownCover 判斷要不要畫。
    */
   cover?: CompetitionCover | null;

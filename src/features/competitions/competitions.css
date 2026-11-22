@@ -273,10 +273,8 @@
 }
 .cps-root .ui-badge__label,
 .s4-page .ui-badge__label { white-space: nowrap; overflow-wrap: normal; }
-.cps-root .d2-tag--live,
-.cpl-card .cpl-st--live { background: var(--d2-sb-bg); color: var(--d2-sb-now); font-weight: 700; box-shadow: var(--d2-sb-sh-lit); text-shadow: none; }
-.cps-root .d2-tag--live::before,
-.cpl-card .cpl-st--live::before { content: ''; flex: 0 0 auto; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--d2-sb-now); }
+.cps-root .d2-tag--live { background: var(--d2-sb-bg); color: var(--d2-sb-now); font-weight: 700; box-shadow: var(--d2-sb-sh-lit); }
+.cps-root .d2-tag--live::before { content: ''; flex: 0 0 auto; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--d2-sb-now); }
 .cps-root .d2-tag--cancelled { color: var(--d2-danger); box-shadow: inset 0 0 0 1px var(--d2-danger-line); }
 .cps-root .d2-tag--next { color: var(--d2-accent-ink); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
 .cps-root .d2-tag--neutral,
@@ -1345,52 +1343,37 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 .cpm-drag .cpm-drag__li .ui-button[aria-disabled="true"]::before { background: var(--d2-off-bg); border-color: transparent; box-shadow: none; }
 /* 排序規則（卡 3-4）：收合列展開後在同一張卡片裡，每條之間沒有線、維持編號 */
 .cp3-fold--open + .cpm-rules { margin: 0; padding: 0 6px 12px; list-style: decimal inside; font-size: 13px; line-height: 24px; color: var(--d2-text-2); }
-/* 賽事清單站內卡（清-4，第 1a 批 3.9）：玻璃卡第一行「狀態｜重點句」、名稱、最後一行「分類｜日期・場地」；
- * 卡板是一圈玻璃框（只有底、不疊光澤）包一塊記分板（.d2-sb 共用元件）。class 是清單才有的新名字，不帶根節點前綴。 */
+/* 賽事清單站內卡（清-4，第 1a 批 3.9）。站長 11-22（顧問 §3.565）起每一張都是記分板卡：一圈玻璃框（只有底、不疊光澤）
+ * 包一塊記分板（.d2-sb 共用元件）；取代原本的淺色一般卡（第一行「狀態｜重點句」、56×42 縮圖那一套規則已刪）。
+ * class 是清單才有的新名字，不帶根節點前綴。 */
 /* 站內清單容器最小高度：清單頁吃到舊站 .page 的 overflow，卡片少時展開的站內選單會被裁（規格 3.6：篩選列 36＋4＋選單 272＋16） */
 [data-inapp="competitions"] { min-height: 328px; }
 .cpl-card { margin-bottom: 10px; }
-.cpl-card__link { display: block; padding: 10px 14px 12px; color: var(--d2-text); text-decoration: none; }
-.cpl-card__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 20px; margin-bottom: 2px; }
-.cpl-st { flex: 0 0 auto; font-size: 12px; line-height: 20px; font-weight: 600; letter-spacing: .04em; color: var(--d2-text-2); white-space: nowrap; }
-.cpl-card .cpl-st--live { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 8px; line-height: 22px; }
-.cpl-card .cpl-st--cancelled { color: var(--d2-danger); font-weight: 700; }
-.cpl-line {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-text); font-variant-numeric: tabular-nums;
-}
-.cpl-card__name { font-size: 17px; line-height: 24px; font-weight: 700; color: var(--d2-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cpl-card.ended .cpl-card__name { color: var(--d2-text-2); }
+.cpl-card__link { display: block; padding: 6px; background: var(--d2-glass-base); color: var(--d2-text); text-decoration: none; }
+.cpl-card .d2-sb { --sb-pad: 11px 14px; }
+.cpl-sb__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cpl-sb__cat { font-size: 12px; line-height: 16px; color: var(--d2-sb-fg2); }
+.cpl-card__name { margin-top: 5px; font-size: 19px; line-height: 28px; font-weight: 700; color: var(--d2-sb-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cpl-meta {
   display: flex; align-items: center; min-width: 0; overflow: hidden; white-space: nowrap;
-  font-size: 13px; line-height: 20px; font-weight: 400; color: var(--d2-text-2); font-variant-numeric: tabular-nums;
+  font-size: 13px; line-height: 20px; font-weight: 400; color: var(--d2-sb-fg2); font-variant-numeric: tabular-nums;
 }
-.cpl-meta__cat { flex: 0 0 auto; margin-right: 8px; padding-right: 8px; border-right: 1px solid var(--d2-line-strong); line-height: 14px; }
-.cpl-meta__cat:last-child { margin-right: 0; padding-right: 0; border-right: 0; }
 .cpl-meta__date { flex: 0 0 auto; }
 .cpl-meta__venue { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cpl-meta__date + .cpl-meta__venue::before {
   content: ''; display: inline-block; width: 3px; height: 3px; margin: 0 7px; border-radius: 50%; background: currentColor; vertical-align: middle;
 }
-.cpl-card--board .cpl-card__link { padding: 6px; background: var(--d2-glass-base); }
-.cpl-card--board .d2-sb { --sb-pad: 11px 14px; }
-.cpl-sb__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.cpl-sb__cat { font-size: 12px; line-height: 16px; color: var(--d2-sb-fg2); }
-.cpl-card--board .cpl-card__name { margin-top: 5px; font-size: 19px; line-height: 28px; color: var(--d2-sb-fg); }
-.cpl-card--board .cpl-meta { color: var(--d2-sb-fg2); }
-/* 卡板封面（站長 11-21）：右邊放封面原圖，左緣斜切、由右往左淡進板底（mask 漸層）。只寫 mask-image：打包會自動補
+/* 進行中而當日摘要還沒回來：預留數字格那一列的高度但不畫（摘要晚到時卡片不跳） */
+.cpl-cells--wait { visibility: hidden; }
+/* 板的封面（站長 11-21）：右邊放清單用圖，左緣斜切、由右往左淡進板底（mask 漸層）。只寫 mask-image：打包會自動補
  * -webkit-mask-image 給 iOS／LINE（chrome87／safari14 目標）。圖在板的堆疊層最底（z-index -1、板 isolation），字一律在圖上；
- * 分類字加暗底、全部字加陰影，亮圖雜圖也看得清 */
+ * 分類字加暗底、全部字加陰影，亮圖雜圖也看得清；已結束的圖轉灰 */
 .cpl-sb--img { --cv: linear-gradient(115deg, transparent 60px, #000 140px); isolation: isolate; overflow: hidden; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
 .cpl-sb__img { position: absolute; top: 0; right: 0; z-index: -1; width: 60%; height: 100%; object-fit: cover; mask-image: var(--cv); }
 /* 下緣一層暗漸層（壓在圖上、字下面）：進行中卡板的第二格落在圖上也看得清；名稱與日期場地收在圖淡出前就省略 */
-.d2-sb.cpl-sb--img::after { content: ''; position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: 60px; background: linear-gradient(transparent, rgba(8,12,16,.75) 50%); }
+.cpl-sb--img::after { content: ''; position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: 60px; background: linear-gradient(transparent, rgba(8,12,16,.75) 50%); }
 .cpl-sb--img .cpl-card__name, .cpl-sb--img .cpl-meta { max-width: calc(40% + 66px); }
 .cpl-sb--img .cpl-sb__cat { margin: -2px 0; padding: 0 7px; border-radius: 6px; background: rgba(8,12,16,.6); color: var(--d2-sb-fg); line-height: 20px; }
-/* 一般卡有封面（站長 11-22 統一）：同一組遮罩淡進卡片自己的底；字的陰影改成卡底色的光暈（淺色卡是白光、深色卡是暗光），
- * 重點句改靠左接在狀態後（不壓在圖最清楚的右邊）；已結束的圖轉灰 */
-.cpl-card__link.cpl-sb--img { text-shadow: 0 0 4px var(--d2-field-bg), 0 0 2px var(--d2-field-bg); }
-.cpl-sb--img .cpl-card__top { justify-content: flex-start; }
 .cpl-card.ended .cpl-sb__img { filter: grayscale(1); }
 
 .cpm-cap {
@@ -1553,7 +1536,7 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 .cpa-detail { margin: 0; font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; }
 .cpa-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; color: var(--d2-text-2); font-size: var(--font-size-body-sm); font-variant-numeric: tabular-nums; }
 
-/* 賽事封面圖（計畫書「賽事封面圖」第一階段）。站內清單卡的封面在上面卡板那段（.cpl-sb--img，站長 11-22 起一般卡也用，取代 56×42 縮圖）。
+/* 賽事封面圖（計畫書「賽事封面圖」第一階段）。站內清單卡的封面在上面清單那段（.cpl-sb--img；站長 11-22 起每張都是記分板卡）。
  * 上傳中的轉圈沿用全站欄位的 [data-field-spinner]（ui/form-controls.css），圖示線條寫在 SVG 屬性上 */
 /* 詳情頂部（記分板上面）、建賽確認頁、封面欄預覽：8:3，載入前是淡底 */
 .d2-hero__cover, .cpc-pic img { display: block; width: 100%; height: auto; aspect-ratio: 8 / 3; object-fit: cover; border-radius: 11px; background: var(--d2-line); }
