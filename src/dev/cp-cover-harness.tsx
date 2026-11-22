@@ -46,6 +46,8 @@ document.documentElement.setAttribute('data-cv', params.get('cv') || 'b');
 document.documentElement.setAttribute('data-ac', params.get('ac') || '1');
 // ?lean=1 模擬 Android 省流量模式（navigator.connection.saveData）：清單只載前 3 張圖
 if (params.get('lean') === '1') Object.defineProperty(navigator, 'connection', { value: { saveData: true }, configurable: true });
+// 招募中光軌顏色比較：?fx=b 青綠（預設 a＝多分頁提示銅金），覆寫在 cp-cover-allcards-harness.css
+document.documentElement.setAttribute('data-fx', params.get('fx') || 'a');
 
 // ── 自己畫的示範封面（1200×450；縮圖是正中央 4:3 那一塊，模擬自動裁切） ──
 const ART: Record<string, string> = {
@@ -232,6 +234,27 @@ function AllCards30Screen(): ComponentChildren {
   return <BoardList lists={[cards]} />;
 }
 
+// 狀態總覽（站長 11-22：每張都是深色記分板卡、直切淡出封面、狀態邊框色、招募中光軌）：
+// 六種狀態＋進行中摘要晚到（預留列）＋重點句沒資料（只有名稱）＋長名稱；?nocover=1 全部沒封面
+function StatesScreen(): ComponentChildren {
+  const c = artCover();
+  const busy = artName === 'busy';
+  const none = params.get('nocover') === '1';
+  const img = (art: string): string => (none ? '' : busy ? c.url : art === 'photo' ? c.url : cover(art).url);
+  const lists = [[
+    boardCard('s_live', { name: '冬季友誼聯賽', category: 'league', phase: 'live', line: { kind: 'live', count: 3, time: '14:30' }, date: '11/22', venue: '迎風河濱球場', cover: img('photo') }),
+    boardCard('s_live_wait', { name: '摘要晚到的進行中賽事', category: 'cup', phase: 'live', line: null, date: '11/22', venue: '新莊運動公園', cover: img('pitch') }),
+    boardCard('s_recruit', { cover: img('cup') }),
+    boardCard('s_recruit2', { name: LONG, category: 'league', line: { kind: 'deadline', date: '12/20 23:59' }, date: '01/16–01/17', venue: '三重綜合運動場', cover: img('photo') }),
+    boardCard('s_warm', { name: '週末五人制交流賽', category: 'friendly', phase: 'warm', line: { kind: 'warm', days: 6 }, date: '11/29', venue: '青年公園', cover: img('pitch') }),
+    boardCard('s_pp', { name: '延期的聯賽', category: 'league', phase: 'warm', statusMark: 'postponed', line: { kind: 'warm', days: 3 }, date: '12/06', venue: '迎風河濱球場', cover: img('cup') }),
+    boardCard('s_done', { name: '秋季盃', phase: 'done', ended: true, line: null, date: '10/18–10/19', venue: '新莊運動公園', cover: img('dusk') }),
+    boardCard('s_cc', { name: '取消的友誼賽', category: 'friendly', phase: 'done', statusMark: 'cancelled', line: null, date: '11/01', venue: '大佳河濱公園', cover: img('photo') }),
+    boardCard('s_noline', { name: '去年秋季盃（只有名稱）', category: 'cup', phase: null, line: null, date: '', venue: '', cover: '' }),
+  ]];
+  return <BoardList lists={lists} />;
+}
+
 // 下架：管理員看清單，下架那場（正式查詢不會帶出；這裡故意混進來）卡板與一般卡都不畫封面；沒下架的照常有縮圖
 function hiddenAdminEnv(): CpInjectedEnv {
   const env = { ...listInEnv(), actor: adminActor };
@@ -393,6 +416,7 @@ const SCREENS: Record<string, Screen> = {
   'list-board-live': { env: listInEnv, Page: BoardLiveScreen },
   'list-board-all': { env: listInEnv, Page: BoardAllScreen },
   'list-all-cards': { env: listInEnv, Page: AllCardsScreen },
+  'list-states': { env: listInEnv, Page: StatesScreen },
   'list-30': { env: listInEnv, Page: AllCards30Screen },
   'list-hidden-admin': { env: hiddenAdminEnv, Page: ListIn },
   'guest-detail': { env: () => ({ ...withCover(screenEnv('real-live'), { cover: PITCH }), actor: GUEST }), Page: CompetitionDetailPage },
@@ -416,7 +440,7 @@ async function start(): Promise<void> {
   await setLocale('zh-TW');
   await loadCompetitionsDict('zh-TW');
   if (framed) await import('@/ui/app-shell.css');
-  if ((screenName.startsWith('list-board') || screenName === 'list-all-cards') && artName === 'photo') await loadPhoto();
+  if ((screenName.startsWith('list-board') || screenName === 'list-all-cards' || screenName === 'list-states') && artName === 'photo') await loadPhoto();
   const root = document.getElementById('app');
   if (!root) return;
   render(

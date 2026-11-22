@@ -665,6 +665,28 @@ describe('清單卡', () => {
     expect(document.querySelector('.cpl-xrow__img, .cpl-card__link--img')).toBeNull();
   });
 
+  it('招募中（沒延期取消）才有光軌掛點；動態載入後掛上光軌，卸載不殘留 style 與光軌；各狀態有自己的 data-phase／data-mark（邊框色）', async () => {
+    const base = { name: 'x', category: 'cup' as const, date: '', venue: '', firstMatchAt: 1, mine: false, ended: false, cover: '' };
+    const cards: InAppListCard[] = [
+      { ...base, cid: 'r', phase: 'recruit', statusMark: null, line: { kind: 'deadline', date: '12/01 23:59' } },
+      { ...base, cid: 'w', phase: 'warm', statusMark: null, line: { kind: 'warm', days: 3 } },
+      { ...base, cid: 'p', phase: 'recruit', statusMark: 'postponed', line: null },
+      { ...base, cid: 'c', phase: 'done', statusMark: 'cancelled', line: null },
+    ];
+    const view = render(
+      <InAppCardList cards={cards} ct={makeCompetitionsT({})} status="all" onlyMine={false} showCreate={false}
+        onStatus={() => {}} onOnlyMine={() => {}} onCreate={() => {}} onOpen={() => {}} />,
+    );
+    expect([...document.querySelectorAll('.cpl-fx-slot')].map((el) => el.closest('[data-cid]')?.getAttribute('data-cid'))).toEqual(['r']);
+    expect(document.querySelector('[data-cid="p"]')?.getAttribute('data-mark')).toBe('postponed');
+    expect(document.querySelector('[data-cid="c"]')?.getAttribute('data-mark')).toBe('cancelled');
+    expect(document.querySelector('[data-cid="w"]')?.hasAttribute('data-mark')).toBe(false);
+    await waitFor(() => expect(document.querySelector('.cpl-fx-slot .burst')).not.toBeNull());
+    view.unmount();
+    expect(document.querySelector('style[data-cpl-fx-instance]')).toBeNull();
+    expect(document.getElementById('cpl-recruit-fx-style')).toBeNull();
+  });
+
   it('一般卡封面載不到：改畫沒封面的版面，不留空格', () => {
     const card: InAppListCard = {
       cid: 'bad', name: 'bad', category: 'league', phase: 'recruit', date: '', venue: '', firstMatchAt: 1,

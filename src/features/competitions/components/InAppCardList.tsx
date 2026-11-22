@@ -5,7 +5,7 @@
 // 保留 cpl-card、cpl-card--board、ended、data-cid、data-phase（測試在用）；不再輸出 tc-card 一族與 tc-chip。
 
 import type { JSX } from 'preact';
-import { useId, useState } from 'preact/hooks';
+import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { Button } from '@/ui/Button';
 import { MenuSelect } from '../ui/menu-select';
 import type { CompetitionsT } from '../i18n';
@@ -77,6 +77,11 @@ function BoardCells({ ct, line }: { ct: CompetitionsT; line: InAppStatusLine }):
   );
 }
 
+/** 招募中（沒有延期或取消）的卡才有光軌與星芒。 */
+function isRecruitFx(card: InAppListCard): boolean {
+  return card.phase === 'recruit' && card.statusMark === null;
+}
+
 /** 清單裡前幾張有圖的卡立即載入（顧問設計稿「卡片縮圖與載入策略」第 6 節）；其餘捲到才載。 */
 export const EAGER_IMAGES = 3;
 
@@ -127,9 +132,11 @@ function InCard({ card, ct, imgRank, lean, onOpen }: {
         ? ct(statusKey(card.phase))
         : '';
   const lit = card.phase === 'live' && card.statusMark === null;
+  // data-mark：整場延期或取消（邊框色、灰罩、取消紅字吃這個）；招募中才放光軌掛點（recruit-orbit.ts 動態載入後填）。
   return (
-    <div class={`cpl-card cpl-card--board${card.ended ? ' ended' : ''}`} data-cid={card.cid} data-phase={card.phase ?? 'unknown'}>
+    <div class={`cpl-card cpl-card--board${card.ended ? ' ended' : ''}`} data-cid={card.cid} data-phase={card.phase ?? 'unknown'} data-mark={card.statusMark ?? undefined}>
       <a class="cpl-card__link" href={href} onClick={open}>
+        {isRecruitFx(card) ? <i class="cpl-fx-slot" aria-hidden="true" /> : null}
         <div class={`d2-sb${lit ? ' d2-sb--lit' : ''}${cover ? ' cpl-sb--img' : ''}`}>
           {img}
           <div class="cpl-sb__top">
@@ -170,10 +177,29 @@ export function InAppCardList({
   onOpen: (cid: string, event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => void;
 }): JSX.Element {
   const onlyMineId = useId();
+  const listRef = useRef<HTMLDivElement>(null);
+  // 招募中卡的光軌：有招募中卡才動態載入；卡片組成變了（含快照先畫再換成讀回的清單）先整組清掉再重掛，不殘留。
+  const fxKey = cards.filter(isRecruitFx).map((card) => card.cid).join(',');
+  useEffect(() => {
+    if (!fxKey) return;
+    let alive = true;
+    let stop: (() => void) | null = null;
+    void import('./recruit-orbit')
+      .then((mod) => {
+        if (alive && listRef.current) stop = mod.startRecruitFx(listRef.current);
+      })
+      .catch(() => {
+        // 載不到只是沒有光軌，邊框色照常。
+      });
+    return () => {
+      alive = false;
+      stop?.();
+    };
+  }, [fxKey]);
   const lean = saveDataMode();
   let rank = 0;
   return (
-    <div data-inapp="competitions">
+    <div data-inapp="competitions" ref={listRef}>
       <div class="cpl-bar cpl-toolbar">
         <MenuSelect<InAppStatusFilter>
           label={ct('statusLabel')}

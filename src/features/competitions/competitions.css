@@ -1349,7 +1349,15 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 /* 站內清單容器最小高度：清單頁吃到舊站 .page 的 overflow，卡片少時展開的站內選單會被裁（規格 3.6：篩選列 36＋4＋選單 272＋16） */
 [data-inapp="competitions"] { min-height: 328px; }
 .cpl-card { margin-bottom: 10px; }
-.cpl-card__link { display: block; padding: 6px; background: var(--d2-glass-base); color: var(--d2-text); text-decoration: none; }
+.cpl-card__link { display: block; padding: 6px; background: var(--d2-glass-base); box-shadow: inset 0 0 0 1.5px var(--st-edge), var(--d2-glass-sh); color: var(--d2-text); text-decoration: none; }
+/* 狀態邊框色（站長 11-22）：每種狀態只設 --st-edge，共用上面那條框線；已結束、取消、沒有階段是中性灰。 */
+.cpl-card { --st-edge: rgba(148, 163, 184, .45); }
+.cpl-card[data-phase="recruit"] { --st-edge: #2dd4bf; }
+.cpl-card[data-phase="warm"] { --st-edge: #60a5fa; }
+.cpl-card[data-phase="live"] { --st-edge: var(--d2-sb-now); }
+.cpl-card[data-mark="postponed"] { --st-edge: #f59e0b; }
+.cpl-card[data-mark="cancelled"] { --st-edge: rgba(148, 163, 184, .45); }
+.cpl-card[data-mark="cancelled"] .d2-sb__st { color: var(--d2-sb-alarm); }
 .cpl-card .d2-sb { --sb-pad: 11px 14px; }
 .cpl-sb__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .cpl-sb__cat { font-size: 12px; line-height: 16px; color: var(--d2-sb-fg2); }
@@ -1365,16 +1373,21 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 }
 /* 進行中而當日摘要還沒回來：預留數字格那一列的高度但不畫（摘要晚到時卡片不跳） */
 .cpl-cells--wait { visibility: hidden; }
-/* 板的封面（站長 11-21）：右邊放清單用圖，左緣斜切、由右往左淡進板底（mask 漸層）。只寫 mask-image：打包會自動補
+/* 板的封面（站長 11-21）：右邊放清單用圖，由右往左淡進板底（mask 漸層）。只寫 mask-image：打包會自動補
  * -webkit-mask-image 給 iOS／LINE（chrome87／safari14 目標）。圖在板的堆疊層最底（z-index -1、板 isolation），字一律在圖上；
- * 分類字加暗底、全部字加陰影，亮圖雜圖也看得清；已結束的圖轉灰 */
-.cpl-sb--img { --cv: linear-gradient(115deg, transparent 60px, #000 140px); isolation: isolate; overflow: hidden; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+ * 分類字加暗底、全部字加陰影，亮圖雜圖也看得清；已結束與取消的圖轉灰。站長 11-22 起斜切改直切（由右往左淡出）。 */
+.cpl-sb--img { --cv: linear-gradient(90deg, transparent, #000 55%); isolation: isolate; overflow: hidden; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
 .cpl-sb__img { position: absolute; top: 0; right: 0; z-index: -1; width: 60%; height: 100%; object-fit: cover; mask-image: var(--cv); }
-/* 下緣一層暗漸層（壓在圖上、字下面）：進行中卡板的第二格落在圖上也看得清；名稱與日期場地收在圖淡出前就省略 */
-.cpl-sb--img::after { content: ''; position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: 60px; background: linear-gradient(transparent, rgba(8,12,16,.75) 50%); }
+/* 圖上一層（壓在圖上、字下面，跟圖一樣直切淡出）：下緣暗漸層讓進行中的第二格看得清；已結束與取消再疊灰罩。
+ * 名稱與日期場地收在圖淡出前就省略 */
+.cpl-sb--img::after {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; z-index: -1; width: 60%; mask-image: var(--cv);
+  background: linear-gradient(transparent calc(100% - 60px), rgba(8,12,16,.75) calc(100% - 30px)) var(--cv-tint, transparent);
+}
+.cpl-card.ended .cpl-sb--img, .cpl-card[data-mark="cancelled"] .cpl-sb--img { --cv-tint: rgba(100, 116, 139, .35); }
 .cpl-sb--img .cpl-card__name, .cpl-sb--img .cpl-meta { max-width: calc(40% + 66px); }
 .cpl-sb--img .cpl-sb__cat { margin: -2px 0; padding: 0 7px; border-radius: 6px; background: rgba(8,12,16,.6); color: var(--d2-sb-fg); line-height: 20px; }
-.cpl-card.ended .cpl-sb__img { filter: grayscale(1); }
+.cpl-card.ended .cpl-sb__img, .cpl-card[data-mark="cancelled"] .cpl-sb__img { -webkit-filter: grayscale(1); filter: grayscale(1); }
 
 .cpm-cap {
   margin: 0;
