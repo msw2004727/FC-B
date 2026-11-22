@@ -5,7 +5,7 @@
 // （公開文件是最新根文件，我的索引名稱可能過期）。
 // ASSUMPTION: 卡片日期用首場到末場（比賽期間）。同一年的結束日省略年份。地點用第一個有名稱的場地。
 // ASSUMPTION: 距開賽是台北日曆日差，不是滿 24 小時才算一天。
-// ASSUMPTION: 沒有時間的「我的賽事」階段未知。預設「未結束」仍列出（未知不是已結束）。指定階段不含未知。
+// ASSUMPTION: 沒有時間的「我的賽事」階段未知。「未結束」篩選仍列出（未知不是已結束；站長 11-22 起畫面預設全部、未結束不再有頁籤）。指定階段不含未知。
 // ASSUMPTION: 只看我的關閉時是公開、cpMine、代表俱樂部主辦的聯集，以 cid 去重。打開時只留後兩者。
 // ASSUMPTION: 排序先放「真的在進行中」（進行中且沒有整場延期或取消），其餘照首場時間新到舊；
 // 沒有時間的排後面，再用 cid 固定順序（站長 11-20 定案，取代原本只看首場新到舊）。
@@ -18,15 +18,12 @@ import { formatTaipeiShort, taipeiParts } from '../format';
 
 export type InAppTab = 'all' | CompetitionCategory;
 
-/** 未結束是預設，不是階段名稱。全部表示不篩階段。 */
+/** 未結束不是階段名稱（畫面上已無頁籤，站長 11-22 起預設全部）。全部表示不篩階段。 */
 export type InAppStatusFilter = 'open' | 'recruit' | 'warm' | 'live' | 'done' | 'all';
-
-export const IN_APP_STATUS_FILTERS: readonly InAppStatusFilter[] = [
-  'open', 'recruit', 'warm', 'live', 'done', 'all',
-];
 
 export type InAppStatusLine =
   | { kind: 'deadline'; date: string }
+  | { kind: 'opens'; date: string }
   | { kind: 'warm'; days: number }
   | { kind: 'live'; count: number; time: string }
   | { kind: 'today'; count: number };
@@ -48,6 +45,8 @@ export interface InAppListCard {
   ended: boolean;
   /** 整場延期或取消時，列表膠囊改顯示這個，不再用階段。 */
   statusMark: 'postponed' | 'cancelled' | null;
+  /** 招募階段但報名還沒開始（now < regOpenAt）：膠囊寫「即將開放」、不跑光軌（站長 11-22）。 */
+  soon?: boolean;
   /**
    * 清單用圖（data/cover.ts#listImage：有 800×300 card 用 card，舊賽事退原圖 url）；
    * 每張記分板卡都用這一張。沒有封面或下架是空字串，卡片版面照舊（純深色板）。
@@ -138,12 +137,13 @@ export function todayFromShard(entries: readonly SummaryEntry[], now: number): T
 }
 
 export function statusLineFor(
-  doc: Pick<CompetitionDoc, 'id' | 'regCloseAt' | 'firstMatchAt'>,
+  doc: Pick<CompetitionDoc, 'id' | 'regOpenAt' | 'regCloseAt' | 'firstMatchAt'>,
   phase: CompetitionPhase,
   now: number,
   today: TodayMatches | undefined,
 ): InAppStatusLine | null {
   if (phase === 'recruit') {
+    if (now < doc.regOpenAt) return { kind: 'opens', date: formatTaipeiShort(doc.regOpenAt) };
     return { kind: 'deadline', date: formatTaipeiShort(doc.regCloseAt) };
   }
   if (phase === 'warm') {
@@ -177,6 +177,7 @@ function cardFromDoc(
     mine,
     ended: phase === 'done',
     statusMark: doc.status === 'postponed' || doc.status === 'cancelled' ? doc.status : null,
+    soon: phase === 'recruit' && now < doc.regOpenAt,
     cover: listImage(shownCover(doc, false)),
   };
 }

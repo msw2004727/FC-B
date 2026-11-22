@@ -12,6 +12,10 @@
 .cp-danger-confirm #app-confirm-modal {
   --d2-accent: #0d9488;
   --d2-accent-ink: #0f766e;
+  --d2-ext: #4f46e5;
+  --d2-ext-ink: #4338ca;
+  --d2-ext-soft: rgba(79, 70, 229, .1);
+  --d2-ext-line: rgba(79, 70, 229, .4);
   --d2-accent-on: #ffffff;
   --d2-accent-line: rgba(13, 148, 136, .34);
   --d2-seg-on: linear-gradient(180deg, rgba(255,255,255,.7) 0%, rgba(255,255,255,0) 60%), rgba(13,148,136,.09);
@@ -28,8 +32,6 @@
   --d2-glass-base: linear-gradient(180deg, #fdfefe 0%, #edf1f6 100%);
   --d2-glass-gloss: linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.3) 46%, rgba(255,255,255,0) 54%);
   --d2-glass-sh: inset 0 0 0 1px rgba(190,200,214,.85), inset 0 2px 0 -1px #fff, inset 0 -6px 12px -6px rgba(100,116,139,.22), 0 6px 14px -10px rgba(15,23,42,.4);
-  --d2-graphite-soft: rgba(71, 85, 105, .1);
-  --d2-graphite-line: rgba(71, 85, 105, .36);
   --d2-thumb-end-op: .6;
   --d2-xc-line: rgba(190, 200, 214, .9);
   --d2-xc-sh: rgba(13, 148, 136, .38);
@@ -40,6 +42,10 @@
 [data-theme="dark"].cp-danger-confirm #app-confirm-modal {
   --d2-accent: #34d399;
   --d2-accent-ink: #34d399;
+  --d2-ext: #818cf8;
+  --d2-ext-ink: #a5b4fc;
+  --d2-ext-soft: rgba(129, 140, 248, .16);
+  --d2-ext-line: rgba(129, 140, 248, .45);
   --d2-accent-on: #06231c;
   --d2-accent-line: rgba(52, 211, 153, .38);
   --d2-seg-on: linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,0) 60%), rgba(52,211,153,.14);
@@ -56,8 +62,6 @@
   --d2-glass-base: linear-gradient(180deg, #262e40 0%, #171c27 100%);
   --d2-glass-gloss: linear-gradient(180deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,0) 54%);
   --d2-glass-sh: inset 0 0 0 1px rgba(255,255,255,.09), inset 0 2px 0 -1px rgba(255,255,255,.16), inset 0 -6px 12px -6px rgba(0,0,0,.5), 0 6px 14px -10px rgba(0,0,0,.8);
-  --d2-graphite-soft: rgba(203, 213, 225, .12);
-  --d2-graphite-line: rgba(203, 213, 225, .32);
   --d2-thumb-end-op: .45;
   --d2-xc-line: rgba(255,255,255,.06) rgba(255,255,255,.06) rgba(0,0,0,.45);
   --d2-xc-sh: rgba(0, 0, 0, .75);
@@ -81,26 +85,20 @@
   flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-family: inherit; font-size: 19px; line-height: 28px; font-weight: 700; color: var(--d2-text);
 }
-#page-tournaments .cpl-src { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; }
+/* 站內／外部切換（站長 11-22，取代「選中那顆當標題＋右上小膠囊」）：橫向兩格開關，選中那格填自己那套的主題色（站內青綠、外部靛藍） */
+#page-tournaments .cpl-src { flex: 1 1 auto; min-width: 0; display: flex; height: 44px; padding: 4px; border-radius: 14px; }
 #page-tournaments .cpl-src button {
-  flex: 0 0 auto; min-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 0; background: none;
-  font: inherit; white-space: nowrap; color: var(--d2-text-2);
+  flex: 1 1 0; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 10px; background: none;
+  font: inherit; font-size: 15px; font-weight: 600; white-space: nowrap; color: var(--d2-text-2); cursor: pointer;
 }
-#page-tournaments .cpl-src button.on { order: 1; font-size: 19px; line-height: 28px; font-weight: 700; color: var(--d2-text); text-align: left; cursor: default; }
-#page-tournaments .cpl-src button:not(.on) { order: 2; position: relative; z-index: 0; margin-left: auto; padding: 0 12px; font-size: 13px; line-height: 20px; font-weight: 600; cursor: pointer; }
-/* 玻璃面三處共用一條（11-22 併範圍騰樣式預算：切換小膠囊、分類分段、站內骨架卡；取代三條各寫一次） */
-#page-tournaments .cpl-src button:not(.on)::before, #page-tournaments .cpl-seg, #page-tournaments .cpl-skel__card {
+/* 站內選中格用 accent-ink（淺色白字對比 5.5:1；accent 只有 3.75:1，審查 P3-5）；深色兩者同色 */
+#page-tournaments .cpl-src button.on { background: var(--d2-accent-ink); color: var(--d2-accent-on); font-weight: 700; }
+#page-tournaments .cpl-src button.on:last-child { background: var(--d2-ext); }
+#page-tournaments .cpl-src button:focus-visible { outline: 2px solid var(--d2-accent); outline-offset: -2px; }
+/* 玻璃面三處共用一條（切換軌道、分類分段、站內骨架卡；11-22 併範圍騰樣式預算） */
+#page-tournaments .cpl-src, #page-tournaments .cpl-seg, #page-tournaments .cpl-skel__card {
   background: var(--d2-glass-gloss), var(--d2-glass-base); box-shadow: var(--d2-glass-sh);
 }
-#page-tournaments .cpl-src button:not(.on)::before {
-  content: ''; position: absolute; z-index: -1; top: 6px; right: 0; bottom: 6px; left: 0; border-radius: 999px;
-}
-/* 看外部時（外部那顆是第二顆）標題降成灰；回站內的小膠囊是外部頁唯一的青綠 */
-#page-tournaments .cpl-src button.on:last-child { color: var(--d2-text-2); }
-#page-tournaments .cpl-src button:first-child:not(.on) { color: var(--d2-accent-ink); }
-#page-tournaments .cpl-src button:focus-visible { outline: 2px solid var(--d2-accent); outline-offset: 2px; border-radius: 8px; }
-#page-tournaments .cpl-src button:not(.on):focus-visible { outline-offset: -4px; border-radius: 999px; }
-
 /* 分類分段：與第 0 批分段切換同一組數字（清單頁手寫分頁鈕、要先畫，所以在這裡再寫一次） */
 #page-tournaments .cpl-seg {
   display: flex; align-items: center; height: 40px; margin: 0 0 10px; border-radius: 12px;
@@ -115,15 +113,17 @@
   content: ''; position: absolute; z-index: -1; top: 7px; right: 4px; bottom: 7px; left: 4px; border-radius: 8px;
   background: var(--d2-seg-on); box-shadow: inset 0 0 0 1px var(--d2-accent-line);
 }
-#page-tournaments.d2-ext .cpl-seg__tab.on { color: var(--d2-text); }
-#page-tournaments.d2-ext .cpl-seg__tab.on::after { background: var(--d2-graphite-soft); box-shadow: inset 0 0 0 1px var(--d2-graphite-line); }
+/* 外部頁用外部主題色：分類選中、已結束開關、新增賽事 */
+#page-tournaments.d2-ext .cpl-seg__tab.on { color: var(--d2-ext-ink); }
+#page-tournaments.d2-ext .cpl-seg__tab.on::after { background: var(--d2-ext-soft); box-shadow: inset 0 0 0 1px var(--d2-ext-line); }
+#page-tournaments.d2-ext .cpl-sw input:checked + .toggle-slider { background: var(--d2-ext); }
+#page-tournaments.d2-ext .cpl-bar > .ui-button { --comp-button-background-default: var(--d2-ext); --comp-button-foreground-default: var(--d2-accent-on); }
 #page-tournaments .cpl-seg__tab:focus-visible { outline: 2px solid var(--d2-accent); outline-offset: -2px; border-radius: 8px; }
 
 /* 篩選列（站內、外部共用）：最後一個子項靠最右（建立賽事／＋ 新增賽事；沒有時是開關） */
 #page-tournaments .cpl-bar { display: flex; align-items: center; gap: 12px; min-height: 36px; margin: 0 0 10px; font-size: 13px; line-height: 20px; color: var(--d2-text-2); }
 #page-tournaments .cpl-bar > :last-child { margin-left: auto; }
 /* 選單鈕、按鈕外觀 36px、點擊區 44px：上下用負邊界不撐高篩選列。舊站 .legacy-ui button 會把字色蓋成繼承，這裡接回按鈕自己的字色 */
-#page-tournaments .cpl-bar > .d2-dd { margin-top: -4px; margin-bottom: -4px; }
 #page-tournaments .cpl-bar > .ui-button { flex: 0 0 auto; min-inline-size: 0; margin-top: -4px; margin-bottom: -4px; padding: 0 14px; color: var(--comp-button-foreground-default); }
 #page-tournaments .cpl-bar > .ui-button::before { top: 4px; bottom: 4px; }
 /* 開關：舊站標記，軌道尺寸不動；輸入框改成看不見但在原位，鍵盤停得到、有焦點框（規格第 10 節第 11 題） */
@@ -152,9 +152,6 @@
  * 頁籤已換成分段切換，這裡四角都 12px。0.20261121a 那幾條本來就不限定頁面（class 是賽事頁專屬），這裡同樣不加 #page-tournaments、權重與當時相同；
  * 當時限定頁面的光澤、編輯鈕、連結外框維持 #page-tournaments。 */
 .cpl-xpanel { position: relative; margin-bottom: 10px; padding: 12px 10px 4px; border-radius: 12px; background: var(--d2-xp-band), var(--d2-glass-base); box-shadow: var(--d2-xp-sh); }
-.cpl-xcreate { display: flex; justify-content: flex-end; margin: 0 0 10px; }
-.cpl-xtool { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 10px; font-size: .8rem; color: var(--text-muted); }
-#page-tournaments .cpl-xtool label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .cpl-xstatus { padding: 1rem .5rem; text-align: center; font-size: .85rem; color: var(--text-muted); }
 #page-tournaments .cpl-xstatus .outline-btn { margin-top: .5rem; }
 /* 外部卡整張底圖（站長 11-22，顧問 §3.577）：封面圖鋪滿整張卡，上面一層由上往下加深的半透明遮罩，

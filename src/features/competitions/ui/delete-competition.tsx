@@ -111,7 +111,8 @@ export function DeleteCompetition(props: DeleteCompetitionProps): JSX.Element {
   );
 }
 
-function DeleteDialog({
+/** 刪除確認框本體（勾選＋0.6 秒）。詳情頁經 DeleteCompetition 打開；清單卡的刪除鈕（站長 11-22）在第一次確認後直接打開。 */
+export function DeleteDialog({
   ct,
   cid,
   name,

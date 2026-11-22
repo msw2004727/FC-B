@@ -54,6 +54,10 @@ import { useInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { representativeClubs } from '../rep-clubs';
 import { InAppCardList } from './InAppCardList';
+import { liveCpActions, type CpActions } from '../actions';
+import { DeleteDialog, teamCountOf } from '../ui/delete-competition';
+import { dangerConfirm } from '../ui/danger-confirm';
+import { toast } from '@/ui/Toast';
 import '../competitions.css';
 
 async function resolveMine(repo: CompetitionsRepo, item: CpMineItem): Promise<MineListRow | null> {
@@ -109,6 +113,7 @@ const NO_TODAY: ReadonlyMap<string, TodayMatches> = new Map();
 function SectionBody({
   actor,
   repo,
+  actions,
   now,
   tab,
   active,
@@ -118,6 +123,7 @@ function SectionBody({
 }: {
   actor: CpActor;
   repo: CompetitionsRepo;
+  actions: CpActions;
   now: number;
   tab: InAppTab;
   active: boolean;
@@ -133,7 +139,9 @@ function SectionBody({
   const [baseMine, setBaseMine] = useState<MineListRow[]>([]);
   const [hosted, setHosted] = useState<CompetitionDoc[]>([]);
   const [publicDocs, setPublicDocs] = useState<CompetitionDoc[]>([]);
-  const [status, setStatus] = useState<InAppStatusFilter>('open');
+  const [status, setStatus] = useState<InAppStatusFilter>('all');
+  // 清單卡刪除鈕（站長 11-22）：第一次確認通過後要刪的那場，打開第二次確認（勾選＋0.6 秒）。
+  const [del, setDel] = useState<{ cid: string; name: string } | null>(null);
   const [onlyMine, setOnlyMine] = useState(false);
   const [todayByCid, setTodayByCid] = useState<ReadonlyMap<string, TodayMatches>>(() => new Map());
   // null＝閘門還沒通過，不要為了俱樂部主辦去讀。
@@ -165,7 +173,8 @@ function SectionBody({
       setHosted([]);
       setPublicDocs([]);
       setHostQuery(null);
-      setStatus('open');
+      setStatus('all');
+      setDel(null);
       setOnlyMine(false);
       setTodayByCid(new Map());
       shardCache.current.clear();
@@ -352,8 +361,24 @@ function SectionBody({
   if (!active) return null;
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const showCreate = !!actor.uid && !actor.authPending;
+  // 刪除鈕只給管理員以上（站長 11-22）；後端 deleteCompetition 對管理員一律放行（delete-access.ts）。快照畫面不給。
+  const canDelete = !!actor.uid && !actor.authPending && !actor.rolePending && isCpAdmin(actor.role) && !showingSnap;
+  const findDoc = (cid: string): CompetitionDoc | undefined =>
+    publicDocs.find((doc) => doc.id === cid) ?? hosted.find((doc) => doc.id === cid)
+    ?? baseMine.find((row) => row.cid === cid)?.doc ?? undefined;
+  const onDelete = async (cid: string, name: string): Promise<void> => {
+    // 第一次確認：寫出賽事名稱；通過才打開第二次確認框。
+    const ok = await dangerConfirm(ct('deleteAsk', { name }), { okText: ct('deleteComp'), danger: true });
+    if (ok) setDel({ cid, name });
+  };
+  const dropDoc = (cid: string): void => {
+    setPublicDocs((list) => list.filter((doc) => doc.id !== cid));
+    setHosted((list) => list.filter((doc) => doc.id !== cid));
+    setBaseMine((list) => list.filter((row) => row.cid !== cid));
+  };
 
   return (
+    <>
     <InAppCardList
       cards={visible}
       ct={ct}
@@ -368,7 +393,36 @@ function SectionBody({
         event.stopPropagation(); // 不讓 preact-iso LocationProvider 的全域連結攔截再推一筆歷史（11-20 預演：返回要按兩次）。
         route(`/competitions/${cid}`);
       }}
+      onDelete={canDelete ? (cid, name) => void onDelete(cid, name) : undefined}
     />
+    {/* 換帳號或權限變了不再顯示（審查 P2-2） */}
+    {del && canDelete ? (
+      <DeleteDialog
+        ct={ct}
+        cid={del.cid}
+        name={del.name}
+        teams={null}
+        loadTeams={async () => teamCountOf(await repo.listDivisions(del.cid))}
+        resume={findDoc(del.cid)?.deletingAt != null}
+        actions={actions}
+        reload={() => repo.getCompetition(del.cid)}
+        onClose={() => setDel(null)}
+        onDeleted={() => {
+          const cid = del.cid;
+          setDel(null);
+          toast.show({ message: ct('deleteDone') });
+          repo.invalidateCrests(cid);
+          dropDoc(cid);
+        }}
+        onStuck={(doc) => {
+          // 刪到一半：換上新文件，確認框留著顯示錯誤；再按一次刪除即續刪。
+          setPublicDocs((list) => list.map((item) => (item.id === doc.id ? doc : item)));
+          setHosted((list) => list.map((item) => (item.id === doc.id ? doc : item)));
+          setBaseMine((list) => list.map((row) => (row.cid === doc.id && row.doc ? { ...row, doc } : row)));
+        }}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -394,6 +448,7 @@ function LiveInApp(props: InAppSectionProps): JSX.Element {
         <SectionBody
           actor={actor}
           repo={repo}
+          actions={liveCpActions}
           now={nowRef.current}
           tab={props.tab ?? 'all'}
           active={props.active !== false}
@@ -414,6 +469,7 @@ export function InAppSection(props: InAppSectionProps): JSX.Element | null {
       <SectionBody
         actor={injected.actor}
         repo={injected.repo}
+        actions={injected.actions}
         now={injected.now ?? nowRef.current}
         tab={props.tab ?? 'all'}
         active={props.active !== false}

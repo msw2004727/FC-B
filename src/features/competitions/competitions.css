@@ -475,26 +475,6 @@
 .d2-sb .ui-badge { background: none; box-shadow: inset 0 0 0 1px var(--d2-sb-line); color: var(--d2-sb-fg2); }
 .d2-sb .cp3-crest.cp3-crest--txt { background: rgba(255,255,255,.1); color: var(--d2-sb-fg); box-shadow: inset 0 0 0 1px rgba(255,255,255,.22); }
 
-/* 站內下拉選單（清-2，ui/menu-select.tsx）：收合是借來的小顆玻璃次要鈕（外觀 36px、點擊區 44px）加向下箭頭，
- * 展開中照第 0 批「工具鈕展開中」；清單關著時用 hidden 屬性，所以 .d2-menu 本身不設 display。 */
-.d2-dd { position: relative; flex: 0 0 auto; }
-.d2-dd .d2-dd__btn { min-inline-size: 0; padding: 0 32px 0 12px; border-radius: 10px; }
-.d2-dd .d2-dd__btn::before { top: 4px; bottom: 4px; }
-.d2-dd__caret { position: absolute; top: 50%; right: 10px; width: 16px; height: 16px; margin-top: -8px; color: var(--d2-text-2); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.d2-menu {
-  position: absolute; z-index: 6; top: 100%; left: 0; min-width: 100%; width: max-content; padding: 4px;
-  border-radius: 14px; background: var(--d2-menu-bg); box-shadow: var(--d2-menu-sh);
-}
-.d2-menu__opt {
-  display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; min-width: 148px; min-height: 44px; margin: 0; padding: 0 12px;
-  border: 0; border-radius: 10px; background: none; color: var(--d2-text); font: inherit; font-size: 15px; line-height: 24px; font-weight: 400;
-  text-align: left; white-space: nowrap; cursor: pointer;
-}
-.d2-menu__opt[aria-selected="true"] { background: var(--d2-seg-on); color: var(--d2-seg-fg); font-weight: 700; }
-.d2-menu__opt:focus-visible { outline: 2px solid var(--d2-accent); outline-offset: -2px; }
-.d2-menu__chk { flex: 0 0 auto; width: 16px; height: 16px; visibility: hidden; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-.d2-menu__opt[aria-selected="true"] .d2-menu__chk { visibility: visible; }
-
 /* 頁框（卡 1b-2）：左右 8px，加外框 .app-main 的 8px 合計 16px，與清單頁相同。
  * 底色鋪滿視窗：根節點自己不鋪底，同一組漸層鋪在固定在視窗上的 ::before（清單頁 .tournaments-root::before 同做法），
  * 短頁面底色不會中途斷掉。根節點自成一層（z-index 0），底色層在它裡面排最後（-1）；外框上方列與底部導覽不受影響。 */
@@ -1346,15 +1326,23 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 /* 賽事清單站內卡（清-4，第 1a 批 3.9）。站長 11-22（顧問 §3.565）起每一張都是記分板卡：一圈玻璃框（只有底、不疊光澤）
  * 包一塊記分板（.d2-sb 共用元件）；取代原本的淺色一般卡（第一行「狀態｜重點句」、56×42 縮圖那一套規則已刪）。
  * class 是清單才有的新名字，不帶根節點前綴。 */
-/* 站內清單容器最小高度：清單頁吃到舊站 .page 的 overflow，卡片少時展開的站內選單會被裁（規格 3.6：篩選列 36＋4＋選單 272＋16） */
-[data-inapp="competitions"] { min-height: 328px; }
-.cpl-card { margin-bottom: 10px; }
+/* 狀態頁籤（站長 11-22，取代下拉選單）：一列平分、選中的用分段切換的選中色 */
+.cpl-tabs { display: flex; height: 44px; margin: 0 0 8px; padding: 3px; border-radius: 10px; background: var(--d2-glass-base); box-shadow: var(--d2-glass-sh); }
+.cpl-tab { flex: 1 1 0; min-width: 0; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--d2-text-2); white-space: nowrap; cursor: pointer; }
+.cpl-tab[aria-pressed="true"] { background: var(--d2-seg-on); box-shadow: inset 0 0 0 1px var(--d2-accent-line); color: var(--d2-seg-fg); font-weight: 700; }
+.cpl-card { position: relative; margin-bottom: 10px; }
+/* 管理員刪除鈕（站長 11-22）：右下角圓鈕，外觀 32、點擊區 44 */
+.cpl-del { position: absolute; z-index: 3; right: 12px; bottom: 12px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: #fca5a5; cursor: pointer; }
+.cpl-del::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: rgba(15,23,42,.6); box-shadow: inset 0 0 0 1px rgba(248,113,113,.5); }
+.cpl-del svg { position: relative; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cpl-del:focus-visible { outline: 2px solid #f87171; outline-offset: -2px; border-radius: 50%; }
 .cpl-card__link { display: block; padding: 6px; background: var(--d2-glass-base); box-shadow: inset 0 0 0 var(--st-w, 1.5px) var(--st-edge), var(--d2-glass-sh); color: var(--d2-text); text-decoration: none; }
 /* 狀態邊框色（站長 11-22）：每種狀態只設 --st-edge，共用上面那條框線；已結束、取消、沒有階段是中性灰。
  * 進行中框線加粗到 2px（顧問 §3.576：和招募中的青綠一眼可辨，不新增色票）。有沒有封面都一樣（規則不掛在 .cpl-sb--img）。 */
 .cpl-card { --st-edge: rgba(148, 163, 184, .45); }
 .cpl-card[data-phase="recruit"] { --st-edge: #2dd4bf; }
 .cpl-card[data-phase="warm"] { --st-edge: #60a5fa; }
+.cpl-card[data-soon] { --st-edge: #a78bfa; }
 .cpl-card[data-phase="live"] { --st-edge: var(--d2-sb-now); --st-w: 2px; }
 .cpl-card[data-mark="postponed"] { --st-edge: #f59e0b; --st-w: 1.5px; }
 .cpl-card[data-mark="cancelled"] { --st-edge: rgba(148, 163, 184, .45); }

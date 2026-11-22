@@ -144,6 +144,25 @@ describe('招募中光軌整合清理', () => {
     expectNoResidue();
   });
 
+  it('即將開放（站長 11-22）：不放光軌掛點、不載入光軌；膠囊與數字格換成即將開放、開放報名，帶 data-soon', async () => {
+    const soon = card('s', { soon: true, line: { kind: 'opens', date: '12/01 10:00' } });
+    const view = render(list([soon]));
+    await flush();
+    expect(document.querySelector('.cpl-fx-slot')).toBeNull();
+    expect(staticStyles()).toBe(0);
+    const el = document.querySelector('[data-cid="s"]')!;
+    expect(el.hasAttribute('data-soon')).toBe(true);
+    expect(el.querySelector('.d2-sb__st')?.textContent).toBe(ct('statusSoon'));
+    expect(el.textContent).toContain(ct('boardOpens'));
+    expect(el.textContent).toContain('12/01 10:00');
+    // 延期蓋過即將開放：不帶 data-soon，膠囊寫延期
+    view.rerender(list([card('s', { soon: true, statusMark: 'postponed', line: { kind: 'opens', date: '12/01 10:00' } })]));
+    const pp = document.querySelector('[data-cid="s"]')!;
+    expect(pp.hasAttribute('data-soon')).toBe(false);
+    expect(pp.querySelector('.d2-sb__st')?.textContent).toBe(ct('compPostponed'));
+    view.unmount();
+  });
+
   it('清理後才收到已排隊的舊 IntersectionObserver 回呼：不在舊 slot 重掛（審查 P2-1）', async () => {
     const view = render(list([card('a'), card('b')]));
     const first = await ready();

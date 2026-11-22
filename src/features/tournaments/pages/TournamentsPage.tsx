@@ -475,13 +475,9 @@ export default function TournamentsPage(): JSX.Element {
             {/* 外部清單的外觀照 0.20261121a（8bbf5cea，11-21 01:00 正式站）：玻璃面板、「＋ 新增賽事」一列靠右、
                 「顯示已結束」一列靠右、大卡片（站長 11-22，取代 cpl-xlist 淡底框＋cpl-xrow 橫列小縮圖）。
                 class 改名 cpl-x*，不與俱樂部卡 .tc-card 撞名；「＋ 新增賽事」只在外部分頁（站長 11-20）。 */}
-            {canManage ? (
-              <div class="cpl-xcreate">
-                <Button variant="primary" size="sm" id="tc-add-btn" onClick={() => openEditor(null)}>{t('tournaments.add')}</Button>
-              </div>
-            ) : null}
-            <div class="cpl-xtool">
-              <label>
+            {/* 站長 11-22：「顯示已結束」與「＋ 新增賽事」同一列（取代各佔一列靠右，左側留白太多），共用站內的篩選列樣式 */}
+            <div class="cpl-bar">
+              <label class="cpl-sw">
                 <span>{t('tournaments.showEnded')}</span>
                 <span class="toggle-switch">
                   <input
@@ -493,6 +489,9 @@ export default function TournamentsPage(): JSX.Element {
                   <span class="toggle-slider" />
                 </span>
               </label>
+              {canManage ? (
+                <Button variant="primary" size="sm" id="tc-add-btn" onClick={() => openEditor(null)}>{t('tournaments.add')}</Button>
+              ) : null}
             </div>
 
             {state === 'loading' && cards.length === 0 ? (
