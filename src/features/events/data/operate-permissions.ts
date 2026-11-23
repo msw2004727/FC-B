@@ -38,6 +38,8 @@ export interface OperateEvent {
   captainUid?: unknown;
   delegateUids?: unknown;
   privateEvent?: unknown;
+  /** P2-13：Rules 課程連結活動分支只看 `courseLinked == true`。 */
+  courseLinked?: unknown;
 }
 
 type EventInput = OperateEvent | null | undefined;
@@ -123,11 +125,28 @@ export function hasActivityManageEntry(context: OperateContext): boolean {
     || check('event.edit_all');
 }
 
+/**
+ * 健康檢查 2026-11-23 P2-13（顧問 §3.614，只修新站）：一般用戶的 `activity.manage.entry`（只可能來自個別授權）
+ * 在直寫 Firestore 的編輯、取消、設委託人不算數——Rules 的 scoped 路徑 `isScopedRoleBasicUpdate` 要求 `authRole() != 'user'`，
+ * 一般用戶只走 `isUserOwnerBasicUpdate`（要前台能力）。課程連結活動（`courseLinked == true`）的 Rules 分支
+ * `isCourseLinkedManagerCancelUpdate` 接受 `canScopedManageEventData`（含個別授權入口），維持原判斷。
+ * 取代原本「入口授權對一般用戶一律算數」：前端放行、送出卻被 Rules 拒絕（模擬器重現見 user-entry-grant.rules.test.ts）。
+ * 舊站 A 有同樣缺口，依站長 11-06「舊站非必要 bug 不修」刻意不改、列待辦。
+ * 例外：owner 同時有 `event.edit_self`（角色或個別授權）時，Rules 的 owner＋edit_self 分支可改 status／delegateUids，
+ * 照原判斷放行（A oracle case-0007／0019／0031 即此組合）。
+ */
+function entryCountsForDirectWrite(context: OperateContext, event: EventInput): boolean {
+  return roleKey(context) !== 'user'
+    || event?.courseLinked === true
+    || (isOwner(context, event) && permissionChecker(context)('event.edit_self'));
+}
+
 export function canEditOwnActivityBasic(context: OperateContext, event: EventInput): boolean {
   if (!ready(context) || !event || !canOperatePrivate(context, event)) return false;
   if (canManageAll(context)) return true;
   if (!isScoped(context, event)) return false;
-  if (hasActivityManageEntry(context) || permissionChecker(context)('event.edit_self')) return true;
+  if ((hasActivityManageEntry(context) && entryCountsForDirectWrite(context, event))
+    || permissionChecker(context)('event.edit_self')) return true;
   return hasUserActivityCapability(context, 'user.activity.own_edit_basic');
 }
 
@@ -135,7 +154,7 @@ export function canCancelOwnActivity(context: OperateContext, event: EventInput)
   if (!ready(context) || !event || !canOperatePrivate(context, event)) return false;
   if (canManageAll(context)) return true;
   if (!isScoped(context, event)) return false;
-  if (hasActivityManageEntry(context)) return true;
+  if (hasActivityManageEntry(context) && entryCountsForDirectWrite(context, event)) return true;
   return hasUserActivityCapability(context, 'user.activity.own_cancel');
 }
 
@@ -242,7 +261,8 @@ export function canManageEventDelegates(context: OperateContext, event: EventInp
   if (!ready(context)) return false;
   if (event && !canOperatePrivate(context, event)) return false;
   if (event && !isOwner(context, event) && !canManageAll(context)) return false;
-  if (canManageAll(context) || hasActivityManageEntry(context)) return true;
+  // P2-13：建立中（event 為 null）的一般用戶同樣以前台能力為準（Rules create 帶委託人要 delegate_assign）。
+  if (canManageAll(context) || (hasActivityManageEntry(context) && entryCountsForDirectWrite(context, event))) return true;
   return roleKey(context) === 'user'
     && (!event || isOwner(context, event))
     && hasUserActivityCapability(context, 'user.activity.delegate_assign');
