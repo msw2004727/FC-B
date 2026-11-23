@@ -1006,9 +1006,12 @@ describe('建置外掛 earlyBannersHtml', () => {
 // ── 8. SW／CSP ──────────────────────────────────────────────────────────────────────────────
 
 describe('Service Worker 與 CSP', () => {
-  it('SW 只攔「導覽請求」一條路由：Firestore REST 與橫幅圖不經 SW（不快取、不改寫）', () => {
-    expect(viteConfig.match(/urlPattern:/g)).toHaveLength(1);
+  // 取代：原本只准「導覽請求」一條路由。顧問 §3.567 (b) 加第二條同源 /assets/ 帶雜湊 js／css（isHashedAsset），
+  // 它不認跨網域（Firestore REST、Storage 橫幅圖），由 scripts/sw-precache-shell.test.mjs 對建置產出的 sw.js 實測。
+  it('SW 只攔「導覽請求」與同源打包分塊兩條路由：Firestore REST 與橫幅圖不經 SW（不快取、不改寫）', () => {
+    expect(viteConfig.match(/urlPattern:/g)).toHaveLength(2);
     expect(viteConfig).toMatch(/urlPattern:\s*\(\{ request \}\)\s*=>\s*request\.mode === 'navigate'/);
+    expect(viteConfig).toMatch(/urlPattern:\s*isHashedAsset,/);
     expect(viteConfig).toMatch(/navigateFallback:\s*null/);
     // 預存只含打包產物，沒有 json／API 回應。
     expect(viteConfig).toContain("globPatterns: ['**/*.{js,css,html,webp,svg}']");
