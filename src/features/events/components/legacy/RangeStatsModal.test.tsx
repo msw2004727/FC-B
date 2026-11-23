@@ -154,6 +154,34 @@ describe('RangeStatsModal', () => {
     expect(screen.queryByText('將讀取 2 場活動的名單')).toBeNull();
   });
 
+  it('超過 3 個月的確認提示屬於當時的區間：改選別的區間就收起，不會把年的數字放到月底下', async () => {
+    renderModal();
+    fireEvent.click(screen.getByRole('tab', { name: '年' }));
+    confirm();
+    await waitFor(() => expect(screen.getByText('將讀取 2 場活動的名單')).toBeTruthy());
+    fireEvent.click(screen.getByRole('tab', { name: '月' }));
+    await waitFor(() => expect(screen.getByText('2026 年 11 月')).toBeTruthy());
+    expect(screen.queryByRole('button', { name: '繼續' })).toBeNull();
+    expect(screen.queryByText('將讀取 2 場活動的名單')).toBeNull();
+    expect(document.querySelector('.mrs-table')).toBeNull();
+    expect(document.querySelector('.mrs-updated')?.textContent).toBe('');
+    expect(data.loadRangeRosters).not.toHaveBeenCalled();
+    // 回到「年」也要重新按確認，不沿用舊提示
+    fireEvent.click(screen.getByRole('tab', { name: '年' }));
+    expect(screen.queryByRole('button', { name: '繼續' })).toBeNull();
+  });
+
+  it('讀取失敗後改選別的區間：錯誤提示收起，回到未讀取', async () => {
+    data.loadRangeEvents.mockRejectedValueOnce(new Error('x'));
+    renderModal();
+    confirm();
+    await waitFor(() => expect(screen.getByText('讀取失敗')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: '上一段' }));
+    await waitFor(() => expect(screen.getByText('2026 年 10 月')).toBeTruthy());
+    expect(screen.queryByText('讀取失敗')).toBeNull();
+    expect(screen.queryByRole('button', { name: '重試' })).toBeNull();
+  });
+
   it('有場次讀取失敗：標示並可重試，不當成 0', async () => {
     data.loadRangeRosters.mockResolvedValueOnce({ rosters: [ROSTERS[0]!], failed: [EVENTS[1]!] });
     renderModal();

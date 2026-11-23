@@ -75,13 +75,15 @@ interface LoadedRange {
   failed: EventDoc[];
 }
 
+// 除了 idle，每個階段都記住自己屬於哪個區間（key）；區間一變就不再顯示該階段（顧問 §3.607 P2：
+// 原本「將讀取 N 場／繼續」與讀取失敗沒記區間，改選別的區間後按繼續，會把舊區間的數字記在新區間底下）。
 type Phase =
   | { kind: 'idle' }
-  | { kind: 'loading-events' }
-  | { kind: 'confirm-rosters'; events: EventDoc[] }
-  | { kind: 'loading-rosters'; done: number; total: number }
-  | { kind: 'ready' }
-  | { kind: 'error' };
+  | { kind: 'loading-events'; key: string }
+  | { kind: 'confirm-rosters'; key: string; events: EventDoc[] }
+  | { kind: 'loading-rosters'; key: string; done: number; total: number }
+  | { kind: 'ready'; key: string }
+  | { kind: 'error'; key: string };
 
 function rangeLabel(period: RangePeriod, range: DateRangeKeys | null): string {
   if (!range) return '';
@@ -199,15 +201,15 @@ export function RangeStatsModal({
   }, [open]);
 
   async function loadRosters(seq: number, key: string, events: EventDoc[]): Promise<void> {
-    setPhase({ kind: 'loading-rosters', done: 0, total: events.length });
+    setPhase({ kind: 'loading-rosters', key, done: 0, total: events.length });
     const result = await loadRangeRosters(events, (done, total) => {
-      if (seq === seqRef.current) setPhase({ kind: 'loading-rosters', done, total });
+      if (seq === seqRef.current) setPhase({ kind: 'loading-rosters', key, done, total });
     });
     if (seq !== seqRef.current) return;
     setLoaded({ events, rosters: result.rosters, failed: result.failed });
     setLoadedKey(key);
     setUpdatedAt(Date.now());
-    setPhase({ kind: 'ready' });
+    setPhase({ kind: 'ready', key });
   }
 
   async function runConfirm(): Promise<void> {
@@ -215,35 +217,46 @@ export function RangeStatsModal({
     const seq = ++seqRef.current;
     const key = rangeKey;
     try {
-      setPhase({ kind: 'loading-events' });
+      setPhase({ kind: 'loading-events', key });
       const events = await loadRangeEvents(range, viewer, manageAll);
       if (seq !== seqRef.current) return;
       if (range.days > RANGE_CONFIRM_DAYS && events.length > 0 && !confirmedRef.current.has(key)) {
-        setPhase({ kind: 'confirm-rosters', events });
+        setPhase({ kind: 'confirm-rosters', key, events });
         return;
       }
       await loadRosters(seq, key, events);
     } catch {
       if (seq !== seqRef.current) return;
-      setPhase({ kind: 'error' });
+      setPhase({ kind: 'error', key });
     }
   }
 
-  async function continueRosters(events: EventDoc[]): Promise<void> {
+  async function continueRosters(events: EventDoc[], key: string): Promise<void> {
+    // 用提示當時的區間，不用畫面上目前的區間。
+    if (key !== rangeKey) return;
     const seq = ++seqRef.current;
-    const key = rangeKey;
     confirmedRef.current.add(key);
     try {
       await loadRosters(seq, key, events);
     } catch {
       if (seq !== seqRef.current) return;
-      setPhase({ kind: 'error' });
+      setPhase({ kind: 'error', key });
     }
   }
 
-  const busy = phase.kind === 'loading-events' || phase.kind === 'loading-rosters';
-  // 條件改了（區間不同）就不顯示舊結果，等再按確認。
-  const showResults = phase.kind === 'ready' && loaded !== null && loadedKey === rangeKey;
+  // 區間改了：進行中的讀取作廢、提示與錯誤收起，回到未讀取，等再按確認。
+  useEffect(() => {
+    if (phase.kind === 'idle' || phase.key === rangeKey) return;
+    seqRef.current += 1;
+    setPhase({ kind: 'idle' });
+    // 只在區間改變時檢查。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rangeKey]);
+  // 同一次 render 內也不顯示別的區間的階段（effect 生效前不閃出舊提示）。
+  const view: Phase = phase.kind !== 'idle' && phase.key !== rangeKey ? { kind: 'idle' } : phase;
+
+  const busy = view.kind === 'loading-events' || view.kind === 'loading-rosters';
+  const showResults = view.kind === 'ready' && loaded !== null && loadedKey === rangeKey;
 
   const stats = useMemo(() => {
     if (!loaded?.rosters) return null;
@@ -376,23 +389,23 @@ export function RangeStatsModal({
 
           {!range ? (
             <div class="mrs-note mrs-warn">開始日期不能晚於結束日期</div>
-          ) : phase.kind === 'error' ? (
+          ) : view.kind === 'error' ? (
             <div class="mrs-note mrs-warn">
               讀取失敗
               <button type="button" class="outline-btn mrs-inline-btn" onClick={() => { void runConfirm(); }}>重試</button>
             </div>
-          ) : phase.kind === 'loading-events' || phase.kind === 'loading-rosters' ? (
+          ) : view.kind === 'loading-events' || view.kind === 'loading-rosters' ? (
             <div class="mrs-loading" role="status">
               <span class="mrs-spin" aria-hidden="true" />
-              {phase.kind === 'loading-rosters' && phase.total > 0 ? `讀取中 ${phase.done} / ${phase.total}` : '讀取中'}
+              {view.kind === 'loading-rosters' && view.total > 0 ? `讀取中 ${view.done} / ${view.total}` : '讀取中'}
             </div>
-          ) : phase.kind === 'confirm-rosters' ? (
+          ) : view.kind === 'confirm-rosters' ? (
             <div class="mrs-note">
-              {`將讀取 ${phase.events.length} 場活動的名單`}
+              {`將讀取 ${view.events.length} 場活動的名單`}
               <button
                 type="button"
                 class="primary-btn mrs-inline-btn"
-                onClick={() => { void continueRosters(phase.events); }}
+                onClick={() => { void continueRosters(view.events, view.key); }}
               >
                 繼續
               </button>
