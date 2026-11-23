@@ -8,6 +8,7 @@ import {
   runSwControl,
   type SwControlDeps,
 } from './sw-control';
+import { ASSET_CACHE_NAME } from '../../scripts/sw-shell.ts';
 
 vi.mock('./error-report', () => ({
   reportClientError: vi.fn(),
@@ -160,6 +161,22 @@ describe('runSwControl', () => {
     expect(await runSwControl({ swEnabled: false, minBuild: 202611111200 }, d)).toBe('disabled');
     expect(order).toEqual(['unregister', 'cache', 'cache']);
     expect(d.register).not.toHaveBeenCalled();
+  });
+
+  it('swEnabled=false：執行期快取 fcb-assets、fcb-pages 與預存一起清掉（全部清，不靠名單）', async () => {
+    const del = vi.fn(async () => true);
+    const d = deps({
+      cacheStorage: {
+        keys: async () => ['workbox-precache-v2-https://toosterx.com/', 'fcb-pages', ASSET_CACHE_NAME],
+        delete: del,
+      },
+    });
+    expect(await runSwControl({ swEnabled: false, minBuild: 0 }, d)).toBe('disabled');
+    expect(del.mock.calls.map((c) => (c as unknown[])[0])).toEqual([
+      'workbox-precache-v2-https://toosterx.com/',
+      'fcb-pages',
+      'fcb-assets',
+    ]);
   });
 
   it('讀不到設定（用空設定）：照常註冊', async () => {
