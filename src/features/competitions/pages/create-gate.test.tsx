@@ -9,7 +9,7 @@ import type { LaunchDoc } from '../data/types';
 import { CpEnvProvider, type CpActor, type CpInjectedEnv } from '../env';
 import { loadCompetitionsDict } from '../i18n';
 import { createFakeCpRepo } from '../testing/fake-cp-repo';
-import { NOW, adminActor, competition, idleActions, memberActor, screenEnv } from '../testing/screen-fixtures';
+import { NOW, adminActor, competition, editBundle, hostActor, idleActions, memberActor, screenEnv } from '../testing/screen-fixtures';
 import { InAppSection } from '../components/InAppSection';
 import NewCompetitionPage from './NewCompetitionPage';
 
@@ -232,6 +232,20 @@ describe('站內清單的「建立賽事」與建賽頁同條件', () => {
     }
   });
 
+  it('主辦賽事開關：canHost false 沒有建立鈕，true 有（顧問 §3.612）', async () => {
+    const off = drawSection({ ...member, canHost: false }, PUBLIC);
+    expect(await screen.findByText('公開示範盃')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '建立賽事' })).toBeNull();
+    off.unmount();
+    const offAdmin = drawSection({ ...admin, canHost: false }, INTERNAL);
+    expect(await screen.findByText('公開示範盃')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '建立賽事' })).toBeNull();
+    offAdmin.unmount();
+    drawSection({ ...member, canHost: true }, PUBLIC);
+    expect(await screen.findByText('公開示範盃')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '建立賽事' })).toBeTruthy();
+  });
+
   it('開放後未登入看得到清單但沒有鈕；內部期一般會員與角色未定整區不出現', async () => {
     const open = drawSection(guest, PUBLIC);
     expect(await screen.findByText('公開示範盃')).toBeTruthy();
@@ -245,5 +259,51 @@ describe('站內清單的「建立賽事」與建賽頁同條件', () => {
       expect(screen.queryByRole('button', { name: '建立賽事' })).toBeNull();
       view.unmount();
     }
+  });
+});
+
+describe('建賽頁的主辦賽事開關（顧問 §3.612）', () => {
+  const HOST_DISABLED = '你目前不能主辦賽事';
+
+  it('建立模式 canHost false：不顯示精靈，改顯示 hostDisabled＋返回賽事列表', async () => {
+    const repo = repoWith(PUBLIC);
+    const view = render(wizardNode({ ...member, canHost: false }, repo));
+    expect((await screen.findByRole('alert')).textContent).toBe(HOST_DISABLED);
+    expect(view.container.querySelector('[data-cp-load="host-disabled"]')).toBeTruthy();
+    expectNoForm(view.container);
+    expect(screen.getByRole('button', { name: '返回賽事列表' })).toBeTruthy();
+  });
+
+  it('管理員也照開關（只有 super_admin 由 canHostCompetition 一律放行）', () => {
+    const view = render(wizardNode({ ...admin, canHost: false }, repoWith(INTERNAL)));
+    expect(screen.getByRole('alert').textContent).toBe(HOST_DISABLED);
+    expectNoForm(view.container);
+  });
+
+  it('沒開放時仍先說沒開放，不說不能主辦', async () => {
+    render(wizardNode({ ...member, canHost: false }, repoWith(INTERNAL)));
+    expect((await screen.findByRole('alert')).textContent).toBe(NOT_OPEN);
+  });
+
+  it('canHost true 或省略：照常顯示精靈', async () => {
+    render(wizardNode({ ...member, canHost: true }, repoWith(PUBLIC)));
+    expect(await screen.findByText('步驟 1／3')).toBeTruthy();
+  });
+
+  it('編輯模式不受影響：canHost false 仍可編輯自己的賽事', () => {
+    window.history.replaceState(null, '', `/competitions/new?edit=cp_${'A'.repeat(20)}`);
+    const env: CpInjectedEnv = {
+      actor: { ...hostActor, canHost: false }, repo: createFakeCpRepo(), actions: idleActions(), now: NOW, bundle: editBundle(),
+    };
+    render(
+      <LocationProvider>
+        <CpEnvProvider value={env}>
+          <NewCompetitionPage />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('編輯賽事');
+    expect((document.getElementById('cpf-name') as HTMLInputElement | null)?.value).toBe('示範盃');
+    expect(screen.queryByText(HOST_DISABLED)).toBeNull();
   });
 });

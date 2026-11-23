@@ -19,7 +19,8 @@ describe('T-079a 登記與七語系', () => {
       uid: 'test-actor', role, roleLevel: 100, capabilities: [], hasPermission: () => true,
     })).toBe(role === 'super_admin');
   });
-  it('七語系鍵一致，58 條權限＋8 條活動說明完整且為純文字', () => {
+  // 測試同步更新：站長 11-23 方案乙，說明新增 competition.host、user.competition.host、user.activity.team_create 三條（66 → 69）。
+  it('七語系鍵一致，58 條權限＋9 條活動說明＋2 條主辦賽事說明完整且為純文字', () => {
     const flatten = (value: unknown, prefix = ''): string[] => {
       if (!value || typeof value !== 'object') return [prefix];
       return Object.entries(value).flatMap(([key, val]) => flatten(val, prefix + '.' + key)).sort();
@@ -28,7 +29,7 @@ describe('T-079a 登記與七語系', () => {
       info: Record<string, { title: string; body: string }>;
     };
     const baseline = read('zh-TW');
-    expect(Object.keys(baseline.info)).toHaveLength(66);
+    expect(Object.keys(baseline.info)).toHaveLength(69);
     for (const code of getAllPermissionCodes()) expect(baseline.info[code]?.body).toBeTruthy();
     for (const locale of ['zh-TW', 'zh-CN', 'en', 'ja', 'ko', 'th', 'vi']) {
       const dict = read(locale);

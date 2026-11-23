@@ -42,6 +42,11 @@ export interface CpActor {
   repClubsPending?: boolean;
   /** 我所屬的俱樂部 id（含代表）。用來決定看不看得到「登錄名單」。 */
   memberClubIds: readonly string[];
+  /**
+   * 主辦賽事開關（canHostCompetition，顧問 §3.612）。false＝藏建立入口、建賽頁顯示「你目前不能主辦賽事」。
+   * 省略＝true（測試與 harness 維持舊行為）。伺服器 createCompetition 另行守門。
+   */
+  canHost?: boolean;
 }
 
 export interface CpBundle {

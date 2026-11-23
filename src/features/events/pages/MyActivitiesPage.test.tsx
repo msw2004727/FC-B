@@ -444,6 +444,9 @@ describe('MyActivitiesPage', () => {
 
     const dialog = await screen.findByRole('dialog', { name: '活動統計' });
     expect(within(dialog).getByRole('tab', { name: '月' }).getAttribute('aria-selected')).toBe('true');
+    // 2026-11-23 站長：開啟不自動讀取，按「確認」才讀。
+    expect(rangeStats.loadRangeEvents).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: '確認' }));
     await waitFor(() => expect(rangeStats.loadRangeEvents).toHaveBeenCalled());
     // 教練不是全部管理權：走「只查自己的活動」
     const call = rangeStats.loadRangeEvents.mock.calls.at(-1) as unknown as [unknown, { uid: string }, boolean];

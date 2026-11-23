@@ -51,6 +51,11 @@
 .perm-item.perm-item-locked .toggle-switch { pointer-events: none; }
 .perm-item-label { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
 .perm-item-tag { display: inline-flex; align-items: center; padding: .12rem .4rem; border-radius: var(--radius-full); font-size: .62rem; font-weight: 700; color: #b91c1c; background: rgba(220, 38, 38, .1); }
+/* 健康檢查 2026-11-23：「新站未使用／新站沒有此功能」灰色小標（站長選定預覽二）；只用既有 token。 */
+/* .perm-item span { flex: 1 } 會把小標拉成整條，這兩種小標固定照內容寬。 */
+.perm-item .perm-item-tag.perm-item-tag--fixed, .perm-item .perm-item-tag.perm-item-tag--off { flex: 0 0 auto; }
+.perm-item-tag.perm-item-tag--fixed { color: var(--warning); background: rgba(217, 119, 6, .12); white-space: nowrap; }
+.perm-item-tag.perm-item-tag--off { color: var(--text-secondary); background: transparent; box-shadow: inset 0 0 0 1px var(--border); font-weight: 600; white-space: nowrap; }
 
 /* ── 權限說明按鈕（圓形 ? 圖示，參考 edu-info-btn）── */
 .perm-info-btn { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--accent); background: transparent; color: var(--accent); font-size: .68rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 0; line-height: 1; margin-left: .3rem; vertical-align: middle; }

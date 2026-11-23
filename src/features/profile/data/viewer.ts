@@ -51,6 +51,8 @@ export interface ViewerPermissionSources {
   /** 已驗證 uid／enabled 的個別授權碼。 */
   userGrants: readonly string[];
   customRoles: readonly CustomRole[];
+  /** 預設開碼（主辦賽事）的 disabledCodes：null＝讀取失敗或壞值（關）；省略＝文件或欄位不存在（開）。 */
+  disabledCodes?: readonly string[] | null;
 }
 
 export interface ViewerView extends ViewerContext {
@@ -385,6 +387,9 @@ export async function loadViewer(
   const rolePermissionMetaDocs = rolePermissionDocs;
   const grantDoc = grantRes.ok ? grantRes.data : null;
   const capabilities = parseCapabilities(role, capRes);
+  // 主辦賽事開關：user 看 roleActivityCapabilities/user，其他角色看 rolePermissions/{role}（真值表見 default-on-codes.ts）。
+  const disabledRes = role === 'user' ? capRes : roleRes;
+  const disabledRaw = disabledRes.ok ? disabledRes.data?.['disabledCodes'] : null;
 
   const checkerInput = buildPermissionCheckerInput({
     role,
@@ -411,6 +416,11 @@ export async function loadViewer(
       rolePermissions: checkerInput.rolePermissions?.[role] ?? null,
       userGrants: checkerInput.userGrants ?? [],
       customRoles: checkerInput.customRoles ?? [],
+      ...(disabledRaw !== undefined && {
+        disabledCodes: Array.isArray(disabledRaw)
+          ? disabledRaw.filter((code): code is string => typeof code === 'string')
+          : null,
+      }),
     },
   };
 }

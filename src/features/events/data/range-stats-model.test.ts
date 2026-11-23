@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  NOSHOW_V2_SINCE_KEY,
   computeRangeStats,
   customRange,
   eventDateKey,
@@ -138,26 +139,6 @@ describe('computeRangeStats 口徑', () => {
     expect(s.confirmedOther.times).toBe(2);
   });
 
-  it('放鴿子：只看文件狀態已結束且日期在今天以前；同行者不算；同主人的同行者簽到算本人有到（同後端）', () => {
-    const s = computeRangeStats([
-      {
-        event: ev('past'),
-        registrations: [
-          { userId: 'absent', status: 'confirmed' },
-          { userId: 'absent', status: 'confirmed', participantType: 'companion', companionId: 'c9' },
-          { userId: 'viaCompanion', status: 'confirmed' },
-          { userId: 'waiting', status: 'waitlisted' },
-        ],
-        attendance: [{ uid: 'viaCompanion', type: 'checkin', companionId: 'cx' }],
-      },
-      // 時間已過但文件仍是 open：畫面算已結束，放鴿子仍不計（後端也不算）
-      { event: ev('stillOpen', { status: 'open', date: '2026/11/01 10:00' }), registrations: [{ userId: 'x', status: 'confirmed' }], attendance: [] },
-      // 今天的活動不計
-      { event: ev('today', { date: '2026/11/23 08:00' }), registrations: [{ userId: 'y', status: 'confirmed' }], attendance: [] },
-    ], NOW);
-    expect(s.metrics.noShow).toEqual({ times: 1, people: 1 });
-  });
-
   it('取消另計，不算已報名', () => {
     const s = computeRangeStats([{
       event: ev('a'),
@@ -191,5 +172,104 @@ describe('toPieSlices', () => {
     expect(toPieSlices([{ key: 'a', label: 'A', value: 1 }, { key: 'b', label: 'B', value: 2 }]).map((p) => p.percent))
       .toEqual([33.3, 66.7]);
     expect(toPieSlices([{ key: 'a', label: 'A', value: 0 }]).map((p) => p.percent)).toEqual([0]);
+  });
+});
+
+// 放鴿子 v2：與個人頁／管理名單的 userAttendanceStats.countedNoShowCount 同口徑（FC functions/noshow-v2-core.js）。
+describe('放鴿子 v2 口徑（顧問 §3.603 條件①）', () => {
+  const D = (day: string, time = '19:00~21:00') => `2026/11/${day} ${time}`;
+  // 一場「有計入」的活動：有正取非主辦者的有效簽退（旗標成立），absent 沒簽到也沒簽退。
+  function counted(over: Partial<EventRoster> & { day?: string } = {}): EventRoster {
+    const event = ev('x', { date: D(over.day ?? '10'), creatorUid: 'host', delegateUids: ['dele'] });
+    return {
+      event,
+      registrations: [
+        { eventId: 'pub-x', userId: 'done', status: 'confirmed', participantType: 'self' },
+        { eventId: 'pub-x', userId: 'absent', status: 'confirmed', participantType: 'self' },
+      ],
+      attendance: [
+        { eventId: 'pub-x', uid: 'done', type: 'checkin' },
+        { eventId: 'pub-x', uid: 'done', type: 'checkout' },
+      ],
+      ...over,
+    };
+  }
+  const noShow = (rosters: EventRoster[]) => computeRangeStats(rosters, NOW).metrics.noShow;
+
+  it('起算點同 Functions：2026-11-07', () => {
+    expect(NOSHOW_V2_SINCE_KEY).toBe('2026/11/07');
+  });
+
+  it('起算日前的場次不算；起算日當天起才算', () => {
+    expect(noShow([counted({ day: '06' })])).toEqual({ times: 0, people: 0 });
+    expect(noShow([counted({ day: '07' })])).toEqual({ times: 1, people: 1 });
+    expect(noShow([counted({ day: '01' }), counted({ day: '10' })]).times).toBe(1);
+  });
+
+  it('整場沒有有效簽退（主辦沒點名）就不計入', () => {
+    const r = counted();
+    expect(noShow([{ ...r, attendance: [{ eventId: 'pub-x', uid: 'done', type: 'checkin' }] }]).times).toBe(0);
+    expect(noShow([{ ...r, attendance: [...r.attendance.map((a) => ({ ...a, status: 'removed' }))] }]).times).toBe(0);
+  });
+
+  it('只有主辦或委託人自己的簽退不讓整場計入；同行者簽退也不算', () => {
+    const base = counted();
+    const regs = [...base.registrations,
+      { eventId: 'pub-x', userId: 'host', status: 'confirmed' },
+      { eventId: 'pub-x', userId: 'dele', status: 'confirmed' }];
+    const hostOnly = { ...base, registrations: regs, attendance: [
+      { eventId: 'pub-x', uid: 'host', type: 'checkout' },
+      { eventId: 'pub-x', uid: 'dele', type: 'checkout' },
+      { eventId: 'pub-x', uid: 'done', type: 'checkout', companionId: 'c1' },
+    ] };
+    expect(noShow([hostOnly]).times).toBe(0);
+  });
+
+  it('紀錄的 eventId 要對得上 public id 或文件 ID；對不上不算出席、也不讓整場計入', () => {
+    const r = counted();
+    const noEventId = { ...r, attendance: r.attendance.map(({ eventId: _e, ...rest }) => rest) };
+    expect(noShow([noEventId]).times).toBe(0);
+    const byDocId = { ...r, attendance: [...r.attendance.map((a) => ({ ...a, eventId: 'doc-x' })),
+      { eventId: 'other-event', uid: 'absent', type: 'checkin' }] };
+    expect(noShow([byDocId])).toEqual({ times: 1, people: 1 });
+  });
+
+  it('只簽退沒簽到不算放鴿子；同行者以主人 uid 的簽到不算本人到場', () => {
+    const r = counted();
+    const outOnly = { ...r, attendance: [...r.attendance, { eventId: 'pub-x', uid: 'absent', type: 'checkout' }] };
+    expect(noShow([outOnly]).times).toBe(0);
+    const viaCompanion = { ...r, attendance: [...r.attendance, { eventId: 'pub-x', uid: 'absent', type: 'checkin', companionId: 'c1' }] };
+    expect(noShow([viaCompanion]).times).toBe(1);
+  });
+
+  it('候補在活動開始後才遞補不計入本人；開始前遞補照算（Timestamp 形狀也可）', () => {
+    const r = counted();
+    const start = Date.UTC(2026, 10, 10, 11, 0); // 台北 11/10 19:00
+    const late = { ...r, registrations: r.registrations.map((g) => g.userId === 'absent'
+      ? { ...g, promotedAt: { seconds: (start + 60_000) / 1000 } } : g) };
+    expect(noShow([late]).times).toBe(0);
+    const early = { ...r, registrations: r.registrations.map((g) => g.userId === 'absent'
+      ? { ...g, promotedAt: { toMillis: () => start - 60_000 } } : g) };
+    expect(noShow([early]).times).toBe(1);
+  });
+
+  it('同行者報名、舊狀態 registered 不算放鴿子；文件狀態不是 ended 不計入', () => {
+    const r = counted();
+    const regs = [
+      { eventId: 'pub-x', userId: 'done', status: 'confirmed' },
+      { eventId: 'pub-x', userId: 'absent', status: 'registered' },
+      { eventId: 'pub-x', userId: 'done', status: 'confirmed', participantType: 'companion', companionId: 'c9' },
+    ];
+    expect(noShow([{ ...r, registrations: regs }]).times).toBe(0);
+    expect(noShow([{ ...r, event: { ...r.event, status: 'open' } }]).times).toBe(0);
+  });
+
+  it('同一人兩場計入場次都沒到：2 人次 1 人', () => {
+    const a = counted({ day: '08' });
+    const b = counted({ day: '12' });
+    const bEvent = { ...b.event, id: 'pub-y', _docId: 'doc-y' } as EventDoc;
+    const retag = <T extends { eventId?: unknown }>(list: readonly T[]) => list.map((x) => ({ ...x, eventId: 'pub-y' }));
+    const rosterB = { event: bEvent, registrations: retag(b.registrations), attendance: retag(b.attendance) };
+    expect(noShow([a, rosterB])).toEqual({ times: 2, people: 1 });
   });
 });

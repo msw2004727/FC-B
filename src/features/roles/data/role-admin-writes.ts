@@ -6,6 +6,7 @@ import { BASE_ROLES } from '@/ui/drawer-menu';
 import { requireRoleAdmin, requireSameRoleActor } from './role-auth';
 import { RoleAdminGuardError } from './role-errors';
 import { permissionName } from './permission-catalog';
+import { COMPETITION_HOST_CODE, USER_COMPETITION_HOST_CODE } from '@/features/profile/data/default-on-codes';
 import {
   assertOnlyTopLevelFields, canonical, capabilitySource, prepareRoleChange, type RolePreview, type RolesData,
 } from './role-model';
@@ -83,9 +84,13 @@ async function commitRoleChange(
     const recalculated = prepareRoleChange(latest, initial.role, initial.action, actor.uid);
     if (recalculated.fingerprint !== confirmedDiff) throw new RoleAdminGuardError('stale-document');
     const payload = { ...recalculated.payload };
-    const fields = initial.action.kind === 'capability'
-      ? ['capabilities', 'updatedAt', 'updatedBy']
-      : initial.action.kind === 'save-defaults' ? ['defaultPermissions'] : ['permissions'];
+    // 預設開碼（主辦賽事）只准寫 disabledCodes（顧問 §3.612）。
+    const kind = initial.action.kind;
+    const code = 'code' in initial.action ? initial.action.code : '';
+    const fields = kind === 'capability'
+      ? [code === USER_COMPETITION_HOST_CODE ? 'disabledCodes' : 'capabilities', 'updatedAt', 'updatedBy']
+      : kind === 'toggle' && code === COMPETITION_HOST_CODE ? ['disabledCodes']
+        : kind === 'save-defaults' ? ['defaultPermissions'] : ['permissions'];
     assertOnlyTopLevelFields(payload, fields);
     if ('updatedAt' in payload) payload.updatedAt = serverTimestamp();
     // Q1：不帶 catalogVersion；同文件的 defaultPermissions／其他 meta 必須保留。
@@ -103,7 +108,10 @@ async function commitRoleChange(
       await writeOpLog({
         type: cap ? 'role_cap_edit' : 'role_perm_edit',
         typeName: cap ? '活動能力變更' : '角色權限變更',
-        content: label + '／' + action + '；新增：' + names(initial.added) + '；移除：' + names(initial.removed),
+        // disabledCodes 記的是「關」：加入＝關閉、移出＝開啟。
+        content: 'disabledCodes' in initial.payload
+          ? label + '／' + action + '；關閉：' + names(initial.added) + '；開啟：' + names(initial.removed)
+          : label + '／' + action + '；新增：' + names(initial.added) + '；移除：' + names(initial.removed),
         actorUid: actor.uid, operator: actor.displayName?.trim() || '總管',
       });
     } catch {

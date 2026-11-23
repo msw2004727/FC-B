@@ -264,17 +264,27 @@ describe('T-079a 權限管理頁', () => {
     fireEvent.click(within(await pendingDialog()).getByRole('button', { name: '確定' }));
     await waitFor(() => expect(mockWrite).toHaveBeenCalledTimes(2));
   });
-  it('user 權限鎖定，活動能力可關至 []，確認框顯示無預設', async () => {
+  // 測試同步更新：站長 11-23 方案乙——一般用戶頁不顯示後台權限、沒有「復原預設」鈕（原本驗鈕停用、event.create 鎖住）。
+  it('user 頁沒有後台權限開關與復原預設鈕，活動能力可關至 []，確認框顯示無預設', async () => {
     render(<RolesAdminPage />);
     await chooseRole('user');
-    expect((screen.getByRole('button', { name: '復原預設' }) as HTMLButtonElement).disabled).toBe(true);
-    expect((document.querySelector('input[aria-label$="(event.create)"]') as HTMLInputElement).disabled).toBe(true);
+    expect(document.querySelector('input[aria-label$="(user.activity.basic_create)"]')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '復原預設' })).toBeNull();
+    expect(document.querySelector('input[aria-label$="(event.create)"]')).toBeNull();
     toggle('user.activity.basic_create');
     const dialog = await pendingDialog();
     expect(dialog.textContent).toContain('無預設');
     fireEvent.click(within(dialog).getByRole('button', { name: '確定' }));
     await waitFor(() => expect(mockWrite).toHaveBeenCalledOnce());
     expect((mockWrite.mock.calls[0]?.[1] as RolePreview).payload).toMatchObject({ capabilities: [] });
+  });
+  it('主辦賽事開關：coach 切換只寫 disabledCodes（顧問 §3.612）', async () => {
+    render(<RolesAdminPage />);
+    await chooseRole('coach');
+    toggle('competition.host');
+    fireEvent.click(within(await pendingDialog()).getByRole('button', { name: '確定' }));
+    await waitFor(() => expect(mockSavePermissions).toHaveBeenCalledOnce());
+    expect((mockSavePermissions.mock.calls[0]?.[1] as RolePreview).payload).toEqual({ disabledCodes: ['competition.host'] });
   });
   it('儲存／復原預設都要確認；只顯示已有權限可切回', async () => {
     render(<RolesAdminPage />);
