@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createGuestViewer,
@@ -88,6 +88,13 @@ vi.mock('@/ui/Toast', async () => {
     toast: { ...actual.toast, show: (...args: unknown[]) => toastShowMock(...args) },
   };
 });
+
+// 區間統計彈窗的讀取層（不連 Firestore）。
+const rangeStats = vi.hoisted(() => ({
+  loadRangeEvents: vi.fn(async () => []),
+  loadRangeRosters: vi.fn(async () => ({ rosters: [], failed: [] })),
+}));
+vi.mock('../data/range-stats', () => rangeStats);
 
 vi.mock('../data/events-repo', () => ({
   getEventsRepo: () => ({
@@ -431,16 +438,21 @@ describe('MyActivitiesPage', () => {
       expect(screen.getByText('報名中1')).toBeTruthy();
     });
 
+    // 測試同步更新：2026-11-23 站長核可以區間統計取代只算狀態場數的統計彈窗。
     const statsBtn = screen.getByTitle('活動統計');
     fireEvent.click(statsBtn);
 
-    expect(await screen.findByText('統計範圍：我管理的活動')).toBeTruthy();
-    expect(screen.getByText('總活動')).toBeTruthy();
-    expect(screen.getByText('3')).toBeTruthy();
+    const dialog = await screen.findByRole('dialog', { name: '活動統計' });
+    expect(within(dialog).getByRole('tab', { name: '月' }).getAttribute('aria-selected')).toBe('true');
+    await waitFor(() => expect(rangeStats.loadRangeEvents).toHaveBeenCalled());
+    // 教練不是全部管理權：走「只查自己的活動」
+    const call = rangeStats.loadRangeEvents.mock.calls.at(-1) as unknown as [unknown, { uid: string }, boolean];
+    expect(call[1].uid).toBe('u-coach');
+    expect(call[2]).toBe(false);
 
-    fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '關閉' }));
     await waitFor(() => {
-      expect(screen.queryByText('統計範圍：我管理的活動')).toBeNull();
+      expect(screen.queryByRole('dialog', { name: '活動統計' })).toBeNull();
     });
   });
 

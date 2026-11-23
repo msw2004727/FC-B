@@ -30,10 +30,9 @@ import {
   runEventLifecycleAction,
   type LifecycleKind,
 } from '../components/legacy/event-lifecycle-action';
-import {
-  MyActivityDetailModal,
-  MyActivityStatsModal,
-} from '../components/legacy/MyActivityModals';
+import { MyActivityDetailModal } from '../components/legacy/MyActivityModals';
+import { RangeStatsModal } from '../components/legacy/RangeStatsModal';
+import { NO_SHOW_FEATURE_ENABLED } from '../data/noshow-roster';
 import { operateContextFromViewer } from '../data/event-create-context';
 import { getEventsRepo } from '../data/events-repo';
 import {
@@ -666,11 +665,12 @@ export default function MyActivitiesPage(): JSX.Element {
         />
 
         {/* 活動統計彈窗 */}
-        <MyActivityStatsModal
+        {/* 2026-11-23 站長核可：區間統計取代原本只算狀態場數的統計彈窗。 */}
+        <RangeStatsModal
           open={statsModalOpen}
-          isAdmin={isAdmin}
-          events={allManageableEvents}
-          nowMs={nowMs}
+          viewer={viewer}
+          manageAll={isAdmin}
+          canViewNoShow={viewer.hasPermission('activity.view_noshow') && NO_SHOW_FEATURE_ENABLED}
           onClose={() => setStatsModalOpen(false)}
         />
 
