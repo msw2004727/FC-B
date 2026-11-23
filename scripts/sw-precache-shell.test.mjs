@@ -4,8 +4,8 @@
  * 真的 vite build 到暫存目錄，用替身 workbox 執行產出的 sw.js，檢查：
  * - precache 清單＝index.html＋它靜態引用的入口／modulepreload／樣式表＋頂欄 logo＋manifest.json，沒有別的；
  * - 舊預存清理（cleanupOutdatedCaches）、skipWaiting、clientsClaim、sw-legacy-compat 仍在；
- * - 導覽規則不變；
- * - runtime-config.json、version.json、sw.js 不預存（R-UPD-031）。
+ * - 導覽規則不變、排在第一；第二條只認同源 /assets/ 第一層帶雜湊的 .js／.css，只收 200、型別要對、有上限；
+ * - runtime-config.json、version.json、sw.js 不預存也不進執行期快取（R-UPD-031）。
  */
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
@@ -15,7 +15,13 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import vm from 'node:vm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { keepShellOnly, shellUrlsFromHtml } from './sw-shell.ts';
+import {
+  ASSET_CACHE_MAX_AGE_SECONDS,
+  ASSET_CACHE_MAX_ENTRIES,
+  ASSET_CACHE_NAME,
+  keepShellOnly,
+  shellUrlsFromHtml,
+} from './sw-shell.ts';
 
 const execFileAsync = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -104,6 +110,11 @@ function pluginOf(handler, kind) {
   return handler.opts.plugins.filter((p) => p.kind === kind);
 }
 
+function assetReq(pathname, origin = 'https://toosterx.com', sameOrigin = true) {
+  const url = new URL(pathname, origin);
+  return { url, sameOrigin, request: { mode: 'cors', url: url.href } };
+}
+
 describe('建置產出的 sw.js', () => {
   let outDir = '';
   let parent = '';
@@ -167,8 +178,8 @@ describe('建置產出的 sw.js', () => {
     expect(sw.precacheOpts).toEqual({ directoryIndex: '' });
   });
 
-  it('導覽規則不變：NetworkFirst、3 秒、fcb-pages、只收 200、退回預存 index.html', () => {
-    expect(sw.routes).toHaveLength(1);
+  it('導覽規則排第一而且不變：NetworkFirst、3 秒、fcb-pages、只收 200、退回預存 index.html', () => {
+    expect(sw.routes).toHaveLength(2);
     const nav = sw.routes[0];
     expect(nav.method).toBe('GET');
     expect(nav.match({ request: { mode: 'navigate' } })).toBe(true);
@@ -179,5 +190,58 @@ describe('建置產出的 sw.js', () => {
     expect(pluginOf(nav.handler, 'ExpirationPlugin')[0].opts).toEqual({ maxEntries: 30, maxAgeSeconds: 86400 });
     expect(pluginOf(nav.handler, 'CacheableResponsePlugin')[0].opts).toEqual({ statuses: [200] });
     expect(pluginOf(nav.handler, 'PrecacheFallbackPlugin')[0].opts).toEqual({ fallbackURL: 'index.html' });
+  });
+
+  it('執行期快取：fcb-assets、CacheFirst、只收 200、上限 300 筆 30 天', () => {
+    const rt = sw.routes[1];
+    expect(rt.method).toBe('GET');
+    expect(rt.handler.kind).toBe('CacheFirst');
+    expect(rt.handler.opts.cacheName).toBe(ASSET_CACHE_NAME);
+    expect(pluginOf(rt.handler, 'CacheableResponsePlugin').map((p) => p.opts)).toEqual([{ statuses: [200] }]);
+    expect(pluginOf(rt.handler, 'ExpirationPlugin').map((p) => p.opts)).toEqual([
+      { maxEntries: ASSET_CACHE_MAX_ENTRIES, maxAgeSeconds: ASSET_CACHE_MAX_AGE_SECONDS, purgeOnQuotaError: true },
+    ]);
+    expect(ASSET_CACHE_MAX_ENTRIES).toBe(300);
+    expect(ASSET_CACHE_MAX_AGE_SECONDS).toBe(30 * 24 * 60 * 60);
+  });
+
+  it('執行期快取網址：dist 每支 js／css 都認得；設定檔、SW、404 頁、圖片、子目錄、跨網域都不認', () => {
+    const rt = sw.routes[1];
+    for (const f of assets) expect(rt.match(assetReq(`/assets/${f}`)), f).toBe(true);
+    for (const p of [
+      '/runtime-config.json',
+      '/version.json',
+      '/sw.js',
+      '/sw-legacy-compat.js',
+      '/',
+      '/index.html',
+      '/manifest.json',
+      '/assets/404.html',
+      '/assets/logo-white.webp',
+      '/assets/icons/icon-192x192.png',
+      '/assets/og/share-AAAAAAAA.js',
+      '/blog/assets/x-AAAAAAAA.js',
+      '/assets/no-hash.js',
+    ]) {
+      expect(rt.match(assetReq(p)), p).toBe(false);
+    }
+    expect(rt.match(assetReq('/assets/index-AAAAAAAA.js', 'https://cdn.example.com', false))).toBe(false);
+  });
+
+  it('型別把關：.js 要 javascript、.css 要 text/css；平台回 HTML 不存', async () => {
+    const [guard] = sw.routes[1].handler.opts.plugins.filter((p) => typeof p.cacheWillUpdate === 'function');
+    expect(guard).toBeTruthy();
+    const check = (file, type) => {
+      const headers = type ? { 'content-type': type } : {};
+      const response = new Response('x', { status: 200, headers });
+      return guard.cacheWillUpdate({ request: new Request(`https://toosterx.com/assets/${file}`), response }).then((r) => r === response);
+    };
+    expect(await check('a-AAAAAAAA.js', 'application/javascript; charset=utf-8')).toBe(true);
+    expect(await check('a-AAAAAAAA.js', 'text/javascript')).toBe(true);
+    expect(await check('a-AAAAAAAA.css', 'text/css; charset=utf-8')).toBe(true);
+    expect(await check('a-AAAAAAAA.js', 'text/html; charset=utf-8')).toBe(false);
+    expect(await check('a-AAAAAAAA.css', 'text/html')).toBe(false);
+    expect(await check('a-AAAAAAAA.css', 'application/javascript')).toBe(false);
+    expect(await check('a-AAAAAAAA.js', '')).toBe(false);
   });
 });

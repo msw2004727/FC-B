@@ -20,6 +20,10 @@ import type { Plugin } from 'vite';
 /** 不在 index.html 標籤裡、但每頁都用到的固定殼檔（相對 dist）。TopBar.tsx 的 LIGHT_WEBP／DARK_WEBP。 */
 export const SHELL_FIXED_URLS = ['index.html', 'assets/logo-black.webp', 'assets/logo-white.webp'] as const;
 
+export const ASSET_CACHE_NAME = 'fcb-assets';
+export const ASSET_CACHE_MAX_ENTRIES = 300;
+export const ASSET_CACHE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+
 function attrsOf(tag: string): Map<string, string> {
   const out = new Map<string, string>();
   for (const m of tag.matchAll(/\s([a-zA-Z-]+)\s*=\s*"([^"]*)"/g)) out.set(m[1]!.toLowerCase(), m[2]!);
@@ -90,3 +94,24 @@ export function swShellPrecache(): {
     },
   };
 }
+
+/**
+ * 執行期快取的網址條件：同源、`/assets/` 底下第一層、帶 8 碼雜湊的 .js／.css（內容不會變，可以 CacheFirst）。
+ * 排除：/assets/og/*、/assets/icons/*、logo 的固定檔名圖、assets/404.html、runtime-config.json、version.json、sw.js。
+ * workbox-build 會把這個函式的原始碼原樣搬進 sw.js，函式內不得引用外部變數。
+ */
+export const isHashedAsset = ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }): boolean =>
+  sameOrigin && /^\/assets\/[^/]+-[A-Za-z0-9_-]{8}\.(?:js|css)$/.test(url.pathname);
+
+/**
+ * 只存「型別對」的回應：.css 要 text/css、.js 要 javascript。平台若把不存在的檔回成 HTML 200（例如 SPA 退回頁），
+ * 不存進快取（CacheFirst 存錯會一直壞）。狀態碼由 cacheableResponse 的 statuses: [200] 把關。
+ * 同上，函式會原樣搬進 sw.js，不得引用外部變數。
+ */
+export const assetTypeGuard = {
+  cacheWillUpdate: async ({ request, response }: { request: Request; response: Response }): Promise<Response | null> => {
+    const type = (response.headers.get('content-type') || '').toLowerCase();
+    const wanted = new URL(request.url).pathname.endsWith('.css') ? 'text/css' : 'javascript';
+    return type.indexOf(wanted) === -1 ? null : response;
+  },
+};

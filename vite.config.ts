@@ -10,7 +10,14 @@ import { legacyCssScope } from './scripts/legacy-css-scope.mjs';
 import { earlyBannersHtml } from './scripts/early-banners-html.ts';
 import { earlyEventHtml } from './scripts/early-event-html.ts';
 import { bootPreloadHtml } from './scripts/boot-preload-html.ts';
-import { swShellPrecache } from './scripts/sw-shell.ts';
+import {
+  ASSET_CACHE_MAX_AGE_SECONDS,
+  ASSET_CACHE_MAX_ENTRIES,
+  ASSET_CACHE_NAME,
+  assetTypeGuard,
+  isHashedAsset,
+  swShellPrecache,
+} from './scripts/sw-shell.ts';
 // @ts-expect-error 純 JS 建置工具，無型別宣告
 import { appBuildMeta } from './scripts/build-meta.mjs';
 import { FIREBASE_CONFIG } from './src/data/firebase-config.ts';
@@ -123,6 +130,8 @@ function internalTestNoIndex(): Plugin {
  * Service Worker（vite-plugin-pwa 1.3.0 generateSW，2026-10-20 Fable 定案）：
  * - precache 只含「殼」（index.html＋它靜態引用的入口、modulepreload、樣式表＋頂欄 logo＋manifest.json），
  *   清單與理由見 scripts/sw-shell.ts。取代：原本 globPatterns 全部打包產物都預存（顧問 §3.567 選 (b)）。
+ * - 其他分塊（/assets/ 帶雜湊的 .js／.css）第一次用到才存進執行期快取 fcb-assets（cache-first，只收 200 且型別對）。
+ *   /assets/* 不存在時 Pages 回真 404（assets/404.html），404 不存、照原樣交給頁面，由 chunk-reload.ts 重載一次。
  * - 導覽請求 network-first：線上一律拿伺服器的 index.html（與現行 chunk 對應），3 秒逾時或離線才退回快取。
  *   不用 stale-while-revalidate／cache-first：舊 shell 引用的舊 chunk 在新部署後已不存在會白屏（R-REL-013 同理）。
  * - Firestore、Functions、Storage 等其他請求一律不攔（沒有對應路由就不經 SW）。
@@ -188,6 +197,18 @@ const pwa = VitePWA({
           expiration: { maxEntries: 30, maxAgeSeconds: 24 * 60 * 60 },
           cacheableResponse: { statuses: [200] },
           precacheFallback: { fallbackURL: 'index.html' },
+        },
+      },
+      {
+        // 殼以外的分塊：檔名帶雜湊、內容不會變，cache-first。導覽規則在前，這條不影響導覽。
+        // 只存 200 而且 content-type 對的回應；上限 300 筆、30 天，超過照最久沒用的先刪。
+        urlPattern: isHashedAsset,
+        handler: 'CacheFirst',
+        options: {
+          cacheName: ASSET_CACHE_NAME,
+          expiration: { maxEntries: ASSET_CACHE_MAX_ENTRIES, maxAgeSeconds: ASSET_CACHE_MAX_AGE_SECONDS, purgeOnQuotaError: true },
+          cacheableResponse: { statuses: [200] },
+          plugins: [assetTypeGuard],
         },
       },
     ],
