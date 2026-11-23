@@ -1,9 +1,9 @@
 {
-  "sha256": "5b3af5e5239849972af0d1b6c9cbb9cd3c85ebc926b3bd27be45009be0d7db52",
+  "sha256": "6710ce855766c3d9190eeffba6c03ab3eb3df0b6c86c9166a1419b4f15381a8c",
   "storageSha256": "c239ba0ea8484372bd44d5060a0de417117c2a0cf887f6318259eb34b1236d9a",
-  "copiedAt": "2026-11-17T03:07:56.337Z",
-  "fcRef": "member-data-read-v2rules",
-  "fcHead": "f35c12cc4b7a12172444d9b7fbd640cea767f196",
+  "copiedAt": "2026-11-23T13:39:05.000Z",
+  "fcRef": "feat/late-cancel（正式 11-23 20:22 已部署 f373e539f）",
+  "fcHead": "f373e539f8f70d4cafea92cf31afa833d4b2f243",
   "asiaMainRules": {
     "file": "asia-main.rules",
     "sha256": "99a8cafef181e8e01c7bacad7dc51d7b34a04e07c20a60fffb7199da156044bc",
