@@ -96,12 +96,13 @@ export function swShellPrecache(): {
 }
 
 /**
- * 執行期快取的網址條件：同源、`/assets/` 底下第一層、帶 8 碼雜湊的 .js／.css（內容不會變，可以 CacheFirst）。
+ * 執行期快取的網址條件：同源、`/assets/` 底下第一層、帶 8 碼雜湊的 .js／.css（內容不會變，可以 CacheFirst），不帶查詢字串
+ *（打包產物不會帶；帶了快取鍵會變成另一筆，顧問 §3.645 P3-3）。
  * 排除：/assets/og/*、/assets/icons/*、logo 的固定檔名圖、assets/404.html、runtime-config.json、version.json、sw.js。
  * workbox-build 會把這個函式的原始碼原樣搬進 sw.js，函式內不得引用外部變數。
  */
 export const isHashedAsset = ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }): boolean =>
-  sameOrigin && /^\/assets\/[^/]+-[A-Za-z0-9_-]{8}\.(?:js|css)$/.test(url.pathname);
+  sameOrigin && !url.search && /^\/assets\/[^/]+-[A-Za-z0-9_-]{8}\.(?:js|css)$/.test(url.pathname);
 
 /**
  * 只存「型別對」的回應：.css 要 text/css、.js 要 javascript。平台若把不存在的檔回成 HTML 200（例如 SPA 退回頁），

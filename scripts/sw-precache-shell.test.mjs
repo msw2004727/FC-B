@@ -222,6 +222,13 @@ describe('建置產出的 sw.js', () => {
       '/assets/og/share-AAAAAAAA.js',
       '/blog/assets/x-AAAAAAAA.js',
       '/assets/no-hash.js',
+      // 顧問 §3.645 P3-3
+      '/assets/index-AAAAAAAA.js.map',
+      '/assets/index-AAAAAAAA.js?v=1',
+      '/assets/index-AAAAAAAA.css?x',
+      '/assets/index-AAAAAAAA.mjs',
+      '/assets/index-AAAAAAAA.JS',
+      '/assets/index-AAAAAAAA.CSS',
     ]) {
       expect(rt.match(assetReq(p)), p).toBe(false);
     }
