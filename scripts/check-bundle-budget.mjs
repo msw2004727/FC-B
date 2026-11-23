@@ -8,7 +8,8 @@
  *   各檔分別 zlib.gzipSync(buf, { level: 9 }) 後相加，不是先串接再壓。KB = 1000 bytes（不是 1024）。
  *   含入口 index-*.js，再加上 index.html 裡 rel=modulepreload 且路徑以 .js 結尾的檔。
  *   同一實體檔只算一次（入口若也被 modulepreload，不重複）。不含 CSS、不含 inline script。
- *   預設上限 123,823 bytes（＝賽事建賽修正上線版 7514fde4 實測合計 122,799＋1,024；K2 rebase 後，§3.373 補）。
+ *   預設上限 123,904 bytes（＝上線版 6c31586a（0.20261123）實測合計 122,880＋1,024；K2 上 main 前重量）。
+ *   取代 123,823（7514fde4 合計 122,799＋1,024，§3.373 補）。
  *   取代 123,161（首頁批上線版 8be2b2e0 合計 122,137＋1,024，顧問 §3.346）：賽事兩批先上線，基準跟著換。
  *   取代前一版 122,100（基底 18fa8d0 合計 121,043＋1 KB）：首頁「先畫上次內容」批先上線，基準跟著換。
  *   取代原 250KB 觀察用寬鬆上限：合計改為正式門檻，大於上限即失敗，不再只是觀察。
@@ -59,15 +60,16 @@ export const DEFAULT_LIMIT_BYTES = 60_024;
 // 站長 11-19 在顧問對話同意（§3.337）。
 // 取代原 250KB（250 * KB）觀察用寬鬆上限（§3.337）；再由 122,100（基底 18fa8d0 合計 121,043＋1 KB）
 // 改為首頁批上線版 8be2b2e0 實測合計 122,137＋1,024＝123,161，只適用 K2（顧問 §3.346）；
-// 再改為賽事建賽修正上線版 7514fde4 實測合計 122,799＋1,024＝123,823（K2 rebase 後，§3.373 補；取代 123,161）。
+// 再改為賽事建賽修正上線版 7514fde4 實測合計 122,799＋1,024＝123,823（K2 rebase 後，§3.373 補；取代 123,161）；
+// 再改為上線版 6c31586a 實測合計 122,880＋1,024＝123,904（K2 上 main 前重量，取代 123,823）。
 // 超過即失敗，不再只是觀察。為什麼改：合計才是首頁會下載的 JS 本體，250KB 寬到抓不到變胖。
 // 合計是主要把關；之後每批以上一個上線版的合計為基準，增加超過 1 KB 先報 PM。
-export const DEFAULT_PRELOAD_SUM_LIMIT_BYTES = 123_823;
+export const DEFAULT_PRELOAD_SUM_LIMIT_BYTES = 123_904;
 // 每次上線後由 PM 更新成上線版實測值。
 // 2026-11-20 起入口改記「檔名雜湊正規化後」的 gzip（站長 11-20 於顧問對話親答（§3.362））；
 // 之前紀錄的入口數字（例如 8be2b2e0 實際 gzip 60,878）是實際值，不回頭改寫。合計仍是實際 gzip。
-// 7514fde4（0.20261121f）實建：入口正規化 59,512（實際 61,523）、合計 122,799；取代 8be2b2e0（58,902／122,137）。
-export const BASELINE = { ref: '7514fde4', entryBytes: 59512, sumBytes: 122799 };
+// 6c31586a（0.20261123）實建：入口正規化 59,586（實際 61,589）、合計 122,880；取代 7514fde4（59,512／122,799）。
+export const BASELINE = { ref: '6c31586a', entryBytes: 59586, sumBytes: 122880 };
 
 function attr(tagAttrs, name) {
   const re = new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i');
@@ -293,7 +295,7 @@ export function normalizeBuildHashes(text, hashedNames) {
  * ok 只表示輔助指標（入口單檔）通過；合計在 result.preload。
  * 兩者都要看：任一條超限，CLI 結束碼即失敗。缺檔不改寫 ok（入口該過就過）。
  * 不丟例外：任何讀不到入口的情況都是 ok: false。
- * preloadLimitBytes 省略時用合計上限 123,823。
+ * preloadLimitBytes 省略時用合計上限 123,904。
  */
 export function inspectHomeBundle(distDir, limitBytes, preloadLimitBytes = DEFAULT_PRELOAD_SUM_LIMIT_BYTES) {
   const indexPath = path.join(distDir, 'index.html');
