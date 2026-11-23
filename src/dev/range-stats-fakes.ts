@@ -30,6 +30,11 @@ export async function loadRangeRosters(
   onProgress?: (done: number, total: number) => void,
 ): Promise<{ rosters: EventRoster[]; failed: EventDoc[] }> {
   const r = rand(events.length * 17 + 3);
+  // ?slow=1：讀到一半停住，給「讀取中」截圖用。
+  if (new URLSearchParams(location.search).get('slow') === '1') {
+    onProgress?.(Math.floor(events.length / 3), events.length);
+    await new Promise(() => undefined);
+  }
   const rosters = events.map((event, i) => {
     const regs = [];
     const att = [];
