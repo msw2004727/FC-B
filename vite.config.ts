@@ -10,6 +10,7 @@ import { legacyCssScope } from './scripts/legacy-css-scope.mjs';
 import { earlyBannersHtml } from './scripts/early-banners-html.ts';
 import { earlyEventHtml } from './scripts/early-event-html.ts';
 import { bootPreloadHtml } from './scripts/boot-preload-html.ts';
+import { swShellPrecache } from './scripts/sw-shell.ts';
 // @ts-expect-error 純 JS 建置工具，無型別宣告
 import { appBuildMeta } from './scripts/build-meta.mjs';
 import { FIREBASE_CONFIG } from './src/data/firebase-config.ts';
@@ -120,12 +121,14 @@ function internalTestNoIndex(): Plugin {
 
 /**
  * Service Worker（vite-plugin-pwa 1.3.0 generateSW，2026-10-20 Fable 定案）：
- * - precache 只含打包產物（不含 sw.js 本身與 runtime-config.json）；QR 掃描的 wasm（1MB）與 PNG 版 logo 不預存。
+ * - precache 只含「殼」（index.html＋它靜態引用的入口、modulepreload、樣式表＋頂欄 logo＋manifest.json），
+ *   清單與理由見 scripts/sw-shell.ts。取代：原本 globPatterns 全部打包產物都預存（顧問 §3.567 選 (b)）。
  * - 導覽請求 network-first：線上一律拿伺服器的 index.html（與現行 chunk 對應），3 秒逾時或離線才退回快取。
  *   不用 stale-while-revalidate／cache-first：舊 shell 引用的舊 chunk 在新部署後已不存在會白屏（R-REL-013 同理）。
  * - Firestore、Functions、Storage 等其他請求一律不攔（沒有對應路由就不經 SW）。
  * - 註冊由 src/core/sw-control.ts 先讀 /runtime-config.json（遠端開關）再決定，所以 injectRegister 關閉。
  */
+const swShell = swShellPrecache();
 const pwa = VitePWA({
   strategies: 'generateSW',
   registerType: 'autoUpdate',
@@ -133,6 +136,8 @@ const pwa = VitePWA({
   // 加到主畫面（PWA）設定：內容逐項照 A manifest.json（2026-10-20 站長要求新版沿用舊版 PWA）；
   // 檔名照 A 用 manifest.json，<link rel="manifest"> 由外掛注入 index.html。
   manifestFilename: 'manifest.json',
+  // manifest 圖示（PNG 共約 188 KB）不預存：只有加到主畫面時瀏覽器會抓，不屬開機需要的殼。
+  includeManifestIcons: false,
   manifest: {
     name: 'ToosterX',
     short_name: 'ToosterX',
@@ -151,6 +156,8 @@ const pwa = VitePWA({
   },
   workbox: {
     globPatterns: ['**/*.{js,css,html,webp,svg}'],
+    // 候選清單仍照 globPatterns／globIgnores 產生（算 revision），再只留殼（scripts/sw-shell.ts）。
+    manifestTransforms: [swShell.manifestTransform],
     // manual.html（舊站手冊原文照搬）不進 precache：手冊改版要立即生效，HTML 不走快取優先（R-REL-013 精神）。
     // _worker.js 是 Cloudflare Pages 進階模式的邊緣程式、不對外提供，預存抓它會 404 讓 SW 安裝失敗。
     // assets/404.html 只給 Pages 讓 /assets/* 不存在的檔回真 404（顧問 §1.28），不進預存。
@@ -189,7 +196,7 @@ const pwa = VitePWA({
 
 export default defineConfig({
   // T-042d／T-093：index.html 冷啟動提早 REST。橫幅與活動文件各一段 script、各自外掛；emulator 建置整段移除。
-  plugins: [preact(), earlyBannersHtml({ projectId: FIREBASE_CONFIG.projectId }), earlyEventHtml({ projectId: FIREBASE_CONFIG.projectId }), appBuildMeta(), internalTestNoIndex(), bootPreloadHtml(), pwa],
+  plugins: [preact(), earlyBannersHtml({ projectId: FIREBASE_CONFIG.projectId }), earlyEventHtml({ projectId: FIREBASE_CONFIG.projectId }), appBuildMeta(), internalTestNoIndex(), bootPreloadHtml(), swShell.plugin, pwa],
   css: {
     // 舊版 A 的 CSS 原檔照搬，打包時限定到 .legacy-ui（見 scripts/legacy-css-scope.mjs）
     postcss: { plugins: [legacyCssScope()] },
