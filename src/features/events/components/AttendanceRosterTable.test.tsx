@@ -37,6 +37,27 @@ afterEach(() => {
 });
 
 describe('AttendanceRosterTable', () => {
+  it('臨時取消標籤：有標籤的 UID 整顆換色（uc-lc-black／uc-lc-red），其他人不變', () => {
+    const { container } = render(
+      <AttendanceRosterTable
+        event={{ id: 'e1', max: 10 }}
+        registrations={[
+          { _docId: 'r1', userId: 'u1', userName: 'Black', status: 'confirmed', participantType: 'self', registeredAt: '2026-05-01T10:00:00Z' },
+          { _docId: 'r2', userId: 'u2', userName: 'Red', status: 'confirmed', participantType: 'self', registeredAt: '2026-05-01T10:01:00Z' },
+          { _docId: 'r3', userId: 'u3', userName: 'Plain', status: 'confirmed', participantType: 'self', registeredAt: '2026-05-01T10:02:00Z' },
+        ]}
+        attendanceRecords={[]}
+        roles={{}}
+        lateCancelTags={{ u1: 'black', u2: 'red' }}
+        onOpenProfile={vi.fn()}
+      />,
+    );
+    const tag = (uid: string) => container.querySelector(`.user-capsule[data-uid="${uid}"]`);
+    expect(tag('u1')?.classList.contains('uc-lc-black')).toBe(true);
+    expect(tag('u2')?.classList.contains('uc-lc-red')).toBe(true);
+    expect(tag('u3')?.className).not.toContain('uc-lc-');
+  });
+
   it('renders empty state when there are no confirmed participants', () => {
     render(
       <AttendanceRosterTable

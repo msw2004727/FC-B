@@ -51,7 +51,8 @@
       "earlyBirdEnabled": false,
       "earlyBirdCost": 0,
       "earlyBirdPolicyVersion": null,
-      "teamReservationReleaseHours": 12
+      "teamReservationReleaseHours": 12,
+      "lateCancelHours": 2
     }
   },
   "createCoach": {
@@ -106,7 +107,8 @@
       "earlyBirdEnabled": false,
       "earlyBirdCost": 0,
       "earlyBirdPolicyVersion": null,
-      "teamReservationReleaseHours": 12
+      "teamReservationReleaseHours": 12,
+      "lateCancelHours": 2
     }
   },
   "createAdmin": {
@@ -161,7 +163,8 @@
       "earlyBirdEnabled": false,
       "earlyBirdCost": 0,
       "earlyBirdPolicyVersion": null,
-      "teamReservationReleaseHours": 12
+      "teamReservationReleaseHours": 12,
+      "lateCancelHours": 2
     }
   },
   "createUserWithAddons": {
@@ -216,7 +219,8 @@
       "earlyBirdEnabled": false,
       "earlyBirdCost": 0,
       "earlyBirdPolicyVersion": null,
-      "teamReservationReleaseHours": 0
+      "teamReservationReleaseHours": 0,
+      "lateCancelHours": 2
     }
   },
   "editOwnerBasic": {
@@ -242,7 +246,8 @@
       "regionEnabled": false,
       "region": "",
       "cities": [],
-      "teamReservationReleaseHours": 12
+      "teamReservationReleaseHours": 12,
+      "lateCancelHours": 2
     },
     "capacityChange": null
   },

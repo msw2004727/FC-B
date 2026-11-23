@@ -254,6 +254,22 @@ describe('LegacyRelatedActivities 卡片右側動作鈕（照 A）', () => {
     expect(ids).toEqual(['r1', 'r2', 'r3']);
   });
 
+  // 審查 P1-2：個人頁取消也要出臨時取消警告框——傳 getLateCancelUser，快照帶候補人數。
+  it('我的報名取消：接上臨時取消提示（getLateCancelUser＋waitlistCount）', async () => {
+    const { useCancelRegistration } = await import('@/features/events/components/legacy/use-cancel-registration');
+    setReady({
+      registered: [{ event: { id: 'e1', title: '活動A' }, effectiveStatus: 'open', registrationStatus: 'confirmed', registration: {} }],
+    });
+    loadEventDetailMock.mockResolvedValue({ event: { id: 'e1', title: '活動A', waitlist: 2 } });
+    loadViewerRegistrationsMock.mockResolvedValue([{ eventId: 'e1', userId: 'u1', status: 'confirmed', _docId: 'r1' }]);
+    render(<Section section="registered" />);
+    const options = vi.mocked(useCancelRegistration).mock.calls.at(-1)?.[0];
+    expect(typeof options?.getLateCancelUser).toBe('function');
+    fireEvent.click(screen.getByRole('button', { name: '取消報名' }));
+    await waitFor(() => expect(beginCancelMock).toHaveBeenCalledTimes(1));
+    expect((beginCancelMock.mock.calls[0]?.[0] as { waitlistCount?: number }).waitlistCount).toBe(2);
+  });
+
   // 審查 P2-2：取消流程進行中切到別的圖示（元件保持掛載、active=false），完成後仍會 reload 刷新清單。
   it('切走（active=false）時清單不渲染，進行中的取消活動完成後仍會重新載入', async () => {
     setReady({

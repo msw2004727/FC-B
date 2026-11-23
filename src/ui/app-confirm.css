@@ -89,3 +89,26 @@
 @media (prefers-reduced-motion: reduce) {
   .app-confirm-box { animation: none; }
 }
+
+/* 取消報名確認框 LateCancelConfirm（臨時取消時限，預覽 ②③④）：只補 AppConfirm 沒有的次要說明與紅色確定鈕。
+   原放 late-cancel-confirm.css，會讓入口的預載表多一個 CSS 分塊（+15 B），併進這支（入口已載入）。 */
+.late-cancel-confirm-sub {
+  display: block;
+  margin-top: .4rem;
+  font-size: var(--font-size-body-sm);
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+#late-cancel-confirm .app-confirm-ok {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* 臨時取消：天數／場數用特殊色（站長 11-23「依深淺主題用特殊色提醒」）。--info：淺色 #2563eb、深色 #60a5fa，
+   與紅色警示列分開，兩種底色都達 AA；同色先例 .evd-reg-release。全域載入，取消框與活動表單說明共用。 */
+.lc-unit {
+  color: var(--info);
+  font-weight: 600;
+  white-space: nowrap;
+}

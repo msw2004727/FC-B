@@ -17,3 +17,11 @@
   outline: 2px solid var(--accent, currentColor);
   outline-offset: 2px;
 }
+
+/*
+ * 臨時取消標籤（FC 契約 late-cancel-contract-2026-11-23 §8；站長 11-23 定案 A 整顆換色）：
+ * 黑標＝黑底白字、紅標＝紅底白字，臨取標籤優先於角色底色與出席率染色；深色模式黑底加灰框。
+ */
+.user-capsule.user-capsule.uc-lc-black { background: #111; background-image: none; color: #fff; border-color: #111; }
+.user-capsule.user-capsule.uc-lc-red { background: #dc2626; background-image: none; color: #fff; border-color: #dc2626; }
+[data-theme="dark"] .user-capsule.user-capsule.uc-lc-black { background: #000; border-color: #9ca3af; }

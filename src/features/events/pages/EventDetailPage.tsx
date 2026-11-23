@@ -33,6 +33,14 @@ import { appConfirm } from '@/ui/AppConfirm';
 import { useActionRingControl } from '@/ui/action-ring';
 import { useViewer, type ViewerView } from '@/features/profile/data/viewer';
 import { getCachedUserGender, useUserRoles } from '@/data/user-roles';
+import {
+  buildCompanionLateCancelNote,
+  isLateCancelRegistration,
+  isWithinLateCancelWindow,
+  lateCancelHint,
+  withLateCancelMarked,
+} from '../data/late-cancel';
+import { loadLateCancelUser, useLateCancelTags } from '../data/use-late-cancel-tags';
 import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
 import { settleAttendance } from '../data/attendance-settle';
 import { resolveOperator } from '../data/event-lifecycle';
@@ -1488,6 +1496,8 @@ function EventDetailSession({
   // 展開跨過 TTL 時，仍由既有完整 UID 批次更新角色及統計，不另開 users 查詢。
   // 先畫期間不查角色（Opus 終審 P3-2）：名單來自快取，等伺服器資料到齊再讀。
   const roles = useUserRoles(viewer.uid && !provisional ? roleUids : [], noShowEnabled);
+  // 臨時取消標籤：users 5 欄跟角色同批（零額外讀），黑標的人另讀出席場數（FC 契約 late-cancel §8）。
+  const lateCancelTags = useLateCancelTags(viewer.uid && !provisional ? roleUids : [], roles);
   const noShowData = useRosterNoShow({
     viewerUid: viewer.uid,
     eventDocId: snapshot?.eventDocId,
@@ -1988,6 +1998,8 @@ function EventDetailSession({
     canRun: () => visible && !refreshFailed && alive.current,
     login,
     cancelContext: contexts.cancel,
+    // 詳情頁的快照是伺服器讀回的活動文件，可以寫臨時取消提示（FC 計畫書 §3.3 第 4 項）。
+    getLateCancelUser: loadLateCancelUser,
     onIntegrityError: () => {
       show('events.detailPage.refreshError');
       setRefreshFailed(true);
@@ -2070,6 +2082,24 @@ function EventDetailSession({
       return;
     }
 
+    // 臨時取消（審查 P1-1）：夥伴報名窗取消同行者，後端同樣記點；時限內先警告，按「保留名額」整筆中止。
+    const lateTargets = targets.filter(reg => isLateCancelRegistration(reg, current.event));
+    if (lateTargets.length > 0 && isWithinLateCancelWindow(current.event, Date.now())) {
+      const lateUser = await loadLateCancelUser(uid);
+      if (!alive.current || currentViewer.current.uid !== uid) return;
+      const note = buildCompanionLateCancelNote({
+        event: current.event,
+        nowMs: Date.now(),
+        eligibleCount: lateTargets.length,
+        confirmedCount: targets.filter(reg => reg.status === 'confirmed').length,
+        waitlistCount: getEventParticipantStats(current.event, current.registrations).waitlistCount,
+        user: lateUser,
+        selfChecked: false,
+      });
+      if (note && !await cancelFlow.askLateConfirm({ ...note, cancelText: '保留名額', okText: '仍要取消' })) return;
+      if (!alive.current || currentViewer.current.uid !== uid) return;
+    }
+
     const participants = chosen.map(item => ({
       type: 'companion' as const,
       companionId: item.id,
@@ -2112,6 +2142,7 @@ function EventDetailSession({
     let confirmed = 0;
     let waitlisted = 0;
     let cancelled = 0;
+    let lateCancelMarked = false;
     let writeAttempted = false;
     let projection: unknown = null;
     try {
@@ -2135,6 +2166,7 @@ function EventDetailSession({
           return;
         }
         cancelled = cancelRegistrationIds.length;
+        lateCancelMarked = response.lateCancelMarked === true;
         projection = response.event;
       }
       if (chosen.length) {
@@ -2165,7 +2197,10 @@ function EventDetailSession({
       if (waitlisted > 0) parts.push(`候補 ${waitlisted} 人`);
       if (cancelled > 0) parts.push(`取消 ${cancelled} 人`);
       toast.show({
-        message: parts.length ? `夥伴報名已更新：${parts.join('、')}` : '夥伴報名已更新',
+        message: withLateCancelMarked(
+          parts.length ? `夥伴報名已更新：${parts.join('、')}` : '夥伴報名已更新',
+          lateCancelMarked,
+        ),
       });
       setCompanionOpen(false);
       await refresh(adoptEventProjection(current, projection));
@@ -2300,6 +2335,7 @@ function EventDetailSession({
     authPending: viewer.authPending === true && !authWaitExpired,
   });
   const maximum = count(event.max);
+  const lateHint = provisional ? null : lateCancelHint(event, Date.now());
   const companionStats = getEventParticipantStats(
     event, rosterPhase === 'ready' ? snapshot.registrations : [],
   );
@@ -2497,6 +2533,7 @@ function EventDetailSession({
                         event: current.event,
                         publicId,
                         owned,
+                        waitlistCount: companionStats.waitlistCount,
                       }));
                     }
                   }
@@ -2511,6 +2548,8 @@ function EventDetailSession({
                 }}
               />
             </div>
+            {/* 臨時取消時限小字：只用伺服器讀回的活動文件（provisional 期間不畫，FC 計畫書 §3.2／§3.3 第 4 項）。 */}
+            {lateHint && <div class="detail-late-cancel-hint" id="detail-late-cancel-hint">{lateHint}</div>}
 
             {historyFailed && !refreshFailed && (
               <div role="alert" style="margin-top:.5rem">
@@ -2608,6 +2647,7 @@ function EventDetailSession({
                       registrations={snapshot.registrations}
                       attendanceRecords={snapshot.attendanceRecords}
                       roles={roles}
+                      lateCancelTags={lateCancelTags}
                       onOpenProfile={profile}
                       canManage={canManageRoster}
                       canViewNoShow={canViewNoShow}
@@ -2676,6 +2716,7 @@ function EventDetailSession({
                     event={event}
                     registrations={snapshot.registrations}
                     roles={roles}
+                    lateCancelTags={lateCancelTags}
                     onOpenProfile={profile}
                   />
                 )}

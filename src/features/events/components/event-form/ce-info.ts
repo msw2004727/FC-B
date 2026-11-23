@@ -14,6 +14,7 @@ export type CeInfoKey =
   | 'fee'
   | 'max'
   | 'teamReservationRelease'
+  | 'lateCancel'
   | 'age'
   | 'teamOnly'
   | 'delegate'
@@ -68,6 +69,11 @@ export const CE_INFO: Readonly<Record<CeInfoKey, { title: string; body: string }
   teamReservationRelease: {
     title: "團隊預留自動釋出",
     body: "活動開始前指定時間，系統自動把各團隊尚未用到的預留名額釋出給所有人報名，候補依順序遞補。<p style=\"margin:.3rem 0 0;color:var(--text-muted);font-size:.8rem\">每場只執行一次；選「不自動釋出」則保留到活動開始。</p>",
+  },
+  // B 新增（非 A 原文；FC 計畫書 late-cancel-warning-plan §4）。
+  lateCancel: {
+    title: "臨時取消時限",
+    body: "活動開始前這段時間內取消正取報名，會記一次臨時取消，名字標籤變黑底，<span class=\"lc-unit\">7 天</span>或出席 <span class=\"lc-unit\">3 場</span>後恢復；<span class=\"lc-unit\">90 天</span>內第 3 次變紅底，由管理員解除。<p style=\"margin:.3rem 0 0;color:var(--text-muted);font-size:.8rem\">選「不設定」則不記。</p>",
   },
   age: {
     title: "年齡限制",

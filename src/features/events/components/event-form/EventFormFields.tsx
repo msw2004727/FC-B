@@ -21,6 +21,7 @@ import {
   type EventFormState,
 } from '../../data/event-form-model';
 import { TEAM_RESERVATION_RELEASE_HOURS } from '../../data/team-reservation-release';
+import { normalizeLateCancelHours } from '../../data/late-cancel';
 import type { CoverUploadView, DelegatePickerView, LocationControlView } from './form-types';
 import type { CeInfoKey } from './ce-info';
 import { CeInfoDialog } from './CeInfoDialog';
@@ -30,6 +31,9 @@ import './intensity-field.css';
 import { EventFormAddons, type EventFormAddonsProps } from './EventFormAddons';
 import type { EventTemplatesView } from './use-event-templates';
 import type { MultiDateView } from './use-multi-date';
+
+/** 預覽 ① 的選項順序：預設 2 小時排第一，「不設定」第二。 */
+const LATE_CANCEL_OPTION_ORDER = [2, 0, 3, 6, 12, 24, 48] as const;
 
 export interface EventFormFieldsProps {
   mode: 'create' | 'edit';
@@ -796,6 +800,27 @@ export function EventFormFields(props: EventFormFieldsProps): JSX.Element {
             {releaseNoteText}
           </div>
         )}
+      </div>
+
+      {/* 臨時取消時限（B 新增；FC 計畫書 late-cancel-warning-plan §3，畫面照預覽 ①） */}
+      <div class="ce-row" id="ce-late-cancel-row">
+        <div class="ce-label-row">
+          {renderInfoBtn('lateCancel')}
+          <label for="ce-late-cancel-hours">{lt('臨時取消時限')}</label>
+        </div>
+        <select
+          id="ce-late-cancel-hours"
+          value={String(normalizeLateCancelHours(state))}
+          onChange={(e) => onPatch({ lateCancelHours: Number(e.currentTarget.value) })}
+        >
+          {LATE_CANCEL_OPTION_ORDER.map((hours) => (
+            <option key={hours} value={String(hours)}>
+              {hours === 0
+                ? lt('不設定')
+                : lt('開始前 {N} 小時內取消算臨時取消', '開始前 {N} 小時內取消算臨時取消', { N: hours })}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* 年齡限制 */}

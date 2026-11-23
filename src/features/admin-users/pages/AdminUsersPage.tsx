@@ -31,6 +31,7 @@ import {
   buildProfileEditOpLog,
   buildRestrictionOpLog,
   buildRoleChangeOpLog,
+  canClearLateCancelRedOf,
   canManageTarget,
   canToggleRestrictionOf,
   hasActiveFilters,
@@ -47,6 +48,7 @@ import {
 } from '../data/admin-users-model';
 import {
   classifyAdminUserError,
+  clearLateCancelRed,
   fetchCustomRoles,
   loadAdminPrivateProfiles,
   loadAdminUsers,
@@ -58,6 +60,7 @@ import {
   type AdminUsersLoad,
 } from '../data/admin-users';
 import { isViewerPermissionsLoaded } from '../data/viewer-ready';
+import { LATE_CANCEL_CLEAR_CALLABLE_DEPLOYED } from '../data/late-cancel-deployed';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 
@@ -75,6 +78,8 @@ export const ADMIN_USERS_EXTRA_UI_ENABLED = false;
 export interface AdminUsersPageProps {
   /** 測試注入；未傳用 ADMIN_USERS_EXTRA_UI_ENABLED。 */
   extraUiEnabled?: boolean;
+  /** 測試注入；未傳用 LATE_CANCEL_CLEAR_CALLABLE_DEPLOYED（解除臨取紅標 Callable 是否已部署）。 */
+  lateCancelClearEnabled?: boolean;
 }
 
 const CENTER_NOTE = 'text-align:center;padding:2rem;color:var(--text-muted)';
@@ -88,6 +93,7 @@ const CENTER_NOTE = 'text-align:center;padding:2rem;color:var(--text-muted)';
  */
 export default function AdminUsersPage({
   extraUiEnabled = ADMIN_USERS_EXTRA_UI_ENABLED,
+  lateCancelClearEnabled = LATE_CANCEL_CLEAR_CALLABLE_DEPLOYED,
 }: AdminUsersPageProps = {}): JSX.Element {
   const t = useT();
   const viewer = useViewer();
@@ -425,6 +431,37 @@ export default function AdminUsersPage({
     }
   };
 
+  /** 解除臨取紅標（FC 契約 late-cancel §6）：先確認，成功後本機把該筆改回非紅標；伺服器也寫 auditLog。 */
+  const handleClearLateCancelRed = async (user: AdminUser): Promise<void> => {
+    if (busyRef.current) return;
+    const target = findUser(user._docId);
+    if (!target || !canClearLateCancelRedOf(actor, target)) {
+      toast.show({ message: t('admin-users.toast.noPermission'), tone: 'error' });
+      return;
+    }
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      if (!await appConfirm(t('admin-users.lateCancel.confirm', { name: target.name }))) return;
+      const latest = usersRef.current.find((item) => item._docId === target._docId) ?? null;
+      if (!latest || !canClearLateCancelRedOf(actorRef.current, latest)) return;
+      try {
+        await clearLateCancelRed(latest.uid);
+      } catch (err: unknown) {
+        // eslint-disable-next-line no-console
+        console.error('[admin-users] clearLateCancelRed', err);
+        toast.show({ message: errorMessage(err, 'admin-users.lateCancel.failed'), tone: 'error' });
+        return;
+      }
+      setUsers((prev) => prev.map((item) =>
+        item._docId === target._docId ? { ...item, lateCancelLevel: null } : item));
+      toast.show({ message: t('admin-users.lateCancel.cleared'), tone: 'success' });
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
   const handleLoadMoreUsers = async (): Promise<void> => {
     const current = loadInfoRef.current;
     if (!current || current.done) return;
@@ -572,6 +609,9 @@ export default function AdminUsersPage({
               busy={busy}
               onEdit={handleOpenEditor}
               onToggleRestriction={(target) => { handleToggleRestriction(target).catch(() => undefined); }}
+              onClearLateCancelRed={lateCancelClearEnabled
+                ? (target) => { handleClearLateCancelRed(target).catch(() => undefined); }
+                : undefined}
               onOpenProfile={openProfile}
             />
           ))}

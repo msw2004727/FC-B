@@ -1,7 +1,7 @@
 // 依 UID 批次載入使用者角色（R-ID-002：不以名字查身分）。
 //
 // - 以 `where(documentId(), 'in', chunk)` 每次最多 30 個 UID 分批讀 `users/{uid}`。
-// - 同次讀取快取 role、exp 與放鴿子統計，不另開 users 查詢。
+// - 同次讀取快取 role、exp、放鴿子統計與臨時取消 5 欄，不另開 users 查詢。
 // - role 屬於 UserRole 才採用，否則 'user'；查不到的 UID 也是 'user'（照 A）。
 // - 模組層 5 分鐘快取；依 UID 共用進行中的請求 Promise，避免重複讀。
 // - 讀取失敗：記一次 console.warn；角色回傳目前快取＋其餘 'user'，統計 reject。
@@ -44,6 +44,15 @@ export interface UserNoShowStats {
   lastEventWasNoShow: boolean;
 }
 
+/** 臨時取消（FC 契約 late-cancel-contract §5，只由 Functions 寫）；時間已轉毫秒。 */
+export interface UserLateCancelInfo {
+  level: 'black' | 'red' | null;
+  untilMs: number | null;
+  releaseAt: number;
+  recentMs: number[];
+  total: number;
+}
+
 /** 只接受 users.gender 的這兩個字；其他值（含缺欄）存空字串。 */
 export type UserGender = '男' | '女' | '';
 
@@ -53,6 +62,7 @@ interface CacheEntry extends UserNoShowStats {
   exp: number;
   /** 與角色同一份 users 文件；不另開查詢。 */
   gender: UserGender;
+  lateCancel: UserLateCancelInfo;
   expiresAt: number;
 }
 
@@ -60,6 +70,7 @@ interface UserSummary extends UserNoShowStats {
   role: UserRole;
   exp: number;
   gender: UserGender;
+  lateCancel: UserLateCancelInfo;
 }
 
 type FetchOutcome = { failed: false } | { failed: true; error: unknown };
@@ -108,6 +119,32 @@ function readGender(data: Record<string, unknown> | undefined): UserGender {
   return value === '男' || value === '女' ? value : '';
 }
 
+/** Timestamp／{seconds}／毫秒數字 → 毫秒；其餘 null。 */
+function readTimeMs(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (!value || typeof value !== 'object') return null;
+  const record = value as { toMillis?: unknown; seconds?: unknown };
+  if (typeof record.toMillis === 'function') {
+    const ms = Number((record.toMillis as () => unknown)());
+    return Number.isFinite(ms) ? ms : null;
+  }
+  return typeof record.seconds === 'number' && Number.isFinite(record.seconds) ? record.seconds * 1000 : null;
+}
+
+function readLateCancel(data: Record<string, unknown> | undefined): UserLateCancelInfo {
+  const level = data?.lateCancelLevel;
+  const recent = Array.isArray(data?.lateCancelRecent) ? data.lateCancelRecent : [];
+  return {
+    level: level === 'black' || level === 'red' ? level : null,
+    untilMs: readTimeMs(data?.lateCancelUntil),
+    releaseAt: Number(data?.lateCancelReleaseAt || 0) || 0,
+    recentMs: recent.map(readTimeMs).filter((ms): ms is number => ms !== null),
+    total: Number(data?.lateCancelTotal || 0) || 0,
+  };
+}
+
+const EMPTY_LATE_CANCEL: UserLateCancelInfo = { level: null, untilMs: null, releaseAt: 0, recentMs: [], total: 0 };
+
 function readNoShowStats(data: Record<string, unknown> | undefined): UserNoShowStats {
   return {
     noShowCount: Number(data?.noShowCount || 0) || 0,
@@ -150,6 +187,13 @@ export function getCachedUserGender(uid: string): UserGender | undefined {
   return entry.gender;
 }
 
+/** 未過期的臨時取消欄位；未載入或過期回 undefined，絕不觸發查詢。 */
+export function getCachedUserLateCancel(uid: string): UserLateCancelInfo | undefined {
+  const entry = cache.get(String(uid || '').trim());
+  if (!entry || entry.expiresAt <= Date.now()) return undefined;
+  return entry.lateCancel;
+}
+
 /** 未過期的統計副本；未載入或過期回 undefined，絕不觸發查詢。 */
 export function getCachedUserNoShowStats(uid: string): UserNoShowStats | undefined {
   const entry = cache.get(String(uid || '').trim());
@@ -174,6 +218,7 @@ async function fetchRoles(uids: readonly string[]): Promise<void> {
         role: readRole(data),
         exp: readExp(data),
         gender: readGender(data),
+        lateCancel: readLateCancel(data),
         ...readNoShowStats(data),
       };
     }
@@ -184,6 +229,7 @@ async function fetchRoles(uids: readonly string[]): Promise<void> {
         role: result[uid]?.role ?? DEFAULT_ROLE,
         exp: result[uid]?.exp ?? 0,
         gender: result[uid]?.gender ?? '',
+        lateCancel: result[uid]?.lateCancel ?? EMPTY_LATE_CANCEL,
         ...copyNoShowStats(result[uid]),
         expiresAt,
       });
@@ -234,6 +280,8 @@ async function startFetch(uidsToFetch: readonly string[]): Promise<FetchOutcome>
  */
 export async function loadUserRoles(
   uids: readonly string[],
+  // 臨時取消確認框用：略過 5 分鐘快取重讀一次（剛記過點的人，快取裡的次數會舊）。
+  options?: { force?: boolean },
 ): Promise<Record<string, UserRole>> {
   const normalized = normalizeUids(uids);
   const now = Date.now();
@@ -242,7 +290,7 @@ export async function loadUserRoles(
 
   for (const uid of normalized) {
     const cached = cache.get(uid);
-    if (cached && cached.expiresAt > now) {
+    if (!options?.force && cached && cached.expiresAt > now) {
       result[uid] = cached.role;
     } else {
       toFetch.push(uid);

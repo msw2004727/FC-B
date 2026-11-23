@@ -945,4 +945,20 @@ describe('團隊預留自動釋出（FC 計畫書 §3.3）', () => {
     expect(buildMultiDateForms(base, ['2026-06-01', '2026-06-02'], manual, NOW)
       .map(form => form.teamReservationReleaseHours)).toEqual([0, 0]);
   });
+
+  it('臨時取消時限：新建預設 2；編輯缺值顯示 2、0 保留 0；多日期每場同值（含 0）', () => {
+    expect(createDefaultFormState().lateCancelHours).toBe(2);
+    expect(formStateFromEvent({ id: 'e1' } as EventDoc).lateCancelHours).toBe(2);
+    expect(formStateFromEvent({ id: 'e2', lateCancelHours: 0 } as EventDoc).lateCancelHours).toBe(0);
+    expect(formStateFromEvent({ id: 'e3', lateCancelHours: 24 } as EventDoc).lateCancelHours).toBe(24);
+    expect(formStateFromEvent({ id: 'e4', lateCancelHours: null } as EventDoc).lateCancelHours).toBe(0);
+    const state = { ...makeValidState({ dateVal: '', startTime: '20:00' }), lateCancelHours: 0 };
+    const base = toCreateEventForm(state, '主辦人', { nowMs: NOW });
+    expect(base).toHaveProperty('lateCancelHours', 0);
+    expect(buildMultiDateForms(base, ['2026-06-01', '2026-06-02'], state, NOW)
+      .map(form => form.lateCancelHours)).toEqual([0, 0]);
+    const six = toCreateEventForm({ ...state, lateCancelHours: 6 }, '主辦人', { nowMs: NOW });
+    expect(buildMultiDateForms(six, ['2026-06-01', '2026-06-02'], state, NOW)
+      .map(form => form.lateCancelHours)).toEqual([6, 6]);
+  });
 });

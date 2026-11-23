@@ -24,6 +24,9 @@ vi.mock('preact-iso', () => ({
 vi.mock('@/core/back-guard', () => ({ useGoBack: () => vi.fn() }));
 vi.mock('@/features/profile/data/viewer', () => ({ useViewer: () => mock.viewer }));
 vi.mock('@/data/user-roles', () => ({
+  // 測試同步更新（臨時取消時限）：詳情頁名單標籤讀 users 臨取欄位。
+  getCachedUserLateCancel: () => undefined,
+  loadUserRoles: async () => ({}),
   useUserRoles: () => ({}),
   getCachedUserLevel: () => 0,
 }));

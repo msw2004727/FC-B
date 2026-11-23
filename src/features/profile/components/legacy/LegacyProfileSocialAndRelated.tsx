@@ -18,6 +18,8 @@ import {
 } from '@/features/events/components/legacy/use-cancel-registration';
 import { operateContextFromViewer } from '@/features/events/data/event-create-context';
 import { loadEventDetail } from '@/features/events/data/event-detail';
+import { getEventParticipantStats } from '@/features/events/data/participant-stats';
+import { loadLateCancelUser } from '@/features/events/data/use-late-cancel-tags';
 import {
   canCancelOwnActivity,
   canEditOwnActivityBasic,
@@ -443,6 +445,8 @@ export function LegacyRelatedActivities({
     canRun: () => mountedRef.current,
     login,
     cancelContext: contexts.cancel,
+    // 臨時取消提示（審查 P1-2）：快照是 loadEventDetail 讀回的伺服器活動文件，與詳情頁同一套確認框。
+    getLateCancelUser: loadLateCancelUser,
     onIntegrityError: () => {
       toast.show({ message: '報名資料尚未同步完成，請重新整理後再試' });
     },
@@ -568,6 +572,8 @@ export function LegacyRelatedActivities({
         event: detail.event as unknown as DetailEvent,
         publicId,
         owned,
+        // 候補人數用活動文件的投影（零額外讀）。
+        waitlistCount: getEventParticipantStats(detail.event, []).waitlistCount,
       };
       snapshotRef.current = snapshot;
       await cancelFlow.beginCancel(snapshot);

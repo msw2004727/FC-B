@@ -5,7 +5,7 @@
  *
  * 不碰 Firestore、不碰 DOM；按鈕顯示（元件）與送出守衛（admin-users.ts 的 manageAdminUser）共用同一組判斷（R-IAM-011）。
  */
-import { formatTaipei, parseTaipei } from '@/core/taipei-time';
+import { formatTaipei, parseTaipei, taipeiParts } from '@/core/taipei-time';
 import type { ProfilePrivateData } from '@/data/profile-private';
 import {
   BASE_ROLES,
@@ -22,6 +22,8 @@ export const PERM_USERS_ENTRY = 'admin.users.entry';
 export const PERM_USERS_EDIT_PROFILE = 'admin.users.edit_profile';
 export const PERM_USERS_CHANGE_ROLE = 'admin.users.change_role';
 export const PERM_USERS_RESTRICT = 'admin.users.restrict';
+/** 解除臨取紅標沿用放鴿子修改權限（FC 契約 late-cancel §6）。 */
+export const PERM_LATE_CANCEL_CLEAR = 'admin.repair.no_show_adjust';
 
 /** adminManageUser 伺服器白名單（functions/index.js ADMIN_MANAGED_USER_PROFILE_FIELDS）。 */
 export const ADMIN_PROFILE_FIELDS = ['region', 'gender', 'birthday', 'sports', 'phone', 'email'] as const;
@@ -73,6 +75,10 @@ export interface AdminUser {
   lastLoginIp: string;
   lastLoginRegion: string;
   lastLoginIsp: string;
+  /** 臨時取消（契約 §5，只由 Functions 寫）：等級、累計次數、最近一次（毫秒）。 */
+  lateCancelLevel: 'black' | 'red' | null;
+  lateCancelTotal: number;
+  lateCancelLastMs: number | null;
 }
 
 function text(value: unknown): string {
@@ -136,7 +142,33 @@ export function mapUserDoc(data: Record<string, unknown> | undefined, docId: str
     lastLoginIp: text(d['lastLoginIp']),
     lastLoginRegion: text(d['lastLoginRegion']),
     lastLoginIsp: text(d['lastLoginIsp']),
+    lateCancelLevel: d['lateCancelLevel'] === 'black' || d['lateCancelLevel'] === 'red' ? d['lateCancelLevel'] : null,
+    lateCancelTotal: Number(d['lateCancelTotal']) > 0 ? Math.floor(Number(d['lateCancelTotal'])) : 0,
+    lateCancelLastMs: lastLateCancelMs(d['lateCancelRecent']),
   };
+}
+
+function lastLateCancelMs(raw: unknown): number | null {
+  if (!Array.isArray(raw)) return null;
+  let last: number | null = null;
+  for (const item of raw) {
+    const ms = coerceTimeMs(item);
+    if (ms !== null && (last === null || ms > last)) last = ms;
+  }
+  return last;
+}
+
+/** 用戶卡「臨取狀態」一行（預覽 ⑥）：只有紅標才回字串。 */
+export function lateCancelStatusText(user: AdminUser): string | null {
+  if (user.lateCancelLevel !== 'red') return null;
+  if (user.lateCancelLastMs === null) return `紅標（${user.lateCancelTotal} 次）`;
+  const p = taipeiParts(user.lateCancelLastMs);
+  return `紅標（${user.lateCancelTotal} 次，最近 ${p.month}/${p.day}）`;
+}
+
+/** 「解除臨取紅標」：該用戶是紅標且操作者有 admin.repair.no_show_adjust。 */
+export function canClearLateCancelRedOf(actor: AdminUserActor, target: AdminUser): boolean {
+  return target.lateCancelLevel === 'red' && actor.hasPermission(PERM_LATE_CANCEL_CLEAR);
 }
 
 // ─── 篩選（A _getAdminUserFilters／_applyAdminUserFilters） ───

@@ -2,6 +2,11 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
 import { ActionRingButton, useActionRingControl, type ActionRingControl } from '@/ui/action-ring';
+import {
+  buildCompanionLateCancelNote,
+  type LateCancelEvent,
+  type LateCancelUserInfo,
+} from '../../data/late-cancel';
 
 export interface CompanionCancelTarget {
   registrationId: string;
@@ -11,6 +16,15 @@ export interface CompanionCancelTarget {
   status: 'confirmed' | 'waitlisted';
   courseStudentId?: string;
   courseLinkId?: string;
+  /** 取消這筆可能記一次臨時取消（正取、非課程、不是時限內才遞補）。 */
+  lateEligible?: boolean;
+}
+
+/** 臨時取消提示需要的資料（預覽 ⑤-3）；null／未傳＝不提示。 */
+export interface CompanionCancelLateInfo {
+  event: LateCancelEvent;
+  waitlistCount: number;
+  user: LateCancelUserInfo | null | undefined;
 }
 
 export interface CompanionCancelModalProps {
@@ -25,6 +39,7 @@ export interface CompanionCancelModalProps {
   onClose: () => void;
   /** 至少勾一個才可按 */
   onConfirm: (registrationIds: string[]) => void;
+  lateCancel?: CompanionCancelLateInfo | null;
 }
 
 /** 照 A `_getCompanionCancelTargetLabel`。 */
@@ -82,6 +97,7 @@ export function CompanionCancelModal({
   eventTitle,
   onClose,
   onConfirm,
+  lateCancel = null,
 }: CompanionCancelModalProps): JSX.Element | null {
   const idleRing = useActionRingControl();
   const [checked, setChecked] = useState<Set<string>>(
@@ -119,6 +135,16 @@ export function CompanionCancelModal({
   }
   const warnText = buildCompanionCancelWarn(targets, selectedIds);
   const confirmDisabled = busy || selectedIds.size === 0;
+  const checkedTargets = targets.filter((target) => selectedIds.has(target.registrationId));
+  const lateNote = lateCancel ? buildCompanionLateCancelNote({
+    event: lateCancel.event,
+    nowMs: Date.now(),
+    eligibleCount: checkedTargets.filter((target) => target.lateEligible).length,
+    confirmedCount: checkedTargets.filter((target) => target.status === 'confirmed').length,
+    waitlistCount: lateCancel.waitlistCount,
+    user: lateCancel.user,
+    selfChecked: checkedTargets.some((target) => target.isSelf),
+  }) : null;
 
   return (
     <div
@@ -146,6 +172,14 @@ export function CompanionCancelModal({
           </button>
         </div>
         <div class="modal-body">
+          {lateNote && (
+            <div
+              id="companion-cancel-late-warn"
+              style="font-size:var(--font-size-body);font-weight:700;color:var(--danger);text-align:center;margin-bottom:.5rem"
+            >
+              {lateNote.warn}
+            </div>
+          )}
           <div
             style="font-size:.8rem;color:var(--text-muted);margin-bottom:.5rem"
           >
@@ -213,6 +247,17 @@ export function CompanionCancelModal({
               );
             })}
           </div>
+          {lateNote && (
+            <div
+              id="companion-cancel-late-msg"
+              style="margin-top:.8rem;text-align:center;font-size:var(--font-size-body);font-weight:600;line-height:1.5;color:var(--text-primary)"
+            >
+              {lateNote.message}
+              <span style="display:block;margin-top:.4rem;font-size:var(--font-size-body-sm);font-weight:400;color:var(--text-secondary);white-space:nowrap">
+                {lateNote.sub}
+              </span>
+            </div>
+          )}
         </div>
         <div class="modal-actions">
           <button
@@ -222,7 +267,7 @@ export function CompanionCancelModal({
               if (!busy) onClose();
             }}
           >
-            返回
+            {lateNote ? '保留名額' : '返回'}
           </button>
           <ActionRingButton
             control={ring ?? idleRing}
@@ -239,7 +284,7 @@ export function CompanionCancelModal({
               onConfirm(ids);
             }}
           >
-            確認取消
+            {lateNote ? '仍要取消' : '確認取消'}
           </ActionRingButton>
         </div>
       </div>

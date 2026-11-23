@@ -32,6 +32,8 @@ import type {
   CancelCourseEnrollmentResponse,
   CancelRegistrationRequest,
   CancelRegistrationResponse,
+  ClearLateCancelRedRequest,
+  ClearLateCancelRedResponse,
   CommitIdentitySettingsRequest,
   CommitIdentitySettingsResponse,
   CommitSecondaryIdentityAvatarRequest,
@@ -168,6 +170,7 @@ export interface CallableMap {
   calcNoShowCountsManual: { req: CalcNoShowCountsManualRequest; res: CalcNoShowCountsManualResponse };
   cancelCourseEnrollment: { req: CancelCourseEnrollmentRequest; res: CancelCourseEnrollmentResponse };
   cancelRegistration: { req: CancelRegistrationRequest; res: CancelRegistrationResponse };
+  clearLateCancelRed: { req: ClearLateCancelRedRequest; res: ClearLateCancelRedResponse };
   commitIdentitySettings: { req: CommitIdentitySettingsRequest; res: CommitIdentitySettingsResponse };
   confirmEventAttendance: {
     req: ConfirmEventAttendanceRequest;

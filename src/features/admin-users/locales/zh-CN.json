@@ -45,7 +45,9 @@
     "edit": "编辑",
     "view": "查看",
     "restrict": "限制",
-    "unrestrict": "解除限制"
+    "unrestrict": "解除限制",
+    "lateCancelState": "臨取狀態：",
+    "clearLateCancelRed": "解除臨取紅標"
   },
   "modal": {
     "title": "编辑用户 — {name}",
@@ -91,5 +93,10 @@
   "error": {
     "permission": "权限不足，无法执行此操作",
     "notFound": "找不到该用户"
+  },
+  "lateCancel": {
+    "confirm": "確定要解除 {name} 的臨取紅標？",
+    "cleared": "已解除臨取紅標",
+    "failed": "解除臨取紅標失敗，請稍後再試"
   }
 }

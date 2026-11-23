@@ -45,7 +45,9 @@
     "edit": "Sửa",
     "view": "Xem",
     "restrict": "Hạn chế",
-    "unrestrict": "Bỏ hạn chế"
+    "unrestrict": "Bỏ hạn chế",
+    "lateCancelState": "臨取狀態：",
+    "clearLateCancelRed": "解除臨取紅標"
   },
   "modal": {
     "title": "Sửa người dùng — {name}",
@@ -91,5 +93,10 @@
   "error": {
     "permission": "Bạn không có quyền thực hiện thao tác này",
     "notFound": "Không tìm thấy người dùng"
+  },
+  "lateCancel": {
+    "confirm": "確定要解除 {name} 的臨取紅標？",
+    "cleared": "已解除臨取紅標",
+    "failed": "解除臨取紅標失敗，請稍後再試"
   }
 }

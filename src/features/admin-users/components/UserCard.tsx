@@ -10,8 +10,10 @@ import { UserTag } from '@/ui/UserTag';
 import { getAvatarInitial, sanitizeHttpAvatarUrl } from '@/features/profile/components/legacy/profile-legacy-helpers';
 
 import {
+  canClearLateCancelRedOf,
   canToggleRestrictionOf,
   formatLastLogin,
+  lateCancelStatusText,
   genderIcon,
   roleLabel,
   showsEditButton,
@@ -31,6 +33,8 @@ export interface UserCardProps {
   /** 第二個參數是被按下的「編輯」鈕，彈窗關閉後（commit 完成才）把焦點還給它。 */
   onEdit: (user: AdminUser, trigger: HTMLElement) => void;
   onToggleRestriction: (user: AdminUser) => void;
+  /** 「解除臨取紅標」；未傳（Callable 未部署）不顯示按鈕。 */
+  onClearLateCancelRed?: (user: AdminUser) => void;
   onOpenProfile: (uid: string) => void;
 }
 
@@ -75,6 +79,7 @@ export function UserCard({
   busy,
   onEdit,
   onToggleRestriction,
+  onClearLateCancelRed,
   onOpenProfile,
 }: UserCardProps): JSX.Element {
   const t = useT();
@@ -89,6 +94,8 @@ export function UserCard({
   const secondMeta = `${user.sports || '—'}${SHOW_EXP ? ` ・EXP ${user.exp.toLocaleString()}` : ''}`;
   const tagRoleKey = tagRole(user);
   const restrictBtn = canToggleRestrictionOf(actor, user);
+  const lateCancelText = lateCancelStatusText(user);
+  const clearLateBtn = !!onClearLateCancelRed && canClearLateCancelRedOf(actor, user);
 
   return (
     <div class="admin-user-card">
@@ -101,6 +108,7 @@ export function UserCard({
               name={user.name}
               role={(TAG_ROLES.has(tagRoleKey) ? tagRoleKey : 'user') as UserRole}
               level={level}
+              lateCancel={user.lateCancelLevel === 'red' ? 'red' : null}
               onOpenProfile={onOpenProfile}
             />
           </div>
@@ -112,6 +120,9 @@ export function UserCard({
           <div class="admin-user-meta">
             {`${t('admin-users.card.restrictState')}${user.isRestricted ? t('admin-users.card.restricted') : t('admin-users.card.normal')}`}
           </div>
+          {lateCancelText && (
+            <div class="admin-user-meta">{`${t('admin-users.card.lateCancelState')}${lateCancelText}`}</div>
+          )}
           <div class="admin-user-meta" style="word-break:break-all">
             {`${t('admin-users.card.lastLogin')}${formatLastLogin(user, t('admin-users.card.noRecord'))}`}
           </div>
@@ -139,6 +150,16 @@ export function UserCard({
               onClick={() => onToggleRestriction(user)}
             >
               {user.isRestricted ? t('admin-users.card.unrestrict') : t('admin-users.card.restrict')}
+            </button>
+          )}
+          {clearLateBtn && (
+            <button
+              type="button"
+              class="au-btn au-btn-lc"
+              disabled={busy}
+              onClick={() => onClearLateCancelRed?.(user)}
+            >
+              {t('admin-users.card.clearLateCancelRed')}
             </button>
           )}
         </div>

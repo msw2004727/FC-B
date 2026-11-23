@@ -28,6 +28,8 @@ export const AUDIT_ACTIONS: ReadonlyArray<readonly [string, string]> = [
   ['team_join_reject', '拒絕入隊'],
   ['role_change', '角色變更'],
   ['admin_user_edit', '管理員編輯用戶資料'],
+  // 臨時取消時限（FC 契約 late-cancel §6）：Functions clearLateCancelRed 寫的 action。
+  ['late_cancel_red_clear', '解除臨取紅標'],
 ];
 
 export function auditActionLabel(action: string): string {

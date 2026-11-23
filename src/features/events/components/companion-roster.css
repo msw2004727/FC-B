@@ -406,3 +406,25 @@ td.cr-name-cell {
 .att-roster .team-reservation-placeholder-row > td {
   border-bottom: 1px dashed var(--border);
 }
+
+/*
+ * 臨時取消標籤（FC 契約 late-cancel §8；預覽 ⑤／⑤-2）：整顆換色，左色條白；
+ * 同行者組主報名人左色條保留組色；代報人虛線名字也整顆換色（黑標虛線框保留組色，紅標框改白，照預覽）。
+ * 取代 R-UI-021「底色只表示角色」在這兩種狀態的適用（站長 11-23 定案：臨取標籤優先於角色底色）。
+ */
+.att-roster .user-capsule.user-capsule.uc-lc-black,
+.att-roster .user-capsule.user-capsule.uc-lc-red,
+[data-theme="dark"] .att-roster .user-capsule.user-capsule.uc-lc-black {
+  border-left-color: #fff;
+}
+.att-roster .cr-lead > .user-capsule.uc-lc-black { background-color: #111; }
+.att-roster .cr-lead > .user-capsule.uc-lc-red { background-color: #dc2626; }
+[data-theme="dark"] .att-roster .cr-lead > .user-capsule.uc-lc-black { background-color: #000; }
+.att-roster .cr-lead > .user-capsule.user-capsule.uc-lc-black,
+.att-roster .cr-lead > .user-capsule.user-capsule.uc-lc-red,
+[data-theme="dark"] .att-roster .cr-lead > .user-capsule.user-capsule.uc-lc-black {
+  border-left-color: var(--cr-g);
+}
+.att-roster .cr-ghost.uc-lc-black { background: #111; color: #fff; }
+[data-theme="dark"] .att-roster .cr-ghost.uc-lc-black { background: #000; }
+.att-roster .cr-ghost.uc-lc-red { background: #dc2626; color: #fff; border-color: rgba(255, 255, 255, .7); }

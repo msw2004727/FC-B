@@ -55,6 +55,9 @@ vi.mock('@/data/user-roles', async (importOriginal) => ({
   useUserRoles: () => mocks.roles(),
   getCachedUserLevel: () => 0,
   getCachedUserNoShowStats: mocks.noShowStats,
+  // 測試同步更新（臨時取消時限）：名單標籤與取消確認框讀操作者臨取欄位，不打 Firestore。
+  getCachedUserLateCancel: () => undefined,
+  loadUserRoles: async () => ({}),
 }));
 
 vi.mock('../data/noshow-corrections', () => ({ loadNoShowAdjustments: mocks.noShowAdjustments }));
@@ -834,16 +837,19 @@ describe('EventDetailPage', () => {
   });
 
   // 測試同步更新：照 A（M-081），單人取消走 appConfirm，不開選人彈窗。
+  // 測試同步更新（臨時取消時限）：活動缺 lateCancelHours＝2 小時，確認框改為預覽 ② 的 LateCancelConfirm（返回／確定取消），不再走 appConfirm。
   it('單人確認後才取消，payload 使用子文件 ID 與 context', async () => {
-    let confirm!: (value: boolean) => void;
-    mocks.confirm.mockReturnValue(new Promise<boolean>(resolve => { confirm = resolve; }));
     mocks.registrations.mockResolvedValue([]);
     mocks.history.mockResolvedValueOnce([self]).mockResolvedValue([]);
     mount();
     fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
-    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledWith('確定要取消報名？'));
+    await waitFor(() => expect(document.getElementById('late-cancel-confirm')).not.toBeNull());
+    expect(document.querySelector('#late-cancel-confirm .app-confirm-msg')?.textContent).toContain('確定要取消報名？');
+    expect(mocks.confirm).not.toHaveBeenCalled();
     expect(mocks.cancel).not.toHaveBeenCalled();
-    await act(async () => { confirm(true); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '確定取消' }));
+    });
     await screen.findByRole('button', { name: '立即報名' });
     expect(mocks.cancel).toHaveBeenCalledWith(expect.objectContaining({
       eventId: 'ce_123_abc',

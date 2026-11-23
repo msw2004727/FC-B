@@ -82,6 +82,7 @@ function form(intensityLevel: IntensityLevel | ''): CreateEventForm {
     earlyBirdCost: 0,
     earlyBirdPolicyVersion: null,
     teamReservationReleaseHours: 12,
+    lateCancelHours: 2,
     intensityLevel,
   };
 }
