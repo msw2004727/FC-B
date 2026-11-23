@@ -11,8 +11,8 @@ const OUT = resolve(process.argv[2] || 'range-stats-shots');
 const BASE = process.argv[3] || 'http://localhost:5199';
 const SIZES = [[390, 844], [360, 740], [1280, 900]];
 const THEMES = ['light', 'dark'];
-const SCREENS = ['month', 'status', 'year-confirm', 'custom', 'noshow-off'];
-const SELECTORS = 'button, .mrs-chip, .mrs-range-label, .mrs-kpi span, .mrs-table th, .mrs-table td, .mrs-legend-row, .mrs-note, .mrs-h2';
+const SCREENS = ['idle', 'month', 'chips-mixed', 'status', 'year-confirm', 'custom', 'noshow-off'];
+const SELECTORS = 'button, .mrs-chip, .mrs-updated, .mrs-range-label, .mrs-kpi span, .mrs-table th, .mrs-table td, .mrs-legend-row, .mrs-note, .mrs-h2';
 
 const browser = await chromium.launch({ args: ['--noerrdialogs'] });
 await mkdir(OUT, { recursive: true });
@@ -36,18 +36,30 @@ for (const name of SCREENS) {
       const noshow = name === 'noshow-off' ? '0' : '1';
       await page.goto(`${BASE}/dev-harness/range-stats.html?theme=${theme}&noshow=${noshow}`);
       await page.waitForFunction(() => window.__CPS_READY === true, null, { timeout: 25000 });
-      await page.waitForSelector('.mrs-table');
+      // 開啟不自動讀取：idle 直接拍；其他先設好條件再按「確認」。
+      await page.waitForSelector('.mrs-confirm-btn');
+      const confirm = () => page.locator('.mrs-confirm-btn').click();
+      if (name === 'month' || name === 'status' || name === 'noshow-off' || name === 'chips-mixed') {
+        await confirm();
+        await page.waitForSelector('.mrs-table');
+      }
+      if (name === 'chips-mixed') {
+        await page.locator('.mrs-chip', { hasText: '即將開放' }).click();
+        await page.locator('.mrs-chip', { hasText: '已取消' }).click();
+      }
       if (name === 'status') await page.getByRole('tab', { name: '活動狀態' }).click();
       if (name === 'year-confirm') {
         await page.getByRole('tab', { name: '年' }).click();
+        await confirm();
         await page.getByRole('button', { name: '繼續' }).waitFor();
       }
       if (name === 'custom') {
         await page.getByRole('tab', { name: '自訂' }).click();
         await page.waitForSelector('.mrs-custom');
-        await page.waitForTimeout(200);
-        const confirmBtn = page.getByRole('button', { name: '繼續' });
-        if (await confirmBtn.count()) await confirmBtn.click();
+        await confirm();
+        await page.waitForSelector('.mrs-table, .mrs-note');
+        const more = page.getByRole('button', { name: '繼續' });
+        if (await more.count()) await more.click();
         await page.waitForSelector('.mrs-table');
       }
       await page.evaluate(() => document.fonts.ready);

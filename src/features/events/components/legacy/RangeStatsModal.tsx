@@ -76,7 +76,9 @@ interface LoadedRange {
 }
 
 type Phase =
+  | { kind: 'idle' }
   | { kind: 'loading-events' }
+  | { kind: 'confirm-rosters'; events: EventDoc[] }
   | { kind: 'loading-rosters'; done: number; total: number }
   | { kind: 'ready' }
   | { kind: 'error' };
@@ -169,65 +171,79 @@ export function RangeStatsModal({
   });
   const [basis, setBasis] = useState<'times' | 'people'>('times');
   const [pieMode, setPieMode] = useState<'att' | 'status'>('att');
-  const [phase, setPhase] = useState<Phase>({ kind: 'loading-events' });
+  // 2026-11-23 站長：開啟不自動撈取，選好條件按「確認」才讀；顯示最後更新時間。
+  // （取代原本「開啟即讀、換區間自動重讀、同區間用快取」：每按一次確認都重新讀取，結果才對得上更新時間。）
+  const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [loaded, setLoaded] = useState<LoadedRange | null>(null);
-  const [retryTick, setRetryTick] = useState(0);
-  const cacheRef = useRef(new Map<string, LoadedRange>());
+  const [loadedKey, setLoadedKey] = useState('');
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const confirmedRef = useRef(new Set<string>());
   const seqRef = useRef(0);
 
   const range = useMemo<DateRangeKeys | null>(
     () => (period === 'custom' ? customRange(from, to) : periodRange(period, nowMs, offset)),
-    // nowMs 只在開啟時決定區間錨點；每次 render 的新時間不該讓區間重算或重讀。
+    // nowMs 只在開啟時決定區間錨點；每次 render 的新時間不該讓區間重算。
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [period, offset, from, to],
   );
   const rangeKey = range ? `${range.startKey}-${range.endKey}` : '';
 
+  // 關閉後再開回到未讀取狀態（不沿用上次結果，避免看到過期數字）。
   useEffect(() => {
-    if (!open || !range) return;
+    if (open) return;
+    seqRef.current += 1;
+    setPhase({ kind: 'idle' });
+    setLoaded(null);
+    setLoadedKey('');
+    setUpdatedAt(null);
+  }, [open]);
+
+  async function loadRosters(seq: number, key: string, events: EventDoc[]): Promise<void> {
+    setPhase({ kind: 'loading-rosters', done: 0, total: events.length });
+    const result = await loadRangeRosters(events, (done, total) => {
+      if (seq === seqRef.current) setPhase({ kind: 'loading-rosters', done, total });
+    });
+    if (seq !== seqRef.current) return;
+    setLoaded({ events, rosters: result.rosters, failed: result.failed });
+    setLoadedKey(key);
+    setUpdatedAt(Date.now());
+    setPhase({ kind: 'ready' });
+  }
+
+  async function runConfirm(): Promise<void> {
+    if (!range) return;
     const seq = ++seqRef.current;
-    const cached = cacheRef.current.get(rangeKey);
-    if (cached && cached.rosters) {
-      setLoaded(cached);
-      setPhase({ kind: 'ready' });
-      return;
-    }
-    void (async () => {
-      try {
-        let entry = cached;
-        if (!entry) {
-          setLoaded(null);
-          setPhase({ kind: 'loading-events' });
-          const events = await loadRangeEvents(range, viewer, manageAll);
-          if (seq !== seqRef.current) return;
-          entry = { events, rosters: null, failed: [] };
-          cacheRef.current.set(rangeKey, entry);
-        }
-        setLoaded(entry);
-        if (range.days > RANGE_CONFIRM_DAYS && entry.events.length > 0 && !confirmedRef.current.has(rangeKey)) {
-          setPhase({ kind: 'ready' });
-          return;
-        }
-        setPhase({ kind: 'loading-rosters', done: 0, total: entry.events.length });
-        const result = await loadRangeRosters(entry.events, (done, total) => {
-          if (seq === seqRef.current) setPhase({ kind: 'loading-rosters', done, total });
-        });
-        if (seq !== seqRef.current) return;
-        const full: LoadedRange = { events: entry.events, rosters: result.rosters, failed: result.failed };
-        // 有失敗的場次不放快取，下次開啟或按重試會重讀。
-        if (result.failed.length === 0) cacheRef.current.set(rangeKey, full);
-        else cacheRef.current.set(rangeKey, { events: entry.events, rosters: null, failed: [] });
-        setLoaded(full);
-        setPhase({ kind: 'ready' });
-      } catch {
-        if (seq !== seqRef.current) return;
-        setPhase({ kind: 'error' });
+    const key = rangeKey;
+    try {
+      setPhase({ kind: 'loading-events' });
+      const events = await loadRangeEvents(range, viewer, manageAll);
+      if (seq !== seqRef.current) return;
+      if (range.days > RANGE_CONFIRM_DAYS && events.length > 0 && !confirmedRef.current.has(key)) {
+        setPhase({ kind: 'confirm-rosters', events });
+        return;
       }
-    })();
-    // viewer／manageAll 在彈窗開著時不變；區間或重試才重讀。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, rangeKey, retryTick]);
+      await loadRosters(seq, key, events);
+    } catch {
+      if (seq !== seqRef.current) return;
+      setPhase({ kind: 'error' });
+    }
+  }
+
+  async function continueRosters(events: EventDoc[]): Promise<void> {
+    const seq = ++seqRef.current;
+    const key = rangeKey;
+    confirmedRef.current.add(key);
+    try {
+      await loadRosters(seq, key, events);
+    } catch {
+      if (seq !== seqRef.current) return;
+      setPhase({ kind: 'error' });
+    }
+  }
+
+  const busy = phase.kind === 'loading-events' || phase.kind === 'loading-rosters';
+  // 條件改了（區間不同）就不顯示舊結果，等再按確認。
+  const showResults = phase.kind === 'ready' && loaded !== null && loadedKey === rangeKey;
 
   const stats = useMemo(() => {
     if (!loaded?.rosters) return null;
@@ -238,16 +254,16 @@ export function RangeStatsModal({
     return computeRangeStats(picked, nowMs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, statusOn]);
+  const visibleStats = showResults ? stats : null;
 
   if (!open) return null;
 
-  const needsConfirm = phase.kind === 'ready' && loaded !== null && loaded.rosters === null
-    && loaded.events.length > 0;
   const idx = basis === 'times' ? 'times' : 'people';
   const rows = METRIC_ROWS.filter((row) => row.key !== 'noShow' || canViewNoShow);
 
   let pie: { key: string; label: string; value: number; color: string; percent: number }[] = [];
-  if (stats) {
+  if (visibleStats) {
+    const stats = visibleStats;
     if (pieMode === 'att') {
       const m = stats.metrics;
       const other = stats.confirmedOther[idx] + (canViewNoShow ? 0 : m.noShow[idx]);
@@ -322,20 +338,39 @@ export function RangeStatsModal({
                 </button>
               </div>
             )}
-            <div class="mrs-chips">
+            {/* 2026-11-23 站長：狀態勾選重新設計——每個狀態帶自己的顏色圓點，選取時圓點填色並打勾、外框換成該色；
+                原生核取方塊保留給鍵盤與讀屏，只是視覺隱藏。 */}
+            <div class="mrs-chips" role="group" aria-label="活動狀態">
               {RANGE_STATUS_KEYS.map((k) => (
-                <label key={k} class={`mrs-chip${statusOn[k] ? ' on' : ''}`}>
+                <label key={k} class={`mrs-chip${statusOn[k] ? ' on' : ''}`} style={`--mrs-chip-c:${STATUS_COLOR[k]}`}>
                   <input
                     type="checkbox"
+                    class="mrs-chip-input"
                     checked={statusOn[k]}
                     onChange={(e) => {
                       const checked = (e.target as HTMLInputElement).checked;
                       setStatusOn((prev) => ({ ...prev, [k]: checked }));
                     }}
                   />
-                  {STATUS_LABEL[k]}
+                  <span class="mrs-chip-dot" aria-hidden="true">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                  </span>
+                  <span class="mrs-chip-text">{STATUS_LABEL[k]}</span>
                 </label>
               ))}
+            </div>
+            <div class="mrs-confirm-row">
+              <span class="mrs-updated">
+                {showResults && updatedAt !== null ? `最後更新 ${formatTaipei(updatedAt, 'YYYY/MM/DD HH:mm')}` : ''}
+              </span>
+              <button
+                type="button"
+                class="primary-btn mrs-confirm-btn"
+                disabled={!range || busy}
+                onClick={() => { void runConfirm(); }}
+              >
+                確認
+              </button>
             </div>
           </section>
 
@@ -344,39 +379,36 @@ export function RangeStatsModal({
           ) : phase.kind === 'error' ? (
             <div class="mrs-note mrs-warn">
               讀取失敗
-              <button type="button" class="outline-btn mrs-inline-btn" onClick={() => setRetryTick((n) => n + 1)}>重試</button>
+              <button type="button" class="outline-btn mrs-inline-btn" onClick={() => { void runConfirm(); }}>重試</button>
             </div>
           ) : phase.kind === 'loading-events' || phase.kind === 'loading-rosters' ? (
             <div class="mrs-loading" role="status">
               <span class="mrs-spin" aria-hidden="true" />
               {phase.kind === 'loading-rosters' && phase.total > 0 ? `讀取中 ${phase.done} / ${phase.total}` : '讀取中'}
             </div>
-          ) : needsConfirm ? (
+          ) : phase.kind === 'confirm-rosters' ? (
             <div class="mrs-note">
-              {`將讀取 ${loaded!.events.length} 場活動的名單`}
+              {`將讀取 ${phase.events.length} 場活動的名單`}
               <button
                 type="button"
                 class="primary-btn mrs-inline-btn"
-                onClick={() => {
-                  confirmedRef.current.add(rangeKey);
-                  setRetryTick((n) => n + 1);
-                }}
+                onClick={() => { void continueRosters(phase.events); }}
               >
                 繼續
               </button>
             </div>
-          ) : stats ? (
+          ) : visibleStats ? (
             <>
               {loaded!.failed.length > 0 && (
                 <div class="mrs-note mrs-warn">
                   {`${loaded!.failed.length} 場名單讀取失敗，未列入統計`}
-                  <button type="button" class="outline-btn mrs-inline-btn" onClick={() => setRetryTick((n) => n + 1)}>重試</button>
+                  <button type="button" class="outline-btn mrs-inline-btn" onClick={() => { void runConfirm(); }}>重試</button>
                 </div>
               )}
               <section class="mrs-card mrs-kpis">
-                <div class="mrs-kpi"><b>{fmt(stats.eventCount)}</b><span>活動場數</span></div>
-                <div class="mrs-kpi"><b>{fmt(stats.metrics.registered.times)}</b><span>報名人次</span></div>
-                <div class="mrs-kpi"><b>{fmt(stats.metrics.registered.people)}</b><span>不重複人數</span></div>
+                <div class="mrs-kpi"><b>{fmt(visibleStats.eventCount)}</b><span>活動場數</span></div>
+                <div class="mrs-kpi"><b>{fmt(visibleStats.metrics.registered.times)}</b><span>報名人次</span></div>
+                <div class="mrs-kpi"><b>{fmt(visibleStats.metrics.registered.people)}</b><span>不重複人數</span></div>
               </section>
 
               <section class="mrs-card">
@@ -393,8 +425,8 @@ export function RangeStatsModal({
                     {rows.map((row) => (
                       <tr key={row.key} data-metric={row.key}>
                         <td><span class="mrs-dot" style={{ background: row.color }} />{row.label}</td>
-                        <td>{fmt(stats.metrics[row.key].times)}</td>
-                        <td>{fmt(stats.metrics[row.key].people)}</td>
+                        <td>{fmt(visibleStats.metrics[row.key].times)}</td>
+                        <td>{fmt(visibleStats.metrics[row.key].people)}</td>
                       </tr>
                     ))}
                   </tbody>
