@@ -26,7 +26,9 @@ import type { EventDoc } from './types';
 export const ACTIVE_EVENT_STATUSES = ['open', 'full', 'upcoming'] as const;
 export const TERMINAL_EVENT_STATUSES = ['ended', 'cancelled'] as const;
 export const TERMINAL_PREVIEW_LIMIT = 50;
-export const TERMINAL_HISTORY_LIMIT = 10;
+// 活動管理頁歷史模式：原為 10（照 A），會把首頁 preview 已載的 50 筆蓋成 10 筆、每頁也只翻 10 筆，
+// 舊活動很難找到；改與 preview 同為 50（2026-11-23 站長同意）。
+export const TERMINAL_HISTORY_LIMIT = 50;
 export const TERMINAL_PAGE_SIZE_DEFAULT = 100;
 export const ACTIVE_EVENTS_LIMIT = 200;
 /** 列表沿用剛成功載入的 active（首頁進來）的短時效。對齊活動詳情 session 快取。 */
@@ -54,6 +56,8 @@ export interface EventsSnapshot {
    * true 或 undefined（還沒載入成功、或讀不到 metadata）都不算確認。給首頁快照決定能不能更新新鮮度用（T-042）。
    */
   activeFromCache?: boolean;
+  /** 已結束／已取消是否已全部載完（最後一頁不足一頁）。給活動管理頁決定要不要顯示「查看更多」。 */
+  terminalAllLoaded?: boolean;
 }
 
 export interface LoadEventsStaticOptions {
@@ -337,6 +341,7 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
       active: [...state.active],
       terminal: [...state.terminal],
       activeFromCache: state.activeFromCache,
+      terminalAllLoaded: state.terminalAllLoaded,
     }),
   };
 }
