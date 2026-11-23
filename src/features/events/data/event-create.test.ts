@@ -543,6 +543,7 @@ function buildForm(overrides: Partial<CreateEventForm> = {}): CreateEventForm {
     earlyBirdCost: 0,
     earlyBirdPolicyVersion: null,
     teamReservationReleaseHours: 12,
+    lateCancelHours: 2,
     ...overrides,
   };
 }
@@ -616,6 +617,15 @@ describe('buildCreateEventPayload', () => {
     );
     expect(stripped.privateEvent).toBe(false);
     expect(stripped.teamReservationReleaseHours).toBe(6);
+  });
+
+  it('臨時取消時限：一律明寫數字（含 0）、壞值寫 0、不受加值閘門影響', () => {
+    expect(buildCreateEventPayload(buildForm({ lateCancelHours: 0 }), buildCtx(), 'ce_golden_user_basic'))
+      .toHaveProperty('lateCancelHours', 0);
+    expect(buildCreateEventPayload(buildForm({ lateCancelHours: 48 }), buildCtx(), 'ce_golden_user_basic')
+      .lateCancelHours).toBe(48);
+    expect(buildCreateEventPayload(buildForm({ lateCancelHours: 5 }), buildCtx(), 'ce_golden_user_basic')
+      .lateCancelHours).toBe(0);
   });
 
   it('Date 型別：startTimestamp / endTimestamp 為 Date 實例', () => {
@@ -1000,6 +1010,8 @@ describe('buildEditEventUpdates', () => {
     expect(zero.updates).toHaveProperty('teamReservationReleaseHours', 0);
     const coach = buildEditEventUpdates(existing(), editForm({ teamReservationReleaseHours: 24 }), coachCtx());
     expect(coach.updates.teamReservationReleaseHours).toBe(24);
+    expect(buildEditEventUpdates(existing(), editForm({ lateCancelHours: 0 }), ownCtx()).updates)
+      .toHaveProperty('lateCancelHours', 0);
     // FC firestore.rules eventScopedRoleFieldsOnly（origin/main 0068af374）白名單；updatedAt 由寫入端加。
     const allowed = new Set([
       'title', 'type', 'location', 'date', 'startTimestamp', 'endTimestamp', 'externalUrl', 'max', 'minAge', 'notes',
@@ -1009,6 +1021,8 @@ describe('buildEditEventUpdates', () => {
       'fee', 'feeEnabled', 'genderRestrictionEnabled', 'allowedGender',
       'privateEvent', 'teamSplit', 'socialLinksEnabled', 'socialLinks',
       'earlyBirdEnabled', 'earlyBirdCost', 'earlyBirdPolicyVersion', 'teamReservationReleaseHours',
+      // 臨時取消時限：FC 契約 late-cancel-contract-2026-11-23 §7 白名單緊鄰 teamReservationReleaseHours（Rules 需先部署）。
+      'lateCancelHours',
       'status', 'updatedAt',
     ]);
     for (const result of [zero, coach]) {

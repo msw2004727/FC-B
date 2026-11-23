@@ -228,3 +228,14 @@
 }
 .evd-host-row .evd-host-contact { margin-left: auto; }
 .evd-social-row { padding: 2px 0 4px; }
+
+/* 報名按鈕下方「臨時取消時限」小字（FC 計畫書 late-cancel-warning-plan §3.2，預覽 ⓪）：一行、置中、muted。 */
+.detail-late-cancel-hint {
+  margin-top: .4rem;
+  text-align: center;
+  font-size: var(--font-size-caption);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

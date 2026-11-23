@@ -84,7 +84,7 @@ function target(patch: Partial<AdminUser> = {}): AdminUser {
   return {
     _docId: 'doc-1', uid: 'uid-1', lineUserId: '', name: '小明', role: 'user', email: '', gender: '', region: '',
     sports: '', phone: '', birthday: '', exp: 0, pictureUrl: '', teamName: '', isRestricted: false, stealth: false,
-    joinedAtMs: null, lastLoginMs: null, lastLoginIp: '', lastLoginRegion: '', lastLoginIsp: '', ...patch,
+    joinedAtMs: null, lastLoginMs: null, lastLoginIp: '', lastLoginRegion: '', lastLoginIsp: '', lateCancelLevel: null, lateCancelTotal: 0, lateCancelLastMs: null, ...patch,
   };
 }
 

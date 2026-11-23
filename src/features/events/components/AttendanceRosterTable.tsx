@@ -47,6 +47,8 @@ export interface AttendanceRosterTableProps {
   registrations: readonly RosterRegistrationInput[];
   attendanceRecords: readonly RosterAttendanceRecordInput[];
   roles: Readonly<Record<string, UserRole>>;
+  /** 臨時取消標籤（useLateCancelTags）；只有有標籤的 UID。 */
+  lateCancelTags?: Readonly<Record<string, 'black' | 'red'>>;
   onOpenProfile: (uid: string) => void;
   /** 目前使用者是否具備現場操作權限 `canOperateEventSite === true`。 */
   canManage?: boolean;
@@ -211,6 +213,7 @@ export function AttendanceRosterTable({
   registrations,
   attendanceRecords,
   roles,
+  lateCancelTags,
   onOpenProfile,
   canManage = false,
   canViewNoShow = false,
@@ -382,7 +385,7 @@ export function AttendanceRosterTable({
     if (meta.kind === 'proxyLead') {
       nameInner = (
         <span class="cr-proxy-line" style={groupStyle}>
-          <span class="cr-ghost">{p.displayName}</span>
+          <span class={lateCancelTags?.[p.uid] ? `cr-ghost uc-lc-${lateCancelTags[p.uid]}` : 'cr-ghost'}>{p.displayName}</span>
           <span class="cr-proxy-badge">
             <ProxyBadgeIcon />
             {t('events.roster.proxyBadge')}
@@ -412,6 +415,7 @@ export function AttendanceRosterTable({
           uid={p.uid}
           name={p.displayName}
           role={roles[p.uid]}
+          lateCancel={lateCancelTags?.[p.uid]}
           disabled={!p.uid}
           nameClass="reg-name-ellipsis"
           jersey={showJersey ? (

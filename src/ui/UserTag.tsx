@@ -26,6 +26,8 @@ export interface UserTagProps {
   /** A uc-att-warn（出席率染色）；有值時 title 改成放鴿子說明。 */
   attendanceFill?: { pct: number; color: string; noShow: number; ended: number };
   recentNoShow?: boolean;
+  /** 臨時取消標籤（FC 契約 late-cancel §8）：整顆黑底／紅底白字，優先於角色底色。 */
+  lateCancel?: 'black' | 'red' | null;
   /** A 名單右上角唯讀球衣，位置在泡泡之後、名字之前。 */
   jersey?: JSX.Element;
   onOpenProfile: (uid: string) => void;
@@ -58,6 +60,7 @@ export function UserTag({
   loading = false,
   attendanceFill,
   recentNoShow = false,
+  lateCancel = null,
   jersey,
   onOpenProfile,
   class: className = '',
@@ -87,6 +90,7 @@ export function UserTag({
         'user-capsule',
         roleClass(role),
         attendanceFill ? 'uc-att-warn' : '',
+        lateCancel ? `uc-lc-${lateCancel}` : '',
         'ui-user-tag',
         blocked ? 'ui-user-tag--disabled' : '',
         className,

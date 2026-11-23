@@ -58,6 +58,9 @@ vi.mock('@/ui/Toast', async (o) => ({
   toast: { show: mocks.toast },
 }));
 vi.mock('@/data/user-roles', () => ({
+  // 測試同步更新（臨時取消時限）：詳情頁名單標籤讀 users 臨取欄位。
+  getCachedUserLateCancel: () => undefined,
+  loadUserRoles: async () => ({}),
   useUserRoles: () => ({}),
   getCachedUserLevel: () => 0,
 }));
@@ -341,6 +344,8 @@ describe('Opus 終審補測', () => {
     }));
     mount();
     fireEvent.click(await screen.findByRole('button', { name: '取消報名' }));
+    // 測試同步更新（臨時取消時限）：活動缺 lateCancelHours＝2 小時，確認框改為 LateCancelConfirm（確定取消）。
+    fireEvent.click(await screen.findByRole('button', { name: '確定取消' }));
     expect(await screen.findByText('events.cancel.error.network')).toBeTruthy();
   });
 });

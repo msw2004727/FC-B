@@ -16,7 +16,16 @@ import { effectiveEventStatus } from '../../data/my-activities-model';
 import { loadEventDetail } from '../../data/event-detail';
 import { cancelRegistration, SignupError } from '../../data/signup';
 import type { CancelOperationContext } from '../../data/signup';
-import type { CompanionCancelTarget } from './CompanionCancelModal';
+import type { CompanionCancelTarget, CompanionCancelLateInfo } from './CompanionCancelModal';
+import {
+  buildLateCancelConfirm,
+  isLateCancelRegistration,
+  isWithinLateCancelWindow,
+  withLateCancelMarked,
+  type LateCancelConfirmContent,
+  type LateCancelUserInfo,
+} from '../../data/late-cancel';
+import { LateCancelConfirm } from '../LateCancelConfirm';
 
 // 照 A：同行者取消彈窗只在開啟時 lazy 下載（不新增首屏重量）。
 const DetailCompanionCancelModal = lazy(() =>
@@ -27,6 +36,8 @@ export interface CancelFlowSnapshot {
   event: DetailEvent;
   publicId: string;
   owned: DetailRegistration[];
+  /** 頁面已有名單的候補人數（臨時取消確認框的候補順位，零額外讀）。 */
+  waitlistCount?: number;
 }
 
 export interface UseCancelRegistrationOptions {
@@ -43,14 +54,23 @@ export interface UseCancelRegistrationOptions {
   }): Promise<void>;
   /** 同上；省略 result（ALREADY_CANCELLED）＝已確認但無投影，呼叫端須重讀活動文件。 */
   onBatchCancelled(result?: { deduplicated: boolean; event?: unknown }): Promise<void>;
+  /**
+   * 臨時取消確認文案（FC 契約 late-cancel §8）：只在快照是伺服器讀回的活動文件時給（詳情頁）；
+   * 不給就沿用原本確認框。回傳操作者的 users 臨取欄位（先用名單同批讀的快取，沒有才補讀一次）；
+   * undefined＝讀不到，確認框改寫不含恢復條件的中性文字。
+   */
+  getLateCancelUser?(uid: string): Promise<LateCancelUserInfo | undefined>;
 }
 
 interface CancelModalState {
   targets: CompanionCancelTarget[];
   selectAll: boolean;
+  late: CompanionCancelLateInfo | null;
 }
 
 export interface UseCancelRegistrationResult {
+  /** 臨時取消確認框（預覽 ②③④⑤-3）：由 renderModal 一起畫；true＝仍要取消。 */
+  askLateConfirm(content: LateCancelConfirmContent): Promise<boolean>;
   beginCancel(snapshot: CancelFlowSnapshot): Promise<void>;
   confirmCancel(snapshot: CancelFlowSnapshot, ids: string[]): Promise<void>;
   modal: CancelModalState | null;
@@ -71,11 +91,28 @@ export function useCancelRegistration(
   options: UseCancelRegistrationOptions,
 ): UseCancelRegistrationResult {
   const [modal, setModal] = useState<CancelModalState | null>(null);
+  const [confirmContent, setConfirmContent] = useState<LateCancelConfirmContent | null>(null);
+  const confirmResolve = useRef<((ok: boolean) => void) | null>(null);
   // 同行者取消彈窗「確認取消」的進度環：寫入成功才打勾後關窗。
   const ring = useActionRingControl();
   // 呼叫端最新值：每次 render 更新 ref，避免非同步流程拿到舊的 options。
   const ref = useRef(options);
   ref.current = options;
+
+  function askLateConfirm(content: LateCancelConfirmContent): Promise<boolean> {
+    confirmResolve.current?.(false);
+    return new Promise<boolean>((resolve) => {
+      confirmResolve.current = resolve;
+      setConfirmContent(content);
+    });
+  }
+
+  function settleLateConfirm(ok: boolean): void {
+    const resolve = confirmResolve.current;
+    confirmResolve.current = null;
+    setConfirmContent(null);
+    resolve?.(ok);
+  }
 
   async function beginCancel(snapshot: CancelFlowSnapshot): Promise<void> {
     const {
@@ -85,6 +122,7 @@ export function useCancelRegistration(
       login,
       cancelContext,
       onSelfCancelled,
+      getLateCancelUser,
     } = ref.current;
     const uid = getViewerUid();
     if (!uid) {
@@ -124,9 +162,23 @@ export function useCancelRegistration(
           status: reg.status === 'waitlisted' ? 'waitlisted' : 'confirmed',
           courseStudentId: course.courseStudentId,
           courseLinkId: course.courseLinkId,
+          lateEligible: isLateCancelRegistration(reg, snapshot.event),
         };
       });
-      setModal({ targets, selectAll: selfKeys.size === 1 });
+      // 複審 P3-1：時限內且有可能記點的報名才讀操作者資料，平常不多讀。
+      const needLateUser = !!getLateCancelUser && targets.some(target => target.lateEligible)
+        && isWithinLateCancelWindow(snapshot.event, Date.now());
+      const lateUser = needLateUser && getLateCancelUser ? await getLateCancelUser(uid) : undefined;
+      if (!isAlive() || getViewerUid() !== uid) return;
+      setModal({
+        targets,
+        selectAll: selfKeys.size === 1,
+        late: getLateCancelUser ? {
+          event: snapshot.event,
+          waitlistCount: snapshot.waitlistCount ?? 0,
+          user: lateUser,
+        } : null,
+      });
       return;
     }
 
@@ -151,7 +203,25 @@ export function useCancelRegistration(
       }
     }
     const waitlisted = selfRegs.every(reg => reg.status === 'waitlisted');
-    if (!await appConfirm(waitlisted ? '確定要取消候補？' : '確定要取消報名？')) return;
+    // 臨時取消（預覽 ②③④）：活動層條件不成立、或只取消候補時沿用原本確認框。
+    const eligibleCount = selfRegs.filter(reg => isLateCancelRegistration(reg, snapshot.event)).length;
+    // 複審 P3-1：時限內且有可能記點的報名才讀操作者資料，平常不多讀。
+    const needLateUser = !waitlisted && !!getLateCancelUser && eligibleCount > 0
+      && isWithinLateCancelWindow(snapshot.event, Date.now());
+    const lateUser = needLateUser && getLateCancelUser ? await getLateCancelUser(uid) : undefined;
+    if (!isAlive() || getViewerUid() !== uid) return;
+    const lateContent = !waitlisted && getLateCancelUser ? buildLateCancelConfirm({
+      event: snapshot.event,
+      nowMs: Date.now(),
+      eligibleCount,
+      confirmedCount: selfRegs.filter(reg => reg.status === 'confirmed').length,
+      waitlistCount: snapshot.waitlistCount ?? 0,
+      user: lateUser,
+    }) : null;
+    const confirmed = lateContent
+      ? await askLateConfirm(lateContent)
+      : await appConfirm(waitlisted ? '確定要取消候補？' : '確定要取消報名？');
+    if (!confirmed) return;
     if (!isAlive() || getViewerUid() !== uid) return;
     const ids = selfRegs.map(registrationId);
     if (ids.some(id => !id)) {
@@ -183,7 +253,7 @@ export function useCancelRegistration(
       await onSelfCancelled({ deduplicated: true, updatedEvent: null });
       return;
     }
-    toast.show({ message: waitlisted ? '已取消候補' : '已取消報名' });
+    toast.show({ message: withLateCancelMarked(waitlisted ? '已取消候補' : '已取消報名', response.lateCancelMarked) });
     const rawEvent: unknown = (response as { event?: unknown }).event;
     // ASSUMPTION: 舊 Callable 無 event 投影時，重讀活動以判斷取消後是否仍額滿。
     const updated = rawEvent && typeof rawEvent === 'object' && !Array.isArray(rawEvent)
@@ -232,7 +302,7 @@ export function useCancelRegistration(
       if (response.deduplicated) ring.fail();
       else if (!(await ring.succeed())) return; // 等 ✓ 期間卸載就不再關窗、提示、重讀。
       toast.show({ message: response.deduplicated
-        ? '取消處理中，請稍候' : `已取消 ${ids.length} 筆報名` });
+        ? '取消處理中，請稍候' : withLateCancelMarked(`已取消 ${ids.length} 筆報名`, response.lateCancelMarked) });
       setModal(null);
       // R-REG-002：成功時把伺服器佔位投影交給呼叫端套用，名單重讀不再自行計數。
       await onBatchCancelled({
@@ -275,26 +345,34 @@ export function useCancelRegistration(
     eventTitle: string;
     onConfirm(ids: string[]): void;
   }): JSX.Element | null {
-    if (!modal) return null;
+    const confirmBox = confirmContent
+      ? <LateCancelConfirm content={confirmContent} onSettle={settleLateConfirm} />
+      : null;
+    if (!modal) return confirmBox;
     const targets = modal.targets;
     const selectAll = modal.selectAll;
     return (
-      <Suspense fallback={null}>
-        <DetailCompanionCancelModal
-          open
-          targets={targets}
-          selectAll={selectAll}
-          busy={props.busy}
-          ring={ring}
-          eventTitle={props.eventTitle}
-          onClose={() => { if (!props.busy) setModal(null); }}
-          onConfirm={props.onConfirm}
-        />
-      </Suspense>
+      <>
+        {confirmBox}
+        <Suspense fallback={null}>
+          <DetailCompanionCancelModal
+            open
+            targets={targets}
+            selectAll={selectAll}
+            busy={props.busy}
+            ring={ring}
+            eventTitle={props.eventTitle}
+            lateCancel={modal.late}
+            onClose={() => { if (!props.busy) setModal(null); }}
+            onConfirm={props.onConfirm}
+          />
+        </Suspense>
+      </>
     );
   }
 
   return {
+    askLateConfirm,
     beginCancel,
     confirmCancel,
     modal,

@@ -5,6 +5,7 @@ import type { EventLocationValue } from '../components/event-form/use-event-loca
 import { getEventIntensity, isIntensityLevel, type IntensityLevel } from './activity-categories';
 import { getSportKeySafe } from './sports';
 import { normalizeEventSocialLinks } from './event-social-links';
+import { normalizeLateCancelHours } from './late-cancel';
 
 export const MAX_EVENT_TEMPLATES = 30;
 
@@ -43,6 +44,8 @@ export interface EventTemplateDoc {
   mapLocationUpdatedAt?: EventLocationValue['mapLocationUpdatedAt'];
   /** 一般不寫；只有 beginner／high-intensity。 */
   intensityLevel?: IntensityLevel;
+  /** 臨時取消時限（含 0）；舊範本沒有這欄，套用時當 2。 */
+  lateCancelHours?: number;
   ownerUid: string;
   ownerName: string;
   _docId: string;
@@ -172,6 +175,7 @@ export async function saveEventTemplate(input: {
   if (template.feeEnabled !== undefined) writeData.feeEnabled = template.feeEnabled;
   if (template.image !== undefined) writeData.image = template.image;
   if (template.templateType !== undefined) writeData.templateType = template.templateType;
+  if (template.lateCancelHours !== undefined) writeData.lateCancelHours = normalizeLateCancelHours(template);
   // 一般與垃圾值不寫鍵（與建立活動同一套 isIntensityLevel）。
   if (isIntensityLevel(template.intensityLevel)) writeData.intensityLevel = template.intensityLevel;
 
@@ -285,6 +289,8 @@ export function buildTemplateFromForm(input: {
     region: state.region,
     cities: [...state.cities],
     image: input.image || null,
+    // 存 0 就帶 0（FC 計畫書 §3.3 第 2 項）。
+    lateCancelHours: normalizeLateCancelHours(state),
   };
 
   // 兩條回傳路徑都要帶。一般不寫鍵，複製／再開一團才沿用原分類。
@@ -359,6 +365,8 @@ export function templateToFormPatch(
     cities: [...(template.cities || [])],
     // 缺值、null、大小寫或其他值都當一般（''）。
     intensityLevel: getEventIntensity(template),
+    // 舊範本沒有這欄＝2（與新建預設相同）；0 照帶。
+    lateCancelHours: normalizeLateCancelHours(template),
   };
 
   // 照 A setVal：空字串、null、undefined 不覆寫現有值。

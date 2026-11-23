@@ -20,7 +20,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('preact-iso', () => ({ useLocation: () => ({ path: '/activities/public', route: vi.fn() }) }));
 vi.mock('@/core/back-guard', () => ({ useGoBack: () => vi.fn() }));
 vi.mock('@/features/profile/data/viewer', () => ({ useViewer: mocks.viewer }));
-vi.mock('@/data/user-roles', () => ({ useUserRoles: () => ({}), getCachedUserLevel: () => 0 }));
+// 測試同步更新（臨時取消時限）：多帶 getCachedUserLateCancel／loadUserRoles。
+vi.mock('@/data/user-roles', () => ({
+  useUserRoles: () => ({}), getCachedUserLevel: () => 0, getCachedUserLateCancel: () => undefined, loadUserRoles: async () => ({}),
+}));
 vi.mock('@/i18n/i18n', async (o) => ({
   ...(await o<typeof import('@/i18n/i18n')>()),
   useT: () => (key: string) => key,

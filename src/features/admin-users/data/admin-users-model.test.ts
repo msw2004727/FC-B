@@ -65,6 +65,9 @@ function user(patch: Partial<AdminUser> = {}): AdminUser {
     lastLoginIp: '',
     lastLoginRegion: '',
     lastLoginIsp: '',
+    lateCancelLevel: null,
+    lateCancelTotal: 0,
+    lateCancelLastMs: null,
     ...patch,
   };
 }
@@ -80,6 +83,16 @@ function inputs(patch: Partial<AdminUserFilterInputs>): AdminUserFilterInputs {
 const ALL_USER_PERMS = [PERM_USERS_EDIT_PROFILE, PERM_USERS_CHANGE_ROLE, PERM_USERS_RESTRICT] as const;
 
 describe('mapUserDoc（A _mapUserDoc 投影）', () => {
+  it('臨時取消欄位：等級只認 black／red，累計次數，最近一次取最大時間', () => {
+    const u = mapUserDoc({
+      lateCancelLevel: 'red', lateCancelTotal: 4,
+      lateCancelRecent: [{ toMillis: () => 2_000_000_000_000 }, { seconds: 1_900_000_000 }],
+    }, 'doc');
+    expect(u).toMatchObject({ lateCancelLevel: 'red', lateCancelTotal: 4, lateCancelLastMs: 2_000_000_000_000 });
+    expect(mapUserDoc({ lateCancelLevel: 'x', lateCancelRecent: 'no' }, 'doc'))
+      .toMatchObject({ lateCancelLevel: null, lateCancelTotal: 0, lateCancelLastMs: null });
+  });
+
   it('name = displayName || name || 未知；uid = uid || lineUserId || docId', () => {
     expect(mapUserDoc({ displayName: 'D', name: 'N', uid: 'U', lineUserId: 'L' }, 'doc').name).toBe('D');
     expect(mapUserDoc({ name: 'N' }, 'doc').name).toBe('N');

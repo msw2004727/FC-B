@@ -34,6 +34,7 @@ import {
   uploadImageDataUrl,
 } from './event-cover-upload';
 import { normalizeReleaseHours } from './team-reservation-release';
+import { normalizeLateCancelHours } from './late-cancel';
 import { EventCreateError, assertCreateAllowed, toOperateContext } from './event-create-guard';
 import { invalidateViewerRegistrations } from './viewer-registrations-cache';
 import { isIntensityLevel, type IntensityLevel } from './activity-categories';
@@ -141,6 +142,8 @@ export interface CreateEventForm {
   mapLocationUpdatedAt?: string | null;
   /** 團隊預留自動釋出時數（0／3／6／12／24／48／72；0＝不自動釋出）；建立與編輯一律明寫。 */
   teamReservationReleaseHours: number;
+  /** 臨時取消時限（0／2／3／6／12／24／48；0＝不設定）；建立與編輯一律明寫數字。 */
+  lateCancelHours: number;
   /**
    * 活動分類。表單狀態含 ''（一般）。只有 `isIntensityLevel` 為真才寫進建立文件；
    * 編輯更新不得帶此鍵。unknown：垃圾值由建立 payload 擋下，不寫鍵。
@@ -224,6 +227,7 @@ export interface EventCreatePayload {
   earlyBirdCost: number;
   earlyBirdPolicyVersion: 1 | null;
   teamReservationReleaseHours: number;
+  lateCancelHours: number;
   teamSplit?: TeamSplitPayload;
   gpsEnabled?: boolean;
   lat?: number | null;
@@ -274,6 +278,7 @@ export interface EventEditUpdates {
   earlyBirdCost?: number;
   earlyBirdPolicyVersion?: 1 | null;
   teamReservationReleaseHours?: number;
+  lateCancelHours?: number;
   teamSplit?: TeamSplitPayload;
   gpsEnabled?: boolean;
   lat?: number | null;
@@ -527,6 +532,8 @@ export function buildCreateEventPayload(
     earlyBirdPolicyVersion: form.earlyBirdEnabled ? 1 : null,
     // 團隊預留自動釋出：一律明寫（含 0）；不是加值欄位，不受加值閘門影響。
     teamReservationReleaseHours: normalizeReleaseHours(form.teamReservationReleaseHours),
+    // 臨時取消時限：一律明寫數字（含 0），不寫 null、不靠缺省（契約 §1）。
+    lateCancelHours: normalizeLateCancelHours(form),
   };
 
   const variants = buildImageVariants(form);
@@ -588,6 +595,8 @@ export function buildEditEventUpdates(
     cities: [...form.cities],
     // Rules eventUpdateBasicFieldsOnly／eventScopedRoleFieldsOnly 已列此欄（FC 0068af374）；值未變時不算異動。
     teamReservationReleaseHours: normalizeReleaseHours(form.teamReservationReleaseHours),
+    // 臨時取消時限：Rules 白名單緊鄰 teamReservationReleaseHours（FC 契約 §7）；一律明寫數字。
+    lateCancelHours: normalizeLateCancelHours(form),
   };
 
   if (!preserve.image) {

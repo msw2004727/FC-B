@@ -65,6 +65,8 @@ export interface EventDoc {
   teamReservationReleasedAt?: unknown;
   /** `[{ teamId, teamName, releasedSlots }]`；讀取前先驗形狀。 */
   teamReservationReleasedSummary?: unknown;
+  /** 臨時取消時限；缺值當 2、壞值當 0（late-cancel.ts normalizeLateCancelHours）。 */
+  lateCancelHours?: unknown;
 }
 
 export interface RegistrationDoc {

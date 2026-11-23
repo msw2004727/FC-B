@@ -153,7 +153,8 @@ describe('EventFormFields', () => {
 
   it('? 開出對應 CE_INFO 標題（地點 →「活動地點」），點「了解」關閉', () => {
     renderFields();
-    expect(document.querySelectorAll('.edu-info-btn')).toHaveLength(14);
+    // 測試同步更新：多了臨時取消時限的「?」（14 → 15）。
+    expect(document.querySelectorAll('.edu-info-btn')).toHaveLength(15);
     // ASSUMPTION: 地點輸入與其說明按鈕維持在同一個 .ce-row，以欄位鍵定位。
     const locationRow = document.getElementById('ce-location')?.closest('.ce-row');
     const buttons = locationRow?.querySelectorAll<HTMLButtonElement>('.edu-info-btn');
@@ -282,6 +283,20 @@ describe('團隊預留自動釋出列', () => {
     expect(select().value).toBe('12');
     expect(note()?.textContent).toBe('距開始已不足 12 小時，儲存後會立即釋出');
     expect((note() as HTMLElement).style.color).toBe('var(--warning)');
+  });
+
+  it('臨時取消時限：預設 2、選項順序與文字照預覽、改選回傳數字（含 0）', () => {
+    const onPatch = vi.fn();
+    renderFields({ state: createDefaultFormState(), onPatch });
+    const lc = document.getElementById('ce-late-cancel-hours') as HTMLSelectElement;
+    expect(lc.value).toBe('2');
+    expect([...lc.options].map(option => option.textContent)).toEqual([
+      '開始前 2 小時內取消算臨時取消', '不設定', '開始前 3 小時內取消算臨時取消', '開始前 6 小時內取消算臨時取消',
+      '開始前 12 小時內取消算臨時取消', '開始前 24 小時內取消算臨時取消', '開始前 48 小時內取消算臨時取消',
+    ]);
+    lc.value = '0';
+    fireEvent(lc, new Event('change', { bubbles: true }));
+    expect(onPatch).toHaveBeenCalledWith({ lateCancelHours: 0 });
   });
 
   it('編輯舊活動顯示不自動釋出；已釋出時鎖住並說明', () => {

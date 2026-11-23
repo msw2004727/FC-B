@@ -13,6 +13,7 @@ import {
   type TeamReservationReleaseHours,
 } from './team-reservation-release';
 import { roleLabelOf } from './role-label';
+import { DEFAULT_LATE_CANCEL_HOURS, normalizeLateCancelHours } from './late-cancel';
 
 // roleLabelOf 實作搬到 role-label.ts（首頁開團入口單獨引用，不帶整份表單模型進首屏）；這裡照舊轉出。
 export { roleLabelOf };
@@ -86,6 +87,8 @@ export interface EventFormState extends EventFormAddonState {
   teamReservationReleaseAuto: boolean;
   /** 編輯既有活動且已有 teamReservationReleasedAt：下拉鎖住。 */
   teamReservationReleased: boolean;
+  /** 臨時取消時限（0／2／3／6／12／24／48；0＝不設定）；存檔一律寫數字。 */
+  lateCancelHours: number;
   /** 活動分類：'' 一般；只在建立時寫入（顧問 §3.183）。 */
   intensityLevel: IntensityChoice;
 }
@@ -200,6 +203,7 @@ export function createDefaultFormState(_now: Date = new Date()): EventFormState 
     teamReservationReleaseHours: 12,
     teamReservationReleaseAuto: true,
     teamReservationReleased: false,
+    lateCancelHours: DEFAULT_LATE_CANCEL_HOURS,
   };
 }
 
@@ -386,6 +390,8 @@ export function formStateFromEvent(
     teamReservationReleaseHours: normalizeReleaseHours(event.teamReservationReleaseHours),
     teamReservationReleaseAuto: false,
     teamReservationReleased: hasTeamReservationReleasedAt(event.teamReservationReleasedAt),
+    // 缺欄位當 2（站長 11-23：已建立的活動也預設 2 小時），存檔就寫入明確值。
+    lateCancelHours: normalizeLateCancelHours(event),
     intensityLevel: getEventIntensity(event as { intensityLevel?: unknown }),
   };
 }
@@ -680,6 +686,8 @@ export function toCreateEventForm(
     teamReservationReleaseHours: resolveTeamReservationReleaseHours(
       state, state.dateVal.trim(), extras?.nowMs ?? Date.now(),
     ),
+    // 一律明寫（含 0）；多日期沿用 ...base，每場同值。
+    lateCancelHours: normalizeLateCancelHours(state),
     // 含 ''。建立 payload 才決定要不要寫鍵；多日期沿用 ...base。
     intensityLevel: state.intensityLevel,
   };

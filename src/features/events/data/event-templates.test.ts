@@ -189,6 +189,16 @@ describe('loadEventTemplates', () => {
 });
 
 describe('buildTemplateFromForm', () => {
+  it('臨時取消時限來回：存 0 帶 0；舊範本沒有欄位套用時當 2', () => {
+    const saved = build({ state: { ...createDefaultFormState(), lateCancelHours: 0 } });
+    expect(saved.lateCancelHours).toBe(0);
+    const patch = templateToFormPatch({ ...saved, ownerUid: 'u', ownerName: 'n', _docId: 'd', createdAt: null, updatedAt: null }, true).patch;
+    expect(patch.lateCancelHours).toBe(0);
+    const legacy = { ...saved, ownerUid: 'u', ownerName: 'n', _docId: 'd', createdAt: null, updatedAt: null };
+    delete (legacy as { lateCancelHours?: number }).lateCancelHours;
+    expect(templateToFormPatch(legacy, true).patch.lateCancelHours).toBe(2);
+  });
+
   it('逐欄建立 A 範本，不包含日期、委託、俱樂部、分隊、候補或課程欄位', () => {
     const state = {
       ...createDefaultFormState(),
@@ -239,6 +249,7 @@ describe('buildTemplateFromForm', () => {
       region: '中部',
       cities: ['台中市', '苗栗縣', '彰化縣', '南投縣', '雲林縣'],
       image: 'https://example.test/a.jpg',
+      lateCancelHours: 2,
       gpsEnabled: true,
       lat: 25,
       lng: 121,

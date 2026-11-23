@@ -100,6 +100,7 @@ function buildForm(overrides: Partial<CreateEventForm> = {}): CreateEventForm {
     earlyBirdCost: 0,
     earlyBirdPolicyVersion: null,
     teamReservationReleaseHours: 12,
+    lateCancelHours: 2,
     ...overrides,
   };
 }

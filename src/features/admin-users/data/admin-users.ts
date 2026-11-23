@@ -294,6 +294,11 @@ export async function manageAdminUser(input: ManageAdminUserInput): Promise<Admi
   return response ?? {};
 }
 
+/** 解除臨取紅標（FC 契約 late-cancel §6）：只送 targetUid，權限與冪等由伺服器判定。 */
+export async function clearLateCancelRed(targetUid: string): Promise<void> {
+  await callFn('clearLateCancelRed', { targetUid });
+}
+
 /** 伺服器／守衛錯誤分類，給畫面轉成白話訊息。 */
 export type AdminUserErrorKind = 'permission' | 'not_found' | 'precondition' | 'unauthenticated' | 'other';
 

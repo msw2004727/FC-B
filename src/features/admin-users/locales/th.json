@@ -45,7 +45,9 @@
     "edit": "แก้ไข",
     "view": "ดู",
     "restrict": "จำกัด",
-    "unrestrict": "ยกเลิกการจำกัด"
+    "unrestrict": "ยกเลิกการจำกัด",
+    "lateCancelState": "臨取狀態：",
+    "clearLateCancelRed": "解除臨取紅標"
   },
   "modal": {
     "title": "แก้ไขผู้ใช้ — {name}",
@@ -91,5 +93,10 @@
   "error": {
     "permission": "คุณไม่มีสิทธิ์ทำรายการนี้",
     "notFound": "ไม่พบผู้ใช้"
+  },
+  "lateCancel": {
+    "confirm": "確定要解除 {name} 的臨取紅標？",
+    "cleared": "已解除臨取紅標",
+    "failed": "解除臨取紅標失敗，請稍後再試"
   }
 }

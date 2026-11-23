@@ -55,6 +55,9 @@ vi.mock('@/ui/Toast', async (o) => ({
   toast: { show: mocks.toast },
 }));
 vi.mock('@/data/user-roles', () => ({
+  // 測試同步更新（臨時取消時限）：詳情頁名單標籤讀 users 臨取欄位。
+  getCachedUserLateCancel: () => undefined,
+  loadUserRoles: async () => ({}),
   useUserRoles: () => ({}),
   getCachedUserLevel: () => 0,
 }));
@@ -108,6 +111,9 @@ const detail: LoadedEventDetail = {
     date: '2099/10/19 18:30~21:00',
     status: 'open',
     isPublic: true,
+    // 測試同步更新（臨時取消時限）：本檔測取消機制（T-086a／T-087c），固定「不設定」走原本 appConfirm；
+    // 新確認框由 EventDetailPage.test 與下方「夥伴報名窗取消同行者」案覆蓋。
+    lateCancelHours: 0,
   },
 };
 const self: DetailRegistration = {
@@ -275,6 +281,43 @@ describe('3b-1w 報名流程', () => {
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith({
       message: '夥伴報名已更新：新增 1 人、取消 1 人',
     }));
+  });
+
+  // 審查 P1-1：夥伴報名窗取消同行者，時限內先警告；按「保留名額」整筆中止（不取消、不加報）。
+  it('夥伴報名窗取消同行者：時限內先出臨時取消警告，按保留名額不送出', async () => {
+    // 起算點（LATE_CANCEL_SINCE）之後才會警告：只假造 Date，計時器照常。
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.parse('2026-12-01T10:00:00+08:00') });
+    try {
+      const pad = (n: number): string => String(n).padStart(2, '0');
+      const taipei = (ms: number): Date => new Date(ms + 8 * 3_600_000);
+      const start = taipei(Date.now() + 60 * 60_000);
+      const end = taipei(Date.now() + 120 * 60_000);
+      const date = `${start.getUTCFullYear()}/${pad(start.getUTCMonth() + 1)}/${pad(start.getUTCDate())} `
+        + `${pad(start.getUTCHours())}:${pad(start.getUTCMinutes())}~${pad(end.getUTCHours())}:${pad(end.getUTCMinutes())}`;
+      mocks.detail.mockResolvedValue({ ...detail, event: { ...detail.event, date, lateCancelHours: 2 } });
+      mocks.history.mockResolvedValue([self, companion]);
+      mount();
+      fireEvent.click(await screen.findByRole('button', { name: '幫夥伴報名' }));
+      const confirm = await screen.findByRole('button', { name: '確認', exact: true });
+      const overlay = document.querySelector('#companion-select-overlay');
+      if (!(overlay instanceof HTMLElement)) throw new Error('缺少同行者彈窗');
+      const first = within(overlay).getAllByRole('checkbox')[0];
+      if (!first) throw new Error('缺少同行者');
+      fireEvent.click(first);
+      fireEvent.click(confirm);
+      await waitFor(() => expect(document.getElementById('late-cancel-confirm')).not.toBeNull());
+      const box = document.getElementById('late-cancel-confirm') as HTMLElement;
+      expect(box.querySelector('.app-confirm-warning')?.textContent).toBe('距開始不到 2 小時');
+      expect(box.querySelector('.app-confirm-msg')?.textContent).toContain('同行者取消也會記你一次臨時取消');
+      await act(async () => {
+        fireEvent.click(within(box).getByRole('button', { name: '保留名額' }));
+      });
+      await waitFor(() => expect(document.getElementById('late-cancel-confirm')).toBeNull());
+      expect(mocks.cancel).not.toHaveBeenCalled();
+      expect(mocks.selection).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // T-087c：T-087a 伺服器新代碼；修正前落到「夥伴報名調整失敗，請稍後再試」。

@@ -35,6 +35,8 @@ export interface WaitlistRosterTableProps {
   event: RosterEventInput;
   registrations: readonly RosterRegistrationInput[];
   roles: Readonly<Record<string, UserRole>>;
+  /** 臨時取消標籤（useLateCancelTags）；只有有標籤的 UID。 */
+  lateCancelTags?: Readonly<Record<string, 'black' | 'red'>>;
   onOpenProfile: (uid: string) => void;
   editing?: boolean;
   submitting?: boolean;
@@ -146,6 +148,7 @@ export function WaitlistRosterTable({
   event,
   registrations,
   roles,
+  lateCancelTags,
   onOpenProfile,
   editing = false,
   submitting = false,
@@ -180,6 +183,7 @@ export function WaitlistRosterTable({
           uid={row.item.userId}
           name={row.item.name}
           role={roles[row.item.userId]}
+          lateCancel={lateCancelTags?.[row.item.userId]}
           disabled={!row.item.userId}
           nameClass="reg-name-ellipsis"
           onOpenProfile={onOpenProfile}

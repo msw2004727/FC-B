@@ -19,6 +19,7 @@ import { getDocs } from 'firebase/firestore';
 import {
   _resetUserRolesCacheForTest,
   getCachedUserGender,
+  getCachedUserLateCancel,
   getCachedUserLevel,
   getCachedUserNoShowStats,
   loadUserNoShowStats,
@@ -532,5 +533,35 @@ describe('getCachedUserGender', () => {
     expect(getCachedUserGender('m')).toBeUndefined();
     expect(getCachedUserGender('f')).toBeUndefined();
     expect(getDocsMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('getCachedUserLateCancel', () => {
+  it('同一次 users 讀取帶臨時取消 5 欄（零額外讀）；Timestamp 轉毫秒、壞值回預設', async () => {
+    getDocsMock.mockResolvedValue({
+      docs: [
+        {
+          id: 'b',
+          data: () => ({
+            role: 'user',
+            lateCancelLevel: 'black',
+            lateCancelUntil: { toMillis: () => 2_000 },
+            lateCancelReleaseAt: 4,
+            lateCancelRecent: [{ seconds: 1 }, 'bad', 3_000],
+            lateCancelTotal: 2,
+          }),
+        },
+        { id: 'x', data: () => ({ role: 'user', lateCancelLevel: 'green', lateCancelRecent: 'no' }) },
+      ],
+    } as never);
+    await loadUserRoles(['b', 'x', 'none']);
+    expect(getDocsMock).toHaveBeenCalledTimes(1);
+    expect(getCachedUserLateCancel('b')).toEqual({
+      level: 'black', untilMs: 2_000, releaseAt: 4, recentMs: [1_000, 3_000], total: 2,
+    });
+    const empty = { level: null, untilMs: null, releaseAt: 0, recentMs: [], total: 0 };
+    expect(getCachedUserLateCancel('x')).toEqual(empty);
+    expect(getCachedUserLateCancel('none')).toEqual(empty);
+    expect(getCachedUserLateCancel('unknown')).toBeUndefined();
   });
 });

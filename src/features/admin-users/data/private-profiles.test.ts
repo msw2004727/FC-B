@@ -13,7 +13,7 @@ function user(patch: Partial<AdminUser> = {}): AdminUser {
     _docId: 'doc-1', uid: 'uid-1', lineUserId: '', name: '小明', role: 'user',
     email: 'old@example.com', gender: '', region: '', sports: '', phone: '0911',
     birthday: '', exp: 0, pictureUrl: '', teamName: '', isRestricted: false, stealth: false,
-    joinedAtMs: null, lastLoginMs: null, lastLoginIp: '', lastLoginRegion: '', lastLoginIsp: '',
+    joinedAtMs: null, lastLoginMs: null, lastLoginIp: '', lastLoginRegion: '', lastLoginIsp: '', lateCancelLevel: null, lateCancelTotal: 0, lateCancelLastMs: null,
     ...patch,
   };
 }
