@@ -537,8 +537,11 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
       name: 'Kai', lateCancelLevel: 'red', lateCancelTotal: 3, lateCancelLastMs: Date.parse('2026-11-20T10:00:00+08:00'),
     });
     const perms = [...FULL_ADMIN_PERMS, 'admin.repair.no_show_adjust'];
-    // 預設（未部署）：只有狀態列、沒有按鈕。
-    await renderReady([red], viewerOf('admin', perms));
+    // 未部署（明確傳 false；11-23 Callable 已部署、常數改 true 後不再依賴預設值）：只有狀態列、沒有按鈕。
+    mockUseViewer.mockReturnValue(viewerOf('admin', perms));
+    mockLoadUsers.mockResolvedValue(loadOf([red]));
+    render(<AdminUsersPage lateCancelClearEnabled={false} />);
+    await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
     expect(cardOf('Kai').textContent).toContain('臨取狀態：紅標（3 次，最近 11/20）');
     expect(cardOf('Kai').querySelector('.uc-lc-red')).not.toBeNull();
     expect(within(cardOf('Kai')).queryByText('解除臨取紅標')).toBeNull();
