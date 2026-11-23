@@ -26,11 +26,11 @@ const ROSTERS: EventRoster[] = [
   {
     event: EVENTS[0]!,
     registrations: [
-      { userId: 'u1', status: 'confirmed' },
-      { userId: 'u2', status: 'confirmed' },
-      { userId: 'u3', status: 'waitlisted' },
+      { eventId: 'p-a', userId: 'u1', status: 'confirmed' },
+      { eventId: 'p-a', userId: 'u2', status: 'confirmed' },
+      { eventId: 'p-a', userId: 'u3', status: 'waitlisted' },
     ],
-    attendance: [{ uid: 'u1', type: 'checkin' }, { uid: 'u1', type: 'checkout' }],
+    attendance: [{ eventId: 'p-a', uid: 'u1', type: 'checkin' }, { eventId: 'p-a', uid: 'u1', type: 'checkout' }],
   },
   { event: EVENTS[1]!, registrations: [{ userId: 'u1', status: 'cancelled' }], attendance: [] },
 ];

@@ -7,7 +7,7 @@
  *  - 簽到紀錄用 `uid`；同行者另以 `companionId` 區分。
  *  - 每場活動的報名與簽到都從該場 `events/{_docId}/...` 子集合讀，天然限定在同一場，不靠 `eventId` 欄位 join。
  */
-import { taipeiDateKey, taipeiParts } from '@/core/taipei-time';
+import { taipeiParts } from '@/core/taipei-time';
 import { effectiveEventStatus } from './my-activities-model';
 import type { EventDoc } from './types';
 
@@ -84,6 +84,8 @@ export function isEventInRange(event: Pick<EventDoc, 'date'>, range: DateRangeKe
 // ---- 人數統計 ----
 
 export interface RangeRegistration {
+  eventId?: unknown;
+  promotedAt?: unknown;
   userId?: unknown;
   uid?: unknown;
   ownerUid?: unknown;
@@ -93,6 +95,7 @@ export interface RangeRegistration {
 }
 
 export interface RangeAttendance {
+  eventId?: unknown;
   uid?: unknown;
   type?: unknown;
   status?: unknown;
@@ -163,18 +166,97 @@ function regStatus(reg: RangeRegistration): 'confirmed' | 'waitlisted' | 'cancel
   return 'other';
 }
 
+// ---- 放鴿子 v2（與個人頁、管理名單顯示的 userAttendanceStats.countedNoShowCount 同一口徑）----
+// 正本：FC `functions/noshow-v2-core.js`（isCountedEvent、computeEventCountedCheckoutFlag、isLatePromotion、
+// computeUserCountedStats）與 `functions/ops-rollup-core.js` summarizeHeldEvent。
+// （2026-11-23 顧問 §3.603 條件①：取代原本照每小時批次 calcNoShowCountsBatch 的舊算法——舊算法沒有起算日，
+//  會把起算日前已結束的場次也算進放鴿子，與使用者看到的數字不同。）
+
+/** 起算點（台北日期），同 FC `functions/noshow-v2-core.js` NOSHOW_V2_SINCE = "2026-11-07"。 */
+export const NOSHOW_V2_SINCE_KEY = '2026/11/07';
+
+/** 紀錄的 eventId 要等於活動 public id 或文件 ID（v2 recordMatchesEvent）；空的不算。 */
+function belongsToEvent(record: { eventId?: unknown }, event: EventDoc): boolean {
+  const eventId = str(record.eventId);
+  if (!eventId) return false;
+  return eventId === str(event.id) || eventId === str(event._docId);
+}
+
+function isCompanionRecord(record: { companionId?: unknown; participantType?: unknown }): boolean {
+  return str(record.companionId) !== '' || str(record.participantType) === 'companion';
+}
+
 /**
- * 放鴿子只看「活動文件狀態已結束、日期在今天以前」的場次，同後端 `calcNoShowCountsBatch`：
- * 正取本人報名（不含同行者）沒有任何有效簽到紀錄（`uid` 相同）即算一次。
+ * v2 旗標 hasCountedCheckout：該場有「有效簽退」——非同行者、狀態有效、屬於本場，
+ * 且簽退者是本場正取非同行者報名者、不是主辦（creatorUid）或委託人（delegateUids）。
+ * 正式由觸發器寫在 eventAttendanceFlags（前端讀不到），這裡用同一份名單資料重算。
  */
-function isNoShowEligibleEvent(event: EventDoc, todayKey: string): boolean {
-  if (event.status !== 'ended') return false;
-  const key = eventDateKey(event);
-  return key !== '' && key < todayKey;
+export function eventHasCountedCheckout(roster: EventRoster): boolean {
+  const { event } = roster;
+  const hosts = new Set<string>();
+  if (str(event.creatorUid)) hosts.add(str(event.creatorUid));
+  const delegates = (event as EventDoc & { delegateUids?: unknown }).delegateUids;
+  if (Array.isArray(delegates)) delegates.forEach((uid) => { if (str(uid)) hosts.add(str(uid)); });
+  const confirmed = new Set<string>();
+  for (const reg of roster.registrations) {
+    if (isCompanionRecord(reg) || str(reg.status) !== 'confirmed') continue;
+    const uid = str(reg.userId);
+    if (uid && !hosts.has(uid)) confirmed.add(uid);
+  }
+  if (confirmed.size === 0) return false;
+  return roster.attendance.some((r) => str(r.type) === 'checkout' && isActiveRecord(r)
+    && !isCompanionRecord(r) && belongsToEvent(r, event) && confirmed.has(str(r.uid)));
+}
+
+/** v2 計入場次：活動文件狀態已結束、開始日 ≥ 起算點、該場有有效簽退。 */
+export function isNoShowCountedEvent(roster: EventRoster, sinceKey: string = NOSHOW_V2_SINCE_KEY): boolean {
+  if (roster.event.status !== 'ended') return false;
+  const key = eventDateKey(roster.event);
+  if (key === '' || key < sinceKey) return false;
+  return eventHasCountedCheckout(roster);
+}
+
+function toMillis(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.getTime() : null;
+  const v = value as { toMillis?: () => number; seconds?: unknown; _seconds?: unknown; nanoseconds?: unknown; _nanoseconds?: unknown };
+  if (typeof v.toMillis === 'function') {
+    try { return v.toMillis(); } catch { return null; }
+  }
+  const seconds = v.seconds ?? v._seconds;
+  if (typeof seconds === 'number') {
+    const nanos = Number(v.nanoseconds ?? v._nanoseconds ?? 0) || 0;
+    return seconds * 1000 + Math.floor(nanos / 1e6);
+  }
+  const parsed = new Date(String(value)).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** v2 eventStartMillis：台北開始時間；沒寫時間視為當天 00:00。 */
+function eventStartMs(event: EventDoc): number | null {
+  const raw = typeof event.date === 'string' ? event.date.trim() : '';
+  const m = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?=$|\s)/.exec(raw);
+  if (!m) return null;
+  const t = /^(\d{1,2}):(\d{2})/.exec(raw.slice(m[0].length).trim());
+  let h = 0;
+  let min = 0;
+  if (t && Number(t[1]) <= 23 && Number(t[2]) <= 59) {
+    h = Number(t[1]);
+    min = Number(t[2]);
+  }
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), h - 8, min);
+}
+
+/** v2 isLatePromotion：候補在活動開始後才遞補，該場不計入本人。 */
+function isLatePromotion(reg: RangeRegistration, event: EventDoc): boolean {
+  const promoted = toMillis(reg.promotedAt);
+  if (promoted == null) return false;
+  const start = eventStartMs(event);
+  return start != null && promoted > start;
 }
 
 export function computeRangeStats(rosters: readonly EventRoster[], nowMs: number = Date.now()): RangeStats {
-  const todayKey = taipeiDateKey(nowMs);
   const pairSets: Record<StatMetric | 'confirmedOther', Set<string>> = {
     registered: new Set(), confirmed: new Set(), waitlisted: new Set(),
     checkedPair: new Set(), noShow: new Set(), cancelled: new Set(), confirmedOther: new Set(),
@@ -202,13 +284,11 @@ export function computeRangeStats(rosters: readonly EventRoster[], nowMs: number
     const checkoutSelf = new Set<string>();
     const checkinComp = new Set<string>();
     const checkoutComp = new Set<string>();
-    const checkinAnyUid = new Set<string>();
     for (const r of active) {
       const uid = str(r.uid);
       if (!uid) continue;
       const type = str(r.type);
       const cid = str(r.companionId);
-      if (type === 'checkin') checkinAnyUid.add(uid);
       if (cid) {
         if (type === 'checkin') checkinComp.add(`${uid}#c:${cid}`);
         if (type === 'checkout') checkoutComp.add(`${uid}#c:${cid}`);
@@ -217,7 +297,15 @@ export function computeRangeStats(rosters: readonly EventRoster[], nowMs: number
         if (type === 'checkout') checkoutSelf.add(uid);
       }
     }
-    const noShowEligible = isNoShowEligibleEvent(roster.event, todayKey);
+    const noShowCounted = isNoShowCountedEvent(roster);
+    // v2 放鴿子只看屬於本場、有效、非同行者的本人紀錄：簽到、簽退都沒有才算。
+    const attendedV2 = new Set<string>();
+    for (const r of active) {
+      const type = str(r.type);
+      if ((type === 'checkin' || type === 'checkout') && !isCompanionRecord(r) && belongsToEvent(r, roster.event)) {
+        attendedV2.add(str(r.uid));
+      }
+    }
 
     roster.registrations.forEach((reg, regIndex) => {
       const person = personKey(reg, `${eventKey}:${regIndex}`);
@@ -242,7 +330,8 @@ export function computeRangeStats(rosters: readonly EventRoster[], nowMs: number
         add('checkedPair', person);
         return;
       }
-      if (!companion && noShowEligible && !checkinAnyUid.has(person)) {
+      if (!companion && noShowCounted && str(reg.status) === 'confirmed' && !isLatePromotion(reg, roster.event)
+        && !attendedV2.has(person)) {
         add('noShow', person);
         return;
       }
