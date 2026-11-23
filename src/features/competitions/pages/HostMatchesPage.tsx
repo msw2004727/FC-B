@@ -674,8 +674,8 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
 
   const groups = groupHostMatches(matches, divisions, now, scheduleLabels(ct));
   const active = panel ? matches.find((row) => row.id === panel.mtId) ?? null : null;
-  // 已發布且已有場次才顯示結束賽事。延期、草稿、空賽程都不顯示。
-  const showEnd = canEndCompetition(comp) && matches.length > 0;
+  // 已發布、未結束就顯示結束賽事；延期、草稿不顯示。站長 11-23：沒排賽程也要能手動結束（後端同步拿掉 SCHEDULE_REQUIRED），取代原本「已有場次才顯示」。
+  const showEnd = canEndCompetition(comp);
   // 順延／對調比照結束賽事，但已結束時管理員仍看得到。沒有場次不顯示。
   const showFlex = canShowFlexSchedule(comp, isCpAdmin(env.actor.role)) && matches.length > 0;
 

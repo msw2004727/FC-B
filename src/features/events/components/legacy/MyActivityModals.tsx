@@ -1,5 +1,4 @@
 import type { JSX } from 'preact';
-import { createPortal } from 'preact/compat';
 import { useEffect, useState } from 'preact/hooks';
 import '@/styles/legacy/edu-info-btn.css';
 import { STATUS_CONFIG } from './TimelineEventCard';
@@ -8,89 +7,6 @@ import { loadEventRegistrations } from '../../data/event-detail';
 import { actualConfirmedCount, type DetailEvent } from '../../data/detail-model';
 import { effectiveEventStatus } from '../../data/my-activities-model';
 import type { EventDoc, RegistrationDoc } from '../../data/types';
-
-export interface MyActivityStatsModalProps {
-  open: boolean;
-  isAdmin: boolean;
-  events: readonly EventDoc[];
-  nowMs: number;
-  onClose: () => void;
-}
-
-export function MyActivityStatsModal({
-  open,
-  isAdmin,
-  events,
-  nowMs,
-  onClose,
-}: MyActivityStatsModalProps): JSX.Element | null {
-  if (!open) return null;
-
-  const counts: Record<string, number> = {};
-  for (const e of events) {
-    const st = effectiveEventStatus(e, nowMs);
-    counts[st] = (counts[st] || 0) + 1;
-  }
-
-  const scope = isAdmin ? '所有活動' : '我管理的活動';
-  const items = [
-    { label: '總活動', count: events.length, color: '#0d9488', bg: 'rgba(13,148,136,.1)' },
-    { label: '即將開放', count: counts.upcoming || 0, color: '#6366f1', bg: 'rgba(99,102,241,.1)' },
-    { label: '報名中', count: counts.open || 0, color: '#10b981', bg: 'rgba(16,185,129,.1)' },
-    { label: '已額滿', count: counts.full || 0, color: '#f59e0b', bg: 'rgba(245,158,11,.1)' },
-    { label: '已結束', count: counts.ended || 0, color: '#6b7280', bg: 'rgba(107,114,128,.1)' },
-    { label: '已取消', count: counts.cancelled || 0, color: '#ef4444', bg: 'rgba(239,68,68,.1)' },
-  ];
-
-  const overlay = (
-    <div
-      class="edu-info-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="活動統計"
-      onClick={(ev) => {
-        if (ev.target === ev.currentTarget) onClose();
-      }}
-    >
-      <div class="edu-info-dialog" style="max-width:360px">
-        <div class="edu-info-dialog-title">活動統計</div>
-        <div style="font-size:.72rem;color:var(--text-muted);text-align:center;margin-bottom:.6rem">
-          {`統計範圍：${scope}`}
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.45rem">
-          {items.map((it) => (
-            <div
-              key={it.label}
-              style={`background:${it.bg};border-radius:10px;padding:.6rem .7rem;text-align:center`}
-            >
-              <div style={`font-size:1.4rem;font-weight:800;color:${it.color}`}>
-                {it.count}
-              </div>
-              <div style="font-size:.72rem;color:var(--text-secondary);margin-top:.15rem">
-                {it.label}
-              </div>
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          class="primary-btn"
-          style="width:100%;margin-top:.8rem;flex-shrink:0"
-          onClick={onClose}
-        >
-          關閉
-        </button>
-      </div>
-    </div>
-  );
-
-  // createPortal 到 body 會離開頁面的 .legacy-ui，A 的 .edu-info-overlay 樣式（限定在 .legacy-ui 內）就套不到；
-  // 比照 ProfileInfoButton／CeInfoDialog 外包一層 .legacy-ui（退修 1 #7：只補 CSS import 還不夠）。
-  if (typeof document !== 'undefined') {
-    return createPortal(<div class="legacy-ui">{overlay}</div>, document.body);
-  }
-  return overlay;
-}
 
 export interface MyActivityDetailModalProps {
   event: EventDoc | null;

@@ -134,14 +134,14 @@ describe('check-bundle-budget', () => {
     }
   });
 
-  it('上限以 1000 bytes 為 1KB，入口預設 60024；合計預設 123823', () => {
+  it('上限以 1000 bytes 為 1KB，入口預設 60024；合計預設 123904', () => {
     expect(parseLimit('60KB')).toBe(60_000);
     expect(parseLimit('1KB')).toBe(1_000);
     expect(parseLimit(undefined)).toBe(60_024);
-    expect(parseLimit(undefined, DEFAULT_PRELOAD_SUM_LIMIT_BYTES)).toBe(123_823);
+    expect(parseLimit(undefined, DEFAULT_PRELOAD_SUM_LIMIT_BYTES)).toBe(123_904);
     expect(DEFAULT_LIMIT_BYTES).toBe(60_024);
-    expect(DEFAULT_PRELOAD_SUM_LIMIT_BYTES).toBe(123_823);
-    expect(BASELINE).toEqual({ ref: '7514fde4', entryBytes: 59512, sumBytes: 122799 });
+    expect(DEFAULT_PRELOAD_SUM_LIMIT_BYTES).toBe(123_904);
+    expect(BASELINE).toEqual({ ref: '6c31586a', entryBytes: 59586, sumBytes: 122880 });
   });
 
   it('不把 data-src 當成入口，也拒絕協定相對網址與跳出 dist 的路徑', () => {
@@ -278,7 +278,7 @@ describe('check-bundle-budget', () => {
       expect(ok.stdout).toContain('輔助：入口單檔');
       expect(ok.stdout).toContain('主要：入口＋modulepreload');
       expect(ok.stdout).toContain('上限 60024 bytes');
-      expect(ok.stdout).toContain('上限 123823 bytes');
+      expect(ok.stdout).toContain('上限 123904 bytes');
       expect(ok.stdout).toContain('與基準相比：');
       expect(ok.stdout).not.toContain('⚠');
       expect(ok.stdout).not.toContain('寬鬆上限');
@@ -300,16 +300,16 @@ describe('check-bundle-budget', () => {
     }
   });
 
-  it('新上限：入口 60024 等於通過、60025 失敗；合計 123823 通過、123824 失敗，訊息指出哪一條', () => {
+  it('新上限：入口 60024 等於通過、60025 失敗；合計 123904 通過、123905 失敗，訊息指出哪一條', () => {
     expect(exceedsBudget(60_024, DEFAULT_LIMIT_BYTES)).toBe(false);
     expect(exceedsBudget(60_025, DEFAULT_LIMIT_BYTES)).toBe(true);
-    expect(exceedsBudget(123_823, DEFAULT_PRELOAD_SUM_LIMIT_BYTES)).toBe(false);
-    expect(exceedsBudget(123_824, DEFAULT_PRELOAD_SUM_LIMIT_BYTES)).toBe(true);
+    expect(exceedsBudget(123_904, DEFAULT_PRELOAD_SUM_LIMIT_BYTES)).toBe(false);
+    expect(exceedsBudget(123_905, DEFAULT_PRELOAD_SUM_LIMIT_BYTES)).toBe(true);
 
     const dirPass = makeDist(bufferOfGzipSize(60_024));
     const dirFail = makeDist(bufferOfGzipSize(60_025));
-    const dirSumPass = makeDist(bufferOfGzipSize(123_823));
-    const dirSumFail = makeDist(bufferOfGzipSize(123_824));
+    const dirSumPass = makeDist(bufferOfGzipSize(123_904));
+    const dirSumFail = makeDist(bufferOfGzipSize(123_905));
     try {
       const pass = inspectHomeBundle(dirPass, DEFAULT_LIMIT_BYTES, DEFAULT_PRELOAD_SUM_LIMIT_BYTES);
       expect(pass.totalGzip).toBe(60_024);
@@ -327,19 +327,19 @@ describe('check-bundle-budget', () => {
       expect(failText).toContain('超限：入口');
       expect(failText).not.toContain('合計超過上限');
 
-      // 入口上限放寬，只讓合計這條碰到 123823／123824。
+      // 入口上限放寬，只讓合計這條碰到 123904／123905。
       const sumPass = inspectHomeBundle(dirSumPass, 200_000, DEFAULT_PRELOAD_SUM_LIMIT_BYTES);
-      expect(sumPass.preload.totalGzip).toBe(123_823);
+      expect(sumPass.preload.totalGzip).toBe(123_904);
       expect(sumPass.ok).toBe(true);
       expect(sumPass.preload.ok).toBe(true);
 
       const sumFail = inspectHomeBundle(dirSumFail, 200_000, DEFAULT_PRELOAD_SUM_LIMIT_BYTES);
-      expect(sumFail.preload.totalGzip).toBe(123_824);
+      expect(sumFail.preload.totalGzip).toBe(123_905);
       expect(sumFail.ok).toBe(true);
       expect(sumFail.preload.ok).toBe(false);
-      expect(sumFail.preload.reason).toBe('合計超過上限：123824 > 123823');
+      expect(sumFail.preload.reason).toBe('合計超過上限：123905 > 123904');
       const sumText = renderReport(sumFail);
-      expect(sumText).toContain('合計超過上限：123824 > 123823');
+      expect(sumText).toContain('合計超過上限：123905 > 123904');
       expect(sumText).toContain('超限：合計');
       expect(sumText).not.toContain('入口超過上限');
 

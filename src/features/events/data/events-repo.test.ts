@@ -149,10 +149,37 @@ describe('terminal preview and history', () => {
     expect(TERMINAL_PREVIEW_LIMIT).toBe(50);
   });
 
-  test('history uses limit 10', async () => {
+  // 測試同步更新：歷史模式由 10 改為 50（活動管理頁找不到舊活動，2026-11-23）。
+  test('history uses limit 50, not fewer than preview', async () => {
     await makeRepo().loadEventsStatic({ terminalMode: 'history' });
     expect(limit).toHaveBeenCalledWith(TERMINAL_HISTORY_LIMIT);
-    expect(TERMINAL_HISTORY_LIMIT).toBe(10);
+    expect(TERMINAL_HISTORY_LIMIT).toBe(50);
+    expect(TERMINAL_HISTORY_LIMIT).toBeGreaterThanOrEqual(TERMINAL_PREVIEW_LIMIT);
+  });
+
+  test('switching from preview to history keeps a full page instead of shrinking it', async () => {
+    const page = Array.from({ length: TERMINAL_PREVIEW_LIMIT }, (_, i) => makeDoc(`t${i}`));
+    docs.mockImplementation(async (request: unknown) => {
+      const text = JSON.stringify(request);
+      return (text.includes('ended') ? snap(page) : snap()) as never;
+    });
+    const repo = makeRepo();
+    await repo.loadEventsStatic({ terminalMode: 'preview' });
+    expect(repo.getSnapshot().terminal).toHaveLength(TERMINAL_PREVIEW_LIMIT);
+    await repo.ensureTerminalEventsLoaded({ mode: 'history', force: true });
+    expect(repo.getSnapshot().terminal).toHaveLength(TERMINAL_PREVIEW_LIMIT);
+    expect(repo.getSnapshot().terminalAllLoaded).toBe(false);
+  });
+
+  test('snapshot reports when terminal pages are exhausted', async () => {
+    docs.mockImplementation(async (request: unknown) => {
+      const text = JSON.stringify(request);
+      return (text.includes('ended') ? snap([makeDoc('only')]) : snap()) as never;
+    });
+    const repo = makeRepo();
+    expect(repo.getSnapshot().terminalAllLoaded).toBe(false);
+    await repo.loadEventsStatic({ terminalMode: 'history' });
+    expect(repo.getSnapshot().terminalAllLoaded).toBe(true);
   });
 
   test('ordered query failure falls back without failing a successful load', async () => {
@@ -163,7 +190,8 @@ describe('terminal preview and history', () => {
     const repo = makeRepo();
     await expect(repo.loadEventsStatic({ terminalMode: 'history' }))
       .resolves.toEqual(['events']);
-    expect(vi.mocked(limit).mock.calls.at(-1)?.[0]).toBe(10);
+    // 測試同步更新：備援查詢頁大小＝min(歷史頁大小, 100)。
+    expect(vi.mocked(limit).mock.calls.at(-1)?.[0]).toBe(Math.min(TERMINAL_HISTORY_LIMIT, 100));
     expect(repo.getSnapshot().terminal[0]?._docId).toBe('fallback');
   });
 

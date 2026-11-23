@@ -30,10 +30,9 @@ import {
   runEventLifecycleAction,
   type LifecycleKind,
 } from '../components/legacy/event-lifecycle-action';
-import {
-  MyActivityDetailModal,
-  MyActivityStatsModal,
-} from '../components/legacy/MyActivityModals';
+import { MyActivityDetailModal } from '../components/legacy/MyActivityModals';
+import { RangeStatsModal } from '../components/legacy/RangeStatsModal';
+import { NO_SHOW_FEATURE_ENABLED } from '../data/noshow-roster';
 import { operateContextFromViewer } from '../data/event-create-context';
 import { getEventsRepo } from '../data/events-repo';
 import {
@@ -170,6 +169,8 @@ export default function MyActivitiesPage(): JSX.Element {
   const syncFromRepo = useCallback(() => {
     const snap = getEventsRepo().getSnapshot();
     setEvents([...snap.active, ...snap.terminal]);
+    // 以 Repo 的「已全部載完」為準，不必多按一次拿到 0 筆才收起「查看更多」。
+    setHasRemoteMore(snap.terminalAllLoaded !== true);
   }, []);
 
   const loadAll = useCallback(
@@ -309,7 +310,8 @@ export default function MyActivitiesPage(): JSX.Element {
 
   const hiddenLocalCount = Math.max(0, sortedFiltered.length - visibleEvents.length);
   const remoteMoreAvailable = isHistoryTab(activeTab) && hasRemoteMore;
-  const showLoadMore = hiddenLocalCount > 0 || (sortedFiltered.length > 0 && remoteMoreAvailable);
+  // 照 A：清單空也要能往後翻。非管理員是從全站歷史頁裡篩自己的活動，第一頁可能一筆都沒有。
+  const showLoadMore = hiddenLocalCount > 0 || remoteMoreAvailable;
 
   function handleCreatorInput(value: string): void {
     setCreatorQuery(value);
@@ -457,6 +459,23 @@ export default function MyActivitiesPage(): JSX.Element {
     remoteMoreAvailable && hiddenLocalCount <= 0
       ? `${sortedFiltered.length}+`
       : String(sortedFiltered.length);
+  const loadMoreRow = showLoadMore && (
+    <div class="my-activity-load-more">
+      <div class="my-activity-load-more-note">
+        {`已顯示 ${displayedCount} / ${totalLabel}`}
+      </div>
+      <button
+        type="button"
+        class="outline-btn my-activity-load-more-btn"
+        disabled={loading || loadingMore}
+        onClick={() => {
+          void handleLoadMore();
+        }}
+      >
+        {loadingMore ? '讀取中...' : '查看更多'}
+      </button>
+    </div>
+  );
 
   return (
     <div class="legacy-ui">
@@ -599,9 +618,12 @@ export default function MyActivitiesPage(): JSX.Element {
               </button>
             </div>
           ) : sortedFiltered.length === 0 ? (
-            <div style="padding:1rem;font-size:.82rem;color:var(--text-muted);text-align:center">
-              此分類沒有活動
-            </div>
+            <>
+              <div style="padding:1rem;font-size:.82rem;color:var(--text-muted);text-align:center">
+                此分類沒有活動
+              </div>
+              {loadMoreRow}
+            </>
           ) : (
             <>
               {visibleEvents.map((e, idx) => {
@@ -629,23 +651,7 @@ export default function MyActivitiesPage(): JSX.Element {
                 );
               })}
 
-              {showLoadMore && (
-                <div class="my-activity-load-more">
-                  <div class="my-activity-load-more-note">
-                    {`已顯示 ${displayedCount} / ${totalLabel}`}
-                  </div>
-                  <button
-                    type="button"
-                    class="outline-btn my-activity-load-more-btn"
-                    disabled={loading || loadingMore}
-                    onClick={() => {
-                      void handleLoadMore();
-                    }}
-                  >
-                    {loadingMore ? '讀取中...' : '查看更多'}
-                  </button>
-                </div>
-              )}
+              {loadMoreRow}
             </>
           )}
         </SwipeableActivityTabs>
@@ -659,11 +665,12 @@ export default function MyActivitiesPage(): JSX.Element {
         />
 
         {/* 活動統計彈窗 */}
-        <MyActivityStatsModal
+        {/* 2026-11-23 站長核可：區間統計取代原本只算狀態場數的統計彈窗。 */}
+        <RangeStatsModal
           open={statsModalOpen}
-          isAdmin={isAdmin}
-          events={allManageableEvents}
-          nowMs={nowMs}
+          viewer={viewer}
+          manageAll={isAdmin}
+          canViewNoShow={viewer.hasPermission('activity.view_noshow') && NO_SHOW_FEATURE_ENABLED}
           onClose={() => setStatsModalOpen(false)}
         />
 
