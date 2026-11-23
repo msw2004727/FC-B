@@ -73,7 +73,7 @@ export const CE_INFO: Readonly<Record<CeInfoKey, { title: string; body: string }
   // B 新增（非 A 原文；FC 計畫書 late-cancel-warning-plan §4）。
   lateCancel: {
     title: "臨時取消時限",
-    body: "活動開始前這段時間內取消正取報名，會記一次臨時取消，名字標籤變黑底，7 天或出席 3 場後恢復；90 天內第 3 次變紅底，由管理員解除。<p style=\"margin:.3rem 0 0;color:var(--text-muted);font-size:.8rem\">選「不設定」則不記。</p>",
+    body: "活動開始前這段時間內取消正取報名，會記一次臨時取消，名字標籤變黑底，<span class=\"lc-unit\">7 天</span>或出席 <span class=\"lc-unit\">3 場</span>後恢復；<span class=\"lc-unit\">90 天</span>內第 3 次變紅底，由管理員解除。<p style=\"margin:.3rem 0 0;color:var(--text-muted);font-size:.8rem\">選「不設定」則不記。</p>",
   },
   age: {
     title: "年齡限制",

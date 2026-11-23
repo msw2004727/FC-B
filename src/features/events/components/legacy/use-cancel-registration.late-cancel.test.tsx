@@ -75,6 +75,8 @@ describe('useCancelRegistration：臨時取消確認框（預覽 ②③④）', 
     expect(box.querySelector('.app-confirm-warning')?.textContent).toBe('距開始不到 2 小時');
     expect(box.querySelector('.app-confirm-msg')?.textContent)
       .toBe('現在取消會記一次臨時取消名字標籤 7 天或出席 3 場後恢復\n同一場只記一次\n名額會讓給候補第 1 位');
+    // 站長 11-23：天數／場數用特殊色（.lc-unit），數字與單位在同一個標記裡。
+    expect([...box.querySelectorAll('.lc-unit')].map(el => el.textContent)).toEqual(['7 天', '3 場']);
     expect([...box.querySelectorAll('button')].map(b => b.textContent)).toEqual(['保留名額', '仍要取消']);
     expect(appConfirmMock).not.toHaveBeenCalled();
     fireEvent.click(box.querySelectorAll('button')[1] as HTMLButtonElement);

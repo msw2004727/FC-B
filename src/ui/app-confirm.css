@@ -104,3 +104,11 @@
   background: var(--danger);
   color: #fff;
 }
+
+/* 臨時取消：天數／場數用特殊色（站長 11-23「依深淺主題用特殊色提醒」）。--info：淺色 #2563eb、深色 #60a5fa，
+   與紅色警示列分開，兩種底色都達 AA；同色先例 .evd-reg-release。全域載入，取消框與活動表單說明共用。 */
+.lc-unit {
+  color: var(--info);
+  font-weight: 600;
+  white-space: nowrap;
+}
