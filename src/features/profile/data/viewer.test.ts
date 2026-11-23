@@ -441,6 +441,42 @@ describe('loadViewer', () => {
     const queries = vi.mocked(getDocs).mock.calls.map(([query]) => query as unknown as QueryLike);
     expect(queries.filter((q) => q._collection === 'adminUsers')).toHaveLength(0);
   });
+
+  // 顧問 §3.612：主辦賽事開關的 disabledCodes，四種來源狀態。user 看能力文件、其他角色看角色文件。
+  it.each([
+    ['讀取失敗 → null', 'throw', null],
+    ['文件不存在 → 不設', null, undefined],
+    ['欄位不存在 → 不設', { permissions: [] }, undefined],
+    ['陣列 → 只留字串', { disabledCodes: ['competition.host', 3, null, 'x'] }, ['competition.host', 'x']],
+    ['壞值 → null', { disabledCodes: 'competition.host' }, null],
+  ] as const)('disabledCodes（coach 讀角色文件）：%s', async (_name, roleDoc, expected) => {
+    mockFirestore({
+      users: { role: 'coach' },
+      rolePermissions: roleDoc as DocVal,
+      userPermissionGrants: null,
+      roleActivityCapabilities: { disabledCodes: ['competition.host'] },
+    });
+    const v = await loadViewer('uid-coach');
+    expect(v.permissionSources?.disabledCodes).toEqual(expected);
+    expect(v.permissionSources ? 'disabledCodes' in v.permissionSources : false).toBe(expected !== undefined);
+  });
+
+  it.each([
+    ['讀取失敗 → null', 'throw', null],
+    ['文件不存在 → 不設', null, undefined],
+    ['陣列 → 只留字串', { disabledCodes: ['user.competition.host', 9] }, ['user.competition.host']],
+    ['壞值 → null', { disabledCodes: { a: 1 } }, null],
+  ] as const)('disabledCodes（user 讀能力文件）：%s', async (_name, capDoc, expected) => {
+    mockFirestore({
+      users: { role: 'user' },
+      rolePermissions: { disabledCodes: ['competition.host'] },
+      userPermissionGrants: null,
+      roleActivityCapabilities: capDoc as DocVal,
+    });
+    const v = await loadViewer('uid-user');
+    expect(v.permissionSources?.disabledCodes).toEqual(expected);
+    expect(v.permissionSources ? 'disabledCodes' in v.permissionSources : false).toBe(expected !== undefined);
+  });
 });
 
 describe('T-074 viewer 職員清單（重用既有查詢）', () => {

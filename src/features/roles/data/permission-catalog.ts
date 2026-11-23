@@ -26,16 +26,88 @@ export const BUILTIN_CATALOG: readonly CatalogCategory[] = [
   {"cat":"個人資料功能","minRole":null,"items":[{"code":"profile.secondary_identity","name":"第二身份"}]},
 ];
 
+/**
+ * 一般用戶的開關（前台活動能力 roleActivityCapabilities/user）。名稱照站長 11-23 選定的方案乙預覽
+ * （permissions-health-preview-2026-11-23.html）；取代原「基本建立活動」等舊名，並補上原本漏列的 team_create 與新增的站內賽事主辦。
+ */
 export const CAPABILITY_ITEMS: readonly CatalogItem[] = [
-  {"code":"user.activity.basic_create","name":"基本建立活動"},
+  {"code":"user.activity.basic_create","name":"建立活動"},
   {"code":"user.activity.external_create","name":"建立外部活動連結"},
-  {"code":"user.activity.own_manage_entry","name":"自己活動管理入口"},
-  {"code":"user.activity.own_edit_basic","name":"編輯自己活動基本資料"},
-  {"code":"user.activity.own_cancel","name":"取消自己活動"},
-  {"code":"user.activity.site_operate","name":"現場簽到與候補操作"},
+  {"code":"user.activity.own_manage_entry","name":"自己活動的管理入口"},
+  {"code":"user.activity.own_edit_basic","name":"編輯自己的活動"},
+  {"code":"user.activity.own_cancel","name":"取消自己的活動"},
+  {"code":"user.activity.site_operate","name":"現場簽到與候補"},
   {"code":"user.activity.delegate_assign","name":"設定委託人"},
-  {"code":"user.activity.addons_use","name":"使用進階功能（加值服務）"},
+  {"code":"user.activity.addons_use","name":"進階欄位（加值服務）"},
+  {"code":"user.activity.team_create","name":"建立俱樂部"},
+  {"code":"user.competition.host","name":"以個人身分主辦賽事"},
 ];
+
+/** 一般用戶頁的分組（只是顯示；資料仍在同一份 capabilities 陣列）。 */
+export const CAPABILITY_GROUPS: readonly { key: 'activity' | 'club' | 'competition'; codes: readonly string[] }[] = [
+  { key: 'activity', codes: CAPABILITY_ITEMS.slice(0, 8).map(item => item.code) },
+  { key: 'club', codes: ['user.activity.team_create'] },
+  { key: 'competition', codes: ['user.competition.host'] },
+];
+
+/** 教練以上的「站內賽事」組；不在 BUILTIN_CATALOG 裡，避免影響 aBuiltinDefaults（每組第一個碼當入口預設）。 */
+export const COMPETITION_CATEGORY: CatalogCategory = {
+  cat: '站內賽事', minRole: null, items: [{ code: 'competition.host', name: '主辦賽事（個人／俱樂部）' }],
+};
+
+/**
+ * 健康檢查 2026-11-23 §2.2：新站 src 沒有任何地方判斷的碼（舊站或後端可能仍用），權限頁標「新站未使用」。
+ * 用 grep 核對：排除測試、locales、dev 與權限目錄本身後沒有引用。新站開始判斷某碼時要從這裡拿掉。
+ */
+export const UNUSED_IN_B_CODES: ReadonlySet<string> = new Set([
+  'event.publish', 'event.view_registrations', 'team.manage_self', 'admin.games.entry', 'admin.shop.entry',
+  'admin.exp.entry', 'admin.auto_exp.entry', 'admin.achievements.entry', 'admin.logs.error_delete',
+  'admin.repair.data_sync',
+]);
+/**
+ * 健康檢查 2026-11-23 P2-1、P2-4、P2-7～P2-9：後端（Rules／Callable）對這些角色層級不看開關、一律放行。
+ * 權限頁標「後端固定放行」；開關照常可切，因為它仍控制新站按鈕（站長 11-23 按鈕選 (a)，取代預覽的「此角色固定擁有、不能切」）。
+ * minLevel 對照 BASE_ROLE_LEVEL_MAP：coach＝1、admin＝4。
+ */
+export const BACKEND_FIXED_GRANTS: readonly { code: string; minLevel: number }[] = [
+  { code: 'activity.manage.entry', minLevel: 1 }, { code: 'event.create', minLevel: 1 },
+  ...['event.delete', 'admin.notif.toggle', 'admin.banners.entry', 'admin.announcements.entry', 'admin.achievements.entry',
+    'admin.themes.entry', 'admin.games.entry', 'admin.shop.entry', 'admin.dashboard.entry'].map(code => ({ code, minLevel: 4 })),
+];
+/** 新站沒有對應功能的一般用戶開關（新站沒有建立外部活動的入口）。 */
+export const NO_FEATURE_IN_B_CAPABILITIES: ReadonlySet<string> = new Set(['user.activity.external_create']);
+
+/** 舊站賽事（友誼賽）專用、新站沒用到的 6 個碼：收進「舊站專用」組。碼不刪，舊站與個別授權資料照舊。 */
+export const LEGACY_ONLY_CODES: ReadonlySet<string> = new Set([
+  'admin.tournaments.entry', 'admin.tournaments.create', 'admin.tournaments.review',
+  'admin.tournaments.end', 'admin.tournaments.reopen', 'admin.tournaments.delete',
+]);
+const TOURNAMENT_CATEGORY = '賽事管理';
+export const EXTERNAL_CARDS_CATEGORY = '外部賽事卡片';
+export const LEGACY_CATEGORY = '舊站專用';
+const DISPLAY_NAMES: Readonly<Record<string, string>> = { 'admin.tournaments.manage_all': '新增 / 編輯 / 刪除卡片' };
+
+/**
+ * 權限頁的顯示分組（只改畫面，不改 mergePermissionCatalog 與預設權限）：
+ * 「賽事管理」改名「外部賽事卡片」、只留新站有判斷的 manage_all；舊站專用 6 碼移到最後一組；
+ * 「站內賽事」插在第一組之後。
+ */
+export function displayPermissionCatalog(remote: readonly CatalogCategory[] = []): CatalogCategory[] {
+  const legacy: CatalogItem[] = [];
+  const result: CatalogCategory[] = [];
+  for (const category of mergePermissionCatalog(remote)) {
+    const kept = category.items.filter(item => {
+      if (!LEGACY_ONLY_CODES.has(item.code)) return true;
+      legacy.push(item);
+      return false;
+    }).map(item => DISPLAY_NAMES[item.code] ? { ...item, name: DISPLAY_NAMES[item.code] as string } : item);
+    if (!kept.length) continue;
+    result.push(category.cat === TOURNAMENT_CATEGORY ? { ...category, cat: EXTERNAL_CARDS_CATEGORY, items: kept } : { ...category, items: kept });
+    if (result.length === 1) result.push({ ...COMPETITION_CATEGORY, items: [...COMPETITION_CATEGORY.items] });
+  }
+  if (legacy.length) result.push({ cat: LEGACY_CATEGORY, minRole: null, items: legacy });
+  return result;
+}
 
 /** A getMergedPermissionCatalog：內建優先，遠端只補未出現的啟用碼，同分類合併。 */
 export function mergePermissionCatalog(remote: readonly CatalogCategory[] = []): CatalogCategory[] {
@@ -60,7 +132,8 @@ export function permissionName(code: string, remote: readonly CatalogCategory[] 
     const item = category.items.find(entry => entry.code === code);
     if (item) return code.endsWith('.entry') ? category.cat + '（入口）' : item.name;
   }
-  const cap = CAPABILITY_ITEMS.find(item => item.code === code);
+  const cap = CAPABILITY_ITEMS.find(item => item.code === code)
+    ?? COMPETITION_CATEGORY.items.find(item => item.code === code);
   if (cap) return cap.name;
   const normalized = normalizePermissionCode(code);
   if (normalized && normalized !== code) return permissionName(normalized, remote) + '（' + code + '）';

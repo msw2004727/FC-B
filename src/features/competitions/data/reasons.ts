@@ -120,6 +120,8 @@ export const CP_REASON_CODES = [
   'DIVISION_HAS_ENTRIES',
   'DIVISION_RULES_LOCKED',
   'DIVISION_BELOW_APPROVED',
+  // 主辦賽事開關關閉（host.ts createCompetition，顧問 §3.612）。文案與建賽頁 hostDisabled 同一句。
+  'HOST_DISABLED',
 ] as const;
 
 export type CpReasonCode = (typeof CP_REASON_CODES)[number];

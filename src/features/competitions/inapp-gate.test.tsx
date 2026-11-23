@@ -266,3 +266,33 @@ describe('角色一確定就判定，不等完整 viewer', () => {
     }
   });
 });
+
+// 顧問 §3.612：LiveBoundary 用 canHostCompetition(viewer) 組 actor.canHost。
+describe('主辦賽事開關接到站內清單', () => {
+  it('完整 viewer 的 disabledCodes 含 user 碼就沒有建立鈕；不含就有', async () => {
+    gateBox.isPublic = true;
+    const saved = viewerBox.current;
+    const sources = (disabledCodes: string[] | null) => ({ rolePermissions: null, userGrants: [], customRoles: [], disabledCodes });
+    viewerBox.current = { ...saved, permissionSources: sources(['user.competition.host']) } as typeof saved;
+    try {
+      const off = draw();
+      await waitFor(() => expect(repoBox.listPublic).toHaveBeenCalled());
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(screen.queryByRole('button', { name: '建立賽事' })).toBeNull();
+      off.unmount();
+
+      viewerBox.current = { ...saved, permissionSources: sources(null) } as typeof saved;
+      const failed = draw();
+      await waitFor(() => expect(repoBox.listPublic).toHaveBeenCalledTimes(2));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(screen.queryByRole('button', { name: '建立賽事' })).toBeNull();
+      failed.unmount();
+
+      viewerBox.current = { ...saved, permissionSources: sources(['competition.host']) } as typeof saved;
+      draw();
+      expect(await screen.findByRole('button', { name: '建立賽事' })).toBeTruthy();
+    } finally {
+      viewerBox.current = saved;
+    }
+  });
+});

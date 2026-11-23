@@ -16,9 +16,16 @@
     "inherent": "固有",
     "inherentHint": "固有権限は削除できません",
     "customReadonly": "カスタムロールは閲覧専用です",
-    "lockUser": "一般ユーザーには管理権限がありません。すべての管理スイッチはロックされています。",
     "lockSuper": "最高管理者はすべての権限を持ちます。スイッチはロックされています。",
-    "capabilities": "一般ユーザーの活動機能",
+    "userPermissions": "権限",
+    "unusedTag": "新サイト未使用",
+    "noFeatureTag": "新サイトに機能なし",
+    "turnedOff": "オフ",
+    "turnedOn": "オン",
+    "disabledCodesField": "オフにした既定オン権限",
+    "backendFixedTag": "サーバーで常に許可",
+    "legacyGroup": "旧サイト専用",
+    "group": {"activity": "アクティビティ", "club": "クラブ", "competition": "サイト内大会"},
     "empty": "条件に合う権限はありません。",
     "infoLabel": "説明",
     "understood": "閉じる",
@@ -137,6 +144,9 @@
     "user.activity.own_cancel": {"title":"取消自己活動","body":"開了之後，一般 user 可以把自己主辦的活動取消。這不是刪除活動，只是把活動狀態改成取消。"},
     "user.activity.site_operate": {"title":"現場簽到與候補操作","body":"開了之後，主辦人和委託人可以處理自己活動的現場簽到、掃碼、手動確認，以及候補遞補。委託人只能協助現場作業，不能取消活動或亂改活動設定。"},
     "user.activity.delegate_assign": {"title":"設定委託人","body":"開了之後，一般 user 主辦人可以找最多 3 位委託人幫忙管理現場。委託人主要是協助簽到、候補和現場操作。"},
-    "user.activity.addons_use": {"title":"使用進階功能（加值服務）","body":"預設建議關閉。關閉時，一般 user 不能開收費、俱樂部限定、性別限定、私密活動、分隊、社群連結、早鳥報名與 GPS 地圖座標功能。使用者如果嘗試開啟，系統會提示「如需更多功能請聯繫官方Line@」。"}
+    "user.activity.addons_use": {"title":"使用進階功能（加值服務）","body":"預設建議關閉。關閉時，一般 user 不能開收費、俱樂部限定、性別限定、私密活動、分隊、社群連結、早鳥報名與 GPS 地圖座標功能。使用者如果嘗試開啟，系統會提示「如需更多功能請聯繫官方Line@」。"},
+    "competition.host": {"title":"主辦賽事（個人／俱樂部）","body":"關掉後，這個角色不能建立新的站內賽事；已建立的賽事照常進行。俱樂部主辦另外要是該俱樂部的代表。個人主辦的名額上限不變（進行中 2 場、30 天內 3 場）。"},
+    "user.competition.host": {"title":"以個人身分主辦賽事","body":"關掉後，一般用戶不能建立新的站內賽事；已建立的賽事照常進行。名額上限不變（進行中 2 場、30 天內 3 場）。"},
+    "user.activity.team_create": {"title":"建立俱樂部","body":"開了之後，一般用戶可以自己建立俱樂部並成為擁有者。"}
   }
 }

@@ -211,6 +211,7 @@
   "remove": "移除",
   "backToRoster": "返回名單",
   "createNotOpen": "建立賽事尚未開放",
+  "hostDisabled": "你目前不能主辦賽事",
   "createLoginHint": "登入後才能建立賽事",
   "createLogin": "登入",
   "backToTournaments": "返回賽事列表",
@@ -591,7 +592,8 @@
     "COVER_URL_NOT_ALLOWED": "封面圖不合規定，請重新上傳",
     "DIVISION_HAS_ENTRIES": "已有報隊的組別不能刪除",
     "DIVISION_RULES_LOCKED": "已有隊伍報名，部分規則不能改",
-    "DIVISION_BELOW_APPROVED": "隊數不能少於已核准的隊伍"
+    "DIVISION_BELOW_APPROVED": "隊數不能少於已核准的隊伍",
+    "HOST_DISABLED": "你目前不能主辦賽事"
   },
   "cover": "封面圖",
   "coverUpload": "上傳封面",

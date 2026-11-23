@@ -360,7 +360,8 @@ function SectionBody({
   if (uidStale || (phase !== 'ready' && !showingSnap)) return null;
   if (!active) return null;
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
-  const showCreate = !!actor.uid && !actor.authPending;
+  // 主辦賽事開關關閉時不給建立鈕（canHost 省略＝可主辦）。
+  const showCreate = !!actor.uid && !actor.authPending && actor.canHost !== false;
   // 刪除鈕只給管理員以上（站長 11-22）；後端 deleteCompetition 對管理員一律放行（delete-access.ts）。快照畫面不給。
   const canDelete = !!actor.uid && !actor.authPending && !actor.rolePending && isCpAdmin(actor.role) && !showingSnap;
   const findDoc = (cid: string): CompetitionDoc | undefined =>

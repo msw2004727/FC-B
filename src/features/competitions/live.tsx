@@ -5,6 +5,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useSettledViewerRole, useViewer } from '@/features/profile/data/viewer';
 import { isViewerPermissionsLoaded } from '@/features/admin-users/data/viewer-ready';
+import { canHostCompetition } from '@/features/profile/data/default-on-codes';
 import type { CpClub } from './access';
 import { getCompetitionsRepo } from './data/cp-repo';
 import type { CpActor } from './env';
@@ -50,15 +51,19 @@ export function LiveBoundary({
   // 完整 viewer 若一直沒到，role 停在已確定的角色、其餘欄位維持最小值：刻意如此，比一直 pending 好（11-20 Opus 審 P3-3）。
   const settledRole = useSettledViewerRole(viewer.uid);
   const fullLoaded = !!viewer.uid && isViewerPermissionsLoaded(viewer);
+  const role = fullLoaded || settledRole === null ? viewer.role : settledRole;
   const actor: CpActor = {
     uid: viewer.uid,
     authPending: viewer.authPending === true,
     rolePending: !!viewer.uid && !fullLoaded && settledRole === null,
-    role: fullLoaded || settledRole === null ? viewer.role : settledRole,
+    role,
     displayName: viewer.displayName,
     repClubs,
     repClubsPending,
     memberClubIds: [...viewer.teamIds],
+    // ASSUMPTION: 完整 viewer 還沒到時，最小 viewer 的 permissionSources 沒有 disabledCodes，照真值表算「開」；
+    // 完整 viewer 到了才依文件判定（被關的人可能先短暫看到入口，伺服器仍會擋）。不另加「權限讀取中」狀態。
+    canHost: canHostCompetition({ uid: viewer.uid, role, permissionSources: viewer.permissionSources }),
   };
 
   return <>{children(actor, repo)}</>;

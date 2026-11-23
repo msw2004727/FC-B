@@ -1102,7 +1102,9 @@ function CreateGate({
   const { route } = useLocation();
   const access = useCreateAccess(actor, repo);
   const [loginBusy, setLoginBusy] = useState(false);
-  if (access === 'ok') return children();
+  // 主辦賽事開關關閉（顧問 §3.612）：角色定案後才判定，不顯示精靈。只在建立模式（編輯走 EditGate，不經這裡）。
+  const hostOff = access === 'ok' && actor.canHost === false && !actor.rolePending;
+  if (access === 'ok' && !hostOff) return children();
   if (access === 'pending') return <div class="cps-root" data-cp-create="pending"><PageSpinner /></div>;
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
 
@@ -1121,9 +1123,10 @@ function CreateGate({
   return (
     <CpFrame title={ct('createTitle')}>
       <CpGate
-        icon={access === 'denied' ? <LockIcon /> : <InfoIcon />}
-        text={access === 'login' ? ct('createLoginHint') : access === 'error' ? ct('loadFailed') : ct('createNotOpen')}
-        load={access}
+        icon={access === 'denied' || hostOff ? <LockIcon /> : <InfoIcon />}
+        text={hostOff ? ct('hostDisabled')
+          : access === 'login' ? ct('createLoginHint') : access === 'error' ? ct('loadFailed') : ct('createNotOpen')}
+        load={hostOff ? 'host-disabled' : access}
         alert={access !== 'login'}
       >
         {back}

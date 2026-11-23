@@ -218,6 +218,37 @@ describe('T-079a 寫入層授權核心', () => {
       expect(warn).toHaveBeenCalledOnce();
     } finally { warn.mockRestore(); }
   });
+  it('主辦賽事開關（coach）：交易只 merge disabledCodes，permissions 不動，日誌寫關閉', async () => {
+    const data = rolesFixture();
+    const preview = prepareRoleChange(data, 'coach', { kind: 'toggle', code: 'competition.host' }, 'test-actor');
+    current = structuredClone(preview.before);
+    const result = await saveRolePermissions(data, preview, preview.fingerprint);
+    expect(mockSet).toHaveBeenCalledExactlyOnceWith(
+      { collection: 'rolePermissions', id: 'coach' }, { disabledCodes: ['competition.host'] }, { merge: true },
+    );
+    expect(result.document['permissions']).toEqual(['event.create', 'event.edit_own']);
+    expect(mockLog.mock.calls[0]?.[0].content).toContain('關閉：');
+  });
+  it('主辦賽事開關（user）：交易只 merge disabledCodes／updatedAt／updatedBy，capabilities 不動', async () => {
+    const data = rolesFixture();
+    const preview = prepareRoleChange(data, 'user', { kind: 'capability', code: 'user.competition.host' }, 'test-actor');
+    current = structuredClone(preview.before);
+    const result = await saveRoleActivityCapabilities(data, preview, preview.fingerprint);
+    expect(mockSet).toHaveBeenCalledExactlyOnceWith(
+      { collection: 'roleActivityCapabilities', id: 'user' },
+      { disabledCodes: ['user.competition.host'], updatedAt: stamp, updatedBy: 'test-actor' }, { merge: true },
+    );
+    expect(result.document['capabilities']).toEqual(['user.activity.basic_create']);
+  });
+  it('其他動作 merge 後仍保留原 disabledCodes', async () => {
+    const data = rolesFixture();
+    data.rolePermissions['coach'] = { ...data.rolePermissions['coach'], disabledCodes: ['competition.host'] };
+    const preview = prepareRoleChange(data, 'coach', { kind: 'toggle', code: 'event.publish' }, 'test-actor');
+    current = structuredClone(preview.before);
+    const result = await saveRolePermissions(data, preview, preview.fingerprint);
+    expect(Object.keys(mockSet.mock.calls[0]?.[1] as object)).toEqual(['permissions']);
+    expect(result.document['disabledCodes']).toEqual(['competition.host']);
+  });
   it('已提交後重讀失敗不假報寫入失敗', async () => {
     const data = rolesFixture();
     const preview = prepareRoleChange(data, 'coach', { kind: 'toggle', code: 'event.publish' }, 'test-actor');
