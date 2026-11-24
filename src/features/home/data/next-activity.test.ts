@@ -60,7 +60,10 @@ import {
   registrationStatusMeta,
   loadNextActivityInputs,
   resolveNextActivity,
+  MANAGED_ACTIVE_EVENT_STATUSES,
 } from './next-activity';
+import { ACTIVE_EVENT_STATUSES, TERMINAL_EVENT_STATUSES } from '@/features/events/data/events-repo';
+import type { EventStatus } from '@/features/events/data/event-create';
 
 const NOW = Date.parse('2099-01-01T00:00:00+08:00'); // 2099-01-01
 
@@ -351,6 +354,11 @@ function runRegistrationQuery(store: StoreDoc[], constraints: FakeConstraint[]):
   return { docs: lim === undefined ? docs : docs.slice(0, lim) };
 }
 
+/** 補抓活動的 `in` 條件（documentId() in／id in）；管理查詢的 `status in` 不算。 */
+function isBackfillInWhere(c: FakeConstraint): boolean {
+  return c.kind === 'where' && c.op === 'in' && c.field !== 'status';
+}
+
 function isDocumentIdConstraintField(field: unknown): boolean {
   return typeof field === 'object' && field !== null && (field as { kind?: string }).kind === 'documentId';
 }
@@ -435,7 +443,7 @@ function installFirestore(store: StoreDoc[]): {
       probe.regSnapshotSizes.push(snap.docs.length);
       return Promise.resolve(snap) as never;
     }
-    const inWhere = constraints.find((c) => c.kind === 'where' && c.op === 'in');
+    const inWhere = constraints.find(isBackfillInWhere);
     if (base?.kind === 'collection' && inWhere) {
       const ids = inWhere.value as string[];
       const byDocId = typeof inWhere.field !== 'string';
@@ -626,7 +634,7 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
       if (base?.kind === 'collectionGroup') {
         return Promise.resolve(makeSnap([regDoc('r1', 'pub-1')])) as never;
       }
-      const inWhere = constraints.find((c) => c.op === 'in');
+      const inWhere = constraints.find(isBackfillInWhere);
       if (inWhere && typeof inWhere.field === 'string') {
         return Promise.resolve(makeSnap([
           makeEventSnap('doc-xyz', { id: 'pub-1', title: 'Public Id Match', date: '2099/01/02 09:00~11:00', status: 'open' }),
@@ -648,7 +656,7 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
       if (base?.kind === 'collectionGroup') {
         return Promise.resolve(makeSnap([regDoc('r1', 'evt-a')])) as never;
       }
-      const inWhere = constraints.find((c) => c.op === 'in');
+      const inWhere = constraints.find(isBackfillInWhere);
       if (inWhere && typeof inWhere.field === 'string') return Promise.reject(new Error('index missing')) as never;
       if (inWhere) {
         return Promise.resolve(makeSnap([
@@ -689,7 +697,7 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
     mockedGetDocs.mockImplementation(((q: unknown) => {
       const { base, constraints } = q as { base: { kind?: string }; constraints: FakeConstraint[] };
       if (base?.kind === 'collectionGroup') return Promise.resolve(makeSnap(registrations)) as never;
-      const inWhere = constraints.find((c) => c.kind === 'where' && c.op === 'in');
+      const inWhere = constraints.find(isBackfillInWhere);
       if (!inWhere) return Promise.resolve(makeSnap([])) as never;
       const field = typeof inWhere.field === 'string' ? 'id' : 'documentId';
       const ids = inWhere.value as string[];
@@ -793,7 +801,7 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
       if (base?.kind === 'collectionGroup') {
         return Promise.resolve(makeSnap([regDoc('r1', 'X'), regDoc('r2', 'Z')])) as never;
       }
-      const inWhere = constraints.find((c) => c.kind === 'where' && c.op === 'in');
+      const inWhere = constraints.find(isBackfillInWhere);
       if (!inWhere) return Promise.resolve(makeSnap([])) as never;
       if (typeof inWhere.field !== 'string') return Promise.reject(new Error('network')) as never; // documentId 那條整批失敗
       // id 欄位那條：X 對應到另一份文件 Y；Z 對應到 Z2
@@ -822,7 +830,7 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
       if (base?.kind === 'collectionGroup') {
         return Promise.resolve(makeSnap(ids.map((id, i) => regDoc(`r${i}`, id)))) as never;
       }
-      const inWhere = constraints.find((c) => c.kind === 'where' && c.op === 'in');
+      const inWhere = constraints.find(isBackfillInWhere);
       if (!inWhere) return Promise.resolve(makeSnap([])) as never;
       const batchIds = inWhere.value as string[];
       if (typeof inWhere.field !== 'string') {
@@ -871,7 +879,7 @@ describe('T-041 A4：報名與管理查詢並行、缺的活動一次 in 補抓'
     mockedGetDocs.mockImplementation(((q: unknown) => {
       const { base, constraints } = q as { base: { kind?: string }; constraints: FakeConstraint[] };
       if (base?.kind === 'collectionGroup') return Promise.resolve(makeSnap([regDoc('r1', 'X')])) as never;
-      const inWhere = constraints.find((c) => c.kind === 'where' && c.op === 'in');
+      const inWhere = constraints.find(isBackfillInWhere);
       if (inWhere && typeof inWhere.field === 'string') {
         return Promise.resolve(makeSnap([
           makeEventSnap('Y', { id: 'X', title: 'B', date: '2099/01/03 09:00~11:00', status: 'open' }),
@@ -940,7 +948,7 @@ describe('T-054c N1–N3：首頁台北活動時間', () => {
   });
 });
 
-// ── 管理活動：依文件 id 降冪取最新 80 場 ─────────────────
+// ── 管理活動：只取未結束狀態（不依文件 id 排序） ─────────────────
 
 const MANAGED_UID = 'U0000000000000000000000000000099';
 const MANAGED_ID_BASE_MS = 1_700_000_000_000;
@@ -985,6 +993,28 @@ function newestManagedIds(total: number, take: number): string[] {
   return ids;
 }
 
+/** 舊格式隨機 id（R-ID-008）：首字元 'z' 大於 'ce_'，依文件 id 降冪會排在最前。 */
+function legacyEndedManagedDoc(
+  index: number,
+  uid: string,
+  role: ManagedRoleKey,
+): { id: string; data: Record<string, unknown> } {
+  const id = `zt${String(index).padStart(3, '0')}Legacy`;
+  const data: Record<string, unknown> = { id, title: `Legacy ${index}`, date: '2026/03/01 09:00~11:00', status: 'ended' };
+  if (role === 'creator') data.creatorUid = uid;
+  if (role === 'owner') data.ownerUid = uid;
+  if (role === 'delegate') data.delegateUids = [uid];
+  return { id, data };
+}
+
+/** 新活動：index 5 最近；index 7 更近但已取消（查詢就排除）；index 0 已開始；其餘較晚。 */
+function freshSchedule(index: number): { date: string; status: string } {
+  if (index === 5) return { date: '2099/01/02 09:00~11:00', status: 'full' };
+  if (index === 7) return { date: '2099/01/01 10:00~12:00', status: 'cancelled' };
+  if (index === 0) return { date: '2000/01/01 09:00~11:00', status: 'open' };
+  return { date: `2099/02/${String(10 + index).padStart(2, '0')} 09:00~11:00`, status: index % 2 ? 'upcoming' : 'open' };
+}
+
 /** 奇數索引在前、偶數在後，避免插入順序碰巧等於文件 id 升冪或降冪。 */
 function oddThenEven<T>(items: readonly T[]): T[] {
   return [
@@ -998,6 +1028,7 @@ interface ManagedQueryProbe {
   op: string;
   ids: string[];
   orderDir: string | null;
+  statusIn: unknown;
   limit: number | undefined;
 }
 
@@ -1018,6 +1049,7 @@ function installManagedEventStore(
         op: filter.op ?? '',
         ids: snap.docs.map((doc) => doc.id),
         orderDir: order && isDocumentIdConstraintField(order.field) ? (order.dir ?? 'asc') : null,
+        statusIn: constraints.find((c) => c.kind === 'where' && c.field === 'status' && c.op === 'in')?.value ?? null,
         limit: constraints.find((c) => c.kind === 'limit')?.n,
       });
     }
@@ -1026,7 +1058,7 @@ function installManagedEventStore(
   return seen;
 }
 
-describe('管理活動查詢依文件 id 降冪，才抓得到最新的未開始活動', () => {
+describe('管理活動查詢只取未結束狀態，舊格式 id 的已結束場次再多也擠不掉未來場次', () => {
   beforeEach(() => vi.clearAllMocks());
 
   test('假 Firestore 先依文件 id 排序再 limit；沒有 orderBy 是升冪，orderBy(documentId, desc) 是降冪', () => {
@@ -1056,71 +1088,51 @@ describe('管理活動查詢依文件 id 降冪，才抓得到最新的未開始
   test.each([
     { role: 'creator' as const, field: 'creatorUid', op: '==' },
     { role: 'owner' as const, field: 'ownerUid', op: '==' },
-  ])('$role：100 場同一人、文件 id 依建立時間遞增，選到最近的未開始活動', async ({ role, field, op }) => {
-    const total = 100;
-    const events = oddThenEven(Array.from({ length: total }, (_, index) => (
-      managedEventDoc(index, MANAGED_UID, role, managedSchedule(index))
-    )));
+    { role: 'delegate' as const, field: 'delegateUids', op: 'array-contains' },
+  ])('$role：100 場已結束的舊格式 id（首字元大於 ce_）＋ 10 場新活動，仍選到最近的未開始活動', async ({ role, field, op }) => {
+    const legacy = Array.from({ length: 100 }, (_, index) => legacyEndedManagedDoc(index, MANAGED_UID, role));
+    const fresh = Array.from({ length: 10 }, (_, index) => managedEventDoc(index, MANAGED_UID, role, freshSchedule(index)));
+    const events = oddThenEven([...legacy, ...fresh]);
+
+    // 回歸：舊寫法（orderBy(documentId, desc) ＋ limit 80）視窗被舊 id 佔滿，一場新活動都拿不到。
+    const oldShape = query(
+      collection({} as never, 'events'),
+      where(field, op as never, MANAGED_UID),
+      orderBy(documentId(), 'desc'),
+      limit(EVENT_QUERY_LIMIT),
+    ) as unknown as { constraints: FakeConstraint[] };
+    expect(runEventCollectionQuery(events, oldShape.constraints).docs.some((doc) => doc.id.startsWith('ce_'))).toBe(false);
+    vi.clearAllMocks();
+
     const seen = installManagedEventStore(events);
     const warn = vi.fn();
-
     const result = await resolveNextActivity({ ...deps(warn), now: () => NOW }, MANAGED_UID);
 
     const mine = seen.find((item) => item.field === field);
     expect(mine?.op).toBe(op);
-    // 沒有 orderBy 時假資料層改回文件 id 升冪，這裡會拿到最早的 80 場，斷言失敗。
-    expect(mine?.ids).toEqual(newestManagedIds(total, EVENT_QUERY_LIMIT));
-    expect(mine?.ids).not.toContain(managedEventDocId(0));
-    expect(result?.event.id).toBe(managedEventDocId(92));
-    expect(result?.managedRole).toBe('owner');
-    expect(seen.map((item) => ({
-      field: item.field,
-      op: item.op,
-      orderDir: item.orderDir,
-      limit: item.limit,
-    }))).toEqual([
-      { field: 'creatorUid', op: '==', orderDir: 'desc', limit: EVENT_QUERY_LIMIT },
-      { field: 'ownerUid', op: '==', orderDir: 'desc', limit: EVENT_QUERY_LIMIT },
-      { field: 'delegateUids', op: 'array-contains', orderDir: null, limit: EVENT_QUERY_LIMIT },
-    ]);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]?.[0])).toContain(`${role} query hit the limit`);
-    expect(warn.mock.calls.flat().map(String).join(' ')).not.toContain(MANAGED_UID);
+    expect(mine?.ids).toHaveLength(9); // 10 場新活動扣掉 cancelled 那場
+    expect(mine?.ids.every((id) => id.startsWith('ce_'))).toBe(true);
+    expect(result?.event.id).toBe(managedEventDocId(5));
+    expect(result?.managedRole).toBe(role === 'delegate' ? 'delegate' : 'owner');
+    expect(warn).not.toHaveBeenCalled();
     expect(mockedGetDocs).toHaveBeenCalledTimes(4);
   });
 
-  test('delegate：100 場同一人、查詢不帶 orderBy，假 Firestore 依文件 id 升冪 limit', async () => {
-    const total = 100;
-    const events = oddThenEven(Array.from({ length: total }, (_, index) => (
-      managedEventDoc(index, MANAGED_UID, 'delegate', managedSchedule(index))
-    )));
-    const seen = installManagedEventStore(events);
-    const warn = vi.fn();
-
-    await resolveNextActivity({ ...deps(warn), now: () => NOW }, MANAGED_UID);
-
-    const mine = seen.find((item) => item.field === 'delegateUids');
-    expect(mine?.op).toBe('array-contains');
-    expect(mine?.orderDir).toBeNull();
-    // 假 Firestore 沒有 orderBy 時依文件 id 升冪，limit 留下最早的 80 場。
-    expect(mine?.ids).toEqual(
-      Array.from({ length: EVENT_QUERY_LIMIT }, (_, index) => managedEventDocId(index)),
-    );
-    expect(mine?.limit).toBe(EVENT_QUERY_LIMIT);
+  test('查詢形狀：三條都帶 status in MANAGED_ACTIVE_EVENT_STATUSES、不帶 orderBy、limit 80', async () => {
+    const seen = installManagedEventStore([]);
+    await loadNextActivityInputs(deps(vi.fn()), MANAGED_UID);
     expect(seen.map((item) => ({
       field: item.field,
       op: item.op,
       orderDir: item.orderDir,
+      statusIn: item.statusIn,
       limit: item.limit,
     }))).toEqual([
-      { field: 'creatorUid', op: '==', orderDir: 'desc', limit: EVENT_QUERY_LIMIT },
-      { field: 'ownerUid', op: '==', orderDir: 'desc', limit: EVENT_QUERY_LIMIT },
-      { field: 'delegateUids', op: 'array-contains', orderDir: null, limit: EVENT_QUERY_LIMIT },
+      { field: 'creatorUid', op: '==', orderDir: null, statusIn: [...MANAGED_ACTIVE_EVENT_STATUSES], limit: EVENT_QUERY_LIMIT },
+      { field: 'ownerUid', op: '==', orderDir: null, statusIn: [...MANAGED_ACTIVE_EVENT_STATUSES], limit: EVENT_QUERY_LIMIT },
+      { field: 'delegateUids', op: 'array-contains', orderDir: null, statusIn: [...MANAGED_ACTIVE_EVENT_STATUSES], limit: EVENT_QUERY_LIMIT },
     ]);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]?.[0])).toContain('delegate query hit the limit');
-    expect(warn.mock.calls.flat().map(String).join(' ')).not.toContain(MANAGED_UID);
-    expect(mockedGetDocs).toHaveBeenCalledTimes(4);
+    expect(vi.mocked(orderBy)).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -1142,5 +1154,33 @@ describe('管理活動查詢依文件 id 降冪，才抓得到最新的未開始
       expect(warn.mock.calls.some(([msg]) => String(msg).includes(`${label} query hit the limit`))).toBe(true);
     }
     expect(warn.mock.calls.flat().map(String).join(' ')).not.toContain(MANAGED_UID);
+  });
+});
+
+describe('MANAGED_ACTIVE_EVENT_STATUSES 契約', () => {
+  // 窮舉 EventStatus：新增狀態值時這裡編譯就紅，逼著決定它算未結束還是終止。
+  const ALL_EVENT_STATUSES: Record<EventStatus, true> = {
+    upcoming: true,
+    open: true,
+    full: true,
+    ended: true,
+    cancelled: true,
+  };
+
+  test('包含 events-repo 的 ACTIVE_EVENT_STATUSES', () => {
+    for (const status of ACTIVE_EVENT_STATUSES) expect(MANAGED_ACTIVE_EVENT_STATUSES).toContain(status);
+  });
+
+  test('與終止狀態不相交', () => {
+    for (const status of TERMINAL_EVENT_STATUSES) expect(MANAGED_ACTIVE_EVENT_STATUSES).not.toContain(status);
+  });
+
+  test('與終止狀態的聯集涵蓋 EventStatus 每個值', () => {
+    const union = new Set<string>([...MANAGED_ACTIVE_EVENT_STATUSES, ...TERMINAL_EVENT_STATUSES]);
+    for (const status of Object.keys(ALL_EVENT_STATUSES)) expect(union.has(status)).toBe(true);
+  });
+
+  test('Firestore in 上限 30 以內', () => {
+    expect(MANAGED_ACTIVE_EVENT_STATUSES.length).toBeLessThanOrEqual(30);
   });
 });

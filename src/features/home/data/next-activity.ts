@@ -371,6 +371,16 @@ async function fetchMissingEvents(
 }
 
 /**
+ * 首頁主辦查詢（creator／owner／delegate）只取還沒結束的狀態，取代原本 `orderBy(documentId(),'desc')`：
+ * 舊格式文件 id（R-ID-008）首字元大於 `ce_`，降冪會排在最前，主辦場次多時把未來場次擠出 limit（2026-11-24）。
+ * 與上方報名查詢、events-repo 的 active 查詢同一做法；`creatorUid ==`／`ownerUid ==`／`delegateUids array-contains`
+ * 加 `status in` 靠單欄索引合併即可執行，不需複合索引。
+ * `open`／`full`／`upcoming` 對應 events-repo 的 ACTIVE_EVENT_STATUSES；`closed`／`postponed` 無現行寫入點、防禦用。
+ * 不從 events-repo 匯入：它靜態匯入 Firestore SDK，會把 SDK 拉進首頁。新增未結束狀態時要同步本清單（契約測試會擋）。
+ */
+export const MANAGED_ACTIVE_EVENT_STATUSES: readonly string[] = ['open', 'full', 'upcoming', 'closed', 'postponed'];
+
+/**
  * 從 Firestore 讀取「下一場活動」所需的所有輸入。
  * 注意：collectionGroup('registrations') 的結果必須先過 filterSubcollectionDocs（R-REG-014）。
  *
@@ -388,7 +398,7 @@ export async function loadNextActivityInputs(
   const getFB = deps.getFirebase ?? defaultGetFirebase;
   const logger: NextActivityLogger = deps.logger ?? console;
   const [{ db }, sdk] = await Promise.all([getFB(), loadFirestoreSdk()]);
-  const { collection, collectionGroup, documentId, getDocs, limit, orderBy, query, where } = sdk;
+  const { collection, collectionGroup, getDocs, limit, query, where } = sdk;
 
   // 1a) 使用者報名（collectionGroup；R-REG-014 過濾 legacy root）
   const registrationsPromise = (async (): Promise<RegistrationDoc[]> => {
@@ -416,11 +426,8 @@ export async function loadNextActivityInputs(
     return registrations;
   })();
 
-  // 1b) 使用者管理的活動（creator／owner／delegate）。
-  // 新活動文件 id 是 ce_<建立毫秒>_…，降冪才是「最新建立的在前」。
-  // 沒有 orderBy 時 Firestore 依文件 id 升冪，limit(80) 只留最早的 80 場，下一場會被截掉。
-  // creatorUid／ownerUid 等號查詢再依文件 id 降冪，走該欄位的自動單欄索引（索引項已含 __name__），不需複合索引。
-  // 回傳筆數打到上限只警告一次，不印 uid。舊文件 id 可能不是 ce_ 格式（R-ID-008），排序位置不代表建立時間。
+  // 1b) 使用者管理的活動（creator／owner／delegate），只取未結束狀態（MANAGED_ACTIVE_EVENT_STATUSES）。
+  // 不排序、不依文件 id 格式；未結束場次超過上限才會截斷，打到上限只警告一次，不印 uid。
   const fetchManaged = async (
     label: 'creator' | 'owner' | 'delegate',
     build: () => Query<DocumentData>,
@@ -429,7 +436,7 @@ export async function loadNextActivityInputs(
       const snap = await getDocs(build());
       if (snap.docs.length >= EVENT_QUERY_LIMIT) {
         logger.warn(
-          `[NextActivity] ${label} query hit the limit; older events may be missing:`,
+          `[NextActivity] ${label} query hit the limit; events may be missing:`,
           EVENT_QUERY_LIMIT,
         );
       }
@@ -439,20 +446,22 @@ export async function loadNextActivityInputs(
       return null;
     }
   };
+  // QueryConstraint 不可變，三條查詢共用同一個。
+  const activeStatus = where('status', 'in', MANAGED_ACTIVE_EVENT_STATUSES);
   const managedEventsQuery = (field: 'creatorUid' | 'ownerUid') =>
     query(
       collection(db, eventsCollectionPath),
       where(field, '==', safeUid),
-      orderBy(documentId(), 'desc'),
+      activeStatus,
       limit(EVENT_QUERY_LIMIT),
     );
   const managedPromise = Promise.all([
     fetchManaged('creator', () => managedEventsQuery('creatorUid')),
     fetchManaged('owner', () => managedEventsQuery('ownerUid')),
-    // 不排序：缺 (delegateUids, __name__ DESC) 索引；要排序須先在 FC firestore.indexes.json 加索引並部署。
     fetchManaged('delegate', () => query(
       collection(db, eventsCollectionPath),
       where('delegateUids', 'array-contains', safeUid),
+      activeStatus,
       limit(EVENT_QUERY_LIMIT),
     )),
   ]);
