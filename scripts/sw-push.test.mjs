@@ -112,7 +112,7 @@ function load({ rejectShow = [], clients = [], matchAllReject = false, openWindo
  * 假視窗：focus 回自己，focus／navigate 可設定拒絕。
  * reply：頁面經 port 回的內容；undefined＝不回（舊頁面或監聽還沒載入），'throw'＝postMessage 丟錯。
  */
-function fakeClient(log, url, { focused = false, visibilityState = 'hidden', navigateReject = false, focusReject = false, reply } = {}) {
+function fakeClient(log, url, { focused = false, visibilityState = 'hidden', navigateReject = false, navigateThrow = false, focusReject = false, reply } = {}) {
   const client = {
     url,
     focused,
@@ -128,6 +128,7 @@ function fakeClient(log, url, { focused = false, visibilityState = 'hidden', nav
     },
     navigate: (href) => {
       log.push(['navigate', url, href]);
+      if (navigateThrow) throw new TypeError('navigate is not supported');
       return navigateReject ? Promise.reject(new TypeError('not controlled')) : Promise.resolve(client);
     },
   };
@@ -405,9 +406,12 @@ describe('sw-push：notificationclick 事件', () => {
   it('C2a 回覆格式不對（版本、結果、空值）：當成沒處理，navigate', async () => {
     for (const reply of [{ v: 2, result: 'routed' }, { v: 1, result: 'ok' }, { result: 'kept' }, null, 'routed']) {
       const log = [];
+      closedPorts.length = 0;
       const ctx = load({ clients: [fakeClient(log, `${ORIGIN}/events`, { reply })] });
       await click(ctx, { url: '/inbox' });
       expect(log.map((x) => x[0]), JSON.stringify(reply)).toEqual(['focus', 'postMessage', 'navigate']);
+      expect(closedPorts, JSON.stringify(reply)).toHaveLength(1);
+      expect(ctx.timer.timers.every((t) => t.cleared), JSON.stringify(reply)).toBe(true);
     }
   });
 
@@ -442,6 +446,12 @@ describe('sw-push：notificationclick 事件', () => {
     const both = load({ clients: [fakeClient([], `${ORIGIN}/events`, { navigateReject: true })], openWindowReject: true });
     expect((await click(both, { url: '/inbox' })).result).toBe('resolved');
     expect(both.log.filter((x) => x[0] === 'openWindow')).toEqual([['openWindow', HREF]]);
+    // navigate 同步丟錯（不是回傳被拒的 Promise）也要最後一搏開新視窗
+    const syncLog = [];
+    const sync = load({ clients: [fakeClient(syncLog, `${ORIGIN}/events`, { navigateThrow: true })] });
+    expect((await click(sync, { url: '/inbox' })).result).toBe('resolved');
+    expect(syncLog.map((x) => x[0])).toEqual(['focus', 'postMessage', 'navigate']);
+    expect(sync.log.filter((x) => x[0] === 'openWindow')).toEqual([['openWindow', HREF]]);
   });
 
   it('C12 askPage 結束一律關 port：回覆、逾時、postMessage 丟錯三條路徑', async () => {

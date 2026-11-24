@@ -116,8 +116,8 @@
         var c = client || hit.client;
         if (hit.exact) return c;
         return askPage(c, path).then(function (handled) {
-          // navigate 被拒時最後一搏開新窗；互動權限已被 focus 用掉的引擎會拒絕，由外層 catch 吞掉。
-          return handled ? c : c.navigate(href).catch(function () { return self.clients.openWindow(href); });
+          // navigate 被拒或同步丟錯（例如不支援）時最後一搏開新窗；互動權限已被 focus 用掉的引擎會拒絕，由外層 catch 吞掉。
+          return handled ? c : Promise.resolve().then(function () { return c.navigate(href); }).catch(function () { return self.clients.openWindow(href); });
         });
       }, function () {
         // focus 被拒：權限還沒用掉，直接開新窗。

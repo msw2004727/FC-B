@@ -76,6 +76,10 @@ if (SW_SHA.rebuilt === SW_SHA.good) {
   console.error('--rebuilt 的 sw.js 與 --good 位元組相同：請重新建置（例如換 FCB_BUILD_ID）再跑');
   process.exit(2);
 }
+if (SW_SHA.base === SW_SHA.rebuilt) {
+  console.error('--base 與 --rebuilt 的 sw.js 位元組相同：三份 dist 要兩兩不同，請用不同的 FCB_BUILD_ID 重新建置再跑');
+  process.exit(2);
+}
 
 let current = VARIANTS.base;
 let serverDown = false;
