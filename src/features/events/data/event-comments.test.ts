@@ -235,6 +235,39 @@ describe('M-093 讀取', () => {
     });
   });
 
+  it('本人留言超過 30 則、管理者超過 80 則：各只取上限並送固定內容的錯誤回報', async () => {
+    vi.mocked(reportClientError).mockClear();
+    const own = Array.from({ length: 31 }, (_, i) => snap(`o${i}`, { visibility: 'private', createdAt: i, likeCount: 0, deleted: true }));
+    mock.getDocs
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValueOnce({ docs: own });
+    expect(await loadEventComments(context)).toHaveLength(30);
+    expect(vi.mocked(reportClientError).mock.calls.map(([c, e]) => [c, (e as Error).message]))
+      .toEqual([['event-comments-limit', 'comments exceed 30']]);
+
+    vi.mocked(reportClientError).mockClear();
+    const all = Array.from({ length: 81 }, (_, i) => snap(`m${i}`, { visibility: 'public', createdAt: i, likeCount: 0, deleted: true }));
+    mock.getDocs.mockResolvedValueOnce({ docs: all });
+    expect(await loadEventComments({ ...context, viewer: { ...context.viewer, roleLevel: 4 } })).toHaveLength(80);
+    expect(vi.mocked(reportClientError).mock.calls.map(([c, e]) => [c, (e as Error).message]))
+      .toEqual([['event-comments-limit', 'comments exceed 80']]);
+  });
+
+  it('回覆超過 20 則：查詢 limit 21、只留 20 則並送固定內容的錯誤回報', async () => {
+    vi.mocked(reportClientError).mockClear();
+    const replies = Array.from({ length: 21 }, (_, i) => snap(`r${i}`, { createdAt: i, likeCount: 0, recentLikers: [] }));
+    mock.getDocs
+      .mockResolvedValueOnce({ docs: [snap('c', { likeCount: 0, recentLikers: [] })] })
+      .mockResolvedValueOnce({ docs: replies })
+      .mockResolvedValue({ docs: [] });
+    const result = await loadEventComments({ ...context, viewer: { ...context.viewer, roleLevel: 4 } });
+    const repliesCall = mock.getDocs.mock.calls.find(([ref]) => (ref as { path: string }).path.endsWith('/c/replies'));
+    expect(repliesCall?.[0]).toMatchObject({ constraints: [{ limit: 21 }] });
+    expect(result[0]?.replies).toHaveLength(20);
+    expect(vi.mocked(reportClientError).mock.calls.map(([c, e]) => [c, (e as Error).message]))
+      .toEqual([['event-comment-replies-limit', 'replies exceed 20']]);
+  });
+
   it('未登入依 A 不發送 Rules 必拒的查詢', async () => {
     expect(await loadEventComments({ ...context, viewer: { uid: null, roleLevel: 0 } })).toEqual([]);
     expect(mock.getFirebase).not.toHaveBeenCalled();

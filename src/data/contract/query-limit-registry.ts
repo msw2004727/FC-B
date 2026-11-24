@@ -12,6 +12,11 @@
  * - `ok`：有明確排序且截掉的是最不重要的一端、多抓一筆偵測、單筆查找、游標分頁，或建立端有不大於讀取上限的硬上限。
  * - `known-gap-batch-D`／`known-gap-batch-E`：已知會漏或會隨歷史變大，排在計畫書批次 D／E。
  * - `known-gap-other`：已知問題但不在批次 D／E，`reason` 必填。
+  *
+ * 範圍與已知盲點（審查 P3-2、P3-3）：只認 `limit(`、`fs.limit(`、`sdk.limit(` 呼叫；不含 REST structuredQuery 的
+ * `limit` 欄位（例如 src/features/home/data/banners-rest.ts 與 index.html 的首頁橫幅預讀，和 banners.ts 同一條查詢）。
+ * 掃描器不認得：解構改名（`const { limit: l } = fs`）、中括號呼叫（`fs['limit']`）、同一行 JSX 文字裡的 `//` 或落單引號、
+ * `if (x) /re/` 這類正規式；寫查詢時避免這些寫法。
  */
 
 export type QueryLimitStatus = 'ok' | 'known-gap-batch-D' | 'known-gap-batch-E' | 'known-gap-other';
@@ -421,7 +426,7 @@ export const QUERY_LIMIT_REGISTRY: Readonly<Record<string, QueryLimitFile>> = {
       {
         purpose: '排程訊息掃描（status == scheduled，SCHEDULED_SCAN_LIMIT 20）',
         orderBy: '無排序',
-        overflow: '多抓一筆偵測超量：超過時只取上限筆數並送錯誤回報（內容固定，不帶 uid、活動代號、留言；顧問 §3.682 D-1／D-2 採甲）',
+        overflow: '多抓一筆偵測超量：超過時只處理前 20 筆並送錯誤回報；無排序，其餘可能延後甚至一直沒被處理，靠錯誤回報發現（顧問 §3.682 採甲的已知取捨）',
         status: 'ok',
       },
     ],
