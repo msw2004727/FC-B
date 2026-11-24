@@ -789,6 +789,44 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     expect(container.querySelector('#uc-records-panel')).toBeTruthy();
   });
 
+  it.each(['coach', 'captain', 'venue_owner'])('%s 看他人（等級低於管理者）：沒有明細列，也不呼叫明細查詢', async (role) => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ role }));
+    const { container } = await renderCard();
+    await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
+    expect(container.querySelector('#uc-records-toggle')).toBeNull();
+    expect(container.querySelector('#uc-records-panel')).toBeNull();
+    expect(loadUserStats).not.toHaveBeenCalled();
+  });
+
+  it('未登入看他人：沒有明細列，也不呼叫明細查詢', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: null as unknown as string }));
+    const { container } = await renderCard();
+    await waitFor(() => expect(container.querySelector('.pp-hd')).toBeTruthy());
+    expect(container.querySelector('#uc-records-toggle')).toBeNull();
+    expect(loadUserStats).not.toHaveBeenCalled();
+  });
+
+  it('網址不是本人、但讀到的文件是本人：有明細列', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: TARGET }));
+    const { container } = await renderCard('alias-public-id');
+    await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
+    expect(toggleOf(container)).toBeTruthy();
+  });
+
+  it.each([
+    ['本人', { uid: TARGET }],
+    ['super_admin 看他人', { role: 'super_admin' }],
+    ['admin 看他人', { role: 'admin' }],
+  ] as const)('%s：有明細列，點開後呼叫明細查詢 1 次', async (_label, overrides) => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer(overrides as Partial<ViewerView>));
+    const { container } = await renderCard();
+    await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
+    const toggle = toggleOf(container);
+    expect(toggle).toBeTruthy();
+    fireEvent.click(toggle as Element);
+    await waitFor(() => expect(loadUserStats).toHaveBeenCalledTimes(1));
+  });
+
   it('管理者看他人：有明細列；三格統計照舊', async () => {
     vi.mocked(useViewer).mockReturnValue(makeViewer({ role: 'admin' }));
     const { container } = await renderCard();
