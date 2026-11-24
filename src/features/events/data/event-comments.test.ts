@@ -24,6 +24,7 @@ import {
   type CommentContext,
 } from './event-comments';
 import { getEventCommentAuthor } from './identity-snapshot';
+import { reportClientError } from '@/core/error-report';
 import {
   _resetCommentBadgeForTest,
   clearCommentBadgeCacheForEvent,
@@ -50,6 +51,7 @@ const mock = vi.hoisted(() => ({
 vi.mock('@/data/firebase', () => ({
   getFirebase: mock.getFirebase,
 }));
+vi.mock('@/core/error-report', () => ({ reportClientError: vi.fn() }));
 vi.mock('firebase/firestore', () => ({
   collection: (parent: { path?: string }, ...parts: string[]) => ({
     path: [parent.path, ...parts].filter(Boolean).join('/'),
@@ -190,13 +192,27 @@ describe('M-093 讀取', () => {
     expect(result.map((entry) => entry.id)).toEqual(['c3', 'c2', 'c1']);
     expect(mock.getDocs.mock.calls[0]?.[0]).toMatchObject({
       path: 'events/different-document/comments',
-      constraints: [{ where: ['visibility', '==', 'public'] }, { limit: 60 }],
+      constraints: [{ where: ['visibility', '==', 'public'] }, { limit: 61 }],
     });
     expect(mock.getDocs.mock.calls[1]?.[0]).toMatchObject({
-      constraints: [{ where: ['authorUid', '==', 'member'] }, { limit: 30 }],
+      constraints: [{ where: ['authorUid', '==', 'member'] }, { limit: 31 }],
     });
     expect(mock.getDocs.mock.calls.some(([ref]) =>
       (ref as { path: string }).path.endsWith('/c1/replies'))).toBe(false);
+  });
+
+  it('公開留言超過 60 則：只取 60 則並送固定內容的錯誤回報（不帶 uid、活動代號、留言）', async () => {
+    vi.mocked(reportClientError).mockClear();
+    const many = Array.from({ length: 61 }, (_, i) => snap(`p${i}`, { visibility: 'public', createdAt: i, likeCount: 0, deleted: true }));
+    mock.getDocs
+      .mockResolvedValueOnce({ docs: many })
+      .mockResolvedValueOnce({ docs: [] });
+    const result = await loadEventComments(context);
+    expect(result).toHaveLength(60);
+    expect(vi.mocked(reportClientError)).toHaveBeenCalledTimes(1);
+    const [ctx, err] = vi.mocked(reportClientError).mock.calls[0] ?? [];
+    expect(ctx).toBe('event-comments-limit');
+    expect((err as Error).message).toBe('comments exceed 60');
   });
 
   it('管理者 limit 80；第二身份回覆保留公開快照；摘要外本人讚仍讀 likes/uid', async () => {
@@ -212,7 +228,7 @@ describe('M-093 讀取', () => {
     const result = await loadEventComments({
       ...context, viewer: { ...context.viewer, roleLevel: 4 },
     });
-    expect(mock.getDocs.mock.calls[0]?.[0]).toMatchObject({ constraints: [{ limit: 80 }] });
+    expect(mock.getDocs.mock.calls[0]?.[0]).toMatchObject({ constraints: [{ limit: 81 }] });
     expect(result[0]?.replies[0]).toMatchObject({ authorName: '官方', likedByMe: true });
     expect(mock.getDoc).toHaveBeenCalledWith({
       path: 'events/different-document/comments/c/replies/r/likes/member',

@@ -1,4 +1,5 @@
 import { getFirebase } from '@/data/firebase';
+import { reportClientError } from '@/core/error-report';
 import { parseTaipei } from '@/core/taipei-time';
 import { withSubmitting } from '@/core/submit-guard';
 import {
@@ -376,16 +377,20 @@ async function readEventComments(context: CommentContext): Promise<CommentItem[]
   // 現行 Rules canReadCommentData 要求登入，照 A _renderEventComments 顯示登入提示。
   if (!uid) return [];
   const { fs, comments } = await connection(context);
+  // 多抓一筆偵測超量（R-QUERY-001）：超過上限時只取上限筆數並送錯誤回報（內容固定，不帶 uid、活動代號、留言）。
+  const caps = canManageComments(context) ? [80] : [60, 30];
   const snapshots = canManageComments(context)
-    ? [await fs.getDocs(fs.query(comments, fs.limit(80)))]
+    ? [await fs.getDocs(fs.query(comments, fs.limit(81)))]
     : await Promise.all([
-      fs.getDocs(fs.query(comments, fs.where('visibility', '==', 'public'), fs.limit(60))),
-      fs.getDocs(fs.query(comments, fs.where('authorUid', '==', uid), fs.limit(30))),
+      fs.getDocs(fs.query(comments, fs.where('visibility', '==', 'public'), fs.limit(61))),
+      fs.getDocs(fs.query(comments, fs.where('authorUid', '==', uid), fs.limit(31))),
     ]);
   const byId = new Map<string, CommentItem>();
-  for (const snapshot of snapshots) {
-    for (const entry of snapshot.docs) byId.set(entry.id, mapComment(entry.id, entry.data(), uid));
-  }
+  snapshots.forEach((snapshot, i) => {
+    const cap = caps[i] ?? 0;
+    if (snapshot.docs.length > cap) reportClientError('event-comments-limit', new Error(`comments exceed ${cap}`));
+    for (const entry of snapshot.docs.slice(0, cap)) byId.set(entry.id, mapComment(entry.id, entry.data(), uid));
+  });
   const list = [...byId.values()]
     .sort((a, b) => eventCommentTimeMs(b.createdAt) - eventCommentTimeMs(a.createdAt))
     .slice(0, 80);
@@ -397,8 +402,9 @@ async function readEventComments(context: CommentContext): Promise<CommentItem[]
         comment.repliesLoaded = true;
         if (!comment.deleted) {
           try {
-            const replies = await fs.getDocs(fs.query(fs.collection(ref, 'replies'), fs.limit(20)));
-            comment.replies = replies.docs.map((entry) => mapComment(entry.id, entry.data(), uid))
+            const replies = await fs.getDocs(fs.query(fs.collection(ref, 'replies'), fs.limit(21)));
+            if (replies.docs.length > 20) reportClientError('event-comment-replies-limit', new Error('replies exceed 20'));
+            comment.replies = replies.docs.slice(0, 20).map((entry) => mapComment(entry.id, entry.data(), uid))
               .sort((a, b) => eventCommentTimeMs(a.createdAt) - eventCommentTimeMs(b.createdAt));
             comment.replyCount = Math.max(comment.replyCount, comment.replies.length);
           } catch {
