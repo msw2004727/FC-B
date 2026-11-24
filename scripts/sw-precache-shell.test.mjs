@@ -271,6 +271,15 @@ describe('建置產出的 sw.js', () => {
     expect(await check('a-AAAAAAAA.js', '')).toBe(false);
   });
 
+  it('index.html 含 app-build／app-sha meta，且 index.html 在預存清單內（sw.js 位元組每次建置都會變，R-UPD-049）', () => {
+    expect(html).toMatch(/<meta name="app-build" content="\d{12}" \/>/);
+    expect(html).toMatch(/<meta name="app-sha" content="[^"]+" \/>/);
+    const entry = sw.precache.find((e) => e.url === 'index.html');
+    expect(entry).toBeTruthy();
+    expect(typeof entry.revision).toBe('string');
+    expect(entry.revision.length).toBeGreaterThan(0);
+  });
+
   it('dist/sw-push.js 與 public/sw-push.js 位元組相同（原樣複製，不被轉譯或壓縮）', async () => {
     const built = await readFile(path.join(outDir, 'sw-push.js'));
     const source = await readFile(path.join(root, 'public', 'sw-push.js'));

@@ -149,6 +149,7 @@ describe('LegacyUserCard（11-06 名片型）', () => {
   }
 
   it('版面順序：頭部 → 動作鈕 → 分隔線 → 三格統計 → 資料 → 活動明細 → 分享名片；徽章格已移除', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ role: 'admin' }));
     vi.mocked(loadUserProfile).mockResolvedValue(
       makeProfile({ socialLinks: { fb: 'bob.fb' } }),
     );
@@ -175,7 +176,7 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     const labels = Array.from(container.querySelectorAll('.pp-row > span:first-child')).map(
       (el) => el.textContent,
     );
-    expect(labels).toEqual(['性別', '生日', '地區', '運動類別', '所屬俱樂部', '加入時間']);
+    expect(labels).toEqual(['性別', '生日', '地區', '運動類別', '所屬俱樂部', '聯繫方式', '加入時間']);
     expect(container.textContent).not.toContain('徽章');
     expect(container.querySelector('.uc-blur-overlay')).toBeNull();
     expect(container.textContent).toContain('分享名片');
@@ -183,6 +184,7 @@ describe('LegacyUserCard（11-06 名片型）', () => {
 
   // 測試同步更新（站長 11-06 放鴿子／出席率 v2）：「應到」改「參與」；沒有 v2 退回舊算法、不顯示「計 N 場」。
   it('三格統計開頁自動讀 1 次（參與／完成／出席率），明細不讀', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ role: 'admin' }));
     vi.mocked(loadUserAttendanceSummary).mockResolvedValue(
       summaryOf(TARGET, { expectedCount: 26, attendedCount: 22, completedCount: 14, attendRate: 85 }),
     );
@@ -205,6 +207,7 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     { counted: 2, completed: 1, rate: '1/2' },
     { counted: 0, completed: 0, rate: '--' },
   ])('v2 摘要：參與／完成／出席率 $rate，出席率下方「計 $counted 場」', async ({ counted, completed, rate }) => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ role: 'admin' }));
     vi.mocked(loadUserAttendanceSummary).mockResolvedValue(summaryOf(TARGET, {
       expectedCount: 99, completedCount: 99, attendRate: 99,
       v2: { since: '2026-11-06', participatedCount: 20, countedCount: counted, countedCompletedCount: completed },
@@ -221,6 +224,7 @@ describe('LegacyUserCard（11-06 名片型）', () => {
   });
 
   it('活動明細點開才讀 loadUserStats；收合再展開不重讀；清單以公開模式過濾', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ role: 'admin' }));
     const { container } = await renderCard();
     expect(loadUserStats).not.toHaveBeenCalled();
     fireEvent.click(toggleOf(container));
@@ -243,6 +247,7 @@ describe('LegacyUserCard（11-06 名片型）', () => {
   });
 
   it('快取：同一工作階段同一 uid 重開名片不重讀三格統計與明細；重新整理鈕強制重讀', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ role: 'admin' }));
     const first = await renderCard();
     await waitFor(() => expect(first.container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
     fireEvent.click(toggleOf(first.container));
@@ -393,6 +398,7 @@ describe('LegacyUserCard（11-06 名片型）', () => {
   });
 
   it('活動明細載入失敗：toast＋明細區顯示錯誤與重試（不卡載入中），按重試可讀到', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ role: 'admin' }));
     vi.mocked(loadUserStats).mockRejectedValueOnce(new Error('network'));
     const { container } = await renderCard();
     fireEvent.click(toggleOf(container));
@@ -408,6 +414,7 @@ describe('LegacyUserCard（11-06 名片型）', () => {
   });
 
   it('活動明細載入中有圈與「載入中...」，讀完換成清單', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ role: 'admin' }));
     let resolveStats: (value: { uid: string; activityRecords: never[]; attendanceRecords: never[] }) => void = () => {};
     vi.mocked(loadUserStats).mockReturnValue(new Promise((resolve) => {
       resolveStats = resolve;
@@ -432,6 +439,7 @@ describe('LegacyUserCard（11-06 名片型）', () => {
   });
 
   it('「活動明細 N」固定用參與場次，展開後也不變', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ role: 'admin' }));
     vi.mocked(getFilteredRecords).mockReturnValue([
       { _docId: 'a', name: 'x', status: 'completed', _displayStatus: 'completed' },
     ]);
@@ -584,6 +592,7 @@ describe('LegacyUserCard（11-06 名片型）', () => {
   });
 
   it('有人氣（含 0）才出現 .pp-pop 與 .pp-has-pop，星星在頭部最後，不顯示人數', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ role: 'admin' }));
     vi.mocked(loadProfilePopularityViews).mockResolvedValue(0);
     const zero = await renderCard();
     await waitFor(() => expect(zero.container.querySelector('.pp-pop')).toBeTruthy());
@@ -759,6 +768,72 @@ describe('LegacyUserCard（11-06 名片型）', () => {
     await waitFor(() => expect(container.textContent).toContain('0111111111'));
     rerender(<LegacyUserCard uid={uidB} />);
     await waitFor(() => expect(container.textContent).not.toContain('0111111111'));
+  });
+
+  it('他人、非管理者：沒有明細列與明細面板，也不呼叫明細查詢；三格統計照舊', async () => {
+    const { container } = await renderCard();
+    await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
+    expect(container.querySelector('#uc-record-stats')).toBeTruthy();
+    expect(container.querySelector('#uc-records-toggle')).toBeNull();
+    expect(container.querySelector('#uc-records-panel')).toBeNull();
+    expect(loadUserStats).not.toHaveBeenCalled();
+    expect(loadUserAttendanceSummary).toHaveBeenCalledTimes(1);
+  });
+
+  it('本人：有明細列；三格統計照舊', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: TARGET }));
+    const { container } = await renderCard();
+    await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
+    expect(container.querySelector('#uc-record-stats')).toBeTruthy();
+    expect(toggleOf(container)).toBeTruthy();
+    expect(container.querySelector('#uc-records-panel')).toBeTruthy();
+  });
+
+  it.each(['coach', 'captain', 'venue_owner'])('%s 看他人（等級低於管理者）：沒有明細列，也不呼叫明細查詢', async (role) => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ role }));
+    const { container } = await renderCard();
+    await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
+    expect(container.querySelector('#uc-records-toggle')).toBeNull();
+    expect(container.querySelector('#uc-records-panel')).toBeNull();
+    expect(loadUserStats).not.toHaveBeenCalled();
+  });
+
+  it('未登入看他人：沒有明細列，也不呼叫明細查詢', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: null as unknown as string }));
+    const { container } = await renderCard();
+    await waitFor(() => expect(container.querySelector('.pp-hd')).toBeTruthy());
+    expect(container.querySelector('#uc-records-toggle')).toBeNull();
+    expect(loadUserStats).not.toHaveBeenCalled();
+  });
+
+  it('網址不是本人、但讀到的文件是本人：有明細列', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ uid: TARGET }));
+    const { container } = await renderCard('alias-public-id');
+    await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
+    expect(toggleOf(container)).toBeTruthy();
+  });
+
+  it.each([
+    ['本人', { uid: TARGET }],
+    ['super_admin 看他人', { role: 'super_admin' }],
+    ['admin 看他人', { role: 'admin' }],
+  ] as const)('%s：有明細列，點開後呼叫明細查詢 1 次', async (_label, overrides) => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer(overrides as Partial<ViewerView>));
+    const { container } = await renderCard();
+    await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
+    const toggle = toggleOf(container);
+    expect(toggle).toBeTruthy();
+    fireEvent.click(toggle as Element);
+    await waitFor(() => expect(loadUserStats).toHaveBeenCalledTimes(1));
+  });
+
+  it('管理者看他人：有明細列；三格統計照舊', async () => {
+    vi.mocked(useViewer).mockReturnValue(makeViewer({ role: 'admin' }));
+    const { container } = await renderCard();
+    await waitFor(() => expect(container.querySelector('#uc-stat-total')?.textContent).toBe('5'));
+    expect(container.querySelector('#uc-record-stats')).toBeTruthy();
+    expect(toggleOf(container)).toBeTruthy();
+    expect(container.querySelector('#uc-records-panel')).toBeTruthy();
   });
 
   it('公開頁星星 CSS 照規格，只在有資料時定位', () => {

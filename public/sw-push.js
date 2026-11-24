@@ -1,5 +1,6 @@
 // 網頁推播接收（W4）：由 vite.config.ts 的 workbox.importScripts 匯入新站 SW，排在 sw-legacy-compat.js 之後。
-// 只做兩件事：push 顯示通知、notificationclick 開站內頁。不 importScripts、不 fetch、不讀寫快取。
+// 只做兩件事：push 顯示通知、notificationclick 開站內頁（W4.1：受控分頁在別頁時先問頁面，1 秒沒回才 navigate）。
+// 不 importScripts、不 fetch、不讀寫快取。
 // 頂層與每個監聽都包 try/catch：這支檔頂層丟錯會讓 sw.js 後面的 workbox 設定整段不執行（設計書 §2.4）。
 // 推播內容只有 v、title、body、url（FC functions/web-push-validate.js 的 buildPushPayload）；長度上限與伺服器相同。
 (function () {
@@ -76,14 +77,50 @@
     return same.length ? { client: same[0], exact: false } : null;
   }
 
-  function open(href) {
-    return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+  var ACK_MS = 1000;
+
+  // 頁面在 1 秒內回 routed／kept 就算處理完；沒回、port 不可用、丟錯都回 false，交給 navigate。結束時關掉 port。
+  function askPage(client, path) {
+    return new Promise(function (resolve) {
+      var done = false;
+      var ch = null;
+      var finish = function (handled) {
+        if (done) return;
+        done = true;
+        try { ch && ch.port1.close(); } catch (e) { /* 略過 */ }
+        resolve(handled);
+      };
+      var timer = setTimeout(function () { finish(false); }, ACK_MS);
+      try {
+        ch = new MessageChannel();
+        ch.port1.onmessage = function (e) {
+          clearTimeout(timer);
+          var d = e && e.data;
+          finish(!!d && d.v === 1 && (d.result === 'routed' || d.result === 'kept'));
+        };
+        client.postMessage({ type: 'toosterx:webpush-open', v: 1, path: path }, [ch.port2]);
+      } catch (e) {
+        clearTimeout(timer);
+        finish(false);
+      }
+    });
+  }
+
+  function open(href, path) {
+    // includeUncontrolled: false：未受這個 SW 控制的分頁 navigate 必定失敗，而 focus 已用掉點擊給的視窗互動權限，
+    // 之後 openWindow 會被拒（W4 Opus 三方審 P3-1）。只挑受控分頁；沒有就直接開新窗（權限還沒用掉）。
+    return self.clients.matchAll({ type: 'window', includeUncontrolled: false }).then(function (list) {
       var hit = pickClient(list, href);
       if (!hit) return self.clients.openWindow(href);
       return hit.client.focus().then(function (client) {
-        if (hit.exact) return client;
-        return (client || hit.client).navigate(href);
-      }).catch(function () {
+        var c = client || hit.client;
+        if (hit.exact) return c;
+        return askPage(c, path).then(function (handled) {
+          // navigate 被拒時最後一搏開新窗；互動權限已被 focus 用掉的引擎會拒絕，由外層 catch 吞掉。
+          return handled ? c : c.navigate(href).catch(function () { return self.clients.openWindow(href); });
+        });
+      }, function () {
+        // focus 被拒：權限還沒用掉，直接開新窗。
         return self.clients.openWindow(href);
       });
     }).catch(function () {});
@@ -93,8 +130,9 @@
     try {
       event.notification.close();
       var data = event.notification.data;
-      var href = new URL(safePath(data && data.url), self.location.origin).href;
-      event.waitUntil(open(href));
+      var path = safePath(data && data.url);
+      var href = new URL(path, self.location.origin).href;
+      event.waitUntil(open(href, path));
     } catch (e) {
       /* 通知資料壞掉：不開頁 */
     }

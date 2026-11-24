@@ -375,6 +375,7 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
 
   // 看自己：網址 uid 或讀到的文件 uid 任一等於登入者都算（不能私訊自己）。
   const viewingSelf = isSelf || Boolean(viewer.uid && viewer.uid === profile.uid);
+  const canSeeRecordDetails = viewingSelf || viewerLevel >= adminLevel;
   const pmUid = String(profile.uid || '').trim();
   const canPm = !viewingSelf && LINE_UID_RE.test(pmUid);
 
@@ -601,72 +602,76 @@ export function LegacyUserCard({ uid }: LegacyUserCardProps): JSX.Element {
           <span>{joinDate}</span>
         </div>
       </div>
-      <button
-        type="button"
-        class="pp-more"
-        id="uc-records-toggle"
-        aria-expanded={recordsOpen ? 'true' : 'false'}
-        aria-controls="uc-records-panel"
-        onClick={toggleRecords}
-      >
-        <span>
-          {t('profile.pp.records')}
-          {recordCount !== null ? <span class="pp-cnt">{recordCount}</span> : null}
-        </span>
-        <LineIcon>
-          <path d="M6 9.5l6 6 6-6" />
-        </LineIcon>
-      </button>
-      <div class="pp-recs" id="uc-records-panel" hidden={!recordsOpen}>
-        <div class="pp-tabs-row">
-          <div class="pp-tabs" id="uc-record-tabs" role="tablist">
-            {filters.map((f) => (
-              <button
-                key={f.key}
-                type="button"
-                role="tab"
-                class="pp-tab"
-                data-filter={f.key}
-                aria-selected={activeFilter === f.key ? 'true' : 'false'}
-                onClick={() => {
-                  setActiveFilter(f.key);
-                  setPage(1);
-                }}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
+      {canSeeRecordDetails ? (
+        <>
           <button
-            id="uc-records-refresh"
-            class={`pp-refresh${recordsLoading ? ' spinning' : ''}`}
             type="button"
-            onClick={() => loadRecords(true)}
-            title={lt('重新整理', '重新整理')}
-            aria-label={lt('重新整理', '重新整理')}
+            class="pp-more"
+            id="uc-records-toggle"
+            aria-expanded={recordsOpen ? 'true' : 'false'}
+            aria-controls="uc-records-panel"
+            onClick={toggleRecords}
           >
+            <span>
+              {t('profile.pp.records')}
+              {recordCount !== null ? <span class="pp-cnt">{recordCount}</span> : null}
+            </span>
             <LineIcon>
-              <path d="M20 5v5h-5" />
-              <path d="M4 19v-5h5" />
-              <path d="M5.6 9a7 7 0 0 1 12.2-2.4L20 10M4 14l2.2 3.4A7 7 0 0 0 18.4 15" />
+              <path d="M6 9.5l6 6 6-6" />
             </LineIcon>
           </button>
-        </div>
-        <div class="mini-activity-list" id="uc-activity-records">
-          {recordsReady ? (
-            <ActivityRecordList items={filteredRecords} page={page} onPage={setPage} />
-          ) : recordsError && !recordsLoading ? (
-            <div class="pp-loading pp-error">
-              <span>{lt('活動紀錄刷新失敗', '活動紀錄刷新失敗')}</span>
-              <button type="button" class="pp-retry" onClick={() => loadRecords(false)}>
-                {lt('重試', '重試')}
+          <div class="pp-recs" id="uc-records-panel" hidden={!recordsOpen}>
+            <div class="pp-tabs-row">
+              <div class="pp-tabs" id="uc-record-tabs" role="tablist">
+                {filters.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    role="tab"
+                    class="pp-tab"
+                    data-filter={f.key}
+                    aria-selected={activeFilter === f.key ? 'true' : 'false'}
+                    onClick={() => {
+                      setActiveFilter(f.key);
+                      setPage(1);
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                id="uc-records-refresh"
+                class={`pp-refresh${recordsLoading ? ' spinning' : ''}`}
+                type="button"
+                onClick={() => loadRecords(true)}
+                title={lt('重新整理', '重新整理')}
+                aria-label={lt('重新整理', '重新整理')}
+              >
+                <LineIcon>
+                  <path d="M20 5v5h-5" />
+                  <path d="M4 19v-5h5" />
+                  <path d="M5.6 9a7 7 0 0 1 12.2-2.4L20 10M4 14l2.2 3.4A7 7 0 0 0 18.4 15" />
+                </LineIcon>
               </button>
             </div>
-          ) : (
-            <div class="pp-loading reg-loading" role="status" style="white-space:nowrap">{lt('載入中...', '載入中...')}</div>
-          )}
-        </div>
-      </div>
+            <div class="mini-activity-list" id="uc-activity-records">
+              {recordsReady ? (
+                <ActivityRecordList items={filteredRecords} page={page} onPage={setPage} />
+              ) : recordsError && !recordsLoading ? (
+                <div class="pp-loading pp-error">
+                  <span>{lt('活動紀錄刷新失敗', '活動紀錄刷新失敗')}</span>
+                  <button type="button" class="pp-retry" onClick={() => loadRecords(false)}>
+                    {lt('重試', '重試')}
+                  </button>
+                </div>
+              ) : (
+                <div class="pp-loading reg-loading" role="status" style="white-space:nowrap">{lt('載入中...', '載入中...')}</div>
+              )}
+            </div>
+          </div>
+        </>
+      ) : null}
       <div class="pp-share">
         <button
           class="outline-btn"

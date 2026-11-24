@@ -102,6 +102,8 @@ export interface InAppSectionProps {
   onGate?: (open: boolean, reason?: CpGateReason) => void;
   /** 閘門通過後清單也讀好、即將畫卡時通知一次。賽事頁用來把站內骨架留到卡片出現，中間不空白。 */
   onReady?: () => void;
+  /** 賽事頁分類分段右邊放狀態選單的那一格（站長 11-24）；沒給就畫在篩選列。 */
+  statusSlot?: HTMLElement | null;
 }
 
 export type CpGateReason = 'denied';
@@ -120,6 +122,7 @@ function SectionBody({
   onGate,
   onReady,
   snapshot,
+  statusSlot,
 }: {
   actor: CpActor;
   repo: CompetitionsRepo;
@@ -131,6 +134,7 @@ function SectionBody({
   onReady?: () => void;
   /** null：不讀不寫本機清單快照（注入環境沒開）。 */
   snapshot: CpListSnapshotPorts | null;
+  statusSlot?: HTMLElement | null;
 }): JSX.Element | null {
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
@@ -395,6 +399,7 @@ function SectionBody({
         route(`/competitions/${cid}`);
       }}
       onDelete={canDelete ? (cid, name) => void onDelete(cid, name) : undefined}
+      statusSlot={statusSlot}
     />
     {/* 換帳號或權限變了不再顯示（審查 P2-2） */}
     {del && canDelete ? (
@@ -456,6 +461,7 @@ function LiveInApp(props: InAppSectionProps): JSX.Element {
           onGate={report}
           onReady={props.onReady}
           snapshot={LIVE_SNAPSHOT}
+          statusSlot={props.statusSlot}
         />
       )}
     </LiveBoundary>
@@ -477,6 +483,7 @@ export function InAppSection(props: InAppSectionProps): JSX.Element | null {
         onGate={props.onGate}
         onReady={props.onReady}
         snapshot={injected.listSnapshot ?? null}
+        statusSlot={props.statusSlot}
       />
     );
   }

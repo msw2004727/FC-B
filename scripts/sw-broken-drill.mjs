@@ -5,6 +5,8 @@
  *   node scripts/sw-broken-drill.mjs --base <基底 dist> --good <W4 dist> --rebuilt <W4 重新建置的 dist> [--engine chromium|webkit|all] [--out report.json] [--timeout ms]
  *
  * --rebuilt 必須是重新建置的產物（sw.js 位元組與 --good 不同，例如換 FCB_BUILD_ID 再 build 一次）；相同就以 2 結束。
+ * 三份 dist（--base、--good、--rebuilt）的 FCB_BUILD_ID 必須兩兩不同：正式 Pages 每次建置都把 app-build／app-sha 寫進 index.html，
+ * index.html 的 revision 在 sw.js 預存清單裡，所以 sw.js 每次建置都會變；--base 與 --good 的 sw.js 相同時演練的前提不成立，以 2 結束。
  * 壞版由 --good 衍生，不另建置：
  *   missing：sw-push.js 不存在（伺服器照 Pages 回 index.html 的 200 text/html），sw.js 不變；
  *   throw：sw-push.js 立即函式外第一行加 throw，sw.js 不變。
@@ -13,7 +15,7 @@
  * 1. 全新資料直接裝壞版（missing、throw 各一）：壞版啟用、預存 0 筆、離線開不了、push 監聽不在。
  * 2. 舊版（--base）裝好後換壞版：壞版停在 waiting、舊版照常控制、預存不變、離線照常。
  * 3. 舊版控制中換壞版、更新提示掛著：每次開頁都跳提示、按「現在更新」後 waiting 不變、不白畫面。
- * 4. 救援：(a) 只補回缺檔、sw.js 不變 → 救不回（反例）；(b) 換成重新建置、sw.js 位元組不同的版本 → 一次重新整理救回。
+ * 4. 救援：(a) 只補回缺檔、sw.js 不變 → 救不回（反例）；(b) 換成重新建置、sw.js 位元組不同的版本 → 一次重新整理救回；救回後再 update() 一次，送出的 sw.js 全是救援版。
  * 每個情境記下伺服器當下 sw.js 的 sha256、registration 的 active／waiting 狀態、預存筆數。
  *
  * 不打正式環境：本機以外的請求一律中止。Chromium 另用 CDP 記 SW 錯誤、在 SW 內送一則替身 push 事件確認監聽在不在；
@@ -65,6 +67,10 @@ for (const [name, v] of Object.entries(VARIANTS)) {
   const sw = await readFile(path.join(v.root, 'sw.js'));
   SW_SHA[name] = sha256(sw);
   PRECACHE_N[name] = [...sw.toString('utf8').matchAll(/\{url:"[^"]+",revision:/g)].length;
+}
+if (SW_SHA.base === SW_SHA.good) {
+  console.error('--base 的 sw.js 與 --good 位元組相同：base 請用不同的 FCB_BUILD_ID 建置（正式站每次建置 sw.js 都會變）再跑');
+  process.exit(2);
 }
 if (SW_SHA.rebuilt === SW_SHA.good) {
   console.error('--rebuilt 的 sw.js 與 --good 位元組相同：請重新建置（例如換 FCB_BUILD_ID）再跑');
@@ -344,9 +350,17 @@ async function scenarioRescue(browser) {
     if (b.active === 'activated' && b.n === PRECACHE_N.rebuilt) break;
   }
   const servedB = [...new Set(swServed)];
-  check(servedB.length > 0 && !servedB.includes(brokenSha[0]), `情境4(b)：救援時伺服器送出的 sw.js sha256 與壞版不同（${brokenSha[0]} → ${servedB.join(', ')}）`);
+  check(servedB.length === 1 && servedB[0] === SW_SHA.rebuilt && servedB[0] !== brokenSha[0], `情境4(b)：救援時伺服器送出的 sw.js 全是救援版、與壞版不同（${brokenSha[0]} → ${servedB.join(', ')}；救援版 ${SW_SHA.rebuilt}）`);
   const s = await state(page, '情境4(b)：換成重新建置的版本、重新整理一次後');
   check(s.active === 'activated' && s.waiting === null && s.precacheN === PRECACHE_N.rebuilt, `情境4(b)：一次重新整理救回（預存 ${s.precacheN}／${PRECACHE_N.rebuilt} 筆、waiting=${s.waiting}）`);
+  // 救回後再主動 update() 一次：伺服器送出的每一份 sw.js 都必須是救援版（rebuilt）的位元組，且不會再裝出新的 waiting。
+  const beforeUpdate = swServed.length;
+  await update(page);
+  await sleep(2_000);
+  const servedAll = [...new Set(swServed)];
+  check(swServed.length > beforeUpdate && servedAll.length === 1 && servedAll[0] === SW_SHA.rebuilt, `情境4(b)：救回後 update() 再抓 sw.js（${beforeUpdate} → ${swServed.length} 次），送出的全是救援版（實際 ${servedAll.join(', ')}）`);
+  const u = await state(page, '情境4(b)：救回後 update()');
+  check(u.active === 'activated' && u.waiting === null && u.installing === null && u.precacheN === PRECACHE_N.rebuilt, `情境4(b)：update() 後仍是救援版、沒有新的 waiting（預存 ${u.precacheN} 筆、waiting=${u.waiting}）`);
   check(await offlineOpens(context), '情境4(b)：離線恢復');
   const pushB = await pushListenerPresent(context);
   if (pushB !== null) check(pushB === true, '情境4(b)：push 監聽在');
