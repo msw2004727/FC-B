@@ -9,6 +9,8 @@ import { join, resolve } from 'node:path';
 
 const OUT = resolve(process.argv[2] || 'webpush-w5-shots');
 const BASE = process.argv[3] || 'http://localhost:5391';
+// 第 4 個參數：只重拍名稱符合的狀態（例如 ios-home-modal）。
+const ONLY = process.argv[4] || '';
 
 const UA = {
   desktop: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
@@ -97,7 +99,9 @@ async function shoot({ name, scene, kind, action, width, theme, lang }) {
   await page.waitForTimeout(action.startsWith('click-') && action !== 'click-sending' ? 450 : 250);
   // 圖片（「怎麼加入」彈窗的教學圖）載完才截，否則是空白框（審查 P3-4）。延遲載入的圖先捲進畫面觸發載入。
   await page.evaluate(() => { for (const i of document.images) i.loading = 'eager'; });
-  await page.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0), null, { timeout: 15000 });
+  await page.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0 && getComputedStyle(i).opacity === '1'), null, { timeout: 15000 });
+  await page.evaluate(() => Promise.all([...document.images].map((i) => i.decode().catch(() => undefined))));
+  await page.waitForTimeout(300);
   // 自動量：介面文字不得截斷或折行（R-UI-027）、不得有橫向捲動。
   const check = await page.evaluate(() => {
     const out = [];
@@ -130,13 +134,14 @@ async function shoot({ name, scene, kind, action, width, theme, lang }) {
 }
 
 for (const [name, scene, kind, action] of SCENES) {
+  if (ONLY && name !== ONLY) continue;
   for (const theme of ['light', 'dark']) {
     for (const width of [360, 390, 1280]) await shoot({ name, scene, kind, action, width, theme, lang: 'zh-TW' });
   }
 }
 for (const lang of LANGS) {
   for (const [name, scene, kind, action] of SCENES) {
-    if (!TEXT_SCENES.has(name)) continue;
+    if (!TEXT_SCENES.has(name) || (ONLY && name !== ONLY)) continue;
     for (const width of [360, 375, 390]) await shoot({ name, scene, kind, action, width, theme: 'light', lang });
   }
 }
