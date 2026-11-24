@@ -360,7 +360,12 @@ export function TopBar({
     setUserMenuOpen(false);
     // 登入模組用到時才載入（與 App 相同，不放進首屏必經路徑）。
     // 照 A `LineAuth.logout`：連 LINE 一起登出、清本機帳號資料後重新整理（signOutAndReload）。
-    import('@/data/auth').then(({ signOutAndReload }) => signOutAndReload()).catch((err: unknown) => {
+    // 網頁推播（W5，顧問 §3.699 Q3 (B)）：這台裝置開過推播（有本機紀錄 fcb:webpush:v1）才先解除、等瀏覽器退訂完成再登出；
+    // 最多等 2 秒（含載入），逾時或失敗照常登出。沒開過就不載入推播模組。
+    Promise.resolve().then(() => localStorage.getItem('fcb:webpush:v1') && Promise.race([
+      import('@/features/profile/web-push/boot').then((m) => m.beforeSignOut()),
+      new Promise((r) => setTimeout(r, 2e3)),
+    ])).catch(() => {}).then(() => import('@/data/auth')).then(({ signOutAndReload }) => signOutAndReload()).catch((err: unknown) => {
       console.error('[TopBar] signOut failed', err);
     });
   };

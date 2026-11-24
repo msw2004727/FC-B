@@ -1,0 +1,8 @@
+/* 推播列（站長 2026-11-24 確認的預覽提案 CSS 原樣；只用既有變數 --border、--accent、--warning）。
+   讀取中改用全站共用轉圈：與按鈕載入同款 SVG＋ui-spin 動畫（站長同意的差異 1），.wp-spin 只包尺寸與位置。 */
+.wp-row { min-height: 2.1rem; }
+.wp-row .toggle-switch input:disabled + .toggle-slider { opacity: .45; cursor: progress; }
+.wp-spin { display: inline-flex; width: 18px; height: 18px; margin-right: 14px; color: var(--accent); animation: ui-spin var(--ui-spin-dur) var(--ui-ease) infinite; }
+.wp-hint .line-notify-friend-btn { color: var(--accent); }
+.wp-hint.warn > span { color: var(--warning); }
+.wp-sep { border-top: 1px solid var(--border); margin: .5rem 0; }

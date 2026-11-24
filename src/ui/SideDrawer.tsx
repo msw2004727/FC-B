@@ -56,6 +56,8 @@ import {
   isStandalonePwa,
 } from '@/features/pwa/pwa-install';
 import { PwaModals, type PwaModalStep } from '@/features/pwa/PwaModals';
+// 推播列（W5）的「怎麼加入」借用同一份 iPhone 安裝教學彈窗：從這個分塊取，避免 PwaModals 被拆成新的共用分塊、改到首頁主程式。
+export { PwaModals };
 import { GuestAvatarIcon } from './GuestAvatarIcon';
 import { IdentityCrownSvg } from './IdentityCrown';
 import { CaretIcon, GlobeIcon, MoreIcon, ResetIcon, ThemeIcon } from './drawer-foot-icons';
@@ -133,12 +135,26 @@ function lockBody(body: HTMLElement): () => void {
   };
 }
 
+/** 網頁推播本機紀錄的鍵名（= web-push/store.ts 的 WEB_PUSH_STORE_KEY）。 */
+const WEB_PUSH_STORE_KEY = 'fcb:webpush:v1';
+
 /** 照 A `confirmClearCache` 清除快取與登出並重載。 */
 async function executeClearCache(): Promise<void> {
   // 登出段走 signOutForCacheClear：signOut 之前就擋這一頁的自動登入、刪 LIFF* 之前先登出 LINE（最多 8 秒）、
   // 寫剛登出旗標。Firebase 登出失敗（已提示）就停：不刪 LIFF*、不重整（Grok 第三輪 P2）。
   // 登入模組載入失敗則照舊繼續清快取（與原本行為相同）。
   let proceed = true;
+  // 網頁推播：登出前先解除這台裝置的推播訂閱、等瀏覽器退訂完成（最多 3 秒，失敗照常登出；W5 §5.3）。
+  // 沒有本機紀錄（沒開過）就不載入推播模組。鍵名同 web-push/store.ts 的 WEB_PUSH_STORE_KEY（測試鎖住）；
+  // 不 import store.ts：會把它拉成共用分塊、改到首頁主程式。
+  try {
+    if (localStorage.getItem(WEB_PUSH_STORE_KEY) !== null) {
+      const webPush = await import('@/features/profile/web-push/boot');
+      await webPush.beforeSignOut(3000);
+    }
+  } catch {
+    /* 儲存空間不可用或推播模組載入失敗就照常登出 */
+  }
   try {
     const auth = await import('@/data/auth');
     if (typeof auth.signOutForCacheClear === 'function') proceed = await auth.signOutForCacheClear();
@@ -296,6 +312,17 @@ export function SideDrawer({
 
   useEffect(() => {
     initPwaInstallListener();
+  }, []);
+
+  // 網頁推播開機模組（W5）：點通知的站內換頁、靜默重新訂閱、換帳號清理。每頁一次；載入失敗只記錄（L-07）。
+  const locationRef = useRef(location);
+  locationRef.current = location;
+  useEffect(() => {
+    import('@/features/profile/web-push/boot')
+      .then((m) => m.startWebPushBoot({ route: (p) => locationRef.current.route(p) }))
+      .catch((err: unknown) => {
+        console.warn('[webpush] boot load failed', err instanceof Error ? err.name : 'error');
+      });
   }, []);
 
   useEffect(() => {

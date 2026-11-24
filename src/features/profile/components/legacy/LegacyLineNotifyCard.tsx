@@ -33,6 +33,7 @@ import {
 } from '../../data/line-notify-settings';
 import { checkLineFriendship } from '../../data/line-friendship';
 import { ProfileInfoButton } from './ProfileInfoButton';
+import { WebPushSlot } from './WebPushSlot';
 
 // 11-09 站長預覽核可：activity 改「活動通知（報名、候補、異動）」（新站沒有開始前提醒）；三列改走 7 語系字典。
 const LINE_TOGGLE_ROWS: ReadonlyArray<{ key: LineNotifyKey; textKey: string }> = [
@@ -307,6 +308,8 @@ export function LegacyLineNotifyCard({
         <span class="profile-collapse-arrow">▶</span>
       </div>
       )}
+
+      {embedded && <WebPushSlot uid={uid} />}
 
       <div
         class="profile-collapse-content"
