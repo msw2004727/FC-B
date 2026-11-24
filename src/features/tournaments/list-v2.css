@@ -131,6 +131,8 @@
 /* 選單鈕、按鈕外觀 36px、點擊區 44px：上下用負邊界不撐高篩選列。舊站 .legacy-ui button 會把字色蓋成繼承，這裡接回按鈕自己的字色 */
 #page-tournaments .cpl-bar > .ui-button { flex: 0 0 auto; min-inline-size: 0; margin-top: -4px; margin-bottom: -4px; padding: 0 14px; color: var(--comp-button-foreground-default); }
 #page-tournaments .cpl-bar > .ui-button::before { top: 4px; bottom: 4px; }
+/* 站內「建立賽事」外觀和左邊「只看我的」開關軌道同高 22px、同一條中線（站長 11-24）；點擊區仍 44px。外部「＋ 新增賽事」不變 */
+#page-tournaments .cpl-toolbar > .ui-button::before { top: 11px; bottom: 11px; }
 /* 開關：舊站標記，軌道尺寸不動；輸入框改成看不見但在原位，鍵盤停得到、有焦點框（規格第 10 節第 11 題） */
 #page-tournaments .cpl-sw { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin: -4px 0; white-space: nowrap; cursor: pointer; }
 #page-tournaments .cpl-sw > span:first-child { font-size: 13px; line-height: 20px; font-weight: 400; color: var(--d2-text-2); }
