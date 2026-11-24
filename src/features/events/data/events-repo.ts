@@ -19,6 +19,7 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 // 只讀活動（公開資料），只需要 app＋firestore，不等 auth／functions（T-041）。
+import { reportClientError } from '@/core/error-report';
 import { getFirebaseCore as defaultGetFirebase } from '@/data/firebase';
 import { events as eventsCollectionPath } from '@/data/paths';
 import type { EventDoc } from './types';
@@ -30,6 +31,7 @@ export const TERMINAL_PREVIEW_LIMIT = 50;
 // 舊活動很難找到；改與 preview 同為 50（2026-11-23 站長同意）。
 export const TERMINAL_HISTORY_LIMIT = 50;
 export const TERMINAL_PAGE_SIZE_DEFAULT = 100;
+// 進行中活動清單上限；查詢多抓一筆偵測超量，超過時只留前 200 筆並送錯誤回報（不含 uid、活動代號）。
 export const ACTIVE_EVENTS_LIMIT = 200;
 /** 列表沿用剛成功載入的 active（首頁進來）的短時效。對齊活動詳情 session 快取。 */
 export const ACTIVE_LIST_REUSE_TTL_MS = 30_000;
@@ -230,7 +232,7 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
           query(
             collection(db, eventsCollectionPath),
             where('status', 'in', [...ACTIVE_EVENT_STATUSES]),
-            limit(ACTIVE_EVENTS_LIMIT),
+            limit(ACTIVE_EVENTS_LIMIT + 1),
           ),
         );
     const terminalPromise = shouldLoadTerminal ? fetchTerminal(db, terminalLimit) : null;
@@ -240,7 +242,11 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
       const active = await activePromise;
       if (sequence !== state.loadSeq) return [];
       if (active.ok) {
-        state.active = active.docs.map(mapDoc);
+        if (active.docs.length > ACTIVE_EVENTS_LIMIT) {
+          logger.warn('[EventsRepo] active query exceeded the limit; list is incomplete.');
+          reportClientError('events-active-limit', new Error(`active events exceed ${ACTIVE_EVENTS_LIMIT}`));
+        }
+        state.active = active.docs.slice(0, ACTIVE_EVENTS_LIMIT).map(mapDoc);
         state.activeFromCache = active.fromCache;
         state.activeLoadedAt = nowMs();
       } else {
