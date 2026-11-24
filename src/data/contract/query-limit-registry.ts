@@ -170,15 +170,14 @@ export const QUERY_LIMIT_REGISTRY: Readonly<Record<string, QueryLimitFile>> = {
         purpose: '主辦讀報隊私密資料（entryPrivate，CP_READ_LIMIT.private 100；管理頁不帶 teamId）',
         orderBy: '無排序',
         overflow: '已知未處理：一隊一份，數量與報隊相同，可超過 100',
-        status: 'known-gap-other',
-        reason: '盤點文件未列；與報隊同一個上限問題，待顧問決定是否併入批次 D',
+        status: 'known-gap-batch-D', // 顧問 §3.679：併入 D-3 賽事讀取
       },
       {
         purpose: '球員私密資料（rosterPrivate，CP_READ_LIMIT.private 100；帶 uid 時只查本人）',
         orderBy: '無排序',
         overflow: '帶 uid 時筆數很小；不帶 uid 時整賽事名單可超過 100，已知未處理',
         status: 'known-gap-other',
-        reason: '盤點文件未列；目前 src 正式碼沒有呼叫端，待有呼叫端時再處理',
+        reason: '盤點文件未列；目前 src 正式碼沒有呼叫端，顧問 §3.679 裁定維持登記、不處理',
       },
       {
         purpose: '單一賽事的人員清單（staff，STAFF_LIST_LIMIT 100）',
@@ -197,22 +196,19 @@ export const QUERY_LIMIT_REGISTRY: Readonly<Record<string, QueryLimitFile>> = {
         purpose: '賽事摘要片（summary，一個比賽日一片，CP_READ_LIMIT.summary 14）',
         orderBy: '無排序（讀回後 compareSummary 排）',
         overflow: '已知未處理：建賽端比賽期間最長 180 天（validate.ts:LIMITS.matchSpanMaxDays），沒有限制比賽日數，超過 14 個比賽日會缺日',
-        status: 'known-gap-other',
-        reason: '盤點文件未列；待顧問決定是否併入批次 D',
+        status: 'known-gap-batch-D', // 顧問 §3.679：併入 D-3 賽事讀取
       },
       {
         purpose: '積分榜（standings，一組別一分組一份，CP_READ_LIMIT.standings 8）',
         orderBy: '無排序（讀回後依 id 排）',
         overflow: '已知未處理：文件是每個組別×階段×分組一份（match-trigger.ts:standingRef），分組數最多 16（engine/validate-config.ts groupCount ≤ 26 且為 2 的冪），加上最多 8 個組別，可超過 8',
-        status: 'known-gap-other',
-        reason: '盤點文件未列；待顧問決定是否併入批次 D',
+        status: 'known-gap-batch-D', // 顧問 §3.679：併入 D-3 賽事讀取
       },
       {
         purpose: '隊徽用的已核准報隊（entries status == approved，CP_READ_LIMIT.crest 32）',
         orderBy: '無排序',
         overflow: '已知未處理：已核准隊數上限是每組 maxTeams（≤ 64）× 最多 8 組，可超過 32，超過的隊伍沒有隊徽',
-        status: 'known-gap-other',
-        reason: '盤點文件未列；待顧問決定是否併入批次 D',
+        status: 'known-gap-batch-D', // 顧問 §3.679：併入 D-3 賽事讀取
       },
       {
         purpose: '尚未使用的邀請（invites status == open，CP_INVITE_LIST_LIMIT 30）',
@@ -283,7 +279,7 @@ export const QUERY_LIMIT_REGISTRY: Readonly<Record<string, QueryLimitFile>> = {
         orderBy: '無排序',
         overflow: '已知未處理：超過 32 個讚時顯示哪些按讚者由文件代號決定',
         status: 'known-gap-other',
-        reason: '盤點文件未列；只影響按讚者頭像，按讚數另有來源；待顧問決定是否併入批次 D',
+        reason: '只影響按讚者頭像；顧問 §3.679 裁定維持登記、不處理',
       },
       {
         purpose: '活動留言：管理者讀全部（80）',
