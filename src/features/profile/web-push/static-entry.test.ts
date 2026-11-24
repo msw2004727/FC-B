@@ -31,6 +31,8 @@ describe('I 字典與入口靜態檢查', () => {
     for (const file of walk(SRC)) {
       const rel = relative(SRC, file).replace(/\\/g, '/');
       if (rel.startsWith('features/profile/web-push/')) continue;
+      // src/dev 是本機截圖台，不進正式打包。
+      if (rel.startsWith('dev/')) continue;
       const text = readFileSync(file, 'utf8');
       const statics = [...text.matchAll(/^\s*import\s[^;]*?from\s+['"]([^'"]*web-push\/[^'"]*)['"]/gm)].map((m) => m[1]!);
       for (const spec of statics) {
