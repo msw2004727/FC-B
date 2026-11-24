@@ -253,6 +253,26 @@ describe('M-093 讀取', () => {
       .toEqual([['event-comments-limit', 'comments exceed 80']]);
   });
 
+  it('一般會員：公開 60＋本人 30 都沒超過各自上限，去重後 90 則 → 只留最新 80 則並送回報（顧問 §3.719）', async () => {
+    vi.mocked(reportClientError).mockClear();
+    const pub = Array.from({ length: 60 }, (_, i) => snap(`p${i}`, { visibility: 'public', createdAt: 100 + i, likeCount: 0, deleted: true }));
+    const own = Array.from({ length: 30 }, (_, i) => snap(`o${i}`, { visibility: 'private', createdAt: i, likeCount: 0, deleted: true }));
+    mock.getDocs
+      .mockResolvedValueOnce({ docs: pub })
+      .mockResolvedValueOnce({ docs: own });
+    expect(await loadEventComments(context)).toHaveLength(80);
+    expect(vi.mocked(reportClientError).mock.calls.map(([c, e]) => [c, (e as Error).message]))
+      .toEqual([['event-comments-limit', 'merged comments exceed 80']]);
+
+    vi.mocked(reportClientError).mockClear();
+    const overlap = pub.slice(0, 20).map((d) => d);
+    mock.getDocs
+      .mockResolvedValueOnce({ docs: pub })
+      .mockResolvedValueOnce({ docs: overlap });
+    expect(await loadEventComments(context)).toHaveLength(60);
+    expect(vi.mocked(reportClientError)).not.toHaveBeenCalled();
+  });
+
   it('回覆超過 20 則：查詢 limit 21、只留 20 則並送固定內容的錯誤回報', async () => {
     vi.mocked(reportClientError).mockClear();
     const replies = Array.from({ length: 21 }, (_, i) => snap(`r${i}`, { createdAt: i, likeCount: 0, recentLikers: [] }));

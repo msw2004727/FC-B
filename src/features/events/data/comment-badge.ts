@@ -7,7 +7,7 @@
  * 不改計數欄位、不放寬併發 2（不同活動仍各查各的子集合）。
  * 健檢 B2-04（2026-11-13）：數法改 count() 聚合（每張卡 2 次讀取），整份讀取只留作備援，見 countVisibleComments。
  */
-import { reportClientError } from '@/core/error-report';
+import { reportLimitOncePerDay } from '@/core/limit-report';
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
 
 export const COMMENT_BADGE_CACHE_TTL_MS = 300000;
@@ -15,9 +15,9 @@ export const COMMENT_BADGE_MAX_CONCURRENT = 2;
 
 const COMMENT_LIMIT = 80;
 
-/** 多抓一筆偵測超量（R-QUERY-001）：超過時只取上限筆數並送錯誤回報（內容固定，不帶 uid、活動代號）。 */
+/** 多抓一筆偵測超量（R-QUERY-001）：超過時只取上限筆數並送錯誤回報（內容固定，不帶 uid、活動代號；每台裝置每天一次）。 */
 function cappedDocs<T>(docs: readonly T[], cap: number): readonly T[] {
-  if (docs.length > cap) reportClientError('comment-badge-limit', new Error(`comments exceed ${cap}`));
+  if (docs.length > cap) reportLimitOncePerDay('comment-badge-limit', `comments exceed ${cap}`);
   return docs.slice(0, cap);
 }
 
