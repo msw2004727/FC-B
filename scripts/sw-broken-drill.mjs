@@ -5,6 +5,8 @@
  *   node scripts/sw-broken-drill.mjs --base <基底 dist> --good <W4 dist> --rebuilt <W4 重新建置的 dist> [--engine chromium|webkit|all] [--out report.json] [--timeout ms]
  *
  * --rebuilt 必須是重新建置的產物（sw.js 位元組與 --good 不同，例如換 FCB_BUILD_ID 再 build 一次）；相同就以 2 結束。
+ * 三份 dist（--base、--good、--rebuilt）的 FCB_BUILD_ID 必須兩兩不同：正式 Pages 每次建置都把 app-build／app-sha 寫進 index.html，
+ * index.html 的 revision 在 sw.js 預存清單裡，所以 sw.js 每次建置都會變；--base 與 --good 的 sw.js 相同時演練的前提不成立，以 2 結束。
  * 壞版由 --good 衍生，不另建置：
  *   missing：sw-push.js 不存在（伺服器照 Pages 回 index.html 的 200 text/html），sw.js 不變；
  *   throw：sw-push.js 立即函式外第一行加 throw，sw.js 不變。
@@ -65,6 +67,10 @@ for (const [name, v] of Object.entries(VARIANTS)) {
   const sw = await readFile(path.join(v.root, 'sw.js'));
   SW_SHA[name] = sha256(sw);
   PRECACHE_N[name] = [...sw.toString('utf8').matchAll(/\{url:"[^"]+",revision:/g)].length;
+}
+if (SW_SHA.base === SW_SHA.good) {
+  console.error('--base 的 sw.js 與 --good 位元組相同：base 請用不同的 FCB_BUILD_ID 建置（正式站每次建置 sw.js 都會變）再跑');
+  process.exit(2);
 }
 if (SW_SHA.rebuilt === SW_SHA.good) {
   console.error('--rebuilt 的 sw.js 與 --good 位元組相同：請重新建置（例如換 FCB_BUILD_ID）再跑');

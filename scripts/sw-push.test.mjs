@@ -20,9 +20,10 @@ const TAB = String.fromCharCode(9);
 const source = await readFile(pushPath, 'utf8');
 
 /** 假 MessageChannel：port2.postMessage 以 microtask 送到 port1.onmessage（與真的一樣是非同步）。 */
+const closedPorts = [];
 class FakeChannel {
   constructor() {
-    const port1 = { onmessage: null };
+    const port1 = { onmessage: null, closed: false, close: () => { port1.closed = true; closedPorts.push(port1); } };
     this.port1 = port1;
     this.port2 = {
       postMessage: (data) => {
@@ -207,7 +208,7 @@ describe('sw-push：載入與頂層安全', () => {
     expect(() => new Function('self', source)({})).not.toThrow();
   });
 
-  it('P3 靜態檢查：沒有禁用 API 與 ES2017 以後語法、可編譯、無 BOM、≤ 6,144 B', () => {
+  it('P3 靜態檢查：沒有禁用 API 與 ES2017 以後語法、可編譯、無 BOM、≤ 8,192 B', () => {
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     for (const token of ['importScripts', 'fetch(', 'XMLHttpRequest', 'import(', 'caches', 'indexedDB', 'skipWaiting', 'clients.claim', '?.', '??', 'async ', 'await ', '...']) {
       expect(code.includes(token), token).toBe(false);
@@ -217,8 +218,9 @@ describe('sw-push：載入與頂層安全', () => {
     expect(code).toContain("client.postMessage({ type: 'toosterx:webpush-open', v: 1, path: path }, [ch.port2])");
     expect(() => new vm.Script(source)).not.toThrow();
     expect(source.charCodeAt(0)).not.toBe(0xfeff);
-    // W4.1 加 askPage 後原始檔約 6 KB（多為中文註解，3 B／字）：上限由 5,120 B 調為 6,144 B；此檔不預存、不進入口。
-    expect(Buffer.byteLength(source, 'utf8')).toBeLessThanOrEqual(6144);
+    // 上限 8 KiB：此檔不預存（vite.config.ts 的 globIgnores 排除 sw-push.js，見 S1）、不進入口，只在 SW 安裝與更新檢查時下載；
+    // W4.1 加 askPage 後原始檔約 6 KB（多為中文註解，3 B／字），原 5,120 B 上限不夠。
+    expect(Buffer.byteLength(source, 'utf8')).toBeLessThanOrEqual(8192);
     // 正則的控制字元跳脫必須是字面反斜線 u（不是被展開的真字元）。
     expect(source.includes(`${BS}u0000-${BS}u001f${BS}u007f`)).toBe(true);
     expect(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(source)).toBe(false);
@@ -430,13 +432,51 @@ describe('sw-push：notificationclick 事件', () => {
     expect(ctx.timer.timers).toHaveLength(0);
   });
 
-  it('C4 navigate 被拒：不再開新視窗（互動權限已用掉），waitUntil 仍 resolve', async () => {
+  it('C4 navigate 被拒：最後一搏改開新視窗；openWindow 也被拒時 waitUntil 仍 resolve', async () => {
     const log = [];
     const ctx = load({ clients: [fakeClient(log, `${ORIGIN}/events`, { navigateReject: true })] });
     const r = await click(ctx, { url: '/inbox' });
     expect(r.result).toBe('resolved');
     expect(log.map((x) => x[0])).toEqual(['focus', 'postMessage', 'navigate']);
-    expect(ctx.log.filter((x) => x[0] === 'openWindow')).toHaveLength(0);
+    expect(ctx.log.filter((x) => x[0] === 'openWindow')).toEqual([['openWindow', HREF]]);
+    const both = load({ clients: [fakeClient([], `${ORIGIN}/events`, { navigateReject: true })], openWindowReject: true });
+    expect((await click(both, { url: '/inbox' })).result).toBe('resolved');
+    expect(both.log.filter((x) => x[0] === 'openWindow')).toEqual([['openWindow', HREF]]);
+  });
+
+  it('C12 askPage 結束一律關 port：回覆、逾時、postMessage 丟錯三條路徑', async () => {
+    const portOf = (log) => log.find((x) => x[0] === 'postMessage')[3];
+    // 回覆
+    closedPorts.length = 0;
+    let log = [];
+    await click(load({ clients: [fakeClient(log, `${ORIGIN}/events`, { reply: { v: 1, result: 'kept' } })] }), { url: '/inbox' });
+    expect(closedPorts).toHaveLength(1);
+    // 逾時
+    closedPorts.length = 0;
+    log = [];
+    const ctx = load({ clients: [fakeClient(log, `${ORIGIN}/events`)], autoTimer: false });
+    const pending = clickNoWait(ctx, { url: '/inbox' });
+    await tick();
+    expect(closedPorts).toHaveLength(0);
+    ctx.timer.fire();
+    await pending;
+    expect(closedPorts).toHaveLength(1);
+    expect(portOf(log)).toHaveLength(1);
+    // postMessage 丟錯
+    closedPorts.length = 0;
+    log = [];
+    await click(load({ clients: [fakeClient(log, `${ORIGIN}/events`, { reply: 'throw' })] }), { url: '/inbox' });
+    expect(closedPorts).toHaveLength(1);
+    // port1.close 丟錯也不影響結果
+    class ThrowClose extends FakeChannel {
+      constructor() {
+        super();
+        this.port1.close = () => { throw new Error('closed'); };
+      }
+    }
+    log = [];
+    await click(load({ clients: [fakeClient(log, `${ORIGIN}/events`, { reply: { v: 1, result: 'routed' } })], channel: ThrowClose }), { url: '/inbox' });
+    expect(log.map((x) => x[0])).toEqual(['focus', 'postMessage']);
   });
 
   it('C9 focus 被拒：改開新視窗，不問頁面、不 navigate', async () => {

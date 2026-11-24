@@ -79,18 +79,20 @@
 
   var ACK_MS = 1000;
 
-  // 頁面在 1 秒內回 routed／kept 就算處理完；沒回、port 不可用、丟錯都回 false，交給 navigate。
+  // 頁面在 1 秒內回 routed／kept 就算處理完；沒回、port 不可用、丟錯都回 false，交給 navigate。結束時關掉 port。
   function askPage(client, path) {
     return new Promise(function (resolve) {
       var done = false;
+      var ch = null;
       var finish = function (handled) {
         if (done) return;
         done = true;
+        try { ch && ch.port1.close(); } catch (e) { /* 略過 */ }
         resolve(handled);
       };
       var timer = setTimeout(function () { finish(false); }, ACK_MS);
       try {
-        var ch = new MessageChannel();
+        ch = new MessageChannel();
         ch.port1.onmessage = function (e) {
           clearTimeout(timer);
           var d = e && e.data;
@@ -114,10 +116,11 @@
         var c = client || hit.client;
         if (hit.exact) return c;
         return askPage(c, path).then(function (handled) {
-          return handled ? c : c.navigate(href);
+          // navigate 被拒時最後一搏開新窗；互動權限已被 focus 用掉的引擎會拒絕，由外層 catch 吞掉。
+          return handled ? c : c.navigate(href).catch(function () { return self.clients.openWindow(href); });
         });
       }, function () {
-        // 只有 focus 被拒才開新窗；navigate 失敗不再開（互動權限已用掉，openWindow 也會被拒）。
+        // focus 被拒：權限還沒用掉，直接開新窗。
         return self.clients.openWindow(href);
       });
     }).catch(function () {});
