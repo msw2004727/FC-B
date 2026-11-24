@@ -1,4 +1,3 @@
-throw new Error('w4-drill');
 // 網頁推播接收（W4）：由 vite.config.ts 的 workbox.importScripts 匯入新站 SW，排在 sw-legacy-compat.js 之後。
 // 只做兩件事：push 顯示通知、notificationclick 開站內頁。不 importScripts、不 fetch、不讀寫快取。
 // 頂層與每個監聽都包 try/catch：這支檔頂層丟錯會讓 sw.js 後面的 workbox 設定整段不執行（設計書 §2.4）。
