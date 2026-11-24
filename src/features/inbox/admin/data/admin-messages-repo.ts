@@ -15,6 +15,7 @@
 
 import type { QueryDocumentSnapshot } from 'firebase/firestore';
 
+import { reportClientError } from '@/core/error-report';
 import { getFirebase } from '@/data/firebase';
 import { loadFirestoreSdk } from '@/data/firestore-sdk';
 
@@ -95,9 +96,13 @@ export async function updateAdminMessageStatus(docId: string, status: string): P
 export async function loadScheduledAdminMessages(): Promise<AdminMessage[]> {
   const [fs, { db }] = await Promise.all([loadFirestoreSdk(), getFirebase()]);
   const snap = await fs.getDocs(
-    fs.query(fs.collection(db, COLLECTION), fs.where('status', '==', 'scheduled'), fs.limit(SCHEDULED_SCAN_LIMIT)),
+    fs.query(fs.collection(db, COLLECTION), fs.where('status', '==', 'scheduled'), fs.limit(SCHEDULED_SCAN_LIMIT + 1)),
   );
-  return snap.docs.map((d) => toAdminMessage(d.id, d.data() as Record<string, unknown>));
+  // 多抓一筆偵測超量（R-QUERY-001）：超過時只處理前 SCHEDULED_SCAN_LIMIT 筆，其餘下次排程檢查再處理。
+  if (snap.docs.length > SCHEDULED_SCAN_LIMIT) {
+    reportClientError('admin-scheduled-limit', new Error(`scheduled messages exceed ${SCHEDULED_SCAN_LIMIT}`));
+  }
+  return snap.docs.slice(0, SCHEDULED_SCAN_LIMIT).map((d) => toAdminMessage(d.id, d.data() as Record<string, unknown>));
 }
 
 /**
