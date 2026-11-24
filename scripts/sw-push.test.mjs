@@ -117,6 +117,9 @@ const OFFSITE = [
   '/.//evil.com',
   '/%2e%2e//evil.com',
   '/a/..//evil.com',
+  // 路徑裡的反斜線會被 URL 正規化成 /，query 裡的不會：鎖住 badPath 的反斜線那一道。
+  `/x?a${BS}b`,
+  `/x#a${BS}b`,
 ];
 
 describe('sw-push：載入與頂層安全', () => {
@@ -188,6 +191,28 @@ describe('sw-push：push 事件', () => {
     expect(await storedUrl('/inbox')).toBe('/inbox');
     expect(await storedUrl('/events/abc?x=1#y')).toBe('/events/abc?x=1#y');
     expect(await storedUrl('/%2F%2Fevil.com')).toBe('/%2F%2Fevil.com');
+  });
+
+  it('P7b 解析結果不同源一律退回 /（多餘防線，以替身 URL 鎖住）', async () => {
+    class TrapURL extends URL {
+      get origin() {
+        return this.pathname === '/trap' ? 'https://evil.com' : super.origin;
+      }
+    }
+    const listeners = {};
+    const shown = [];
+    const self = {
+      location: { origin: ORIGIN },
+      addEventListener: (type, fn) => { listeners[type] = fn; },
+      registration: { showNotification: (t, o) => { shown.push([t, o]); return Promise.resolve(); } },
+    };
+    new Function('self', 'URL', source)(self, TrapURL);
+    for (const url of ['/trap', '/inbox']) {
+      let pending = null;
+      listeners.push({ data: jsonData({ v: 1, title: 't', body: 'b', url }), waitUntil: (p) => { pending = p; } });
+      await pending;
+    }
+    expect(shown.map((x) => x[1].data.url)).toEqual(['/', '/inbox']);
   });
 
   it('P8 截斷：標題 80、內文 180 個字元，代理對不切半', async () => {

@@ -25,6 +25,7 @@
       if (typeof value !== 'string' || value.length > 512 || badPath(value)) return DEFAULT_PATH;
       var origin = self.location.origin;
       var url = new URL(value, origin);
+      // 多餘防線，不靠它：前面已確認單一 / 開頭、無反斜線與控制字元，解析結果必為同源（測試以替身 URL 鎖住）。
       if (url.origin !== origin) return DEFAULT_PATH;
       var out = url.pathname + url.search + url.hash;
       return out.length > 512 || badPath(out) ? DEFAULT_PATH : out;
