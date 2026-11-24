@@ -6,12 +6,12 @@
     "toastOff": "Phone & computer alerts off",
     "toastFailed": "Couldn't turn on. Try again later",
     "blocked": "Blocked",
-    "blockedStep": "Address bar icon → Notifications → Allow",
+    "blockedStep": "Icon left of address bar → Notifications → Allow",
     "blockedStepIos": "Settings → Notifications → ToosterX → Allow",
-    "inLine": "Not available in LINE",
+    "inLine": "No notifications in LINE",
     "openChrome": "Open in Chrome",
     "openSafari": "Open in Safari",
-    "iosHome": "Add to Home Screen first",
+    "iosHome": "Add to Home Screen to receive",
     "howToAdd": "How to add"
   }
 }

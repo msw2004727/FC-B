@@ -214,7 +214,7 @@ describe('U 推播列', () => {
     await act(async () => {
       await setLocale('en');
     });
-    await waitFor(() => expect(container.querySelector('.wp-hint > span')?.textContent).toBe('Add to Home Screen first'));
+    await waitFor(() => expect(container.querySelector('.wp-hint > span')?.textContent).toBe('Add to Home Screen to receive'));
     expect(container.querySelector('.wp-row')?.textContent).toContain('Phone & computer alerts');
     await act(async () => {
       await setLocale('zh-TW');

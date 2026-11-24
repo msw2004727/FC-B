@@ -1,7 +1,7 @@
 {
   "webPush": {
     "label": "휴대폰·PC 알림",
-    "scope": "신청·신청 취소·대기 승급",
+    "scope": "신청·신청 취소·대기자 승급",
     "toastOn": "휴대폰·PC 알림을 켰어요",
     "toastOff": "휴대폰·PC 알림을 껐어요",
     "toastFailed": "켜지 못했어요. 잠시 후 다시 시도하세요",
