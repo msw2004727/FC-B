@@ -178,6 +178,8 @@ function active(docId: string, data: Partial<EventDoc> = {}): EventDoc {
 }
 
 beforeEach(() => {
+  // 超量回報每台裝置每天一次（limit-report）：每案清掉，避免前一案的紀錄吞掉後一案的回報。
+  localStorage.clear();
   store = { events: [], registrations: [] };
   mockedGetDocs.mockReset();
   mockedGetDocs.mockImplementation(fakeGetDocs);

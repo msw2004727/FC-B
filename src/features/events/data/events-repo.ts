@@ -19,7 +19,7 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 // 只讀活動（公開資料），只需要 app＋firestore，不等 auth／functions（T-041）。
-import { reportClientError } from '@/core/error-report';
+import { reportLimitOncePerDay } from '@/core/limit-report';
 import { getFirebaseCore as defaultGetFirebase } from '@/data/firebase';
 import { events as eventsCollectionPath } from '@/data/paths';
 import type { EventDoc } from './types';
@@ -244,7 +244,7 @@ export function createEventsRepo(deps: EventsRepoDeps): EventsRepo {
       if (active.ok) {
         if (active.docs.length > ACTIVE_EVENTS_LIMIT) {
           logger.warn('[EventsRepo] active query exceeded the limit; list is incomplete.');
-          reportClientError('events-active-limit', new Error(`active events exceed ${ACTIVE_EVENTS_LIMIT}`));
+          reportLimitOncePerDay('events-active-limit', `active events exceed ${ACTIVE_EVENTS_LIMIT}`);
         }
         state.active = active.docs.slice(0, ACTIVE_EVENTS_LIMIT).map(mapDoc);
         state.activeFromCache = active.fromCache;

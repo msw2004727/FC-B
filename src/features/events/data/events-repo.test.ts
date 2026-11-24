@@ -72,6 +72,8 @@ function makeRepo(now?: () => number) {
 const docs = vi.mocked(getDocs);
 
 beforeEach(() => {
+  // 超量回報每台裝置每天一次（limit-report）：每案清掉，避免前一案的紀錄吞掉後一案的回報。
+  localStorage.clear();
   vi.resetAllMocks();
   docs.mockResolvedValue(snap() as never);
 });
@@ -106,6 +108,17 @@ describe('active events', () => {
       expect(String((err as Error).message)).not.toMatch(/ev\d/);
       expect(logger.warn.mock.calls.flat().map(String).join(' ')).toContain('list is incomplete');
     }
+  });
+
+  test('進行中活動超量：同一天第二次載入不再送回報（每台裝置每天一次），仍照樣截到上限', async () => {
+    const logger = { warn: vi.fn(), error: vi.fn() };
+    for (let round = 0; round < 2; round += 1) {
+      docs.mockResolvedValueOnce(snap(Array.from({ length: ACTIVE_EVENTS_LIMIT + 1 }, (_, i) => makeDoc(`ev${i}`, { status: 'open' }))) as never);
+      const repo = createEventsRepo({ getFirebase: async () => ({ db: {} as never }), logger });
+      await repo.loadEventsStatic({ terminalMode: 'none' });
+      expect(repo.getSnapshot().active).toHaveLength(ACTIVE_EVENTS_LIMIT);
+    }
+    expect(vi.mocked(reportClientError).mock.calls.filter(([c]) => c === 'events-active-limit')).toHaveLength(1);
   });
 
   test('none mode skips terminal and rejects active failure, then retries', async () => {
