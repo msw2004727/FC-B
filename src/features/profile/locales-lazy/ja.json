@@ -1,0 +1,17 @@
+{
+  "webPush": {
+    "label": "スマホ・PC通知",
+    "scope": "申込・申込取消・繰り上げ",
+    "toastOn": "スマホ・PC通知をオンにしました",
+    "toastOff": "スマホ・PC通知をオフにしました",
+    "toastFailed": "オンにできませんでした。後でお試しください",
+    "blocked": "ブロック中",
+    "blockedStep": "アドレスバー左のアイコン → 通知 → 許可",
+    "blockedStepIos": "設定 → 通知 → ToosterX → 許可",
+    "inLine": "LINE内では受け取れません",
+    "openChrome": "Chromeで開く",
+    "openSafari": "Safariで開く",
+    "iosHome": "ホーム画面に追加すると届きます",
+    "howToAdd": "追加方法"
+  }
+}
