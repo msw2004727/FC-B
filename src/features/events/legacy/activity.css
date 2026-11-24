@@ -1381,10 +1381,11 @@
   z-index: 3;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 /* 取代原本按鈕自己絕對定位：改由 .detail-cover-actions 定位，右側可並排刪除鈕。 */
 .detail-cover-edit-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1402,6 +1403,16 @@
   opacity: .75;
   box-shadow: 0 8px 18px rgba(220, 38, 38, .22);
 }
+/* 點擊區只往上下延伸到 44px（顧問 §3.696 第 3 點）；左右不延伸，不與右側快速鈕的點擊區重疊。 */
+.detail-cover-edit-btn::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
 .detail-cover-edit-icon {
   width: .88rem;
   height: .88rem;
@@ -1414,7 +1425,7 @@
 .detail-cover-edit-btn:active {
   transform: translateY(1px);
 }
-/* 外觀同賽事卡刪除鈕 .cpl-del（competitions.css）；::after 把點擊範圍擴到 44px。 */
+/* 外觀同賽事卡刪除鈕 .cpl-del（competitions.css）；::after 把點擊範圍擴到 44px（左側延伸 6px，與編輯鈕仍隔 2px）。 */
 .detail-cover-del-btn {
   position: relative;
   display: grid;
