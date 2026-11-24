@@ -1,0 +1,17 @@
+{
+  "webPush": {
+    "label": "Phone & computer alerts",
+    "scope": "Sign-up, cancellation, waitlist promotion",
+    "toastOn": "Phone & computer alerts on",
+    "toastOff": "Phone & computer alerts off",
+    "toastFailed": "Couldn't turn on. Try again later",
+    "blocked": "Blocked",
+    "blockedStep": "Icon left of address bar → Notifications → Allow",
+    "blockedStepIos": "Settings → Notifications → ToosterX → Allow",
+    "inLine": "No notifications in LINE",
+    "openChrome": "Open in Chrome",
+    "openSafari": "Open in Safari",
+    "iosHome": "Add to Home Screen to receive",
+    "howToAdd": "How to add"
+  }
+}

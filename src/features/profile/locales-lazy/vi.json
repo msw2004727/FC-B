@@ -1,0 +1,17 @@
+{
+  "webPush": {
+    "label": "Thông báo điện thoại/máy tính",
+    "scope": "Đăng ký, hủy đăng ký, được lên từ danh sách chờ",
+    "toastOn": "Đã bật thông báo điện thoại/máy tính",
+    "toastOff": "Đã tắt thông báo điện thoại/máy tính",
+    "toastFailed": "Không bật được, vui lòng thử lại sau",
+    "blocked": "Đã chặn",
+    "blockedStep": "Biểu tượng trái thanh URL → Thông báo → Cho phép",
+    "blockedStepIos": "Cài đặt → Thông báo → ToosterX → Cho phép",
+    "inLine": "Không nhận được trong LINE",
+    "openChrome": "Mở bằng Chrome",
+    "openSafari": "Mở bằng Safari",
+    "iosHome": "Thêm vào màn hình chính mới nhận được",
+    "howToAdd": "Cách thêm"
+  }
+}

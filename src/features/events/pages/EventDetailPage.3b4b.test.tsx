@@ -43,6 +43,8 @@ vi.mock('../data/visibility', () => ({ isEventVisibleToUser: () => true }));
 vi.mock('../data/event-create-context', () => ({ operateContextFromViewer: () => ({}) }));
 vi.mock('../data/operate-permissions', () => ({
   canOperateEventSite: () => false,
+  canDeleteActivity: () => false,
+  canCancelOwnActivity: () => false,
   canRemoveConfirmedParticipant: () => false,
 }));
 vi.mock('../data/signup-state', () => ({

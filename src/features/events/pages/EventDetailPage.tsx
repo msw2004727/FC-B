@@ -7,7 +7,19 @@ import {
   EventDetailHeaderActions,
   canEditDetailActivity,
 } from '../components/legacy/EventDetailHeaderActions';
-import { canManageTeamSplit, canViewEventOperationLog } from '../data/operate-permissions';
+import {
+  canCancelOwnActivity,
+  canDeleteActivity,
+  canManageTeamSplit,
+  canViewEventOperationLog,
+} from '../data/operate-permissions';
+import { DeleteEventConfirmDialog } from '../components/legacy/DeleteEventConfirmDialog';
+import {
+  DELETE_EVENT_MESSAGES,
+  deleteEventViaCallable,
+  getDeleteEventErrorMessage,
+  waitOverlayReleased,
+} from '../data/event-delete';
 import {
   getSplitTeams,
   getTeamSplit,
@@ -43,7 +55,7 @@ import {
 import { loadLateCancelUser, useLateCancelTags } from '../data/use-late-cancel-tags';
 import { CALLABLES_DEPLOYED } from '@/data/callables-deployed';
 import { settleAttendance } from '../data/attendance-settle';
-import { resolveOperator } from '../data/event-lifecycle';
+import { isCourseLinkedLifecycleLocked, resolveOperator } from '../data/event-lifecycle';
 import { loadEventAttendance, type EventAttendanceEntry } from '@/features/checkin/data/attendance';
 import { loadEventDetail, loadEventRegistrations, type LoadedEventDetail } from '../data/event-detail';
 import {
@@ -69,7 +81,8 @@ import {
   detailCompanionGenderMessage,
 } from '../data/signup-context';
 import { getEventEarlyBirdCost } from '../data/signup-restrictions';
-import { effectiveEventStatus } from '../data/my-activities-model';
+import { effectiveEventStatus, filterManageableEvents } from '../data/my-activities-model';
+import { drawerOwnActivityManage } from '@/core/drawer-access';
 import { getEventParticipantStats } from '../data/participant-stats';
 import { eventStartMs } from '../data/terminal';
 import {
@@ -324,6 +337,28 @@ function readCachedDetail(
   if (uid && Array.isArray(cached.blockedUids) && cached.blockedUids.includes(uid)) return null;
   if (!isEventVisibleToUser(cached, viewer, [])) return null;
   return { event: cached, eventDocId: docId };
+}
+
+/**
+ * 封面快速鈕（站長 11-24）：已結束／已取消是刪除，其餘是取消活動。條件與「我的活動」相同三層：
+ * 進得了頁（drawerOwnActivityManage）→ 清單看得到（filterManageableEvents：edit_all 或 owner／delegate、私密可見）
+ * → 卡片按鈕（effectiveEventStatus 分流、canDeleteActivity／canCancelOwnActivity）。課程連結活動一律不顯示。
+ * nowMs 用頁面的 now，畫面上的按鈕與點擊時重算的結果才會一致。
+ */
+function quickActionOf(
+  viewer: ViewerView,
+  event: LegacyDetailEvent | null | undefined,
+  nowMs: number,
+): 'delete' | 'cancel' | null {
+  if (!event || isCourseLinkedLifecycleLocked(event)) return null;
+  const context = operateContextFromViewer(viewer);
+  const status = effectiveEventStatus(event, nowMs);
+  const kind = status === 'ended' || status === 'cancelled'
+    ? (canDeleteActivity(context, event) ? 'delete' : null)
+    : (canCancelOwnActivity(context, event) ? 'cancel' : null);
+  // 三層都要成立；先算按鈕權限，沒有就不必再算頁面入口與清單過濾。
+  if (!kind || !drawerOwnActivityManage(viewer) || filterManageableEvents([event], viewer).length === 0) return null;
+  return kind;
 }
 
 export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
@@ -1106,6 +1141,13 @@ function EventDetailSession({
     ? staffState.ids : new Set<string>();
   const canEditCover = visible
     && canEditDetailActivity(operateContextFromViewer(viewer), event);
+  // 站長 11-24：封面快速鈕。已結束／已取消（effectiveEventStatus，與「我的活動」同一個判斷）是刪除，
+  // 其餘是取消活動；權限分別用 canDeleteActivity／canCancelOwnActivity（同「我的活動」），課程連結活動不顯示。
+  const coverQuickAction = quickActionOf(viewer, visible ? event : null, now);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const lifecycleBusy = useRef(new Set<string>());
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const deleteBusyRef = useRef(false);
   const canShowDetailLog = visible && !!viewer.uid
     && canViewEventOperationLog(operateContextFromViewer(viewer), event);
 
@@ -1378,6 +1420,65 @@ function EventDetailSession({
       return;
     }
     setEditingDetail(true);
+  }
+
+  /**
+   * 封面快速鈕。刪除照「我的活動」：第一次確認 → 第二次確認（勾選才可刪）→ Callable deleteEvent；
+   * 取消活動照「我的活動」共用的 runEventLifecycleAction（一次確認，可重新開放），成功後重讀本頁。
+   */
+  async function runQuickAction(): Promise<void> {
+    if (deleteBusyRef.current || deleteOpen) return;
+    const current = headerState.current;
+    const target = current.snapshot?.event;
+    const kind = quickActionOf(currentViewer.current, current.visible ? target : null, now);
+    if (!current.visible || !target || !kind) {
+      toast.show({ message: DELETE_EVENT_MESSAGES.denied, tone: 'error' });
+      return;
+    }
+    const docEvent = { ...target, _docId: current.snapshot?.eventDocId, docId: current.snapshot?.eventDocId };
+    if (kind === 'cancel') {
+      // 動態載入：與「我的活動」共用的 chunk 不進活動詳情的靜態依賴（入口預載表不變）。
+      const { runEventLifecycleAction } = await import('../components/legacy/event-lifecycle-action');
+      await runEventLifecycleAction('cancel', docEvent, {
+        viewer: currentViewer.current,
+        operateCtx: operateContextFromViewer(currentViewer.current),
+        busy: lifecycleBusy.current,
+        onDone: () => {
+          if (alive.current) setReload(value => value + 1);
+        },
+      });
+      return;
+    }
+    if (!(await appConfirm(t('events.manage.delete.confirmFirst'), { danger: true }))) return;
+    if (alive.current) setDeleteOpen(true);
+  }
+
+  async function confirmDeleteDetail(): Promise<void> {
+    const current = headerState.current.snapshot;
+    if (!current || deleteBusyRef.current) return;
+    deleteBusyRef.current = true;
+    setDeleteBusy(true);
+    try {
+      await deleteEventViaCallable({ ...current.event, _docId: current.eventDocId, docId: current.eventDocId });
+      toast.show({ message: DELETE_EVENT_MESSAGES.done, tone: 'success' });
+      if (alive.current) {
+        setDeleteOpen(false);
+        // 確認框關閉後它那筆同網址歷史紀錄下一刻才退；先等退完再返回，否則 history.back 只退掉那筆、仍停在已刪除的活動。
+        const released = await waitOverlayReleased();
+        if (!alive.current) return;
+        // 逾時（極慢的 WebView）時目前紀錄仍是確認框那筆，goBack 會退錯筆；直接取代成活動列表，
+        // 取代後那筆不再是確認框紀錄，overlay-back 排好的退回也就不執行。
+        if (released) goBack();
+        else location.route('/activities', true);
+      }
+    } catch (err: unknown) {
+      console.error('[EventDetailPage.delete]', err instanceof Error ? err.message : 'unknown');
+      toast.show({ message: getDeleteEventErrorMessage(err), tone: 'error' });
+      if (alive.current) setDeleteOpen(false);
+    } finally {
+      deleteBusyRef.current = false;
+      if (alive.current) setDeleteBusy(false);
+    }
   }
 
   function openDetailLog(): void {
@@ -2428,6 +2529,10 @@ function EventDetailSession({
           event={event}
           canEdit={canEditCover}
           onEdit={editDetail}
+          quickAction={coverQuickAction}
+          onQuickAction={() => {
+            void runQuickAction();
+          }}
         />
 
         <div class="detail-body" id="detail-body">
@@ -2793,6 +2898,16 @@ function EventDetailSession({
               onClose={() => setDetailLogOpen(false)}
             />
           </Suspense>
+        )}
+        {deleteOpen && (
+          <DeleteEventConfirmDialog
+            title={String(event.title ?? '')}
+            busy={deleteBusy}
+            onCancel={() => setDeleteOpen(false)}
+            onConfirm={() => {
+              void confirmDeleteDetail();
+            }}
+          />
         )}
         {editingDetail && canEditCover && (
           <Suspense fallback={<div role="status">載入中…</div>}>

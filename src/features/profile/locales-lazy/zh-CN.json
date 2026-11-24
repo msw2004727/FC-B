@@ -1,0 +1,17 @@
+{
+  "webPush": {
+    "label": "手机／电脑通知",
+    "scope": "报名、取消报名、候补递补",
+    "toastOn": "已开启手机／电脑通知",
+    "toastOff": "已关闭手机／电脑通知",
+    "toastFailed": "开启失败，请稍后再试",
+    "blocked": "已屏蔽",
+    "blockedStep": "地址栏左侧图标 → 通知 → 允许",
+    "blockedStepIos": "设置 → 通知 → ToosterX → 允许",
+    "inLine": "LINE 里收不到通知",
+    "openChrome": "用 Chrome 打开",
+    "openSafari": "用 Safari 打开",
+    "iosHome": "添加到主屏幕后才能收",
+    "howToAdd": "怎么添加"
+  }
+}

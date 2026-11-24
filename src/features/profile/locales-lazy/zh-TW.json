@@ -1,0 +1,17 @@
+{
+  "webPush": {
+    "label": "手機／電腦通知",
+    "scope": "報名、取消報名、候補遞補",
+    "toastOn": "已開啟手機／電腦通知",
+    "toastOff": "已關閉手機／電腦通知",
+    "toastFailed": "開啟失敗，請稍後再試",
+    "blocked": "已封鎖",
+    "blockedStep": "網址列左側圖示 → 通知 → 允許",
+    "blockedStepIos": "設定 → 通知 → ToosterX → 允許",
+    "inLine": "LINE 裡收不到通知",
+    "openChrome": "用 Chrome 開啟",
+    "openSafari": "用 Safari 開啟",
+    "iosHome": "加入主畫面後才能收",
+    "howToAdd": "怎麼加入"
+  }
+}

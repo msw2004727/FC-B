@@ -68,8 +68,10 @@ export function DeleteEventConfirmDialog({
           {t('events.manage.delete.confirmFinal', { title: title || t('events.manage.delete.untitled') })}
         </div>
         <label style="display:flex;align-items:center;justify-content:center;gap:.4rem;margin-bottom:1rem;font-size:.85rem;color:var(--text-secondary);cursor:pointer">
+          {/* 全域 legacy input 規則是 width:100%（src/styles/legacy/base.css），不覆寫時勾選框被撐滿、文字擠成兩行。 */}
           <input
             type="checkbox"
+            style="width:auto;margin:0;padding:0;flex:0 0 auto"
             checked={checked}
             disabled={busy}
             onChange={(ev) => setChecked(ev.currentTarget.checked)}

@@ -70,6 +70,8 @@ vi.mock('../data/event-comments', async (original) => ({
 vi.mock('../data/event-create-context', () => ({ operateContextFromViewer: () => ({}) }));
 vi.mock('../data/operate-permissions', () => ({
   canOperateEventSite: () => false,
+  canDeleteActivity: () => false,
+  canCancelOwnActivity: () => false,
   canRemoveConfirmedParticipant: () => false,
   canManageTeamSplit: () => false,
   canViewEventOperationLog: () => false,
