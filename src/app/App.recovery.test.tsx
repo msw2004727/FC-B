@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 import { App } from '@/app/App';
 import { _resetForTest, registerFeatures } from '@/core/feature-registry';
 import type { FeatureManifest } from '@/core/feature-types';
+import { _resetScrollRestoreForTest } from '@/core/scroll-restore';
 
 function Boom(): never {
   throw new Error('boom');
@@ -27,6 +28,8 @@ describe('App 路由錯誤復原', () => {
 
   afterEach(() => {
     cleanup();
+    // 導覽會排一個 120ms 的捲動重設計時器；測試結束前清掉，避免環境拆掉後才觸發（CI 偶發 document is not defined）。
+    _resetScrollRestoreForTest();
     vi.restoreAllMocks();
     window.history.replaceState({}, '', '/');
   });
