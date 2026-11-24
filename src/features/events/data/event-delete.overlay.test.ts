@@ -15,15 +15,20 @@ describe('waitOverlayReleased', () => {
     release();
     // 釋放是下一刻才退，這時仍停在確認框那筆（它也帶著起點標記，直接 goBack 會取代錯的那筆）。
     expect((history.state as Record<string, unknown>).__overlay).toBeTypeOf('number');
-    await waitOverlayReleased();
+    expect(await waitOverlayReleased()).toBe(true);
     const state = history.state as Record<string, unknown>;
     expect(state.__overlay).toBeUndefined();
     expect(state.__fcbRoot).toBe(true);
   });
 
-  it('沒有確認框紀錄時立刻返回', async () => {
+  it('沒有確認框紀錄時立刻返回 true', async () => {
     const start = Date.now();
-    await waitOverlayReleased();
+    expect(await waitOverlayReleased()).toBe(true);
     expect(Date.now() - start).toBeLessThan(50);
+  });
+
+  it('逾時仍沒退掉回 false（呼叫端改走活動列表）', async () => {
+    pushOverlay(() => true);
+    expect(await waitOverlayReleased(40)).toBe(false);
   });
 });

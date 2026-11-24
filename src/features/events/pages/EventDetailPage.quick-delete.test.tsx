@@ -160,7 +160,16 @@ it('權限：一般用戶看不到；擁有者照 own_cancel／event.delete_self
   expect(screen.queryByRole('button', { name: CANCEL })).toBeNull();
   second.unmount();
 
+  // 「我的活動」要先進得了頁（own_manage_entry）；只有 own_cancel 進不了頁，內頁也不給。
   mocks.viewer.mockReturnValue(viewer({ uid: 'owner', capabilities: ['user.activity.own_cancel'] }));
+  const noEntry = render(<EventDetailPage id="public" />);
+  await screen.findByText('測試活動');
+  expect(screen.queryByRole('button', { name: CANCEL })).toBeNull();
+  noEntry.unmount();
+
+  mocks.viewer.mockReturnValue(viewer({
+    uid: 'owner', capabilities: ['user.activity.own_manage_entry', 'user.activity.own_cancel'],
+  }));
   const third = render(<EventDetailPage id="public" />);
   expect(await screen.findByRole('button', { name: CANCEL })).toBeTruthy();
   third.unmount();
@@ -174,6 +183,7 @@ it('權限：一般用戶看不到；擁有者照 own_cancel／event.delete_self
 
   mocks.viewer.mockReturnValue(viewer({
     uid: 'owner',
+    capabilities: ['user.activity.own_manage_entry'],
     permissionSources: { rolePermissions: [], userGrants: ['event.delete_self'], customRoles: [] },
   }));
   const fifth = render(<EventDetailPage id="public" />);
@@ -189,6 +199,31 @@ it('權限：一般用戶看不到；擁有者照 own_cancel／event.delete_self
     expect(screen.queryByRole('button', { name: CANCEL })).toBeNull();
     view.unmount();
   }
+});
+
+it('教練有 event.delete 但不是擁有者／委託人：「我的活動」清單看不到，內頁也不給刪；自己的活動才給', async () => {
+  ended();
+  const coach = (uid: string): ViewerView => viewer({
+    uid, role: 'coach', roleLevel: 1,
+    permissionSources: { rolePermissions: ['event.delete'], userGrants: [], customRoles: [] },
+  });
+  mocks.viewer.mockReturnValue(coach('coach'));
+  const other = render(<EventDetailPage id="public" />);
+  await screen.findByText('測試活動');
+  expect(screen.queryByRole('button', { name: DEL })).toBeNull();
+  other.unmount();
+
+  mocks.viewer.mockReturnValue(coach('owner'));
+  render(<EventDetailPage id="public" />);
+  expect(await screen.findByRole('button', { name: DEL })).toBeTruthy();
+});
+
+it('狀態仍是 open 但開始時間已過：與「我的活動」同算已結束，給刪除不給取消', async () => {
+  mocks.viewer.mockReturnValue(admin());
+  mocks.load.mockResolvedValue({ event: { ...event, date: '2020/10/22 15:00~17:00' }, eventDocId: 'document-id' });
+  render(<EventDetailPage id="public" />);
+  expect(await screen.findByRole('button', { name: DEL })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: CANCEL })).toBeNull();
 });
 
 it('取消活動：走「我的活動」共用流程（補文件 ID），成功後重讀本頁、不離開', async () => {

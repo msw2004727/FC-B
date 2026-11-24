@@ -21,16 +21,17 @@ export async function deleteEventViaCallable(event: EventDoc): Promise<{ already
 
 /**
  * 等刪除確認框那筆同網址歷史紀錄退掉（core/overlay-back：彈窗卸載後下一刻 history.back，state 鍵 '__overlay'）。
- * 先退掉再返回，返回鍵才會真的離開已刪除的活動詳情；最多等 maxMs。做法同賽事 waitOverlayReleased，
+ * 先退掉再返回，返回鍵才會真的離開已刪除的活動詳情；最多等 maxMs，退掉回 true、逾時回 false。做法同賽事 waitOverlayReleased，
  * 不 import 賽事模組是為了不把賽事程式拉進活動詳情的 chunk。
  */
-export async function waitOverlayReleased(maxMs = 500): Promise<void> {
+export async function waitOverlayReleased(maxMs = 500): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < maxMs) {
     const state: unknown = history.state;
-    if (!(state && typeof state === 'object' && '__overlay' in state)) return;
+    if (!(state && typeof state === 'object' && '__overlay' in state)) return true;
     await new Promise((resolve) => setTimeout(resolve, 16));
   }
+  return false;
 }
 
 export const DELETE_EVENT_MESSAGES = {

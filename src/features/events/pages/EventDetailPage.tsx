@@ -81,7 +81,8 @@ import {
   detailCompanionGenderMessage,
 } from '../data/signup-context';
 import { getEventEarlyBirdCost } from '../data/signup-restrictions';
-import { effectiveEventStatus } from '../data/my-activities-model';
+import { effectiveEventStatus, filterManageableEvents } from '../data/my-activities-model';
+import { drawerOwnActivityManage } from '@/core/drawer-access';
 import { getEventParticipantStats } from '../data/participant-stats';
 import { eventStartMs } from '../data/terminal';
 import {
@@ -339,15 +340,25 @@ function readCachedDetail(
 }
 
 /**
- * 封面快速鈕（站長 11-24）：已結束／已取消是刪除，其餘是取消活動；條件與「我的活動」卡片同一套判斷
- * （effectiveEventStatus、canDeleteActivity、canCancelOwnActivity），課程連結活動一律不顯示。
+ * 封面快速鈕（站長 11-24）：已結束／已取消是刪除，其餘是取消活動。條件與「我的活動」相同三層：
+ * 進得了頁（drawerOwnActivityManage）→ 清單看得到（filterManageableEvents：edit_all 或 owner／delegate、私密可見）
+ * → 卡片按鈕（effectiveEventStatus 分流、canDeleteActivity／canCancelOwnActivity）。課程連結活動一律不顯示。
+ * nowMs 用頁面的 now，畫面上的按鈕與點擊時重算的結果才會一致。
  */
-function quickActionOf(viewer: ViewerView, event: LegacyDetailEvent | null | undefined): 'delete' | 'cancel' | null {
+function quickActionOf(
+  viewer: ViewerView,
+  event: LegacyDetailEvent | null | undefined,
+  nowMs: number,
+): 'delete' | 'cancel' | null {
   if (!event || isCourseLinkedLifecycleLocked(event)) return null;
   const context = operateContextFromViewer(viewer);
-  const status = effectiveEventStatus(event);
-  if (status === 'ended' || status === 'cancelled') return canDeleteActivity(context, event) ? 'delete' : null;
-  return canCancelOwnActivity(context, event) ? 'cancel' : null;
+  const status = effectiveEventStatus(event, nowMs);
+  const kind = status === 'ended' || status === 'cancelled'
+    ? (canDeleteActivity(context, event) ? 'delete' : null)
+    : (canCancelOwnActivity(context, event) ? 'cancel' : null);
+  // 三層都要成立；先算按鈕權限，沒有就不必再算頁面入口與清單過濾。
+  if (!kind || !drawerOwnActivityManage(viewer) || filterManageableEvents([event], viewer).length === 0) return null;
+  return kind;
 }
 
 export default function EventDetailPage({ id }: { id?: string }): JSX.Element {
@@ -1132,7 +1143,7 @@ function EventDetailSession({
     && canEditDetailActivity(operateContextFromViewer(viewer), event);
   // 站長 11-24：封面快速鈕。已結束／已取消（effectiveEventStatus，與「我的活動」同一個判斷）是刪除，
   // 其餘是取消活動；權限分別用 canDeleteActivity／canCancelOwnActivity（同「我的活動」），課程連結活動不顯示。
-  const coverQuickAction = quickActionOf(viewer, visible ? event : null);
+  const coverQuickAction = quickActionOf(viewer, visible ? event : null, now);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const lifecycleBusy = useRef(new Set<string>());
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -1419,7 +1430,7 @@ function EventDetailSession({
     if (deleteBusyRef.current || deleteOpen) return;
     const current = headerState.current;
     const target = current.snapshot?.event;
-    const kind = quickActionOf(currentViewer.current, current.visible ? target : null);
+    const kind = quickActionOf(currentViewer.current, current.visible ? target : null, now);
     if (!current.visible || !target || !kind) {
       toast.show({ message: DELETE_EVENT_MESSAGES.denied, tone: 'error' });
       return;
@@ -1453,8 +1464,12 @@ function EventDetailSession({
       if (alive.current) {
         setDeleteOpen(false);
         // 確認框關閉後它那筆同網址歷史紀錄下一刻才退；先等退完再返回，否則 history.back 只退掉那筆、仍停在已刪除的活動。
-        await waitOverlayReleased();
-        if (alive.current) goBack();
+        const released = await waitOverlayReleased();
+        if (!alive.current) return;
+        // 逾時（極慢的 WebView）時目前紀錄仍是確認框那筆，goBack 會退錯筆；直接取代成活動列表，
+        // 取代後那筆不再是確認框紀錄，overlay-back 排好的退回也就不執行。
+        if (released) goBack();
+        else location.route('/activities', true);
       }
     } catch (err: unknown) {
       console.error('[EventDetailPage.delete]', err instanceof Error ? err.message : 'unknown');
