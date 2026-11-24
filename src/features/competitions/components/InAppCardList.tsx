@@ -9,7 +9,6 @@
 import type { JSX } from 'preact';
 import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
-import { Button } from '@/ui/Button';
 import { MenuSelect } from '../ui/menu-select';
 import type { CompetitionsT } from '../i18n';
 import type { InAppListCard, InAppStatusFilter, InAppStatusLine } from '../data/list-cards';
@@ -220,6 +219,24 @@ export function InAppCardList({
     };
   }, [fxKey]);
   const lean = saveDataMode();
+  // 「建立賽事」反光（站長 11-24）：有按鈕、不是省流量才動態載入；減少動態、分頁在背景、捲出畫面由 startCreateSheen 處理。
+  const sheenRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!showCreate || lean) return undefined;
+    let alive = true;
+    let stop: (() => void) | null = null;
+    void import('./create-sheen')
+      .then((mod) => {
+        if (alive && sheenRef.current) stop = mod.startCreateSheen(sheenRef.current);
+      })
+      .catch(() => {
+        // 載不到只是沒有反光。
+      });
+    return () => {
+      alive = false;
+      stop?.();
+    };
+  }, [showCreate, lean]);
   let rank = 0;
   const statusMenu = (
     <MenuSelect<InAppStatusFilter>
@@ -248,8 +265,15 @@ export function InAppCardList({
             <span class="toggle-slider" />
           </span>
         </label>
-        {/* 顧問 §3.294 P2-3：站內按鈕元件；新外觀搬進篩選列最右邊（規格 3.5） */}
-        {showCreate ? <Button variant="primary" size="sm" onClick={onCreate}>{ct('createAction')}</Button> : null}
+        {/* 新外觀搬進篩選列最右邊（規格 3.5）。站長 11-24 選「反光每 3 秒一次」：ui/Button 的 trailing 會多包一層並吃到間距，
+            這裡照 ui/menu-select 借 ui-button 三個 class 自己畫（取代顧問 §3.294 P2-3 的 <Button>，外觀相同）；
+            反光掛點 <i class="cpl-sheen"> 行內先絕對定位、不佔版面，其餘樣式在 create-sheen.ts。 */}
+        {showCreate ? (
+          <button type="button" class="ui-button ui-button--primary ui-button--sm" onClick={onCreate}>
+            <span class="ui-text ui-button__label">{ct('createAction')}</span>
+            <i class="cpl-sheen" ref={sheenRef} style="position:absolute" aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
       {cards.map((card) => (
         <InCard key={card.cid} card={card} ct={ct} imgRank={card.cover ? rank++ : -1} lean={lean} onOpen={onOpen} onDelete={onDelete} />
