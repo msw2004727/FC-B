@@ -294,6 +294,7 @@ describe('next-activity-load', () => {
 
   test('T-8 新查詢某批失敗：整段退回現行報名查詢＋補抓，主辦查詢不重發', async () => {
     addEvent('managed-1', { creatorUid: 'u1', status: 'open', date: TOMORROW });
+    addReg('events/e1/registrations/r1', { userId: 'u1', eventId: 'e1', status: 'confirmed' });
     const indexError = Object.assign(new Error('index missing'), { code: 'failed-precondition' });
     mockedGetDocs.mockImplementation(async (q: any) => {
       const constraints = (q.constraints ?? []) as any[];
@@ -309,7 +310,12 @@ describe('next-activity-load', () => {
       logger: makeLogger(),
     }, 'u1');
 
-    expect(inputs.registrations).toEqual([]);
+    // 退路真的跑了：現行報名查詢（status in ＋ limit REGISTRATION_QUERY_LIMIT）取回 r1。
+    expect(inputs.registrations.map((r) => (r as { _docId?: string })._docId)).toEqual(['r1']);
+    const fallbackQueries = queries().filter((q) => q.base?.kind === 'collectionGroup'
+      && (q.constraints as any[]).some((c) => c.kind === 'where' && c.field === 'status' && c.op === 'in')
+      && (q.constraints as any[]).some((c) => c.kind === 'limit' && c.n === REGISTRATION_QUERY_LIMIT));
+    expect(fallbackQueries).toHaveLength(1);
     const managedQueries = queries().filter((q) => q.base?.kind === 'collection' && q.base.path === 'events');
     expect(managedQueries.filter((q) => (q.constraints as any[]).some((c) => c.field === 'creatorUid'))).toHaveLength(1);
     expect(managedQueries.filter((q) => (q.constraints as any[]).some((c) => c.field === 'ownerUid'))).toHaveLength(1);
@@ -323,6 +329,18 @@ describe('next-activity-load', () => {
     addReg('events/X/registrations/r1', { userId: 'u1', eventId: 'X', status: 'confirmed' });
     const picked = await resolveNextActivity({
       activeEvents: [docEvent, publicEvent],
+      now: () => NOW,
+      logger: makeLogger(),
+    }, 'u1');
+    expect(picked?.event._docId).toBe('X');
+  });
+
+  test('T-9b R-ID-010 清單內衝突、公開代號那份排在前面：文件代號那份仍勝出（清單無固定順序）', async () => {
+    const docEvent = active('X', { id: 'doc-x-public', date: TOMORROW });
+    const publicEvent = active('Y', { id: 'X', date: NEXT_WEEK });
+    addReg('events/X/registrations/r1', { userId: 'u1', eventId: 'X', status: 'confirmed' });
+    const picked = await resolveNextActivity({
+      activeEvents: [publicEvent, docEvent],
       now: () => NOW,
       logger: makeLogger(),
     }, 'u1');

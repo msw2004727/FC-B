@@ -308,8 +308,10 @@ async function loadWithScopedRegistrationQuery(
         code: typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : '',
       });
       reportClientError('next-activity-scoped-fallback', report);
-      const managedEvents = await managedPromise;
-      const fallbackRegistrations = await loadRegistrationsWithQuery(db, sdk, safeUid, logger);
+      const [managedEvents, fallbackRegistrations] = await Promise.all([
+        managedPromise,
+        loadRegistrationsWithQuery(db, sdk, safeUid, logger),
+      ]);
       return completeWithMissingEvents(sdk, db, fallbackRegistrations, managedEvents, logger);
     }
   }
@@ -362,10 +364,13 @@ async function loadWithScopedRegistrationQuery(
       .map((r) => String(r.eventId ?? '').trim())
       .filter(Boolean),
   );
+  // 公開代號已被確認存在的文件（R-ID-010：文件優先）涵蓋時，清單裡那份不再合併，避免兩份欄位混在一起。
+  const confirmedDocIds = new Set(confirmedDocs.map((event) => String(event._docId ?? '').trim()).filter(Boolean));
   const referencedActive = activeEvents.filter((event) => {
     const docId = String(event._docId ?? '').trim();
     const id = String(event.id ?? '').trim();
-    return (docId && referencedIds.has(docId)) || (id && referencedIds.has(id));
+    if (docId && referencedIds.has(docId)) return true;
+    return Boolean(id && referencedIds.has(id) && !confirmedDocIds.has(id));
   });
 
   return {
