@@ -13,7 +13,6 @@ import type { PwaModalStep } from '@/features/pwa/PwaModals';
 import { useQaSession } from '@/features/qa-login/data/qa-session';
 import { useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
-import { WEB_PUSH_UI_PUBLIC } from './config';
 import type { WebPushEnv } from './env';
 import {
   disableWebPush,
@@ -108,19 +107,21 @@ export interface WebPushRowProps {
   env: WebPushEnv;
   /** iPhone／iPad 主畫面 App：封鎖時顯示 iPhone 設定步驟。 */
   iosStandalone: boolean;
+  /** env.ts 的 WEB_PUSH_UI_PUBLIC（由 WebPushSlot 傳入，同上理由）。false＝開通前只給 QA 帳號看。 */
+  uiPublic: boolean;
 }
 
-export function WebPushRow({ uid, env, iosStandalone }: WebPushRowProps): JSX.Element | null {
+export function WebPushRow({ uid, env, iosStandalone, uiPublic }: WebPushRowProps): JSX.Element | null {
   const t = useT();
   const wt = useWebPushT();
-  const qa = useQaSession(WEB_PUSH_UI_PUBLIC ? null : uid);
+  const qa = useQaSession(uiPublic ? null : uid);
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [pwaStep, setPwaStep] = useState<PwaModalStep>('none');
   const mountedRef = useRef(true);
   const uidRef = useRef(uid);
   uidRef.current = uid;
   const checkSeq = useRef(0);
-  const visible = WEB_PUSH_UI_PUBLIC || !!qa;
+  const visible = uiPublic || !!qa;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -231,7 +232,9 @@ export function WebPushRow({ uid, env, iosStandalone }: WebPushRowProps): JSX.El
   }
 
   if (env === 'unsupported') return null;
-  if (!wt || qa === undefined) return <WebPushPlaceholder />;
+  // 開通前 QA 判斷還沒出來：直接不畫（一般使用者不會看到空白一閃再收掉）；開通後才先放等高空白。
+  if (qa === undefined) return uiPublic ? <WebPushPlaceholder /> : null;
+  if (!wt) return <WebPushPlaceholder />;
   if (!visible) return null;
   if (env === 'capable' && view.kind === 'hidden') return null;
 

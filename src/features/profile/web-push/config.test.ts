@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { WEB_PUSH_UI_PUBLIC, WEB_PUSH_VAPID_KEY_ID, WEB_PUSH_VAPID_PUBLIC_KEY } from './config';
+import { WEB_PUSH_VAPID_KEY_ID, WEB_PUSH_VAPID_PUBLIC_KEY } from './config';
+import { WEB_PUSH_UI_PUBLIC } from './env';
 import { base64UrlToBytes } from './flows';
 
 describe('G 設定', () => {

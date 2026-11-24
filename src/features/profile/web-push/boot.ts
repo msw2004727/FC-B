@@ -27,6 +27,24 @@ export function sanitizeOpenPath(value: unknown, origin: string): string {
   }
 }
 
+/**
+ * 點通知時的安全判斷：evaluateReloadSafety 會把「焦點在 input」一律當輸入中；焦點只是停在 checkbox／radio（例如剛按過開關）
+ * 不算在打字，這裡把那兩種排除後再判斷（審查 P3-1；reload-safety.ts 不改）。
+ */
+export function isSafeToRouteForPush(doc: Document = document): boolean {
+  const active = doc.activeElement as HTMLInputElement | null;
+  const toggleFocused = !!active && active.tagName === 'INPUT' && (active.type === 'checkbox' || active.type === 'radio');
+  if (!toggleFocused) return evaluateReloadSafety({ ignorePageSafety: true, doc }).safe;
+  const view = new Proxy(doc, {
+    get(target, key) {
+      if (key === 'activeElement') return null;
+      const value: unknown = Reflect.get(target, key, target);
+      return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+    },
+  });
+  return evaluateReloadSafety({ ignorePageSafety: true, doc: view }).safe;
+}
+
 export interface OpenMessageEnv {
   controller: unknown;
   origin: string;
@@ -76,7 +94,7 @@ export function startWebPushBoot(options: WebPushBootOptions): void {
         controller: sw.controller,
         origin: location.origin,
         route: options.route,
-        isSafe: () => evaluateReloadSafety({ ignorePageSafety: true }).safe,
+        isSafe: () => isSafeToRouteForPush(),
       });
     });
     try {
@@ -98,8 +116,17 @@ export function startWebPushBoot(options: WebPushBootOptions): void {
       const flows = await loadFlows();
       const deps = flows.webPushDeps();
       // 第一次（登入者剛確定）與換人時跑同步（紀錄不屬於新登入者就退訂並清紀錄，不替新登入者訂閱）；登出時只清。
-      if (first || uid) await flows.syncWebPushOnBoot(uid, deps);
-      else await flows.dropForeignSubscription(null, deps);
+      if (!first && !uid) {
+        await flows.dropForeignSubscription(null, deps);
+        return;
+      }
+      // 使用者流程進行中會回 busy：等它結束、登入者沒再變才補跑一次，前一位的紀錄才不會沒人回收（審查 P3-2）。
+      let result = await flows.syncWebPushOnBoot(uid, deps);
+      while (result === 'busy') {
+        await flows.whenWebPushIdle();
+        if (lastUid !== uid) return;
+        result = await flows.syncWebPushOnBoot(uid, deps);
+      }
     };
     job().catch((err: unknown) => {
       console.warn('[webpush] boot sync failed', err instanceof Error ? err.name : 'error');

@@ -353,14 +353,38 @@ async function releaseSubscription(deps: WebPushDeps, callUnregister: boolean): 
 
 // ── 登出前（§5.3，顧問 §3.699 Q3 (B)） ──────────────
 
-/** 有本機紀錄且屬於目前登入者 → 解除 → 退訂 → 刪紀錄。時間上限由呼叫端控制。 */
+/**
+ * 有本機紀錄且屬於目前登入者 → 先記下 endpoint，本機退訂與解除 Callable 並行跑 → 退訂完就刪紀錄。
+ * 呼叫端有時間上限（右上角登出 2 秒）：Callable 卡住時本機退訂仍已完成，共用裝置登出後馬上關瀏覽器也不會再收到前一位的通知
+ * （審查 P2-1；取代原「先解除再退訂」，那個順序在逾時時退訂還沒輪到）。開關頁的「關閉」維持先解除再退訂。
+ */
 export async function releaseBeforeSignOut(deps: WebPushDeps = webPushDeps()): Promise<void> {
   const record = readWebPushRecord();
   if (!record) return;
   const uid = deps.currentUid();
   if (!uid || record.uidHash !== await hash32(uid)) return;
-  await releaseSubscription(deps, true);
-  clearWebPushRecord();
+  let sub: PushSubLike | null = null;
+  try {
+    const reg = await deps.getRegistration();
+    sub = reg ? await reg.pushManager.getSubscription() : null;
+  } catch (err) {
+    logStep('get-subscription', err);
+  }
+  if (!sub) {
+    clearWebPushRecord();
+    return;
+  }
+  const endpoint = sub.endpoint;
+  const unregister = deps.unregister({ endpoint }).catch((err: unknown) => logStep('unregister', err));
+  const unsubscribe = sub.unsubscribe()
+    .catch((err: unknown) => logStep('unsubscribe', err))
+    .then(() => clearWebPushRecord());
+  await Promise.all([unregister, unsubscribe]);
+}
+
+/** 目前沒有流程在跑時 resolve（開機同步回 busy 後，等使用者流程結束再補跑）。 */
+export function whenWebPushIdle(): Promise<void> {
+  return running ? running.done : Promise.resolve();
 }
 
 // ── 換帳號與共用裝置（§5.6） ────────────────────────

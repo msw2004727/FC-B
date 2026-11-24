@@ -61,7 +61,7 @@ afterEach(() => {
 describe('U 推播列', () => {
   it('C 讀取中 → O 可開啟（DOM 照預覽：.wp-block > .line-notify-row.wp-row ＋ .wp-sep）', async () => {
     use(fakeWorld());
-    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} />);
+    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
     expect(container.querySelector('.wp-spin[role="status"]')).not.toBeNull();
     await waitFor(() => expect(stateOf(container)).toBe('off'));
     const row = container.querySelector('.wp-block > .line-notify-row.wp-row')!;
@@ -74,7 +74,7 @@ describe('U 推播列', () => {
 
   it('按開關：同步詢問權限 → S（目標位置、不可按）→ N＋開啟提示', async () => {
     const w = use(fakeWorld());
-    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} />);
+    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
     await waitFor(() => expect(stateOf(container)).toBe('off'));
     let syncCalls: string[] = [];
     act(() => {
@@ -91,7 +91,7 @@ describe('U 推播列', () => {
 
   it('展開時不詢問權限', async () => {
     const w = use(fakeWorld());
-    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} />);
+    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
     await waitFor(() => expect(stateOf(container)).toBe('off'));
     expect(w.calls).not.toContain('requestPermission');
   });
@@ -99,7 +99,7 @@ describe('U 推播列', () => {
   it('N → 關閉提示 → O；失敗 → O＋失敗提示；封鎖 → B 無提示', async () => {
     const w = use(fakeWorld({ permission: 'granted' }));
     await seedOn(w);
-    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} />);
+    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
     await waitFor(() => expect(stateOf(container)).toBe('on'));
     fireEvent.click(toggleOf(container));
     await waitFor(() => expect(stateOf(container)).toBe('off'));
@@ -114,7 +114,7 @@ describe('U 推播列', () => {
     cleanup();
     vi.mocked(toast.show).mockClear();
     use(fakeWorld({ answer: 'denied' }));
-    const r = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} />);
+    const r = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
     await waitFor(() => expect(stateOf(r.container)).toBe('off'));
     fireEvent.click(toggleOf(r.container));
     await waitFor(() => expect(stateOf(r.container)).toBe('blocked'));
@@ -123,7 +123,7 @@ describe('U 推播列', () => {
 
   it('B 已封鎖：標籤＋警示步驟（瀏覽器／iPhone）；回前景重查 → O', async () => {
     const w = use(fakeWorld({ permission: 'denied' }));
-    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} />);
+    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
     await waitFor(() => expect(stateOf(container)).toBe('blocked'));
     expect(container.querySelector('.wp-row .line-notify-status.unbound')?.textContent).toBe('已封鎖');
     expect(container.querySelector('.line-notify-hint.wp-hint.warn > span')?.textContent).toBe('網址列左側圖示 → 通知 → 允許');
@@ -137,7 +137,7 @@ describe('U 推播列', () => {
     });
     cleanup();
     use(fakeWorld({ permission: 'denied' }));
-    const ios = render(<WebPushRow uid="u1" env="capable" iosStandalone />);
+    const ios = render(<WebPushRow uid="u1" env="capable" iosStandalone uiPublic={false} />);
     await waitFor(() => expect(stateOf(ios.container)).toBe('blocked'));
     expect(ios.container.querySelector('.wp-hint.warn > span')?.textContent).toBe('設定 → 通知 → ToosterX → 允許');
   });
@@ -148,7 +148,7 @@ describe('U 推播列', () => {
     const loc = window.location;
     Object.defineProperty(window, 'location', { configurable: true, value: { ...loc, href: 'https://toosterx.com/profile#x', assign } });
     try {
-      const a = render(<WebPushRow uid="u1" env="line-android" iosStandalone={false} />);
+      const a = render(<WebPushRow uid="u1" env="line-android" iosStandalone={false} uiPublic={false} />);
       expect(a.container.querySelector('.wp-hint > span')?.textContent).toBe('LINE 裡收不到通知');
       const btn = a.container.querySelector('.wp-hint .line-notify-friend-btn') as HTMLButtonElement;
       expect(btn.textContent).toBe('用 Chrome 開啟');
@@ -158,7 +158,7 @@ describe('U 推播列', () => {
       cleanup();
       const openWindow = vi.fn();
       vi.mocked(getReadyLiff).mockReturnValue({ isInClient: () => true, openWindow } as never);
-      const b = render(<WebPushRow uid="u1" env="line-ios" iosStandalone={false} />);
+      const b = render(<WebPushRow uid="u1" env="line-ios" iosStandalone={false} uiPublic={false} />);
       const ib = b.container.querySelector('.wp-hint .line-notify-friend-btn') as HTMLButtonElement;
       expect(ib.textContent).toBe('用 Safari 開啟');
       fireEvent.click(ib);
@@ -172,7 +172,7 @@ describe('U 推播列', () => {
 
   it('I：「怎麼加入」開既有 iPhone 安裝教學（PwaModals ios）', async () => {
     use(fakeWorld());
-    const { container, findByTestId } = render(<WebPushRow uid="u1" env="ios-home" iosStandalone={false} />);
+    const { container, findByTestId } = render(<WebPushRow uid="u1" env="ios-home" iosStandalone={false} uiPublic={false} />);
     expect(container.querySelector('.wp-hint > span')?.textContent).toBe('加入主畫面後才能收');
     fireEvent.click(container.querySelector('.wp-hint .line-notify-friend-btn')!);
     expect((await findByTestId('pwa-modal')).getAttribute('data-step')).toBe('ios');
@@ -180,35 +180,37 @@ describe('U 推播列', () => {
 
   it('H：沒有 SW 註冊 → 不畫（連分隔線也沒有）', async () => {
     use(fakeWorld({ hasRegistration: false }));
-    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} />);
+    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
     await waitFor(() => expect(container.querySelector('.wp-spin')).toBeNull());
     expect(container.innerHTML).toBe('');
   });
 
-  it('Q5：不是 QA 帳號 → 不畫；QA 判斷中 → 等高空白', () => {
+  it('Q5：不是 QA 帳號 → 不畫；開通前 QA 判斷中 → 也不畫（不放空白，審查 P2-2）；開通後判斷中才放等高空白', () => {
     use(fakeWorld());
     qaState.value = null;
-    const a = render(<WebPushRow uid="u1" env="line-android" iosStandalone={false} />);
+    const a = render(<WebPushRow uid="u1" env="line-android" iosStandalone={false} uiPublic={false} />);
     expect(a.container.innerHTML).toBe('');
     cleanup();
     qaState.value = undefined;
-    const b = render(<WebPushRow uid="u1" env="line-android" iosStandalone={false} />);
-    expect(b.container.querySelector('.wp-placeholder')).not.toBeNull();
-    expect(b.container.querySelector('.wp-row')).toBeNull();
+    const b = render(<WebPushRow uid="u1" env="line-android" iosStandalone={false} uiPublic={false} />);
+    expect(b.container.innerHTML).toBe('');
+    cleanup();
+    const c = render(<WebPushRow uid="u1" env="line-android" iosStandalone={false} uiPublic />);
+    expect(c.container.querySelector('.wp-row')).not.toBeNull();
   });
 
   it('L-43：uid 換人 → 重設並重查（舊 uid 的結果丟棄）', async () => {
     const w = use(fakeWorld({ permission: 'granted' }));
     await seedOn(w, 'u1');
-    const { container, rerender } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} />);
+    const { container, rerender } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
     await waitFor(() => expect(stateOf(container)).toBe('on'));
-    rerender(<WebPushRow uid="u2" env="capable" iosStandalone={false} />);
+    rerender(<WebPushRow uid="u2" env="capable" iosStandalone={false} uiPublic={false} />);
     await waitFor(() => expect(stateOf(container)).toBe('off'));
   });
 
   it('語系切換只換字（外語按需載入）', async () => {
     use(fakeWorld());
-    const { container } = render(<WebPushRow uid="u1" env="ios-home" iosStandalone={false} />);
+    const { container } = render(<WebPushRow uid="u1" env="ios-home" iosStandalone={false} uiPublic={false} />);
     await act(async () => {
       await setLocale('en');
     });

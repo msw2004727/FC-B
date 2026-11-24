@@ -6,12 +6,13 @@ import {
   _resetWebPushBootForTest,
   beforeSignOut,
   handleWebPushOpenMessage,
+  isSafeToRouteForPush,
   sanitizeOpenPath,
   startWebPushBoot,
   WEB_PUSH_OPEN_MESSAGE,
   type OpenMessageEnv,
 } from './boot';
-import { _resetWebPushFlowsForTest, _setWebPushDepsForTest } from './flows';
+import { _resetWebPushFlowsForTest, _setWebPushDepsForTest, enableWebPush } from './flows';
 import { clearWebPushRecord, hash32, readWebPushRecord, writeWebPushRecord } from './store';
 import { fakeWorld, trackedSub } from './test-fakes';
 import { WEB_PUSH_VAPID_KEY_ID } from './config';
@@ -116,6 +117,20 @@ describe('P 頁面端訊息（D1 (B)，W4.1 SW 協定）', () => {
     expect(isSafe()).toBe(true);
   });
 
+  it('焦點停在 checkbox／radio 不算輸入中（審查 P3-1）；文字框、彈窗照樣不安全', () => {
+    document.body.innerHTML = '<input id="c" type="checkbox"><input id="r" type="radio"><input id="t" type="text">';
+    (document.getElementById('c') as HTMLInputElement).focus();
+    expect(isSafeToRouteForPush()).toBe(true);
+    (document.getElementById('r') as HTMLInputElement).focus();
+    expect(isSafeToRouteForPush()).toBe(true);
+    (document.getElementById('t') as HTMLInputElement).focus();
+    expect(isSafeToRouteForPush()).toBe(false);
+    document.body.insertAdjacentHTML('beforeend', '<div role="dialog" aria-modal="true"><input id="c2" type="checkbox"></div>');
+    (document.getElementById('c2') as HTMLInputElement).focus();
+    expect(isSafeToRouteForPush()).toBe(false);
+    (document.activeElement as HTMLElement).blur();
+  });
+
   it('route 丟錯 → 不回覆、不往外拋', () => {
     const port = makePort();
     const e = env({ route: () => { throw new Error('boom'); } });
@@ -193,5 +208,46 @@ describe('B 開機模組', () => {
     await vi.advanceTimersByTimeAsync(1);
     await p;
     expect(done).toBe(true);
+  });
+
+  it('beforeSignOut：Callable 卡住時本機退訂照樣完成、紀錄已刪（審查 P2-1）', async () => {
+    const s = fakeWorld({ permission: 'granted', uid: 'u1' });
+    s.deps.unregister = () => {
+      s.calls.push('unregister');
+      return new Promise(() => {});
+    };
+    _setWebPushDepsForTest(s.deps);
+    const sub = trackedSub(s, EP);
+    await seed('u1');
+    await beforeSignOut(300);
+    expect(s.calls).toEqual(['getSubscription', 'unregister', 'unsubscribe']);
+    expect(sub.unsubscribed).toBe(true);
+    expect(readWebPushRecord()).toBeNull();
+  });
+
+  it('使用者流程進行中換人（同步回 busy）→ 流程結束後補跑，前一位的訂閱照樣回收（審查 P3-2）', async () => {
+    stubServiceWorker();
+    const w = fakeWorld({ permission: 'granted', uid: 'u1' });
+    _setWebPushDepsForTest(w.deps);
+    const sub = trackedSub(w, EP);
+    await seed('u1');
+    startWebPushBoot({ route: vi.fn(), isProd: true });
+    emit('auth:changed', { uid: 'u1' });
+    await vi.waitFor(() => expect(w.calls).toContain('register'));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const orig = w.deps.register;
+    let waiting = false;
+    w.deps.register = async (req) => { waiting = true; await gate; return orig(req); };
+    const pending = enableWebPush('u1', w.deps);
+    await vi.waitFor(() => expect(waiting).toBe(true));
+    w.state.uid = 'u2';
+    emit('auth:changed', { uid: 'u2' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sub.unsubscribed).toBe(false);
+    release();
+    await pending;
+    await vi.waitFor(() => expect(sub.unsubscribed).toBe(true));
+    expect(readWebPushRecord()).toBeNull();
   });
 });

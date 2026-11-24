@@ -43,7 +43,7 @@ describe('U 推播列位置（LegacyLineNotifyCard）', () => {
     expect(container.querySelector('.wp-block, .wp-sep, .wp-placeholder')).toBeNull();
   });
 
-  it('支援時：embedded 才有，位置在「？」與 LINE 區之間；列到之前先放等高空白', async () => {
+  it('支援時：embedded 才有，位置在「？」與 LINE 區之間；開通前列到之前不放空白（審查 P2-2）', async () => {
     const restore = stubCapable();
     try {
       const { container, findByText } = render(
@@ -51,12 +51,12 @@ describe('U 推播列位置（LegacyLineNotifyCard）', () => {
       );
       void findByText;
       const body = container.querySelector('#profile-line-notify')!;
-      const first = body.querySelector('.wp-placeholder, .wp-block');
-      expect(first).not.toBeNull();
+      expect(body.querySelector('.wp-placeholder')).toBeNull();
+      await vi.waitFor(() => expect(body.querySelector('.wp-block')).not.toBeNull());
       const kids = [...body.children];
       const help = kids.findIndex((el) => el.classList.contains('profile-quick-help'));
       const line = kids.findIndex((el) => el.classList.contains('profile-collapse-content'));
-      const slot = kids.findIndex((el) => el.matches('.wp-placeholder, .wp-block'));
+      const slot = kids.findIndex((el) => el.matches('.wp-block'));
       expect(help).toBeLessThan(slot);
       expect(slot).toBeLessThan(line);
       await vi.waitFor(() => expect(body.querySelector('.wp-block')?.getAttribute('data-env')).toBe('capable'));

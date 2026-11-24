@@ -95,6 +95,9 @@ async function shoot({ name, scene, kind, action, width, theme, lang }) {
     }
   }
   await page.waitForTimeout(action.startsWith('click-') && action !== 'click-sending' ? 450 : 250);
+  // 圖片（「怎麼加入」彈窗的教學圖）載完才截，否則是空白框（審查 P3-4）。延遲載入的圖先捲進畫面觸發載入。
+  await page.evaluate(() => { for (const i of document.images) i.loading = 'eager'; });
+  await page.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0), null, { timeout: 15000 });
   // 自動量：介面文字不得截斷或折行（R-UI-027）、不得有橫向捲動。
   const check = await page.evaluate(() => {
     const out = [];

@@ -15,8 +15,5 @@ export const WEB_PUSH_CALL_TIMEOUT_MS = 10 * 1000;
 /** 等 SW 啟用（serviceWorker.ready）的上限。 */
 export const WEB_PUSH_READY_TIMEOUT_MS = 5 * 1000;
 
-/**
- * 開通前只有 QA 帳號看得到開關（顧問 §3.699 Q5）；開通批次改成 true 讓所有人看到。
- * 不用 isInternalTestMode()：那是建置層級旗標，正式建置預設為真，不能拿來分人。
- */
-export const WEB_PUSH_UI_PUBLIC = false;
+// WEB_PUSH_UI_PUBLIC（開通前只給 QA 看）放在 env.ts：個人頁要在推播列程式到之前就用它決定要不要先放空白，
+// 放這裡會讓本檔變成個人頁與開機模組的共用分塊、改到首頁主程式（審查 P2-2）。
