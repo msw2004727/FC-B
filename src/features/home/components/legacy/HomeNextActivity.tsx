@@ -1,16 +1,14 @@
 import type { JSX } from 'preact';
 import { taipeiParts } from '@/core/taipei-time';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { getVisibleEvents } from '@/features/events/data/visibility';
 import type { EventDoc } from '@/features/events/data/types';
 import type { ViewerView } from '@/features/profile/data/viewer';
 import { readAuthHint } from '@/data/auth-hint';
 import {
-  loadNextActivityLoad,
   parseEventDateRange,
   registrationStatusMeta,
   resolveNextActivity,
-  type NextActivityActiveInput,
   type NextActivityResult,
 } from '../../data/next-activity';
 import { readNextActivitySnapshot } from '../../data/next-activity-snapshot';
@@ -54,8 +52,6 @@ export interface HomeNextActivityProps {
   onCreateEvent: (e: MouseEvent) => void;
   onOpenDetail: (event: EventDoc) => void;
   onAddToCalendar: (event: EventDoc) => void;
-  /** 首頁 useEvents 確認向伺服器新取得的 active 清單；'pending' 等待中；undefined 走現行查法。 */
-  activeEvents?: NextActivityActiveInput;
 }
 
 export function HomeNextActivity({
@@ -65,7 +61,6 @@ export function HomeNextActivity({
   onCreateEvent,
   onOpenDetail,
   onAddToCalendar,
-  activeEvents,
 }: HomeNextActivityProps): JSX.Element {
   const [state, setState] = useState<{
     uid: string | null;
@@ -84,11 +79,6 @@ export function HomeNextActivity({
 
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
 
-  // 批次 A §4.4 H-2：activeEvents 用 ref 讀取最新值，effect 只在 activeReady 由「等待中」變「可用」時重跑。
-  const activeRef = useRef(activeEvents);
-  activeRef.current = activeEvents;
-  const activeReady = activeEvents !== 'pending';
-
   useEffect(() => {
     const uid = viewer.uid;
     if (!uid) {
@@ -97,20 +87,9 @@ export function HomeNextActivity({
     }
 
     let current = true;
-    // 批次 A §4.4 H-3：uid 有值時先預載讀取段（review-lessons L-07：要接 .catch）
-    loadNextActivityLoad().catch(() => undefined);
     setState({ uid, loading: true, failed: false, result: null });
 
-    // 等待中：不發查詢；快照照舊由下方判斷是否顯示。
-    if (!activeReady) {
-      return () => {
-        current = false;
-      };
-    }
-
-    // 這一段與 HEAD 完全相同（H-3）：deps 只多了 activeReady，陣列→陣列不重跑。
-    const list = activeRef.current;
-    resolveNextActivity(Array.isArray(list) ? { activeEvents: list } : {}, uid)
+    resolveNextActivity({}, uid)
       .then((next) => {
         if (!current) return;
         setState({ uid, loading: false, failed: false, result: next });
@@ -124,7 +103,7 @@ export function HomeNextActivity({
     return () => {
       current = false;
     };
-  }, [viewer.uid, activeReady]);
+  }, [viewer.uid]);
 
   const isCurrentUid = state.uid === viewer.uid;
   // L-43：登入狀態還在還原（authPending）時不是訪客，顯示載入中，不得先顯示「還沒有報名活動」。

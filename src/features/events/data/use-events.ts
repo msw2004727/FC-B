@@ -22,12 +22,6 @@ export interface UseEventsOptions {
    * 只能拿確認新取得的資料寫，否則舊資料會被重新蓋上新的時間戳。
    */
   onFresh?: (activeEvents: EventDoc[]) => void;
-  /**
-   * 這個畫面採用的結果裡，active 清單是本次使用中向伺服器確認過的時呼叫（批次 A，首頁下一場用）：
-   * 這次自己新取得（同 onFresh 的條件），或共用的請求在 ACTIVE_LIST_REUSE_TTL_MS 內沿用剛確認的那份。
-   * 不呼叫：離線持久快取（activeFromCache 不是 false）、被較新請求取代、失敗、已卸載。與 onFresh 不同：不得拿來寫首屏快照。
-   */
-  onConfirmedActive?: (activeEvents: EventDoc[]) => void;
 }
 
 interface Inflight {
@@ -134,7 +128,6 @@ function loadRepoModule(): Promise<typeof import('./events-repo')> {
  * 因此條件是：`receipt` 含 `'events'`（這次自己查了 active 且成功）且 `activeFromCache === false`（不是離線時的本機快取）。見 `UseEventsOptions.onFresh`。
  */
 const serverConfirmedActive = new WeakMap<EventDoc[], EventDoc[]>();
-const confirmedActive = new WeakMap<EventDoc[], EventDoc[]>();
 
 /** 不靜態 import events-repo（那會把 Firestore SDK 帶進首頁）。terminal 失敗、active 已成功：整頁不報錯。 */
 function isTerminalOnlyFailure(error: unknown): boolean {
@@ -173,13 +166,6 @@ function start(mode: UseEventsTerminalMode, request: LoadRequest): Promise<Event
     // 回條含 'events' 才是這次真的查了 active。沿用時回條是 ['terminal']，不算確認新取得。
     if (Array.isArray(receipt) && receipt.includes('events') && snapshot.activeFromCache === false) {
       serverConfirmedActive.set(events, snapshot.active);
-    }
-    if (
-      Array.isArray(receipt) &&
-      (receipt.includes('events') || receipt.includes('terminal')) &&
-      snapshot.activeFromCache === false
-    ) {
-      confirmedActive.set(events, snapshot.active);
     }
     return events;
   })();
@@ -267,8 +253,6 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
   terminalModeRef.current = terminalMode;
   const onFreshRef = useRef(options.onFresh);
   onFreshRef.current = options.onFresh;
-  const onConfirmedActiveRef = useRef(options.onConfirmedActive);
-  onConfirmedActiveRef.current = options.onConfirmedActive;
   const stale = useMemo(() => (fresh ? null : staleEventsFor(viewerUid)), [fresh, viewerUid]);
   const shownRef = useRef<EventDoc[]>([]);
   shownRef.current = fresh ?? stale ?? [];
@@ -302,20 +286,12 @@ export function useEvents(viewerUid: string | null, options: UseEventsOptions = 
           pendingSnapshot = next;
         }
         if (!current) return;
-        const freshActive = serverConfirmedActive.get(next);
-        if (freshActive) {
+        const confirmedActive = serverConfirmedActive.get(next);
+        if (confirmedActive) {
           try {
-            onFreshRef.current?.(freshActive);
+            onFreshRef.current?.(confirmedActive);
           } catch {
             /* 呼叫端的快照寫入失敗不影響列表 */
-          }
-        }
-        const confirmed = confirmedActive.get(next);
-        if (confirmed) {
-          try {
-            onConfirmedActiveRef.current?.(confirmed);
-          } catch {
-            /* 呼叫端的清單更新失敗不影響列表 */
           }
         }
         setFresh(next);

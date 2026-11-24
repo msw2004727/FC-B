@@ -17,10 +17,7 @@ vi.mock('firebase/firestore', () => ({
   getDoc: vi.fn(),
 }));
 
-vi.mock('@/core/error-report', () => ({ reportClientError: vi.fn() }));
-
 import { getDocs, limit, orderBy, startAfter, where } from 'firebase/firestore';
-import { reportClientError } from '@/core/error-report';
 import {
   ACTIVE_EVENTS_LIMIT,
   ACTIVE_EVENT_STATUSES,
@@ -85,27 +82,9 @@ describe('active events', () => {
     const repo = makeRepo();
     await expect(repo.loadEventsStatic()).resolves.toEqual(['events']);
     expect(where).toHaveBeenCalledWith('status', 'in', [...ACTIVE_EVENT_STATUSES]);
-    expect(limit).toHaveBeenCalledWith(ACTIVE_EVENTS_LIMIT + 1);
+    expect(limit).toHaveBeenCalledWith(ACTIVE_EVENTS_LIMIT);
     expect(repo.getSnapshot().active.map((event) => event._docId)).toEqual(['a1', 'a2']);
     expect(repo.getSnapshot().active[0]?.id).toBe('public-a1');
-  });
-
-  test.each([
-    { n: ACTIVE_EVENTS_LIMIT, kept: ACTIVE_EVENTS_LIMIT, reports: false },
-    { n: ACTIVE_EVENTS_LIMIT + 1, kept: ACTIVE_EVENTS_LIMIT, reports: true },
-  ])('進行中活動回 $n 筆：保留 $kept 筆，超量回報 $reports（不含活動代號）', async ({ n, kept, reports }) => {
-    docs.mockResolvedValueOnce(snap(Array.from({ length: n }, (_, i) => makeDoc(`ev${i}`, { status: 'open' }))) as never);
-    const logger = { warn: vi.fn(), error: vi.fn() };
-    const repo = createEventsRepo({ getFirebase: async () => ({ db: {} as never }), logger });
-    await repo.loadEventsStatic({ terminalMode: 'none' });
-    expect(repo.getSnapshot().active).toHaveLength(kept);
-    expect(vi.mocked(reportClientError).mock.calls.length).toBe(reports ? 1 : 0);
-    if (reports) {
-      const [context, err] = vi.mocked(reportClientError).mock.calls[0] ?? [];
-      expect(context).toBe('events-active-limit');
-      expect(String((err as Error).message)).not.toMatch(/ev\d/);
-      expect(logger.warn.mock.calls.flat().map(String).join(' ')).toContain('list is incomplete');
-    }
   });
 
   test('none mode skips terminal and rejects active failure, then retries', async () => {

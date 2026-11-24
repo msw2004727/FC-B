@@ -14,21 +14,21 @@
  * Firestore 呼叫全部集中在 loadNextActivityInputs() 這一個 async 函式；其餘為純函式。
  */
 
-// Firestore SDK 只在查詢當下動態載入（T-041 A2）：本檔只留純函式、常數與型別，讀取段在 next-activity-load.ts 動態載入。
+// Firestore SDK 只在查詢當下動態載入（T-041 A2）：本檔的純函式會被首頁路由引用，靜態 import SDK 會讓首頁多帶約 160 KB gz。
 import { parseEventRangeMs } from '@/core/event-time';
-import type { Firestore } from 'firebase/firestore';
+import type { DocumentData, Firestore, Query } from 'firebase/firestore';
+import { loadFirestoreSdk, type FirestoreSdk } from '@/data/firestore-sdk';
+import { getFirebase as defaultGetFirebase } from '@/data/firebase';
+import { events as eventsCollectionPath, filterSubcollectionDocs } from '@/data/paths';
 import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
-// 讀取段（Firestore 查詢）搬到 ./next-activity-load，避免靜態 SDK 進入首頁入口。
-// 本檔不得再 value-import @/data/firestore-sdk、@/data/firebase、@/data/paths。
-// 型別與常數留在本檔；動態載入包裝見檔尾。
 
 // ── 常數（與 A 對齊） ─────────────────────────────────
 
 /**
  * 報名查詢的安全上限（A 原為 120；B 搭配 status 篩選後上調，打到上限時會記警告）。
- * 10-26 唯讀約 299 → 500（T-036）；11-24 實測最多 367，過渡保險調 1,000（§3.656 批次 S，批次 A 後只在退回現行查法時生效）。
+ * 2026-10-26 唯讀統計：每人進行中報名最大約 299（>200 的有 2 人），顧問裁定兩站都用 500（T-036）。
  */
-export const REGISTRATION_QUERY_LIMIT = 1_000;
+export const REGISTRATION_QUERY_LIMIT = 500;
 export const EVENT_QUERY_LIMIT = 80;
 /** Firestore `in` 查詢一次最多 30 個值，補抓活動時依此分批。 */
 export const EVENT_IN_QUERY_CHUNK = 30;
@@ -131,7 +131,7 @@ export function managedRoleForEvent(
   return '';
 }
 
-export function eventIdentityKey(event: EventDoc | null | undefined): string {
+function eventIdentityKey(event: EventDoc | null | undefined): string {
   if (!event) return '';
   const id = String(event.id || event._docId || event.docId || '').trim();
   if (id) return `id:${id}`;
@@ -169,18 +169,12 @@ export function pickNextActivityCandidate(
   nowMs: number,
 ): NextActivityResult | null {
   const eventMap = new Map<string, EventDoc>();
-  const eventList = Array.isArray(events) ? events : [];
-  eventList.forEach((event) => {
+  (Array.isArray(events) ? events : []).forEach((event) => {
     if (!event) return;
-    [event._docId, event.docId].forEach((raw) => {
+    [event.id, event._docId, event.docId].forEach((raw) => {
       const key = String(raw ?? '').trim();
       if (key && !eventMap.has(key)) eventMap.set(key, event);
     });
-  });
-  eventList.forEach((event) => {
-    if (!event) return;
-    const key = String(event.id ?? '').trim();
-    if (key && !eventMap.has(key)) eventMap.set(key, event);
   });
 
   const candidates: NextActivityResult[] = [];
@@ -251,7 +245,7 @@ export function registrationStatusMeta(
   return { key: 'confirmed', label: '正取' };
 }
 
-// ── 型別與動態載入（讀取段在 next-activity-load.ts） ──
+// ── I/O（唯一 Firestore 存取入口） ───────────────────
 
 export interface NextActivityLogger {
   warn: (...args: unknown[]) => void;
@@ -261,24 +255,239 @@ export interface NextActivityDeps {
   getFirebase?: () => Promise<{ db: Firestore }>;
   logger?: NextActivityLogger;
   now?: () => number;
-  /** 首頁 useEvents 確認向伺服器新取得的 active 清單；沒有就走現行查法（批次 A）。 */
-  activeEvents?: readonly EventDoc[];
 }
-
-export type NextActivityActiveInput = readonly EventDoc[] | 'pending' | undefined;
 
 export interface NextActivityInputs {
   registrations: RegistrationDoc[];
   events: EventDoc[];
 }
 
-let loadModule: Promise<typeof import('./next-activity-load')> | null = null;
-export function loadNextActivityLoad(): Promise<typeof import('./next-activity-load')> {
-  loadModule ??= import('./next-activity-load').catch((err: unknown) => {
-    loadModule = null;
-    throw err;
+function mapDoc(docSnap: { id: string; data: () => DocumentData }): EventDoc {
+  return { ...(docSnap.data() as Record<string, unknown>), _docId: docSnap.id } as EventDoc;
+}
+
+function mapRegistration(snapshot: { id: string; data: () => DocumentData }): RegistrationDoc {
+  return { ...(snapshot.data() as Record<string, unknown>), _docId: snapshot.id } as RegistrationDoc;
+}
+
+function mergeEventsByIdentity(events: EventDoc[]): EventDoc[] {
+  const map = new Map<string, EventDoc>();
+  events.forEach((event) => {
+    if (!event) return;
+    const key = eventIdentityKey(event);
+    if (!key) return;
+    map.set(key, { ...(map.get(key) ?? {}), ...event });
   });
-  return loadModule;
+  return Array.from(map.values());
+}
+
+function chunkIds(ids: readonly string[], size: number): string[][] {
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
+  return chunks;
+}
+
+/**
+ * 能不能放進 `documentId() in [...]`：Firestore 文件 id 不得含 '/'、不得是 '.'／'..'、不得符合 `__.*__`、不得超過 1500 bytes。
+ * 違規的 id 放進 `documentId()` 條件，SDK 在建查詢時就會同步丟錯。
+ */
+export function isValidFirestoreDocId(id: string): boolean {
+  if (!id || id === '.' || id === '..') return false;
+  if (id.includes('/')) return false;
+  if (/^__.*__$/.test(id)) return false;
+  return new TextEncoder().encode(id).length <= 1500;
+}
+
+/**
+ * 報名指向、但管理的活動沒涵蓋的活動，一次用 `in` 查詢補抓（取代過去每個缺的 id 各自 resolveEventDocId＋getDoc：id 之間用 Promise.all 並行，但單一 id 內是串行的 1～3 次往返）：
+ *   - `documentId() in ids`：報名的 eventId 就是文件 id（多數情況）；不是合法文件 id 的（例如含 '/'）不放進這條
+ *   - `id in ids`：報名記的是 public id、文件 id 不同的活動（R-ID-010，原 resolveEventDocId 的第二步）
+ * 兩條查詢、各分批並行；單一批次失敗（含建查詢時同步丟錯）只記警告，不影響其他批次。
+ * 隔離單位是「批次」、不是單一 id（舊版逐 id 各自 try）：一批最多 `EVENT_IN_QUERY_CHUNK`（30）個 id，
+ * 一批失敗會讓該批的 id 全部補不到；其中直接文件 id 那條失敗時，該批 id 也都不採 `id` 欄位備援（見下）。
+ *
+ * R-ID-010 的優先順序：`events/{eventId}` 這份文件存在就用它；只有它「確認不存在」才採 `id` 欄位相符的那份。
+ * 同一個 public id 同時對應兩份文件時，`id` 欄位那份會被丟掉。
+ * 「確認不存在」＝直接文件 id 的查詢成功且沒找到（或這個 id 本來就不可能是文件 id，例如含 '/'）。
+ * 直接文件 id 的查詢「失敗」時不知道 `events/X` 在不在，這些 id 不採 `id` 欄位備援——該卡缺席比顯示錯的卡好（退修 4）。
+ */
+async function fetchMissingEvents(
+  sdk: FirestoreSdk,
+  db: Firestore,
+  missingEventIds: readonly string[],
+  logger: NextActivityLogger,
+): Promise<EventDoc[]> {
+  const { collection, documentId, getDocs, query, where } = sdk;
+  interface BatchResult {
+    /** 查詢（含建查詢）是否成功；失敗時 events 一定是空的。 */
+    ok: boolean;
+    ids: string[];
+    events: EventDoc[];
+  }
+  const run = async (
+    label: string,
+    build: (ids: string[]) => Query<DocumentData>,
+    ids: string[],
+  ): Promise<BatchResult> => {
+    try {
+      const snap = await getDocs(build(ids));
+      return { ok: true, ids, events: snap.docs.map((d) => mapDoc(d)) };
+    } catch (err) {
+      logger.warn('[NextActivity] event fetch skipped:', label, ids, err);
+      return { ok: false, ids, events: [] };
+    }
+  };
+
+  const byDocIdBatches = chunkIds(missingEventIds.filter(isValidFirestoreDocId), EVENT_IN_QUERY_CHUNK)
+    .map((ids) => run(
+      'documentId',
+      (chunk) => query(collection(db, eventsCollectionPath), where(documentId(), 'in', chunk)),
+      ids,
+    ));
+  const byPublicIdBatches = chunkIds(missingEventIds, EVENT_IN_QUERY_CHUNK)
+    .map((ids) => run(
+      'id',
+      (chunk) => query(collection(db, eventsCollectionPath), where('id', 'in', chunk)),
+      ids,
+    ));
+  const [byDocIdResults, byPublicIdResults] = await Promise.all([
+    Promise.all(byDocIdBatches),
+    Promise.all(byPublicIdBatches),
+  ]);
+
+  const byDocId = byDocIdResults.flatMap((result) => result.events);
+  const resolvedDocIds = new Set(byDocId.map((event) => String(event._docId ?? '').trim()));
+  // 直接文件 id 的查詢失敗：這些 id 的 events/{id} 在不在不知道，不能退回 id 欄位備援
+  const unconfirmedIds = new Set(
+    byDocIdResults.filter((result) => !result.ok).flatMap((result) => result.ids),
+  );
+  const byPublicId = byPublicIdResults
+    .flatMap((result) => result.events)
+    .filter((event) => {
+      const publicId = String(event.id ?? '').trim();
+      return !resolvedDocIds.has(publicId) && !unconfirmedIds.has(publicId);
+    });
+  return [...byPublicId, ...byDocId];
+}
+
+/**
+ * 從 Firestore 讀取「下一場活動」所需的所有輸入。
+ * 注意：collectionGroup('registrations') 的結果必須先過 filterSubcollectionDocs（R-REG-014）。
+ *
+ * 查詢順序（A4：原本是「報名」→「三個管理查詢」→「補抓缺的活動」三個階段串行；補抓階段各 id 之間並行、單一 id 內串行）：
+ *   1) 報名與三個管理查詢互不相依，一起發出（Promise.all）
+ *   2) 兩邊都回來才知道哪些報名指向的活動還缺，缺的 id 用 `in` 查詢一次補抓
+ */
+export async function loadNextActivityInputs(
+  deps: NextActivityDeps,
+  uid: string,
+): Promise<NextActivityInputs> {
+  const safeUid = String(uid ?? '').trim();
+  if (!safeUid) return { registrations: [], events: [] };
+
+  const getFB = deps.getFirebase ?? defaultGetFirebase;
+  const logger: NextActivityLogger = deps.logger ?? console;
+  const [{ db }, sdk] = await Promise.all([getFB(), loadFirestoreSdk()]);
+  const { collection, collectionGroup, documentId, getDocs, limit, orderBy, query, where } = sdk;
+
+  // 1a) 使用者報名（collectionGroup；R-REG-014 過濾 legacy root）
+  const registrationsPromise = (async (): Promise<RegistrationDoc[]> => {
+    const registrations: RegistrationDoc[] = [];
+    try {
+      const regSnap = await getDocs(
+        query(
+          collectionGroup(db, 'registrations'),
+          where('userId', '==', safeUid),
+          where('status', 'in', [...ACTIVE_REGISTRATION_STATUSES]),
+          limit(REGISTRATION_QUERY_LIMIT),
+        ),
+      );
+      if (regSnap.docs.length >= REGISTRATION_QUERY_LIMIT) {
+        logger.warn(
+          '[NextActivity] registration query hit the limit; later registrations may be missing:',
+          REGISTRATION_QUERY_LIMIT,
+        );
+      }
+      const subcollectionDocs = filterSubcollectionDocs(regSnap.docs);
+      subcollectionDocs.forEach((d) => registrations.push(mapRegistration(d)));
+    } catch (err) {
+      logger.warn('[NextActivity] registration query skipped:', err);
+    }
+    return registrations;
+  })();
+
+  // 1b) 使用者管理的活動（creator／owner／delegate）。
+  // 新活動文件 id 是 ce_<建立毫秒>_…，降冪才是「最新建立的在前」。
+  // 沒有 orderBy 時 Firestore 依文件 id 升冪，limit(80) 只留最早的 80 場，下一場會被截掉。
+  // creatorUid／ownerUid 等號查詢再依文件 id 降冪，走該欄位的自動單欄索引（索引項已含 __name__），不需複合索引。
+  // 回傳筆數打到上限只警告一次，不印 uid。舊文件 id 可能不是 ce_ 格式（R-ID-008），排序位置不代表建立時間。
+  const fetchManaged = async (
+    label: 'creator' | 'owner' | 'delegate',
+    build: () => Query<DocumentData>,
+  ) => {
+    try {
+      const snap = await getDocs(build());
+      if (snap.docs.length >= EVENT_QUERY_LIMIT) {
+        logger.warn(
+          `[NextActivity] ${label} query hit the limit; older events may be missing:`,
+          EVENT_QUERY_LIMIT,
+        );
+      }
+      return snap;
+    } catch (err) {
+      logger.warn(`[NextActivity] ${label} query skipped:`, err);
+      return null;
+    }
+  };
+  const managedEventsQuery = (field: 'creatorUid' | 'ownerUid') =>
+    query(
+      collection(db, eventsCollectionPath),
+      where(field, '==', safeUid),
+      orderBy(documentId(), 'desc'),
+      limit(EVENT_QUERY_LIMIT),
+    );
+  const managedPromise = Promise.all([
+    fetchManaged('creator', () => managedEventsQuery('creatorUid')),
+    fetchManaged('owner', () => managedEventsQuery('ownerUid')),
+    // 不排序：缺 (delegateUids, __name__ DESC) 索引；要排序須先在 FC firestore.indexes.json 加索引並部署。
+    fetchManaged('delegate', () => query(
+      collection(db, eventsCollectionPath),
+      where('delegateUids', 'array-contains', safeUid),
+      limit(EVENT_QUERY_LIMIT),
+    )),
+  ]);
+
+  const [registrations, managedSnaps] = await Promise.all([registrationsPromise, managedPromise]);
+
+  const managedEvents: EventDoc[] = [];
+  managedSnaps.forEach((snap) => {
+    snap?.docs.forEach((d) => managedEvents.push(mapDoc(d)));
+  });
+
+  // 2) 報名指向、但 managed/cache 未涵蓋的活動 → 依 id 一次補抓
+  const haveIds = new Set<string>();
+  managedEvents.forEach((event) => {
+    [event.id, event._docId, event.docId].forEach((raw) => {
+      const v = String(raw ?? '').trim();
+      if (v) haveIds.add(v);
+    });
+  });
+
+  const missingEventIds: string[] = [];
+  const seenMissing = new Set<string>();
+  registrations.forEach((r) => {
+    const id = String(r.eventId ?? '').trim();
+    if (!id || haveIds.has(id) || seenMissing.has(id)) return;
+    seenMissing.add(id);
+    missingEventIds.push(id);
+  });
+
+  const missingEvents = missingEventIds.length > 0
+    ? await fetchMissingEvents(sdk, db, missingEventIds, logger)
+    : [];
+
+  const mergedEvents = mergeEventsByIdentity([...managedEvents, ...missingEvents]);
+  return { registrations, events: mergedEvents };
 }
 
 export async function resolveNextActivity(
@@ -288,7 +497,6 @@ export async function resolveNextActivity(
   const safeUid = String(uid ?? '').trim();
   if (!safeUid) return null;
   const nowMs = deps.now?.() ?? Date.now();
-  const { loadNextActivityInputs } = await loadNextActivityLoad();
   const inputs = await loadNextActivityInputs(deps, safeUid);
   return pickNextActivityCandidate(inputs.registrations, inputs.events, safeUid, nowMs);
 }
