@@ -238,12 +238,17 @@ export interface EventDetailCoverProps {
   /** A 編輯 helper 的結果，不使用現場操作權。 */
   canEdit: boolean;
   onEdit: () => void;
+  /** 編輯鈕右側的快速鈕：已結束／已取消是刪除，其餘是取消活動；條件由呼叫端判斷。 */
+  quickAction?: 'delete' | 'cancel' | null;
+  onQuickAction?: () => void;
 }
 
 export function EventDetailCover({
   event,
   canEdit,
   onEdit,
+  quickAction = null,
+  onQuickAction,
 }: EventDetailCoverProps): JSX.Element {
   const coverImage = safeImageUrl(event.imageVariants?.cover || event.image);
   const ribbonMeta = getCoverRibbonMeta(event);
@@ -264,6 +269,29 @@ export function EventDetailCover({
       </svg>
       <span>活動編輯</span>
     </button>
+  ) : null;
+  // 站長 11-24：編輯鈕右側的快速鈕，外觀同賽事卡刪除鈕 .cpl-del；刪除用同一個垃圾桶圖示，取消活動用禁止圖示。
+  // 確認流程在呼叫端。文案照本檔「活動編輯」直接寫中文（舊站 A 移植元件，未接 i18n）。
+  const quickButton = quickAction && onQuickAction ? (
+    <button
+      type="button"
+      class="detail-cover-del-btn"
+      data-quick-action={quickAction}
+      aria-label={quickAction === 'delete' ? '刪除活動' : '取消活動'}
+      onClick={click => {
+        click.stopPropagation();
+        onQuickAction();
+      }}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        {quickAction === 'delete'
+          ? <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+          : <><circle cx="12" cy="12" r="8" /><path d="M6.5 6.5l11 11" /></>}
+      </svg>
+    </button>
+  ) : null;
+  const coverActions = editButton || quickButton ? (
+    <div class="detail-cover-actions">{editButton}{quickButton}</div>
   ) : null;
 
   return (
@@ -288,7 +316,7 @@ export function EventDetailCover({
           <span class={`detail-cover-ribbon detail-cover-ribbon-${ribbonMeta.typeKey}`}>
             {ribbonMeta.label}
           </span>
-          {editButton}
+          {coverActions}
         </div>
       ) : (
         <div class="detail-cover-media detail-cover-media-empty">
@@ -296,7 +324,7 @@ export function EventDetailCover({
           <span class={`detail-cover-ribbon detail-cover-ribbon-${ribbonMeta.typeKey}`}>
             {ribbonMeta.label}
           </span>
-          {editButton}
+          {coverActions}
         </div>
       )}
     </div>

@@ -1374,15 +1374,21 @@
 .detail-cover-ribbon-play     { background: linear-gradient(135deg, #7c3aed, #4338ca); }
 .detail-cover-ribbon-watch    { background: linear-gradient(135deg, #f59e0b, #d97706); }
 .detail-cover-ribbon-course   { background: linear-gradient(135deg, #0284c7, #075985); }
-.detail-cover-edit-btn {
+.detail-cover-actions {
   position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* 取代原本按鈕自己絕對定位：改由 .detail-cover-actions 定位，右側可並排刪除鈕。 */
+.detail-cover-edit-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: .28rem;
-  right: 10px;
-  bottom: 10px;
-  z-index: 3;
   min-height: 28px;
   padding: 0 .62rem;
   border: 0;
@@ -1408,6 +1414,39 @@
 .detail-cover-edit-btn:active {
   transform: translateY(1px);
 }
+/* 外觀同賽事卡刪除鈕 .cpl-del（competitions.css）；::after 把點擊範圍擴到 44px。 */
+.detail-cover-del-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, .6);
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, .5);
+  color: #fca5a5;
+  cursor: pointer;
+}
+.detail-cover-del-btn::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+.detail-cover-del-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.detail-cover-del-btn:focus-visible {
+  outline: 2px solid #f87171;
+  outline-offset: 2px;
+}
 [data-theme="dark"] .detail-cover-edit-btn {
   background: linear-gradient(135deg, #ef4444 0%, #991b1b 100%);
   box-shadow: 0 10px 22px rgba(0, 0, 0, .34), 0 0 0 1px rgba(248, 113, 113, .16);
@@ -1422,9 +1461,11 @@
     font-size: .76rem;
   }
 
-  .detail-cover-edit-btn {
+  .detail-cover-actions {
     right: 8px;
     bottom: 8px;
+  }
+  .detail-cover-edit-btn {
     min-height: 27px;
     padding: 0 .58rem;
     font-size: .7rem;
