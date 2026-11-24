@@ -52,16 +52,14 @@ import {
   EVENT_IN_QUERY_CHUNK,
   EVENT_QUERY_LIMIT,
   REGISTRATION_QUERY_LIMIT,
-  isValidFirestoreDocId,
   isActiveRegistration,
   managedRoleForEvent,
   pickNextActivity,
   pickNextActivityCandidate,
   registrationStatusMeta,
-  loadNextActivityInputs,
   resolveNextActivity,
-  MANAGED_ACTIVE_EVENT_STATUSES,
 } from './next-activity';
+import { isValidFirestoreDocId, loadNextActivityInputs, MANAGED_ACTIVE_EVENT_STATUSES } from './next-activity-load';
 import { ACTIVE_EVENT_STATUSES, TERMINAL_EVENT_STATUSES } from '@/features/events/data/events-repo';
 import type { EventStatus } from '@/features/events/data/event-create';
 

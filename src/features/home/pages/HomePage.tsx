@@ -97,8 +97,16 @@ export default function HomePage(): JSX.Element {
     writeSportsSnapshot(computeGuestSportRows(events, Date.now()));
     setSportSnap(null);
   }, []);
+  // 批次 A §4.5 P-1、P-2（R-1）：onConfirmedActive 收到「這次使用中向伺服器確認過的 active 清單」時記下來，
+  // 交給 HomeNextActivity 走新查法；onFresh 不動，首屏快照行為不變。
+  const [nextActive, setNextActive] = useState<EventDoc[] | null>(null);
+  const handleConfirmedActive = useCallback((events: EventDoc[]) => setNextActive(events), []);
   // 首頁只用進行中活動算運動數量與卡片，不載 ended／cancelled 近 50 筆（A4）；活動列表等頁仍載入預覽（R-EVT-002／003）。
-  const eventsData = useEvents(viewer.uid, { terminalMode: 'none', onFresh: handleFreshEvents });
+  const eventsData = useEvents(viewer.uid, {
+    terminalMode: 'none',
+    onFresh: handleFreshEvents,
+    onConfirmedActive: handleConfirmedActive,
+  });
 
   // 橫幅快照第一次 render 就畫（沒有、過期或版本不同＝空陣列，維持骨架）。只讀一次。
   const [initialBanners] = useState(() => readBannersSnapshot());
@@ -465,6 +473,7 @@ export default function HomePage(): JSX.Element {
           onCreateEvent={handleOpenCreateEvent}
           onOpenDetail={handleOpenEventDetail}
           onAddToCalendar={(event) => void handleAddToCalendar(event)}
+          activeEvents={nextActive ?? (eventsData.refreshing ? 'pending' : undefined)}
         />
 
         {/* Sport Quick Entry */}
