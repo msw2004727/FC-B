@@ -42,7 +42,7 @@ describe('sw-legacy-compat（舊站頁面問 SW 版本）', () => {
 
   it('vite 設定匯入這支腳本，且不把它放進預存', async () => {
     const config = await readFile(configPath, 'utf8');
-    expect(config).toContain("importScripts: ['sw-legacy-compat.js']");
+    expect(config).toContain("importScripts: ['sw-legacy-compat.js', 'sw-push.js']");
     expect(config).toMatch(/globIgnores:[^\]]*'sw-legacy-compat\.js'/);
   });
 });
