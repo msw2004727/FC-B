@@ -26,9 +26,9 @@ import type { EventDoc, RegistrationDoc } from '@/features/events/data/types';
 
 /**
  * 報名查詢的安全上限（A 原為 120；B 搭配 status 篩選後上調，打到上限時會記警告）。
- * 2026-10-26 唯讀統計：每人進行中報名最大約 299（>200 的有 2 人），顧問裁定兩站都用 500（T-036）。
+ * 10-26 唯讀約 299 → 500（T-036）；11-24 實測最多 367，過渡保險調 1,000（§3.656 批次 S，批次 A 後只在退回現行查法時生效）。
  */
-export const REGISTRATION_QUERY_LIMIT = 500;
+export const REGISTRATION_QUERY_LIMIT = 1_000;
 export const EVENT_QUERY_LIMIT = 80;
 /** Firestore `in` 查詢一次最多 30 個值，補抓活動時依此分批。 */
 export const EVENT_IN_QUERY_CHUNK = 30;
