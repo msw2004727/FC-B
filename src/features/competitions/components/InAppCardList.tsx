@@ -1,12 +1,16 @@
 // 站內賽事卡（新外觀清-4，第 1a 批規格 3.5、3.6、3.9）。站長 11-22（顧問 §3.565）：每一張都是記分板卡
 // （一圈玻璃框包一塊深色記分板，原本只有 pickInAppBoard 挑的那一張），取代「淺色一般卡＋小縮圖」；有封面就在板後
 // 套直切由右往左淡出（11-22 由斜切改直切）。重點句拆成數字格（結構化資料，不解析字串、不多讀）；進行中的當日摘要沒回來前預留那一列的高度。
-// 篩選列：狀態頁籤（站長 11-22，取代 ui/menu-select 選單）另一列；這一列是「只看我的」＋最右邊「建立賽事」（第 2 步既有入口，文案沿用）。
+// 狀態篩選：下拉選單（ui/menu-select）放在賽事頁分類分段同一列的右邊（站長 11-24，取代 11-22 的狀態頁籤獨立一列，少一列畫面較乾淨）；
+// 頁面給 statusSlot 就畫進那一格（portal），沒給（預覽 harness、單元測試）就畫在篩選列最前面。
+// 篩選列：「只看我的」＋最右邊「建立賽事」（第 2 步既有入口，文案沿用）。
 // 保留 cpl-card、cpl-card--board、ended、data-cid、data-phase（測試在用）；不再輸出 tc-card 一族與 tc-chip。
 
 import type { JSX } from 'preact';
 import { useEffect, useId, useRef, useState } from 'preact/hooks';
+import { createPortal } from 'preact/compat';
 import { Button } from '@/ui/Button';
+import { MenuSelect } from '../ui/menu-select';
 import type { CompetitionsT } from '../i18n';
 import type { InAppListCard, InAppStatusFilter, InAppStatusLine } from '../data/list-cards';
 import type { CompetitionCategory } from '../data/types';
@@ -25,8 +29,8 @@ function statusKey(phase: CompetitionPhase): 'recruiting' | 'statusWarm' | 'stat
   return 'statusDone';
 }
 
-/** 狀態頁籤（站長 11-22）：全部在最前且是預設；「未結束」不再單獨一格。 */
-const STATUS_TABS: readonly InAppStatusFilter[] = ['all', 'recruit', 'warm', 'live', 'done'];
+/** 狀態選項（站長 11-22）：全部在最前且是預設；「未結束」不再單獨一項。 */
+const STATUS_OPTIONS: readonly InAppStatusFilter[] = ['all', 'recruit', 'warm', 'live', 'done'];
 
 const FILTER_KEY: Record<InAppStatusFilter, 'statusOpen' | 'recruiting' | 'statusWarm' | 'statusLive' | 'statusDone' | 'filterAll'> = {
   open: 'statusOpen',
@@ -180,6 +184,7 @@ export function InAppCardList({
   onCreate,
   onOpen,
   onDelete,
+  statusSlot,
 }: {
   cards: readonly InAppListCard[];
   ct: CompetitionsT;
@@ -191,6 +196,8 @@ export function InAppCardList({
   onCreate: () => void;
   onOpen: (cid: string, event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => void;
   onDelete?: (cid: string, name: string) => void;
+  /** 賽事頁分類分段右邊那一格；有就把狀態選單畫進去。 */
+  statusSlot?: HTMLElement | null;
 }): JSX.Element {
   const onlyMineId = useId();
   const listRef = useRef<HTMLDivElement>(null);
@@ -214,17 +221,21 @@ export function InAppCardList({
   }, [fxKey]);
   const lean = saveDataMode();
   let rank = 0;
+  const statusMenu = (
+    <MenuSelect<InAppStatusFilter>
+      label={ct('statusLabel')}
+      value={status}
+      options={STATUS_OPTIONS.map((value) => ({ value, label: ct(FILTER_KEY[value]) }))}
+      onChange={onStatus}
+      buttonText={status === 'all' ? ct('statusLabel') : undefined}
+      active={status !== 'all'}
+    />
+  );
   return (
     <div data-inapp="competitions" ref={listRef}>
-      {/* 站長 11-22：狀態改成頁籤（取代下拉選單），預設全部 */}
-      <div class="cpl-tabs" role="group" aria-label={ct('statusLabel')}>
-        {STATUS_TABS.map((value) => (
-          <button key={value} type="button" class="cpl-tab" aria-pressed={status === value} onClick={() => onStatus(value)}>
-            {ct(FILTER_KEY[value])}
-          </button>
-        ))}
-      </div>
+      {statusSlot ? createPortal(statusMenu, statusSlot) : null}
       <div class="cpl-bar cpl-toolbar">
+        {statusSlot ? null : statusMenu}
         <label class="cpl-sw" for={onlyMineId}>
           <span>{ct('onlyMine')}</span>
           <span class="toggle-switch">

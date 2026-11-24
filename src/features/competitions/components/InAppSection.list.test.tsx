@@ -28,13 +28,19 @@ afterEach(() => {
 
 const STATUS_LABEL: Record<string, string> = { open: '未結束', recruit: '招募中', warm: '預熱中', live: '進行中', done: '已結束', all: '全部' };
 
-/** 狀態頁籤（站長 11-22 起取代下拉選單）：點那一格。 */
-function statusTabs(): HTMLElement {
-  return screen.getByRole('group', { name: '狀態' });
+/** 狀態下拉選單（站長 11-24 起取代 11-22 的狀態頁籤；沒給頁面格子時畫在篩選列）：展開後點那一項。 */
+function statusOptions(): HTMLElement[] {
+  const list = document.querySelector<HTMLElement>('.d2-menu[role="listbox"]');
+  expect(list?.getAttribute('aria-label')).toBe('狀態');
+  return [...list!.querySelectorAll<HTMLElement>('[role="option"]')];
 }
 async function pickStatus(value: string): Promise<void> {
   await act(async () => {
-    fireEvent.click(within(statusTabs()).getByRole('button', { name: STATUS_LABEL[value] }));
+    fireEvent.click(document.querySelector<HTMLButtonElement>('.d2-dd__btn')!);
+  });
+  const option = statusOptions().find((item) => item.textContent === STATUS_LABEL[value]);
+  await act(async () => {
+    fireEvent.click(option!);
   });
 }
 
@@ -63,6 +69,35 @@ function card(partial: Partial<InAppListCard> & Pick<InAppListCard, 'cid' | 'nam
 }
 
 describe('站內卡文案與分類小標', () => {
+  it('站長 11-24：給了分類列右邊那一格，狀態選單畫進那一格、不畫在篩選列；選了照常回報', async () => {
+    const ct = makeCompetitionsT(await loadCompetitionsDict('zh-TW'));
+    const slotEl = document.createElement('div');
+    document.body.appendChild(slotEl);
+    const onStatus = vi.fn();
+    render(
+      <InAppCardList cards={[]} ct={ct} status="all" onlyMine={false} showCreate={false}
+        onStatus={onStatus} onOnlyMine={() => {}} onCreate={() => {}} onOpen={() => {}} statusSlot={slotEl} />,
+    );
+    expect(slotEl.querySelector('.d2-dd')).toBeTruthy();
+    expect(document.querySelector('.cpl-toolbar .d2-dd')).toBeNull();
+    // 選「全部」時鈕上寫「狀態」（不和旁邊分類的「全部」重複），讀屏名稱仍帶目前選項；沒有篩選色
+    const btn = slotEl.querySelector('.d2-dd__btn')!;
+    expect(btn.textContent).toBe('狀態');
+    expect(btn.getAttribute('aria-label')).toBe('狀態 全部');
+    expect(btn.hasAttribute('data-on')).toBe(false);
+    await pickStatus('live');
+    expect(onStatus).toHaveBeenCalledWith('live');
+    cleanup();
+    render(
+      <InAppCardList cards={[]} ct={ct} status="done" onlyMine={false} showCreate={false}
+        onStatus={onStatus} onOnlyMine={() => {}} onCreate={() => {}} onOpen={() => {}} statusSlot={slotEl} />,
+    );
+    const on = slotEl.querySelector('.d2-dd__btn')!;
+    expect(on.textContent).toBe('已結束');
+    expect(on.hasAttribute('data-on')).toBe(true);
+    slotEl.remove();
+  });
+
   it('進行中用預覽句子；沒有下一場只寫場數；已結束不寫冠軍；分類是文字；沒有封面與圖', async () => {
     const ct = makeCompetitionsT(await loadCompetitionsDict('zh-TW'));
     render(
@@ -116,7 +151,7 @@ describe('站內卡文案與分類小標', () => {
     expect(done?.classList.contains('ended')).toBe(true);
     expect(done?.querySelector('.d2-cells')).toBeNull();
     expect([...document.querySelectorAll('[data-cid]')].every((el) => el.classList.contains('cpl-card--board') && el.querySelector('.d2-sb'))).toBe(true);
-    expect(statusTabs().querySelectorAll('button')).toHaveLength(5);
+    expect(statusOptions()).toHaveLength(5);
     const onlyMine = screen.getByRole('checkbox', { name: '只看我的' });
     expect(onlyMine.id).not.toBe('cpl-only-mine');
     expect(onlyMine.id.length).toBeGreaterThan(0);
@@ -285,9 +320,9 @@ describe('站內清單篩選不重讀', () => {
       </LocationProvider>,
     );
     expect(await screen.findByText('招募聯賽')).toBeTruthy();
-    const tabs = [...statusTabs().querySelectorAll('button')];
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['全部', '招募中', '預熱中', '進行中', '已結束']);
-    expect(tabs.map((tab) => tab.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false', 'false']);
+    const options = statusOptions();
+    expect(options.map((option) => option.textContent)).toEqual(['全部', '招募中', '預熱中', '進行中', '已結束']);
+    expect(options.map((option) => option.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false', 'false']);
     expect(document.querySelector('[data-cid="done_lg"]')).toBeTruthy();
 
     const rec = document.querySelector('[data-cid="rec_lg"]');

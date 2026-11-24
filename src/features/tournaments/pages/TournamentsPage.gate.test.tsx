@@ -31,7 +31,7 @@ vi.mock('@/features/competitions/components/InAppSection', async () => {
   const { useEffect } = await import('preact/hooks');
   const { h } = await import('preact');
   return {
-    InAppSection: (props: { tab: string; active: boolean; onGate?: (open: boolean) => void; onReady?: () => void }) => {
+    InAppSection: (props: { tab: string; active: boolean; onGate?: (open: boolean) => void; onReady?: () => void; statusSlot?: HTMLElement | null }) => {
       useEffect(() => {
         slot.mounts += 1;
         if (slot.holdGate) return;
@@ -44,6 +44,7 @@ vi.mock('@/features/competitions/components/InAppSection', async () => {
         'data-inapp': 'mock',
         'data-tab': props.tab,
         'data-active': props.active ? '1' : '0',
+        'data-slot': props.statusSlot ? props.statusSlot.className : '',
       });
     },
   };
@@ -196,6 +197,21 @@ describe('開關打開時的來源與讀取', () => {
     expect(screen.queryByText('2027 春季聯賽')).toBeNull();
     expect(document.querySelector('[data-inapp="mock"]')?.getAttribute('data-active')).toBe('1');
     expect(location.search).toBe('');
+    // 站長 11-24：狀態選單那一格在分類分段同一列右邊，交給站內區塊畫進去
+    const slotEl = document.querySelector('.cpl-segrow > .cpl-seg + .cpl-segdd');
+    expect(slotEl).toBeTruthy();
+    await waitFor(() => expect(document.querySelector('[data-inapp="mock"]')?.getAttribute('data-slot')).toBe('cpl-segdd'));
+  });
+
+  it('站長 11-24：看外部時沒有狀態選單那一格，也不交給站內區塊；切回站內再出現', async () => {
+    draw();
+    await inAppShown();
+    fireEvent.click(screen.getByRole('tab', { name: '外部賽事' }));
+    expect(await screen.findByText('2027 春季聯賽')).toBeTruthy();
+    expect(document.querySelector('.cpl-segdd')).toBeNull();
+    await waitFor(() => expect(document.querySelector('[data-inapp="mock"]')?.getAttribute('data-slot')).toBe(''));
+    fireEvent.click(screen.getByRole('tab', { name: '站內賽事' }));
+    await waitFor(() => expect(document.querySelector('[data-inapp="mock"]')?.getAttribute('data-slot')).toBe('cpl-segdd'));
   });
 
   it('不認得的 src 回到站內（站長 11-21 預設），其他參數留著', async () => {
@@ -313,6 +329,8 @@ describe('開關打開時的來源與讀取', () => {
     await waitFor(() => expect(sdk.getDocs).toHaveBeenCalledTimes(1));
     expect(screen.queryByText('2027 春季聯賽')).toBeNull();
     expect(document.querySelector('[data-cp-pending-in]')).toBeTruthy();
+    // 骨架期間就先留好狀態選單那一格，站內清單出現時分類分段不再縮
+    expect(document.querySelector('.cpl-segrow > .cpl-segdd')).toBeTruthy();
   });
 
   it('新外觀：最外層帶 data-d2；切換在標題列裡；<h2>「賽事」還在、視覺隱藏、沒有 hidden；外部頁帶 d2-ext、站內頁不帶', async () => {

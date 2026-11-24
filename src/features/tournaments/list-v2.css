@@ -103,6 +103,11 @@
 #page-tournaments .cpl-seg {
   display: flex; align-items: center; height: 40px; margin: 0 0 10px; border-radius: 12px;
 }
+/* 分類分段與站內狀態選單同一列（站長 11-24）：選單那一格固定寬度、在站內骨架時就先留好，分類分段吃剩下的寬度；
+ * 看外部時沒有那一格，分類分段照舊整列。選單本身的樣式在 competitions.css（.cpl-segdd）。 */
+#page-tournaments .cpl-segrow { display: flex; gap: 8px; margin: 0 0 10px; }
+#page-tournaments .cpl-segrow > .cpl-seg { flex: 1 1 auto; min-width: 0; margin: 0; }
+#page-tournaments .cpl-segdd { position: relative; z-index: 4; flex: 0 0 96px; height: 40px; }
 #page-tournaments .cpl-seg__tab {
   position: relative; z-index: 0; flex: 1 1 0; min-width: 0; height: 44px; margin: -2px 0; padding: 0; border: 0; background: none;
   font: inherit; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--d2-text-2); white-space: nowrap; cursor: pointer;

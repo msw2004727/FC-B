@@ -1326,11 +1326,29 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 /* 賽事清單站內卡（清-4，第 1a 批 3.9）。站長 11-22（顧問 §3.565）起每一張都是記分板卡：一圈玻璃框（只有底、不疊光澤）
  * 包一塊記分板（.d2-sb 共用元件）；取代原本的淺色一般卡（第一行「狀態｜重點句」、56×42 縮圖那一套規則已刪）。
  * class 是清單才有的新名字，不帶根節點前綴。 */
-/* 狀態頁籤（站長 11-22，取代下拉選單）：一列平分、選中的用分段切換的選中色 */
-.cpl-tabs { display: flex; height: 44px; margin: 0 0 8px; padding: 3px; border-radius: 10px; background: var(--d2-glass-base); box-shadow: var(--d2-glass-sh); }
-/* 父層前綴（0,2,0）：正式打包舊站 .legacy-ui button（0,1,1）會把字色、底色蓋成繼承（顧問 11-22 staging 實量） */
-.cpl-tabs > .cpl-tab { flex: 1 1 0; min-width: 0; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--d2-text-2); white-space: nowrap; cursor: pointer; }
-.cpl-tabs > .cpl-tab[aria-pressed="true"] { background: var(--d2-seg-on); box-shadow: inset 0 0 0 1px var(--d2-accent-line); color: var(--d2-seg-fg); font-weight: 700; }
+/* 狀態下拉選單（ui/menu-select.tsx；站長 11-24 取代 11-22 的狀態頁籤列，放回下拉但移到賽事頁分類分段同一列右邊那一格 .cpl-segdd）：
+ * 收合是借來的玻璃次要鈕加向下箭頭，跟分段一樣外觀 40px 高、12px 圓角、撐滿那一格；展開中照第 0 批「工具鈕展開中」；
+ * 已在篩選（不是「全部」）用分段選中格同一組選中色。清單貼右邊往下開，關著時用 hidden 屬性，所以 .d2-menu 本身不設 display。
+ * 父層前綴（0,2,0 以上）：正式打包舊站 .legacy-ui button（0,1,1）會把字色、底色蓋成繼承（顧問 11-22 staging 實量）。
+ * （沒給那一格的預覽 harness 畫在篩選列，外觀相同，不另寫規則。） */
+.d2-dd { position: relative; display: flex; height: 100%; }
+.d2-dd > .d2-dd__btn { flex: 1 1 auto; min-inline-size: 0; height: 44px; margin: -2px 0; padding: 0 32px 0 12px; border-radius: 12px; }
+.d2-dd > .d2-dd__btn::before { top: 2px; bottom: 2px; border-radius: 12px; }
+.d2-dd > .d2-dd__btn[data-on] { color: var(--d2-seg-fg); font-weight: 700; }
+.d2-dd > .d2-dd__btn[data-on]::before { background: var(--d2-seg-on), var(--d2-glass-base); box-shadow: inset 0 0 0 1px var(--d2-accent-line); }
+.d2-dd__caret { position: absolute; top: 50%; right: 10px; width: 16px; height: 16px; margin-top: -8px; color: var(--d2-text-2); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.d2-menu { position: absolute; z-index: 6; top: calc(100% + 6px); right: 0; width: max-content; padding: 4px; border-radius: 14px; background: var(--d2-menu-bg); box-shadow: var(--d2-menu-sh); }
+.d2-menu > .d2-menu__opt {
+  display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; min-width: 148px; min-height: 44px; margin: 0; padding: 0 12px;
+  border: 0; border-radius: 10px; background: none; color: var(--d2-text); font: inherit; font-size: 15px; line-height: 24px; font-weight: 400; white-space: nowrap; cursor: pointer;
+}
+.d2-menu > .d2-menu__opt[aria-selected="true"] { background: var(--d2-seg-on); color: var(--d2-seg-fg); font-weight: 700; }
+.d2-menu > .d2-menu__opt:focus-visible { outline: 2px solid var(--d2-accent); outline-offset: -2px; }
+.d2-menu__chk { width: 16px; height: 16px; visibility: hidden; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.d2-menu__opt[aria-selected="true"] .d2-menu__chk { visibility: visible; }
+/* 清單頁吃到舊站 .page 的 overflow：卡片少時展開的狀態選單會被裁，站內清單容器留最小高度
+ * （選單從分類列下緣起 6＋選單 228，扣掉分類列下方 10，再留 16 底）。 */
+[data-inapp="competitions"] { min-height: 240px; }
 .cpl-card { position: relative; margin-bottom: 10px; }
 /* 管理員刪除鈕（站長 11-22）：右下角圓鈕，外觀 32、點擊區 44 */
 .cpl-card > .cpl-del { position: absolute; z-index: 3; right: 12px; bottom: 12px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: #fca5a5; cursor: pointer; }

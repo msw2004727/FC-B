@@ -84,6 +84,7 @@ interface InAppSlotProps {
   active: boolean;
   onGate: (open: boolean, reason?: 'denied') => void;
   onReady?: () => void;
+  statusSlot?: HTMLElement | null;
 }
 
 /** 站內賽事整區。字面常數關閉時，打包器連 InAppSection 的 chunk 一起刪。 */
@@ -215,6 +216,10 @@ export default function TournamentsPage(): JSX.Element {
   const showSourceTabs = inAppOpen || (preferIn && gate === 'pending');
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [busy, setBusy] = useState(false);
+  // 站內的狀態下拉選單放在分類分段同一列右邊（站長 11-24，取代狀態頁籤獨立一列）；站內區塊用 portal 畫進這一格。
+  // 骨架期間就留好這一格的寬度，站內清單出現時分類分段不再縮。看外部時沒有這一格，分類分段照舊整列。
+  const [statusSlot, setStatusSlot] = useState<HTMLDivElement | null>(null);
+  const showStatusSlot = source === 'in' && (showInApp || pendingIn);
 
   const viewerRef = useRef(viewer);
   viewerRef.current = viewer;
@@ -444,6 +449,7 @@ export default function TournamentsPage(): JSX.Element {
           ) : null}
         </div>
 
+        <div class="cpl-segrow">
         <div class="cpl-seg" role="tablist">
           {TOURNAMENT_CARD_TABS.map((value) => (
             <button
@@ -458,8 +464,10 @@ export default function TournamentsPage(): JSX.Element {
             </button>
           ))}
         </div>
+        {showStatusSlot ? <div class="cpl-segdd" ref={setStatusSlot} /> : null}
+        </div>
         <div class="cpl-panel" role="tabpanel" id={showSourceTabs ? 'tournaments-source-panel' : undefined}>
-          {gateArmed ? <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} onReady={onInAppReady} /> : null}
+          {gateArmed ? <InAppCompetitionsSlot tab={tab} active={showInApp} onGate={onGate} onReady={onInAppReady} statusSlot={showStatusSlot ? statusSlot : null} /> : null}
           {pendingIn ? (
             <div class="cpl-skel" aria-busy="true" data-cp-pending-in="1">
               <div class="reg-loading" role="status" style="white-space:nowrap">{t('tournaments.loading')}</div>
