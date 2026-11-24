@@ -6,7 +6,7 @@
     "toastOff": "Đã tắt thông báo điện thoại/máy tính",
     "toastFailed": "Không bật được, vui lòng thử lại sau",
     "blocked": "Đã chặn",
-    "blockedStep": "Biểu tượng bên trái thanh địa chỉ → Thông báo → Cho phép",
+    "blockedStep": "Biểu tượng trái thanh URL → Thông báo → Cho phép",
     "blockedStepIos": "Cài đặt → Thông báo → ToosterX → Cho phép",
     "inLine": "Không nhận được trong LINE",
     "openChrome": "Mở bằng Chrome",
