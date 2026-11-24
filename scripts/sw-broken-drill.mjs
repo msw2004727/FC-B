@@ -2,7 +2,7 @@
  * SW 被匯入檔壞掉時的本機演練（網頁推播 W4 設計書 §5.4；顧問裁定 D7 (A)）：真的 Chromium／WebKit、真的 sw.js，
  * 本機伺服器照 Cloudflare Pages 行為輪流提供不同版本。只在本機跑，不進 CI。
  *
- *   node scripts/sw-broken-drill.mjs --base <基底 dist> --good <W4 dist> --rebuilt <W4 重新建置的 dist> [--engine chromium|webkit|all] [--out report.json]
+ *   node scripts/sw-broken-drill.mjs --base <基底 dist> --good <W4 dist> --rebuilt <W4 重新建置的 dist> [--engine chromium|webkit|all] [--out report.json] [--timeout ms]
  *
  * --rebuilt 必須是重新建置的產物（sw.js 位元組與 --good 不同，例如換 FCB_BUILD_ID 再 build 一次）；相同就以 2 結束。
  * 壞版由 --good 衍生，不另建置：
@@ -18,6 +18,9 @@
  *
  * 不打正式環境：本機以外的請求一律中止。Chromium 另用 CDP 記 SW 錯誤、在 SW 內送一則替身 push 事件確認監聽在不在；
  * WebKit 沒有這兩個介面，只看狀態、預存與離線。
+ * 注意：WebKit 的 context.route 攔不到 SW 自己發出的請求；目前 workbox 設定沒有跨網域路由、SW 只抓同源檔，所以不會外連。
+ * 日後 SW 若加跨網域請求，WebKit 這一輪要另外隔離網路再跑。
+ * 整支腳本有總逾時（--timeout 毫秒，預設 20 分鐘），到時關掉瀏覽器並以 1 結束。
  */
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -70,12 +73,14 @@ if (SW_SHA.rebuilt === SW_SHA.good) {
 
 let current = VARIANTS.base;
 let serverDown = false;
+// 伺服器實際送出的每一份 /sw.js 的 sha256（情境 4 用來證明瀏覽器抓到的位元組）。
+let swServed = [];
 
 async function fileAt(rel) {
   if (current.missing?.has(rel)) return null;
   if (current.override?.has(rel)) return current.override.get(rel);
-  const full = path.join(current.root, rel);
-  if (!full.startsWith(current.root)) return null;
+  const full = path.resolve(current.root, rel);
+  if (full !== current.root && !full.startsWith(current.root + path.sep)) return null;
   try {
     if (!(await stat(full)).isFile()) return null;
     return await readFile(full);
@@ -90,11 +95,17 @@ const server = createServer(async (req, res) => {
     req.socket.destroy();
     return;
   }
-  const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   const send = (status, body, type, cache) => {
     res.writeHead(status, { 'content-type': type, 'cache-control': cache, 'content-length': body.length });
     res.end(body);
+    if (pathname === '/sw.js') swServed.push(sha256(body));
   };
+  let pathname = '';
+  try {
+    pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  } catch {
+    return send(400, Buffer.from('Bad Request\n'), 'text/plain; charset=utf-8', 'no-store');
+  }
   const rel = pathname.endsWith('/') ? `${pathname}index.html` : pathname;
   const body = await fileAt(rel.slice(1));
   if (body) {
@@ -277,6 +288,7 @@ async function scenarioPrompt(browser, variant) {
     const s = await state(page, `情境3 ${variant}：第 ${i} 次開頁`);
     check(s.prompt && s.waiting === 'installed' && !s.blank, `情境3 ${variant}：第 ${i} 次開頁跳更新提示、waiting 不變、不白畫面`);
     const now = await page.$('[data-sw-reload-now]');
+    check(!!now, `情境3 ${variant}：第 ${i} 次找得到「現在更新」按鈕`);
     if (!now) continue;
     await Promise.all([page.waitForNavigation({ timeout: 10_000 }).catch(() => null), now.click()]);
     await sleep(5_000);
@@ -291,20 +303,25 @@ async function scenarioRescue(browser) {
   use('missing');
   const context = await newContext(browser);
   const page = await context.newPage();
+  swServed = [];
   await page.goto(`${origin}/`);
   await sleep(6_000);
   await reloadAndWait(page, 3_000);
+  const brokenSha = [...new Set(swServed)];
   const broken = await state(page, '情境4：全新資料裝上缺檔壞版');
+  check(brokenSha.length === 1, `情境4：裝壞版時伺服器送出的 sw.js 只有一份（${brokenSha.join(', ')}）`);
   check(broken.active === 'activated' && broken.precacheN === 0, '情境4：缺檔壞版已啟用、預存 0 筆');
 
   // (a) 只補回缺檔：伺服器提供的 sw.js 與壞版位元組相同。
   use('good');
-  check(SW_SHA.good === SW_SHA.missing, `情境4(a)：補檔前後 sw.js sha256 相同（${SW_SHA.missing}）`);
+  swServed = [];
   await reloadAndWait(page, 3_000);
   await update(page);
   await sleep(4_000);
   await reloadAndWait(page, 3_000);
   await reloadAndWait(page, 3_000);
+  const servedA = [...new Set(swServed)];
+  check(swServed.length > 0 && servedA.length === 1 && servedA[0] === brokenSha[0], `情境4(a)：補檔後瀏覽器更新檢查抓了 ${swServed.length} 次 sw.js，位元組全部等於已裝的壞版（${servedA.join(', ')}）`);
   const a = await state(page, '情境4(a)：只補回缺檔、重新整理三次＋update() 後');
   check(a.precacheN === 0 && a.waiting === null && a.installing === null, `情境4(a)：救不回（預存 ${a.precacheN} 筆、沒有新版 SW 安裝）`);
   check(!(await offlineOpens(context)), '情境4(a)：仍然離線開不了');
@@ -313,7 +330,7 @@ async function scenarioRescue(browser) {
 
   // (b) 重新建置：sw.js 位元組不同。
   use('rebuilt');
-  check(SW_SHA.rebuilt !== SW_SHA.missing, `情境4(b)：救援 sw.js sha256 與壞版不同（${SW_SHA.missing} → ${SW_SHA.rebuilt}）`);
+  swServed = [];
   await page.reload();
   let b = null;
   for (let i = 0; i < 20; i += 1) {
@@ -326,6 +343,8 @@ async function scenarioRescue(browser) {
     });
     if (b.active === 'activated' && b.n === PRECACHE_N.rebuilt) break;
   }
+  const servedB = [...new Set(swServed)];
+  check(servedB.length > 0 && !servedB.includes(brokenSha[0]), `情境4(b)：救援時伺服器送出的 sw.js sha256 與壞版不同（${brokenSha[0]} → ${servedB.join(', ')}）`);
   const s = await state(page, '情境4(b)：換成重新建置的版本、重新整理一次後');
   check(s.active === 'activated' && s.waiting === null && s.precacheN === PRECACHE_N.rebuilt, `情境4(b)：一次重新整理救回（預存 ${s.precacheN}／${PRECACHE_N.rebuilt} 筆、waiting=${s.waiting}）`);
   check(await offlineOpens(context), '情境4(b)：離線恢復');
@@ -334,12 +353,22 @@ async function scenarioRescue(browser) {
   await context.close();
 }
 
+const TOTAL_MS = Number(args.timeout ?? 20 * 60_000);
+let activeBrowser = null;
+const watchdog = setTimeout(async () => {
+  console.error(`總逾時 ${TOTAL_MS} ms：關掉瀏覽器並結束`);
+  await activeBrowser?.close().catch(() => {});
+  server.close();
+  process.exit(1);
+}, TOTAL_MS);
+
 try {
   for (const name of engines) {
     engineName = name;
     section = { checks: [], steps: [], states: [], errors: {} };
     report.engines[name] = section;
     const browser = await (name === 'webkit' ? webkit : chromium).launch();
+    activeBrowser = browser;
     try {
       for (const v of ['missing', 'throw']) await scenarioFresh(browser, v);
       for (const v of ['missing', 'throw']) await scenarioUpgrade(browser, v);
@@ -350,6 +379,7 @@ try {
     }
   }
 } finally {
+  clearTimeout(watchdog);
   server.close();
 }
 
