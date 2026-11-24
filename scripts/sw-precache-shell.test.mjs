@@ -3,11 +3,13 @@
  * SW 預存只放殼、其他分塊走執行期快取（顧問 §3.567 (b)）。
  * 真的 vite build 到暫存目錄，用替身 workbox 執行產出的 sw.js，檢查：
  * - precache 清單＝index.html＋它靜態引用的入口／modulepreload／樣式表＋頂欄 logo＋manifest.json，沒有別的；
- * - 舊預存清理（cleanupOutdatedCaches）、skipWaiting、clientsClaim、sw-legacy-compat 仍在；
+ * - 舊預存清理（cleanupOutdatedCaches）、skipWaiting、clientsClaim、sw-legacy-compat、sw-push 仍在；
+ * - 被匯入的 public/sw-*.js 原樣複製、真的匯入後 workbox 後段照常執行、_headers 每支都 no-cache（網頁推播 W4）；
  * - 導覽規則不變、排在第一；第二條只認同源 /assets/ 第一層帶雜湊的 .js／.css，只收 200、型別要對、有上限；
  * - runtime-config.json、version.json、sw.js 不預存也不進執行期快取（R-UPD-031）。
  */
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -65,8 +67,8 @@ describe('shellUrlsFromHtml／keepShellOnly（純函式）', () => {
 });
 
 /** 用替身 workbox 執行 sw.js，記下每個呼叫。 */
-function runSw(source) {
-  const calls = { precache: null, precacheOpts: null, routes: [], cleanup: 0, clientsClaim: 0, skipWaiting: 0, imports: [] };
+function runSw(source, importDir = null) {
+  const calls = { precache: null, precacheOpts: null, routes: [], cleanup: 0, clientsClaim: 0, skipWaiting: 0, imports: [], order: [], events: [] };
   const strategy = (kind) =>
     class {
       constructor(opts) {
@@ -82,10 +84,10 @@ function runSw(source) {
       }
     };
   const wb = {
-    clientsClaim: () => { calls.clientsClaim += 1; },
-    precacheAndRoute: (list, opts) => { calls.precache = list; calls.precacheOpts = opts; },
-    cleanupOutdatedCaches: () => { calls.cleanup += 1; },
-    registerRoute: (match, handler, method) => { calls.routes.push({ match, handler, method }); },
+    clientsClaim: () => { calls.clientsClaim += 1; calls.order.push('clientsClaim'); },
+    precacheAndRoute: (list, opts) => { calls.precache = list; calls.precacheOpts = opts; calls.order.push('precacheAndRoute'); },
+    cleanupOutdatedCaches: () => { calls.cleanup += 1; calls.order.push('cleanupOutdatedCaches'); },
+    registerRoute: (match, handler, method) => { calls.routes.push({ match, handler, method }); calls.order.push('registerRoute'); },
     NetworkFirst: strategy('NetworkFirst'),
     CacheFirst: strategy('CacheFirst'),
     StaleWhileRevalidate: strategy('StaleWhileRevalidate'),
@@ -97,12 +99,26 @@ function runSw(source) {
   };
   const sandbox = {
     URL,
-    importScripts: (...urls) => { calls.imports.push(...urls); },
+    importScripts: (...urls) => {
+      calls.imports.push(...urls);
+      if (!importDir) return;
+      // 整合模式（B4）：真的讀建置產出的檔，在同一個 sandbox 執行。
+      for (const u of urls) {
+        calls.order.push(`import:${u}`);
+        vm.runInContext(readFileSync(path.join(importDir, u), 'utf8'), sandbox, { filename: u });
+      }
+    },
+    // 替身的 define 同步呼叫工廠；真瀏覽器在 Promise 裡呼叫，「壞了會怎樣」由 scripts/sw-broken-drill.mjs 真瀏覽器演練證明。
     define: (_deps, factory) => factory(wb),
   };
   sandbox.self = sandbox;
-  sandbox.self.skipWaiting = () => { calls.skipWaiting += 1; };
-  vm.runInNewContext(source, sandbox);
+  sandbox.self.skipWaiting = () => { calls.skipWaiting += 1; calls.order.push('skipWaiting'); };
+  if (importDir) {
+    sandbox.location = { origin: 'https://toosterx.com' };
+    sandbox.addEventListener = (type) => { calls.events.push(type); };
+  }
+  vm.createContext(sandbox);
+  vm.runInContext(source, sandbox);
   return calls;
 }
 
@@ -119,6 +135,7 @@ describe('建置產出的 sw.js', () => {
   let outDir = '';
   let parent = '';
   let sw;
+  let swSource = '';
   let html = '';
   let assets = [];
 
@@ -136,7 +153,8 @@ describe('建置產出的 sw.js', () => {
       timeout: 300_000,
       maxBuffer: 16 * 1024 * 1024,
     });
-    sw = runSw(await readFile(path.join(outDir, 'sw.js'), 'utf8'));
+    swSource = await readFile(path.join(outDir, 'sw.js'), 'utf8');
+    sw = runSw(swSource);
     html = await readFile(path.join(outDir, 'index.html'), 'utf8');
     assets = (await readdir(path.join(outDir, 'assets'))).filter((f) => /\.(?:js|css)$/.test(f));
   }, 320_000);
@@ -163,18 +181,18 @@ describe('建置產出的 sw.js', () => {
     const boot = JSON.parse(/<script type="application\/json" id="fcb-boot-preload">([^<]*)<\/script>/.exec(html)[1]);
     expect(boot.detail.js.length).toBeGreaterThan(0);
     for (const u of [...boot.detail.js, ...boot.firestore.js]) expect(urls.has(u.slice(1))).toBe(false);
-    for (const u of ['assets/icons/icon-192x192.png', 'assets/icons/icon-512x512.png', 'runtime-config.json', 'version.json', 'sw.js', 'sw-legacy-compat.js', 'assets/404.html', 'manual.html']) {
+    for (const u of ['assets/icons/icon-192x192.png', 'assets/icons/icon-512x512.png', 'runtime-config.json', 'version.json', 'sw.js', 'sw-legacy-compat.js', 'sw-push.js', 'assets/404.html', 'manual.html']) {
       expect(urls.has(u)).toBe(false);
     }
     // 至少一半以上的分塊不在預存（確認真的縮小，而不是條件寫反）。
     expect(assets.filter((f) => !urls.has(`assets/${f}`)).length).toBeGreaterThan(assets.length / 2);
   });
 
-  it('舊預存清理、skipWaiting、clientsClaim、sw-legacy-compat、directoryIndex 都還在', () => {
+  it('舊預存清理、skipWaiting、clientsClaim、sw-legacy-compat、sw-push、directoryIndex 都還在', () => {
     expect(sw.cleanup).toBe(1);
     expect(sw.skipWaiting).toBe(1);
     expect(sw.clientsClaim).toBe(1);
-    expect(sw.imports).toEqual(['sw-legacy-compat.js']);
+    expect(sw.imports).toEqual(['sw-legacy-compat.js', 'sw-push.js']);
     expect(sw.precacheOpts).toEqual({ directoryIndex: '' });
   });
 
@@ -213,6 +231,7 @@ describe('建置產出的 sw.js', () => {
       '/version.json',
       '/sw.js',
       '/sw-legacy-compat.js',
+      '/sw-push.js',
       '/',
       '/index.html',
       '/manifest.json',
@@ -250,5 +269,34 @@ describe('建置產出的 sw.js', () => {
     expect(await check('a-AAAAAAAA.css', 'text/html')).toBe(false);
     expect(await check('a-AAAAAAAA.css', 'application/javascript')).toBe(false);
     expect(await check('a-AAAAAAAA.js', '')).toBe(false);
+  });
+
+  it('dist/sw-push.js 與 public/sw-push.js 位元組相同（原樣複製，不被轉譯或壓縮）', async () => {
+    const built = await readFile(path.join(outDir, 'sw-push.js'));
+    const source = await readFile(path.join(root, 'public', 'sw-push.js'));
+    expect(built.equals(source)).toBe(true);
+  });
+
+  it('真的匯入 public/sw-*.js 後 workbox 後段照常執行（匯入沒有中斷 skipWaiting、預存、路由）', () => {
+    const real = runSw(swSource, outDir);
+    expect(real.events).toEqual(['message', 'push', 'notificationclick']);
+    expect(real.order.slice(0, 2)).toEqual(['import:sw-legacy-compat.js', 'import:sw-push.js']);
+    for (const step of ['skipWaiting', 'clientsClaim', 'precacheAndRoute', 'cleanupOutdatedCaches']) {
+      expect(real.order.filter((s) => s === step), step).toHaveLength(1);
+    }
+    expect(real.routes).toHaveLength(2);
+    expect(real.order.indexOf('skipWaiting')).toBeGreaterThan(real.order.indexOf('import:sw-push.js'));
+    expect(real.precache.map((e) => e.url).sort()).toEqual(sw.precache.map((e) => e.url).sort());
+  });
+
+  it('_headers：public/ 下每支 sw-*.js 都 no-cache 而且都被 sw.js 匯入；/sw.js 那段不變', async () => {
+    const headers = await readFile(path.join(outDir, '_headers'), 'utf8');
+    const files = (await readdir(path.join(root, 'public'))).filter((f) => /^sw-.+\.js$/.test(f));
+    expect(files.length).toBeGreaterThanOrEqual(2);
+    for (const f of files) {
+      expect(headers, f).toContain(`/${f}\n  ! Cache-Control\n  Cache-Control: no-cache\n`);
+      expect(sw.imports, f).toContain(f);
+    }
+    expect(headers).toContain('/sw.js\n  ! Cache-Control\n  Cache-Control: no-cache\n');
   });
 });

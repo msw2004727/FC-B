@@ -80,7 +80,7 @@ const server = createServer(async (req, res) => {
   if (body) {
     let cache = 'public, max-age=0, must-revalidate';
     if (pathname.startsWith('/assets/')) cache = noStoreAssets ? 'no-store' : 'public, max-age=31536000, immutable';
-    if (pathname === '/sw.js') cache = 'no-cache';
+    if (pathname === '/sw.js' || /^\/sw-[^/]+\.js$/.test(pathname)) cache = 'no-cache';
     if (pathname === '/runtime-config.json' || pathname === '/version.json') cache = 'no-store';
     return send(200, body, TYPES[ext] || 'application/octet-stream', cache);
   }
