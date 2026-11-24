@@ -1,6 +1,7 @@
 // 查詢超量回報（R-QUERY-001 多抓一筆偵測）：同一則每台裝置每個台北日最多送一次（顧問 §3.719）。
 // reportClientError 的去重只管同一次頁面載入；熱門活動會讓每位會員每次開頁都送一筆，吃掉每小時 5 筆的真錯誤額度。
 // localStorage 讀寫失敗時退回只靠 reportClientError 的頁內去重。
+// 已知取捨：先記錄再送；reportClientError 因每小時上限、未登入等沒有真的寫入時，這則當天也不再送（只少一則超量訊號，不影響真錯誤）。
 
 import { reportClientError } from './error-report';
 import { taipeiDateKey } from './taipei-time';

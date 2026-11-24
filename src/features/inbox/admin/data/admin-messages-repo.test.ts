@@ -26,6 +26,8 @@ function docs(n: number, status = 'sent'): FakeDoc[] {
 }
 
 beforeEach(() => {
+  // 超量回報每台裝置每天一次（limit-report）：每案清掉，避免前一案的紀錄把後一案的回報吞掉而假綠（Opus P3-1）。
+  localStorage.clear();
   resetFakeFirestore();
 });
 

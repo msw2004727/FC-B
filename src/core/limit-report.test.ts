@@ -42,7 +42,7 @@ describe('reportLimitOncePerDay', () => {
   });
 
   it('儲存的資料壞掉：照送並覆寫成正確格式，之後同日不再送', () => {
-    for (const bad of ['{not json', '42', '"x"', JSON.stringify({ day: '2026-11-25', ids: 'x' })]) {
+    for (const bad of ['{not json', '42', '"x"', JSON.stringify({ day: '2026/11/25', ids: 'x' }), JSON.stringify({ day: '2026/11/25', ids: [1, null] })]) {
       localStorage.setItem(LIMIT_REPORT_KEY, bad);
       vi.mocked(reportClientError).mockClear();
       reportLimitOncePerDay('admin-scheduled-limit', 'scheduled messages exceed 20', DAY1);

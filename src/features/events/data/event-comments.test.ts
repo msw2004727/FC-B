@@ -94,6 +94,8 @@ function snap(id: string, data: Record<string, unknown>) {
 }
 
 beforeEach(() => {
+  // 超量回報每台裝置每天一次（limit-report）：每案清掉，避免前一案的紀錄把後一案的回報吞掉而假綠（Opus P3-1）。
+  localStorage.clear();
   vi.resetAllMocks();
   _resetCommentBadgeForTest();
   _resetEventCommentsForTest();
@@ -265,6 +267,7 @@ describe('M-093 讀取', () => {
       .toEqual([['event-comments-limit', 'merged comments exceed 80']]);
 
     vi.mocked(reportClientError).mockClear();
+    localStorage.clear(); // 前半段已記下 merged 那則；不清的話誤報也會被每日去重吞掉
     const overlap = pub.slice(0, 20).map((d) => d);
     mock.getDocs
       .mockResolvedValueOnce({ docs: pub })
