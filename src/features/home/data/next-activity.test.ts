@@ -1136,6 +1136,25 @@ describe('管理活動查詢只取未結束狀態，舊格式 id 的已結束場
   });
 
   test.each([
+    { role: 'creator' as const },
+    { role: 'owner' as const },
+    { role: 'delegate' as const },
+  ])('$role：未結束活動達 80 場時只有該條警告一次，且不印 uid', async ({ role }) => {
+    const events = oddThenEven(Array.from({ length: EVENT_QUERY_LIMIT + 5 }, (_, index) => (
+      managedEventDoc(index, MANAGED_UID, role, { date: '2099/02/01 09:00~11:00', status: 'open' })
+    )));
+    const seen = installManagedEventStore(events);
+    const warn = vi.fn();
+
+    await loadNextActivityInputs(deps(warn), MANAGED_UID);
+
+    expect(seen.find((item) => item.field === (role === 'delegate' ? 'delegateUids' : `${role}Uid`))?.ids).toHaveLength(EVENT_QUERY_LIMIT);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain(`${role} query hit the limit`);
+    expect(warn.mock.calls.flat().map(String).join(' ')).not.toContain(MANAGED_UID);
+  });
+
+  test.each([
     { n: 79, warns: false },
     { n: EVENT_QUERY_LIMIT, warns: true },
   ])('三條查詢各回 $n 筆時，打到上限才各警告一次且不印 uid', async ({ n, warns }) => {
