@@ -395,7 +395,7 @@ export async function loadNextActivityInputs(
   if (Array.isArray(activeEvents)) {
     if (activeEvents.length >= ACTIVE_EVENTS_LIST_CAP) {
       logger.warn('[NextActivity] active event list may be incomplete; using registration query fallback');
-      reportClientError('next-activity-active-list-incomplete', new Error('active event list may be incomplete'));
+      reportLimitOncePerDay('next-activity-active-list-incomplete', 'active event list may be incomplete');
       return loadWithRegistrationQuery(db, sdk, safeUid, logger);
     }
     return loadWithScopedRegistrationQuery(db, sdk, safeUid, logger, activeEvents);
