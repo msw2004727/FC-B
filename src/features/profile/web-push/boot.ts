@@ -28,6 +28,22 @@ export function sanitizeOpenPath(value: unknown, origin: string): string {
 }
 
 /**
+ * 不是 SPA 路由、由靜態檔或 _worker.js 回應的第一段路徑（public/ 頂層的頁面、資料夾、檔案，去掉 .html；加 _routes.json 的 worker 路徑）。
+ * 這些路徑站內路由切不過去，點通知時改整頁換（顧問 §3.716 乙）；boot.test.ts 對著 public/ 與 _routes.json 核對，新增靜態頁時測試會紅。
+ */
+export const STATIC_SITE_SEGMENTS: readonly string[] = [
+  'LOGO', 'PWA', '_routes.json', '_worker.js', 'appicon.png', 'assets', 'blog', 'event-share', 'fonts', 'img', 'inventory',
+  'llms.txt', 'manual', 'og.png', 'privacy', 'roles', 'runtime-config.json', 'seo', 'sitemap-events.xml', 'sitemap-static.xml',
+  'sitemap.xml', 'sw-legacy-compat.js', 'sw-push.js', 'team-share', 'terms',
+];
+
+/** 已清洗的同源路徑（sanitizeOpenPath 的結果）第一段是否屬於靜態檔；`/` 不算。 */
+export function isStaticSitePath(path: string): boolean {
+  const first = (path.slice(1).split(/[/?#]/, 1)[0] ?? '').replace(/\.html$/, '');
+  return first !== '' && STATIC_SITE_SEGMENTS.includes(first);
+}
+
+/**
  * 點通知時的安全判斷：evaluateReloadSafety 會把「焦點在 input」一律當輸入中；焦點只是停在 checkbox／radio（例如剛按過開關）
  * 不算在打字，這裡把那兩種排除後再判斷（審查 P3-1；reload-safety.ts 不改）。
  */
@@ -49,12 +65,15 @@ export interface OpenMessageEnv {
   controller: unknown;
   origin: string;
   route: (path: string) => void;
+  /** 非 SPA 路徑整頁換（預設 location.assign）。 */
+  assign?: (path: string) => void;
   isSafe: () => boolean;
 }
 
 /**
  * 處理 SW 的 `{ type: 'toosterx:webpush-open', v: 1, path }`：只收目前 controller 送來、型別與版本對、帶 port 的訊息。
  * 安全（彈窗、輸入中、送出中都沒有）→ 站內路由切過去、回 routed；不安全 → 留在原頁、回 kept（不提示，§11 Q6 (A)）。
+ * 安全且是靜態頁路徑（isStaticSitePath）→ 先回 routed 再整頁換；不安全時不分路徑一律 kept。
  * 任何例外都不回覆，讓 SW 逾時後退回 navigate。
  */
 export function handleWebPushOpenMessage(event: MessageEvent, env: OpenMessageEnv): void {
@@ -65,6 +84,11 @@ export function handleWebPushOpenMessage(event: MessageEvent, env: OpenMessageEn
     if (!data || data.type !== WEB_PUSH_OPEN_MESSAGE || data.v !== 1 || !port) return;
     const path = sanitizeOpenPath(data.path, env.origin);
     if (env.isSafe()) {
+      if (isStaticSitePath(path)) {
+        port.postMessage({ v: 1, result: 'routed' });
+        (env.assign ?? ((p: string) => location.assign(p)))(path);
+        return;
+      }
       env.route(path);
       port.postMessage({ v: 1, result: 'routed' });
     } else {

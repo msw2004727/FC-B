@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emit } from '@/core/events';
 import { evaluateReloadSafety } from '@/core/reload-safety';
@@ -7,7 +9,9 @@ import {
   beforeSignOut,
   handleWebPushOpenMessage,
   isSafeToRouteForPush,
+  isStaticSitePath,
   sanitizeOpenPath,
+  STATIC_SITE_SEGMENTS,
   startWebPushBoot,
   WEB_PUSH_OPEN_MESSAGE,
   type OpenMessageEnv,
@@ -129,6 +133,52 @@ describe('P 頁面端訊息（D1 (B)，W4.1 SW 協定）', () => {
     (document.getElementById('c2') as HTMLInputElement).focus();
     expect(isSafeToRouteForPush()).toBe(false);
     (document.activeElement as HTMLElement).blur();
+  });
+
+  it('靜態頁路徑（§3.716 乙）：安全時先回 routed 再整頁換，不走站內路由', () => {
+    for (const path of ['/privacy', '/privacy.html', '/terms', '/blog/', '/blog/football-rules.html', '/seo/football.html', '/manual?x=1', '/event-share/abc']) {
+      const order: string[] = [];
+      const port = { postMessage: vi.fn((_m: unknown) => { order.push('reply'); }) };
+      const assign = vi.fn((_p: string) => { order.push('assign'); });
+      const e = env({ assign });
+      handleWebPushOpenMessage(msg({ type: WEB_PUSH_OPEN_MESSAGE, v: 1, path }, CONTROLLER, port), e);
+      expect(e.route, path).not.toHaveBeenCalled();
+      expect(assign, path).toHaveBeenCalledWith(path);
+      expect(port.postMessage.mock.calls[0]![0], path).toStrictEqual({ v: 1, result: 'routed' });
+      expect(order, path).toEqual(['reply', 'assign']);
+    }
+    for (const path of ['/', '/inbox', '/events/abc', '/blogx', '/privacy-x', '/teams/blog']) {
+      expect(isStaticSitePath(path), path).toBe(false);
+    }
+  });
+
+  it('靜態頁路徑但不安全 → 一律 kept，不換頁', () => {
+    const port = makePort();
+    const assign = vi.fn();
+    const e = env({ isSafe: () => false, assign });
+    handleWebPushOpenMessage(msg({ type: WEB_PUSH_OPEN_MESSAGE, v: 1, path: '/privacy' }, CONTROLLER, port), e);
+    expect(assign).not.toHaveBeenCalled();
+    expect(e.route).not.toHaveBeenCalled();
+    expect(port.postMessage.mock.calls[0]![0]).toStrictEqual({ v: 1, result: 'kept' });
+  });
+
+  it('只對清洗後的路徑判斷：站外或不合格路徑退回 / 走站內路由，不整頁換', () => {
+    for (const bad of ['//evil.com/privacy', 'https://evil.com/privacy', '/\\privacy']) {
+      const assign = vi.fn();
+      const e = env({ assign });
+      handleWebPushOpenMessage(msg({ type: WEB_PUSH_OPEN_MESSAGE, v: 1, path: bad }, CONTROLLER), e);
+      expect(assign, bad).not.toHaveBeenCalled();
+      expect(e.route, bad).toHaveBeenCalledWith('/');
+    }
+  });
+
+  it('靜態路徑清單對著 public/ 頂層與 _routes.json 核對（新增靜態頁要一起登記）', () => {
+    const pub = resolve(__dirname, '../../../../public');
+    const fromPublic = readdirSync(pub).map((n) => n.replace(/\.html$/, ''));
+    const routes = JSON.parse(readFileSync(resolve(pub, '_routes.json'), 'utf8')) as { include: string[] };
+    const fromWorker = routes.include.map((p) => p.slice(1).split('/')[0]!);
+    const expected = [...new Set([...fromPublic, ...fromWorker])].sort();
+    expect([...STATIC_SITE_SEGMENTS].sort()).toEqual(expected);
   });
 
   it('route 丟錯 → 不回覆、不往外拋', () => {
