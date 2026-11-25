@@ -110,4 +110,19 @@ describe('U 推播列位置（LegacyLineNotifyCard）', () => {
       restore();
     }
   });
+
+  it('審查 P3-1：本檔的佔位與推播列的 WebPushPlaceholder 高度字串相同（兩處不共用常數：推播列不 import env.ts／本檔不 import 推播列）', async () => {
+    const restore = stubCapable();
+    try {
+      const { container } = render(<LegacyLineNotifyCard uid="u1" profile={PROFILE} onSaved={() => {}} embedded />);
+      const slotStyle = container.querySelector('#profile-line-notify .wp-placeholder')?.getAttribute('style');
+      expect(slotStyle).toContain('min-height:');
+      cleanup();
+      const real = await vi.importActual<typeof import('../../web-push/WebPushRow')>('../../web-push/WebPushRow');
+      const row = render(<real.WebPushPlaceholder />);
+      expect(row.container.querySelector('.wp-placeholder')?.getAttribute('style')).toBe(slotStyle);
+    } finally {
+      restore();
+    }
+  });
 });

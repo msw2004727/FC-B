@@ -13,8 +13,10 @@
    白色沒有不隨主題變的 token（--color-text-inverse 深色是黑），白字與半透明白照 A .primary-btn 寫 #fff。
    列內：標題是 span 內的文字（display:contents 拆開排），範圍小字跨到開關下方，越南文等長字 360 寬也不截斷。 */
 .wp-sep { height: .75rem; }
-/* 11-25 站長：右上「?」說明鈕不要緊貼卡片，上方留 --space-2（8px）。佔位高度同步加上。 */
-.wp-block.wp-c { margin-top: var(--space-2); display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: .65rem; padding: .6rem .8rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); }
+/* 11-25 站長：右上「?」說明鈕不要緊貼卡片，上方留 --space-2（8px）。佔位高度同步加上。
+   11-25 審查 P2-1：已開啟的一般卡片與橫幅同高（min-height＝橫幅內距 .85rem×2＋42px 圖示＋2px 框），多出的高度垂直置中，
+   讀取中 → 已開啟不再少 19.5px 讓下方 LINE 區上跳。取代原本「一般卡片內距 .6rem、高 50px」。 */
+.wp-block.wp-c { margin-top: var(--space-2); min-height: calc(1.7rem + 44px); align-content: center; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: .65rem; padding: .6rem .8rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); }
 .wp-c-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--accent); }
 .wp-block.wp-c .wp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: .6rem; min-height: 30px; padding: 0; font-size: .88rem; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
 .wp-block.wp-c .wp-row > span:first-child { display: contents; }
