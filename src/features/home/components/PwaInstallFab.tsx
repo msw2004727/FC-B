@@ -34,7 +34,7 @@ export type PwaFabDecision = 'show' | 'hide' | 'wait-install-event';
  * - 這個瀏覽器已開推播：不顯示。
  * - 從主畫面 App 開啟（還沒開推播）：顯示，點了帶去「我的」開通知。
  * - 手機（含 LINE 內建瀏覽器）：顯示，點了開教學或原生安裝。
- * - 電腦：只有攔到原生安裝事件（一鍵安裝）才顯示；還沒攔到就等事件。
+ * - 電腦一般分頁：只有攔到原生安裝事件（一鍵安裝）才顯示；還沒攔到就等事件。
  */
 export function decidePwaFab(env: PwaFabEnv): PwaFabDecision {
   if (env.hasPushRecord) return 'hide';
@@ -203,7 +203,8 @@ export function PwaInstallFab(): JSX.Element | null {
   const [Modals, setModals] = useState<ModalsComponent | null>(null);
   const tr = useT();
   const { route } = useLocation();
-  const [standalone] = useState(() => readPwaFabEnv().standalone);
+  // 已裝好（主畫面 App 開啟，或這個分頁剛收到 appinstalled）：改成「開啟通知」，點了帶去開通知。
+  const [standalone, setStandalone] = useState(() => readPwaFabEnv().standalone);
 
   useEffect(() => {
     let stop: (() => void) | undefined;
@@ -215,6 +216,12 @@ export function PwaInstallFab(): JSX.Element | null {
       stop?.();
     };
   }, [standalone]);
+
+  useEffect(() => {
+    const onInstalled = (): void => setStandalone(true);
+    addEventListener('appinstalled', onInstalled);
+    return () => removeEventListener('appinstalled', onInstalled);
+  }, []);
 
   if (typeof document === 'undefined') return null;
 

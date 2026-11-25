@@ -358,12 +358,12 @@ describe('PwaInstallFab', () => {
     expect(document.querySelector('.pwa-install-fab')?.getAttribute('aria-label')).not.toBe('加到主畫面');
   });
 
-  it('收到 appinstalled 後浮球仍保留', async () => {
+  it('收到 appinstalled 後浮球仍保留，改成「開啟通知」', async () => {
     render(<PwaInstallFab />);
     await act(async () => {
       window.dispatchEvent(new Event('appinstalled'));
     });
-    expect(document.querySelector('.pwa-install-fab')).not.toBeNull();
+    expect(document.querySelector('.pwa-install-fab')?.getAttribute('aria-label')).toBe('開啟通知');
   });
 
   it('主畫面 App（還沒開推播）：標籤與泡泡改成開通知，點了帶去「我的」展開通知', async () => {
