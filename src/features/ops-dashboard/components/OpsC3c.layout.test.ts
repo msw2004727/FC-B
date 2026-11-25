@@ -79,8 +79,8 @@ describe('C3c 一行與不進首頁入口', () => {
     }
   });
 
-  it('W6 推播裝置卡：標籤在 360／375／390（2 欄）與 1280（4 欄）放得下，卡名＋每日更新同一列', () => {
-    const platforms: OpsStringKey[] = ['pushTotal', 'pushAndroid', 'pushDesktop', 'pushIosPwa', 'pushOther'];
+  it('W6 推播裝置卡（方案 A 堆疊條）：卡名＋總數＋每日更新同一列，圖例每項單行放得下，360／375／390／1280', () => {
+    const platforms: OpsStringKey[] = ['pushAndroid', 'pushDesktop', 'pushIosPwa', 'pushOther'];
     for (const locale of LOCALES) {
       for (const key of [...platforms, 'pushTitle' as const, 'pushDaily' as const]) {
         expect(OPS_STRINGS[locale][key].includes('\n'), `${locale}.${key}`).toBe(false);
@@ -88,23 +88,20 @@ describe('C3c 一行與不進首頁入口', () => {
       }
       for (const viewport of [360, 375, 390, 1280]) {
         const inner = contentWidth(viewport) - 0.85 * 16 * 2;
-        const gap = 0.35 * 16;
-        const width = (key: OpsStringKey): number => textPx(OPS_STRINGS[locale][key], 0.74 * 16);
-        if (viewport >= 600) {
-          // 4 欄 minmax(min-content, 1fr)：四個標籤加間距放得進卡內即不截斷。
-          const row = platforms.slice(1).reduce((sum, key) => sum + width(key), 0) + gap * 3;
-          expect(row, `${locale} push row @ ${viewport}`).toBeLessThan(inner);
-          expect(width('pushTotal'), `${locale}.pushTotal @ ${viewport}`).toBeLessThan(inner);
-        } else {
-          const cell = (inner - gap) / 2;
-          for (const key of platforms) expect(width(key), `${locale}.${key} @ ${viewport}`).toBeLessThan(cell);
+        // 圖例項目可整項換到下一列（flex-wrap），單項：色塊＋間距＋名稱＋間距＋最多 7 位數字，不得超過卡內寬。
+        for (const key of platforms) {
+          const item = 0.6 * 16 + 0.3 * 16 + textPx(OPS_STRINGS[locale][key], 0.74 * 16) + 0.3 * 16 + textPx('9,999,999', 0.78 * 16);
+          expect(item, `${locale}.${key} legend @ ${viewport}`).toBeLessThan(inner);
         }
-        const head = textPx(OPS_STRINGS[locale].pushTitle, 0.78 * 16) + 0.6 * 16 + textPx(OPS_STRINGS[locale].pushDaily, 0.72 * 16);
+        const head = textPx(OPS_STRINGS[locale].pushTitle, 0.78 * 16) + 0.5 * 16 + textPx('99,999', 1.15 * 16)
+          + 0.6 * 16 + textPx(OPS_STRINGS[locale].pushDaily, 0.72 * 16);
         expect(head, `${locale} push head @ ${viewport}`).toBeLessThan(inner);
       }
     }
-    expect(css).toMatch(/\.od-push-daily \{[^}]*white-space:\s*nowrap/);
-    expect(css).toMatch(/\.od-push \{ grid-template-columns: repeat\(4, minmax\(min-content, 1fr\)\); \}/);
+    for (const cls of ['od-push-daily', 'od-push-total', 'od-push-name', 'od-push-legend-num', 'od-push-seg-num']) {
+      expect(css, cls).toMatch(new RegExp(`\\.${cls} \\{[^}]*white-space:\\s*nowrap`));
+    }
+    expect(css).toMatch(/\.od-push-legend \{[^}]*flex-wrap:\s*wrap/);
     expect(indexSource).not.toContain('OpsPushCard');
   });
 

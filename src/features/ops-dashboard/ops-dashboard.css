@@ -106,13 +106,33 @@
 .ops-dash .od-cost-label { display: block; font-size: .74rem; font-weight: 700; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ops-dash .od-cost-num { display: block; margin-top: .2rem; font-family: var(--font-display); font-size: .95rem; font-weight: 700; line-height: 1.1; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* W6 推播裝置數：卡名＋每日更新一列，總數一列，四平台手機 2 欄、600 以上 4 欄（欄寬至少容得下標籤，長標籤不被截斷）。標籤與數字都不換行。 */
-.ops-dash .od-push-head { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; margin-bottom: .45rem; min-width: 0; }
-.ops-dash .od-push-head .od-rank-head { margin: 0; min-width: 0; }
-.ops-dash .od-push-daily { flex: 0 0 auto; font-size: .72rem; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
-.ops-dash .od-push { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem .35rem; }
-.ops-dash .od-push-total { grid-column: 1 / -1; }
-.ops-dash .od-push-total .od-num { display: block; margin-top: .2rem; }
+/* W6 推播裝置數（方案 A：一條堆疊條＋圖例）。卡名旁是總數；色段寬度照比例，數字在段內，段太窄時數字寫在圖例名稱旁。
+   四色只用既有變數：Android＝accent、電腦＝primary、iPhone 主畫面＝warning、其他＝text-secondary，明度不同、不靠紅綠區分；
+   段內文字：淺色主題電腦與其他段用 bg-card（白），Android、iPhone 段用 text-primary；深色主題四色都亮，段內文字一律 bg-root。對比皆 ≥ 4.5。 */
+.ops-dash .od-push-head { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; margin-bottom: .6rem; min-width: 0; }
+.ops-dash .od-push-title { display: flex; align-items: baseline; gap: .5rem; min-width: 0; }
+.ops-dash .od-push-title .od-rank-head { margin: 0; min-width: 0; }
+.ops-dash .od-push-total { font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; line-height: 1; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ops-dash .od-push-daily { flex: 0 0 auto; font-size: .72rem; font-weight: 700; color: var(--text-secondary); white-space: nowrap; }
+.ops-dash .od-push-bar { display: flex; gap: 2px; height: 1.6rem; border-radius: 6px; overflow: hidden; background: var(--bg-elevated); }
+.ops-dash .od-push-bar.empty { border: 1px solid var(--border); }
+.ops-dash .od-push-seg { flex: 0 1 0; min-width: 3px; display: flex; align-items: center; justify-content: center; color: var(--text-primary); }
+.ops-dash [data-seg="android"] { background: var(--accent); }
+.ops-dash [data-seg="desktop"] { background: var(--primary); }
+.ops-dash [data-seg="ios_pwa"] { background: var(--warning); }
+.ops-dash [data-seg="other"] { background: var(--text-secondary); }
+.ops-dash .od-push-seg[data-seg="desktop"],
+.ops-dash .od-push-seg[data-seg="other"] { color: var(--bg-card); }
+[data-theme="dark"] .ops-dash .od-push-seg,
+[data-theme="dark"] .ops-dash .od-push-seg[data-seg="desktop"],
+[data-theme="dark"] .ops-dash .od-push-seg[data-seg="other"] { color: var(--bg-root); }
+.ops-dash .od-push-seg-num { padding: 0 7px; font-size: .78rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ops-dash .od-push-legend { list-style: none; margin: .55rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: .35rem .9rem; }
+.ops-dash .od-push-legend li { display: flex; align-items: center; gap: .3rem; white-space: nowrap; }
+.ops-dash .od-push-dot { flex: 0 0 auto; width: .6rem; height: .6rem; border-radius: 2px; }
+.ops-dash .od-push-name { font-size: .74rem; font-weight: 700; color: var(--text-secondary); white-space: nowrap; }
+.ops-dash .od-push-legend-num { font-size: .78rem; font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ops-dash .od-push-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* 名單（預覽排行列樣式） */
 .ops-dash .od-rank { list-style: none; margin: 0; padding: 0; }
@@ -145,7 +165,6 @@
   .ops-dash .od-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }
   .ops-dash .od-form { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); align-items: end; }
   .ops-dash .od-field-kw { grid-column: auto; }
-  .ops-dash .od-push { grid-template-columns: repeat(4, minmax(min-content, 1fr)); }
 }
 
 /* 趨勢圖（§2.3）。色只用既有 token；文字 nowrap（R-UI-027）；圖本身不橫向溢出。 */

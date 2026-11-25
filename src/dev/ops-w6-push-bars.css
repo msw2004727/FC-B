@@ -1,0 +1,13 @@
+/* 方案 B 版面（截圖台用）。底色變數同方案 A 的 [data-seg] 規則；條內文字色同 A 的 .od-push-seg。 */
+.ops-dash .od-pushb { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .5rem .7rem; align-items: center; }
+.ops-dash .od-pushb-row { display: contents; }
+.ops-dash .od-pushb-track { display: flex; align-items: center; height: 1.5rem; min-width: 0; border-radius: 6px; background: var(--bg-elevated); overflow: hidden; }
+.ops-dash .od-pushb-track.empty { border: 1px solid var(--border); }
+.ops-dash .od-pushb-fill { flex: 0 0 auto; height: 100%; min-width: 3px; display: flex; align-items: center; justify-content: flex-end; border-radius: 6px; color: var(--text-primary); }
+.ops-dash .od-pushb-fill[data-seg="desktop"],
+.ops-dash .od-pushb-fill[data-seg="other"] { color: var(--bg-card); }
+[data-theme="dark"] .ops-dash .od-pushb-fill,
+[data-theme="dark"] .ops-dash .od-pushb-fill[data-seg="desktop"],
+[data-theme="dark"] .ops-dash .od-pushb-fill[data-seg="other"] { color: var(--bg-root); }
+.ops-dash .od-pushb-num { padding: 0 7px; font-size: .78rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ops-dash .od-pushb-out { flex: 0 0 auto; padding: 0 7px; font-size: .78rem; font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -1,5 +1,5 @@
 // 營運儀表板 W6 截圖台：換掉 ops-data 的 loadDashboard（只給 dev-harness/vite.ops-w6.config.ts 用，不參與正式 build）。
-// 不讀 Firestore，改用真的 parseOpsSummaryLatest／parseOpsSummaryNoShow 解析下面的假文件。?scene=full｜empty（empty＝沒有 webPush）。
+// 不讀 Firestore，改用真的 parseOpsSummaryLatest／parseOpsSummaryNoShow 解析下面的假文件。?scene=full｜extreme｜zero｜empty（extreme＝1 台 iPhone、其他很多；zero＝全部 0；empty＝沒有 webPush）。
 import {
   parseOpsSummaryLatest,
   parseOpsSummaryNoShow,
@@ -75,6 +75,8 @@ function latestDoc(): Record<string, unknown> {
     integrity: { lastReconcileAt: stamp(now - 6 * 60 * 60 * 1000), lastMismatchDays: [] },
   };
   if (scene === 'full') doc['webPush'] = { android: 12, desktop: 8, ios_pwa: 3, other: 1, total: 24 };
+  if (scene === 'extreme') doc['webPush'] = { android: 156, desktop: 41, ios_pwa: 1, other: 9, total: 207 };
+  if (scene === 'zero') doc['webPush'] = { android: 0, desktop: 0, ios_pwa: 0, other: 0, total: 0 };
   return doc;
 }
 

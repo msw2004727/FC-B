@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 營運儀表板 W6 推播裝置卡真元件截圖：對 ops-w6 harness 開發伺服器截圖，假資料、不登入、非本機請求一律擋下。
-// 截：full × 360／1280 × 淺深（整頁＋卡片前後脈絡），empty × 360 淺。
-// 量：7 語系 × 360／1280 × 淺，推播卡文字不得截斷或折行、不得橫向捲動；console 錯誤。
+// 方案 A／B（?variant=）各截：full × 360／1280 × 淺深、extreme（1 台 iPhone）× 360 淺、empty × 360 淺（卡片前後脈絡＋整頁）。
+// 量：兩方案 × 7 語系 × 360／1280 × full／extreme／zero，推播卡文字不得截斷或折行、條內數字不得超出色段、條外數字不得超出條框、不得橫向捲動；console 錯誤。
 // 用法：node dev-harness/ops-w6-shots.mjs <輸出資料夾> <base url>
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -15,7 +15,7 @@ const browser = await chromium.launch({ args: ['--noerrdialogs'] });
 await mkdir(OUT, { recursive: true });
 const report = { shots: [], checks: [], problems: [], consoleErrors: [], blocked: [] };
 
-async function open({ scene, width, theme, lang }) {
+async function open({ variant, scene, width, theme, lang }) {
   const ctx = await browser.newContext({
     viewport: { width, height: width >= 1000 ? 900 : 760 },
     deviceScaleFactor: 2,
@@ -28,10 +28,10 @@ async function open({ scene, width, theme, lang }) {
     return r.abort();
   });
   const page = await ctx.newPage();
-  const tag = `${scene}-${theme}-${width}-${lang}`;
+  const tag = `${variant}-${scene}-${theme}-${width}-${lang}`;
   page.on('console', (m) => { if (m.type() === 'error') report.consoleErrors.push(`${tag}: ${m.text()}`); });
   page.on('pageerror', (e) => report.consoleErrors.push(`${tag}: ${e.message}`));
-  await page.goto(`${BASE}/dev-harness/ops-w6.html?scene=${scene}&theme=${theme}&lang=${lang}`);
+  await page.goto(`${BASE}/dev-harness/ops-w6.html?variant=${variant}&scene=${scene}&theme=${theme}&lang=${lang}`);
   await page.waitForFunction(() => window.__OPS_READY === true, null, { timeout: 30000 });
   await page.waitForSelector('.od-a-push', { timeout: 15000 });
   await page.evaluate(() => document.fonts.ready);
@@ -42,19 +42,27 @@ async function open({ scene, width, theme, lang }) {
 async function measure(page, tag) {
   const result = await page.evaluate(() => {
     const out = [];
-    const nodes = [...document.querySelectorAll('.od-a-push .od-rank-head, .od-a-push .od-push-daily, .od-a-push .od-cost-label, .od-a-push [data-push]')];
-    for (const el of nodes) {
+    const sel = '.od-a-push .od-rank-head, .od-a-push .od-push-total, .od-a-push .od-push-daily, .od-a-push .od-push-name, .od-a-push [data-push]';
+    for (const el of document.querySelectorAll(sel)) {
       const range = document.createRange();
       range.selectNodeContents(el);
       const lines = new Set([...range.getClientRects()].map((x) => Math.round(x.top))).size;
-      const truncated = el.scrollWidth > el.clientWidth + 0.5;
-      out.push({ text: el.textContent, lines, truncated, w: Math.round(el.getBoundingClientRect().width), sw: el.scrollWidth });
+      const r = el.getBoundingClientRect();
+      let truncated = el.scrollWidth > el.clientWidth + 0.5;
+      // 條內數字：不得超出所在色段；條外數字（方案 B）：不得超出條框。
+      const box = el.closest('.od-push-seg, .od-pushb-fill') || (el.classList.contains('od-pushb-out') ? el.closest('.od-pushb-track') : null);
+      let overflow = false;
+      if (box) {
+        const b = box.getBoundingClientRect();
+        overflow = r.left < b.left - 0.5 || r.right > b.right + 0.5;
+      }
+      out.push({ text: el.textContent, lines, truncated, overflow, w: Math.round(r.width) });
     }
     return { items: out, hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth };
   });
   report.checks.push({ tag, ...result });
   for (const item of result.items) {
-    if (item.lines > 1 || item.truncated) report.problems.push(`${tag}: "${item.text}" lines=${item.lines} truncated=${item.truncated} w=${item.w} sw=${item.sw}`);
+    if (item.lines > 1 || item.truncated || item.overflow) report.problems.push(`${tag}: "${item.text}" lines=${item.lines} truncated=${item.truncated} overflow=${item.overflow} w=${item.w}`);
   }
   if (result.hscroll) report.problems.push(`${tag}: 橫向捲動`);
 }
@@ -71,24 +79,28 @@ async function contextClip(page) {
 }
 
 const SHOTS = [
-  ['full', 360, 'light'], ['full', 360, 'dark'], ['full', 1280, 'light'], ['full', 1280, 'dark'], ['empty', 360, 'light'],
+  ['full', 360, 'light'], ['full', 360, 'dark'], ['full', 1280, 'light'], ['full', 1280, 'dark'],
+  ['extreme', 360, 'light'], ['empty', 360, 'light'],
 ];
-for (const [scene, width, theme] of SHOTS) {
-  const { ctx, page, tag } = await open({ scene, width, theme, lang: 'zh-TW' });
-  await measure(page, tag);
-  const base = `w6-push-${scene}-${width}-${theme}`;
-  const clip = await contextClip(page);
-  await page.screenshot({ path: join(OUT, `${base}.png`), clip, fullPage: true });
-  await page.screenshot({ path: join(OUT, `${base}-fullpage.png`), fullPage: true });
-  report.shots.push(`${base}.png`, `${base}-fullpage.png`);
-  await ctx.close();
-}
-
-for (const lang of LANGS) {
-  for (const width of [360, 1280]) {
-    const { ctx, page, tag } = await open({ scene: 'full', width, theme: 'light', lang });
+for (const variant of ['A', 'B']) {
+  for (const [scene, width, theme] of SHOTS) {
+    const { ctx, page, tag } = await open({ variant, scene, width, theme, lang: 'zh-TW' });
     await measure(page, tag);
+    const base = `w6-push-${variant}-${scene}-${width}-${theme}`;
+    const clip = await contextClip(page);
+    await page.screenshot({ path: join(OUT, `${base}.png`), clip, fullPage: true });
+    await page.screenshot({ path: join(OUT, `${base}-fullpage.png`), fullPage: true });
+    report.shots.push(`${base}.png`, `${base}-fullpage.png`);
     await ctx.close();
+  }
+  for (const lang of LANGS) {
+    for (const width of [360, 1280]) {
+      for (const scene of ['full', 'extreme', 'zero']) {
+        const { ctx, page, tag } = await open({ variant, scene, width, theme: 'light', lang });
+        await measure(page, tag);
+        await ctx.close();
+      }
+    }
   }
 }
 
