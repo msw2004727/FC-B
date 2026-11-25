@@ -3,6 +3,9 @@
 // 狀態機見設計書 §4：H 不畫、L1／L2 LINE 內、I iPhone 未加主畫面、C 讀取中、B 已封鎖、O 可開啟、S 送出中、N 已開啟。
 // 讀取中用全站共用轉圈（ui-spin，站長同意的差異 1）；本列程式與字典到之前由 WebPushSlot 先放等高空白（差異 2）。
 // 開通前只有 QA 帳號看得到（顧問 §3.699 Q5，WEB_PUSH_UI_PUBLIC）。
+// 2026-11-25 站長選定預覽 `2026-11-25-push-card` 的 C 案（橫幅提示卡），取代 W5 的一般列外觀：
+// 未開啟（含讀取中、送出中、已封鎖、LINE 內、iPhone 未加主畫面）是漸層橫幅（.wp-c.is-banner），已開啟收成一般卡片（.wp-c）。
+// 列與提示列的 DOM／class 不變，只在 .wp-block 前面多一個鈴鐺圖示（.wp-c-icon），版面由 web-push.css 排。
 
 import './web-push.css';
 import type { JSX } from 'preact';
@@ -36,9 +39,12 @@ type View =
   | { kind: 'blocked' }
   | { kind: 'sending'; target: boolean };
 
+/** 橫幅高度＋下方間距（與 web-push.css 的 .wp-c.is-banner、.wp-sep 一致；WebPushSlot 的佔位同值）。 */
+const PLACEHOLDER_STYLE = 'min-height:calc(2.45rem + 44px)';
+
 /** 與列等高的空白：程式、字典或 QA 判斷還沒到時先佔位，下方 LINE 區不跳動。 */
 export function WebPushPlaceholder(): JSX.Element {
-  return <div class="wp-placeholder" style="min-height:calc(2.1rem + 1rem + 1px)" aria-hidden="true" />;
+  return <div class="wp-placeholder" style={PLACEHOLDER_STYLE} aria-hidden="true" />;
 }
 
 /** 在目前網址的 hash 前加 openExternalBrowser=1（同 open-external.ts 的寫法；那支在入口且未 export）。 */
@@ -63,6 +69,15 @@ export function openInExternalBrowser(): void {
     /* LIFF 不可用就走網址參數 */
   }
   location.assign(withOpenExternalBrowser(href));
+}
+
+function Bell({ size }: { size: number }): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+      <path d="M6 16V11a6 6 0 0112 0v5l1.5 2h-15z" />
+      <path d="M10 20.5a2 2 0 004 0" />
+    </svg>
+  );
 }
 
 function Toggle({ wt, checked, disabled, onToggle }: {
@@ -267,9 +282,13 @@ export function WebPushRow({ uid, env, iosStandalone, uiPublic }: WebPushRowProp
     right = <Toggle wt={wt} checked={view.kind === 'on'} onToggle={handleToggle} />;
   }
 
+  // 已開啟（含關閉送出中）收成一般卡片；其餘狀態都是橫幅。
+  const banner = !(env === 'capable' && (view.kind === 'on' || (view.kind === 'sending' && !view.target)));
+
   return (
     <>
-      <div class="wp-block" data-wp-state={env === 'capable' ? view.kind : env}>
+      <div class={`wp-block wp-c${banner ? ' is-banner' : ''}`} data-wp-state={env === 'capable' ? view.kind : env}>
+        <span class="wp-c-icon" aria-hidden="true"><Bell size={banner ? 24 : 18} /></span>
         <div class="line-notify-row wp-row">
           <span>
             {wt('webPush.label')}

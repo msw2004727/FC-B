@@ -5,4 +5,44 @@
 .wp-spin { display: inline-flex; width: 18px; height: 18px; margin-right: 14px; color: var(--accent); animation: ui-spin var(--ui-spin-dur) var(--ui-ease) infinite; }
 .wp-hint .line-notify-friend-btn { color: var(--accent); }
 .wp-hint.warn > span { color: var(--warning); }
-.wp-sep { border-top: 1px solid var(--border); margin: .5rem 0; }
+
+/* 2026-11-25 站長選定 C 案（橫幅提示卡，預覽 2026-11-25-push-card）：取代 W5 的一般列與分隔線（原 .wp-sep 是細線＋上下 .5rem）。
+   未開啟＝漸層橫幅（.is-banner），已開啟＝一般卡片。漸層兩端用 tokens.css 的固定色票（不隨主題變）：
+   淺色 --palette-blue-base → --palette-emerald-500、深色 --palette-blue-light-fg → --palette-emerald-600，白字對比 ≥ 5.17（WCAG AA）。
+   預覽寫死的私訊按鈕漸層（profile.css .uc-action-btn-pm）沒有對應 token，且淺色端 #0891b2 白字只有 3.68，不沿用。
+   白色沒有不隨主題變的 token（--color-text-inverse 深色是黑），白字與半透明白照 A .primary-btn 寫 #fff。
+   列內：標題是 span 內的文字（display:contents 拆開排），範圍小字跨到開關下方，越南文等長字 360 寬也不截斷。 */
+.wp-sep { height: .75rem; }
+.wp-block.wp-c { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: .65rem; padding: .6rem .8rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); }
+.wp-c-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--accent); }
+.wp-block.wp-c .wp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: .6rem; min-height: 30px; padding: 0; font-size: .88rem; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
+.wp-block.wp-c .wp-row > span:first-child { display: contents; }
+.wp-block.wp-c .wp-row > :not(:first-child) { grid-column: 2; grid-row: 1; }
+.wp-block.wp-c .wp-row .line-notify-sub { grid-column: 1 / -1; grid-row: 2; font-size: .72rem; overflow: hidden; text-overflow: ellipsis; }
+.wp-block.wp-c:not(.is-banner) .line-notify-sub { display: none; }
+.wp-block.wp-c > .wp-hint { grid-column: 1 / -1; margin: .6rem 0 0; }
+
+.wp-block.wp-c.is-banner { padding: .85rem .8rem; border-color: transparent; background: linear-gradient(135deg, var(--palette-blue-base), var(--palette-emerald-500)); box-shadow: var(--shadow); }
+[data-theme="dark"] .wp-block.wp-c.is-banner { background: linear-gradient(135deg, var(--palette-blue-light-fg), var(--palette-emerald-600)); }
+.wp-block.wp-c.is-banner .wp-c-icon { width: 42px; height: 42px; border-radius: 50%; background: rgba(255, 255, 255, .18); color: #fff; }
+.wp-block.wp-c.is-banner .wp-row { font-size: .92rem; color: #fff; }
+.wp-block.wp-c.is-banner .wp-row .line-notify-sub { color: #fff; }
+.wp-block.wp-c.is-banner .wp-spin { color: #fff; }
+.wp-block.wp-c.is-banner .line-notify-status.unbound { background: rgba(0, 0, 0, .22); color: #fff; }
+/* 開關在漸層上：深色半透明軌道＋白框，白圓鈕清楚（尺寸照全站 46×22，觸控區不變小）。 */
+.wp-block.wp-c.is-banner .toggle-slider { background: rgba(0, 0, 0, .28); box-shadow: inset 0 0 0 2px #fff; }
+.wp-block.wp-c.is-banner .toggle-switch input:checked + .toggle-slider { background: var(--accent); }
+.wp-block.wp-c.is-banner .wp-hint { background: rgba(0, 0, 0, .2); color: #fff; }
+.wp-block.wp-c.is-banner .wp-hint.warn > span { color: #fff; }
+.wp-block.wp-c.is-banner .wp-hint .line-notify-friend-btn { border-color: #fff; background: #fff; color: var(--palette-blue-light-fg); }
+
+/* 窄螢幕（越南文等長字）：375 寬提示列內距與按鈕收一點；360 寬再把標題與提示字縮一級、橫幅內距收一點。 */
+@media (max-width: 380px) {
+  .wp-block.wp-c.is-banner .wp-hint { padding: .5rem; }
+  .wp-block.wp-c.is-banner .wp-hint .line-notify-friend-btn { padding: .3rem .6rem; }
+}
+@media (max-width: 370px) {
+  .wp-block.wp-c.is-banner .wp-row { font-size: .86rem; }
+  .wp-block.wp-c.is-banner { padding: .8rem .7rem; }
+  .wp-block.wp-c.is-banner .wp-hint > span { font-size: .72rem; }
+}

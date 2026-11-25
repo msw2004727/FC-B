@@ -11,7 +11,8 @@ import { detectWebPushEnv, isIosStandaloneEnv, readWebPushEnvInput, WEB_PUSH_UI_
 // 分塊載入失敗時只是不畫這一列，不讓個人頁進錯誤畫面（LINE 區照常）。
 const WebPushRow = lazy(() => import('../../web-push/WebPushRow').catch(() => ({ default: () => null })));
 
-const PLACEHOLDER = <div class="wp-placeholder" style="min-height:calc(2.1rem + 1rem + 1px)" aria-hidden="true" />;
+// 高度＝C 案橫幅＋下方間距（與 WebPushRow 的 PLACEHOLDER_STYLE 同值；2026-11-25 取代 W5 一般列的 2.1rem＋1rem＋1px）。
+const PLACEHOLDER = <div class="wp-placeholder" style="min-height:calc(2.45rem + 44px)" aria-hidden="true" />;
 
 export function WebPushSlot({ uid }: { uid: string }): JSX.Element | null {
   const input = useMemo(() => readWebPushEnvInput(), []);
