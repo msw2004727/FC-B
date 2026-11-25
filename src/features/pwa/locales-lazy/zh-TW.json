@@ -21,7 +21,7 @@
   "iosShareStep": "點選「分享」",
   "iosShareHint": "在跳出的選單最上方",
   "iosMoreStep": "點「檢視較多」",
-  "iosMoreHint": "分享選單第二排最右邊的向下箭頭",
+  "iosMoreHint": "第二排最右的箭頭，沒有就略過",
   "iosAddStep": "往下滑，點選「加入主畫面」",
   "iosAddHint": "在分享選單列表中找到此選項",
   "iosWebAppStep": "確認「打開為網頁 App」已開啟",

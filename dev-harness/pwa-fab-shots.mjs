@@ -23,6 +23,7 @@ for (const lang of ['zh-TW', 'en', 'ja', 'ko', 'th', 'vi', 'zh-CN']) {
 }
 shots.push({ name: 'ios-zh-TW-360', w: 360, theme: 'light', q: '&modal=ios', full: true });
 for (const lang of ['en', 'ja', 'ko', 'th', 'vi', 'zh-CN']) for (const w of [360, 390]) shots.push({ name: `lang-${lang}-${w}`, w, theme: 'light', q: `&lang=${lang}&hint=pwa`, label: true });
+for (const lang of ['zh-TW', 'en', 'ja', 'ko', 'th', 'vi', 'zh-CN']) shots.push({ name: `push-hint-${lang}-360`, w: 360, theme: 'light', q: `&lang=${lang}&hint=push`, label: true });
 for (const theme of ['light', 'dark']) shots.push({ name: `update-360-${theme}`, w: 360, theme, q: '&update=1' });
 shots.push({ name: 'update-hint-360-light', w: 360, theme: 'light', q: '&update=1&hint=pwa' });
 shots.push({ name: 'toast-360-light', w: 360, theme: 'light', q: '&toast=' + encodeURIComponent('已加入你的報名清單，記得準時到場') });

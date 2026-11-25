@@ -93,13 +93,17 @@ export const QUICK_PANEL_ID = 'profile-quick-panel';
 export function ProfileQuickBar({
   items,
   groupLabel,
+  initialOpenKey,
 }: {
   items: readonly QuickItem[];
   groupLabel: string;
+  /** 進頁就展開的項目（首頁浮球帶 ?open=line 來開通知；2026-11-26）。不存在的 key 忽略。 */
+  initialOpenKey?: string | null;
 }): JSX.Element {
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  const initial = initialOpenKey && items.some((item) => item.key === initialOpenKey) ? initialOpenKey : null;
+  const [openKey, setOpenKey] = useState<string | null>(initial);
   // 打開過的區塊（保持掛載）。
-  const [mountedKeys, setMountedKeys] = useState<readonly string[]>([]);
+  const [mountedKeys, setMountedKeys] = useState<readonly string[]>(initial ? [initial] : []);
   const buttonsRef = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const active = items.find((item) => item.key === openKey) ?? null;

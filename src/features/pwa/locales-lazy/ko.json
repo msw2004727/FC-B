@@ -21,7 +21,7 @@
   "iosShareStep": "‘공유’ 누르기",
   "iosShareHint": "메뉴 맨 위에 있어요",
   "iosMoreStep": "‘더 보기’ 누르기",
-  "iosMoreHint": "공유 메뉴 둘째 줄 맨 오른쪽 아래 화살표",
+  "iosMoreHint": "둘째 줄 오른쪽 끝 화살표, 없으면 생략",
   "iosAddStep": "아래로 내려 ‘홈 화면에 추가’",
   "iosAddHint": "공유 메뉴 목록에 있어요",
   "iosWebAppStep": "‘웹 앱으로 열기’를 켠 상태로",

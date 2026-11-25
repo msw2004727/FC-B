@@ -12,7 +12,7 @@ import '../styles/legacy-body-state.css';
 import '../styles/legacy-line-height.css';
 import '@/ui/app-shell.css';
 import '@/features/home/legacy/home.css';
-import { setLocale } from '@/i18n/i18n';
+import { setLocale, t } from '@/i18n/i18n';
 import type { Locale } from '@/i18n/locales';
 import { ToastHost } from '@/ui/ToastHost';
 import { BottomNav } from '@/ui/BottomNav';
@@ -77,6 +77,10 @@ async function main(): Promise<void> {
   if (hint === 'pwa') {
     await new Promise((r) => setTimeout(r, 50));
     showPwaFabHint();
+  }
+  if (hint === 'push') {
+    await new Promise((r) => setTimeout(r, 50));
+    showPwaFabHint(t('home.pwaFab.pushHint'));
   }
   if (hint === 'contact') {
     const m = await import('@/features/home/components/contact-fab-hint');

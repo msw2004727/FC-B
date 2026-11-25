@@ -21,7 +21,7 @@
   "iosShareStep": "点选「共享」",
   "iosShareHint": "在弹出菜单的最上方",
   "iosMoreStep": "点「查看更多」",
-  "iosMoreHint": "共享菜单第二排最右边的向下箭头",
+  "iosMoreHint": "第二排最右的箭头，没有就跳过",
   "iosAddStep": "往下滑，点选「添加到主屏幕」",
   "iosAddHint": "在共享菜单列表中找到此选项",
   "iosWebAppStep": "确认「作为网页 App 打开」已开启",
