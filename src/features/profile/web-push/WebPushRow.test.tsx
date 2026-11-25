@@ -6,11 +6,6 @@ const qaState = vi.hoisted(() => ({ value: { persona: 'memberA', agent: null } a
 vi.mock('@/features/qa-login/data/qa-session', () => ({
   useQaSession: (uid: string | null) => (uid === null ? null : qaState.value),
 }));
-// 已確定角色（viewer 讀 users/{uid} 後發出）；null＝還沒讀到或讀取失敗。uid 為 null（開通後）時回 null。
-const roleState = vi.hoisted(() => ({ value: null as string | null }));
-vi.mock('@/features/profile/data/viewer', () => ({
-  useSettledViewerRole: (uid: string | null) => (uid === null ? null : roleState.value),
-}));
 vi.mock('@/data/liff-init', () => ({ getReadyLiff: vi.fn(() => null) }));
 vi.mock('@/ui/SideDrawer', () => ({
   PwaModals: ({ step }: { step: string }) => <div data-testid="pwa-modal" data-step={step} />,
@@ -52,7 +47,6 @@ beforeEach(async () => {
   _resetWebPushFlowsForTest();
   _resetWebPushDictForTest();
   qaState.value = { persona: 'memberA', agent: null };
-  roleState.value = null;
   vi.mocked(toast.show).mockClear();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   await setLocale('zh-TW');
@@ -205,54 +199,6 @@ describe('U 推播列', () => {
     expect(c.container.querySelector('.wp-row')).not.toBeNull();
   });
 
-  it('開通前最高管理員（非 QA）：看得到開關並照常查狀態', async () => {
-    use(fakeWorld());
-    qaState.value = null;
-    roleState.value = 'super_admin';
-    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
-    await waitFor(() => expect(stateOf(container)).toBe('off'));
-    expect(toggleOf(container)).not.toBeNull();
-  });
-
-  it.each([
-    ['user', 'user'],
-    ['admin', 'admin'],
-    ['coach', 'coach'],
-    ['大小寫不同 Super_Admin', 'Super_Admin'],
-    ['大寫 SUPER_ADMIN', 'SUPER_ADMIN'],
-    ['角色還沒確定（null）', null],
-  ])('開通前非最高管理員（%s）且非 QA → 不畫、不查狀態', async (_label, role) => {
-    const w = use(fakeWorld());
-    const spy = vi.spyOn(w.deps, 'getRegistration');
-    qaState.value = null;
-    roleState.value = role;
-    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(container.innerHTML).toBe('');
-    expect(spy).not.toHaveBeenCalled();
-  });
-
-  it('最高管理員但 QA 判斷中 → 先不畫（照現行規則，不放空白）', () => {
-    use(fakeWorld());
-    qaState.value = undefined;
-    roleState.value = 'super_admin';
-    const { container } = render(<WebPushRow uid="u1" env="line-android" iosStandalone={false} uiPublic={false} />);
-    expect(container.innerHTML).toBe('');
-  });
-
-  it('角色晚到：一般使用者全程不畫；確定為最高管理員後才出現', async () => {
-    use(fakeWorld());
-    qaState.value = null;
-    roleState.value = null;
-    const r = render(<WebPushRow uid="u1" env="line-android" iosStandalone={false} uiPublic={false} />);
-    expect(r.container.innerHTML).toBe('');
-    roleState.value = 'super_admin';
-    r.rerender(<WebPushRow uid="u1" env="line-android" iosStandalone={false} uiPublic={false} />);
-    expect(r.container.querySelector('.wp-row')).not.toBeNull();
-  });
-
   it('L-43：uid 換人 → 重設並重查（舊 uid 的結果丟棄）', async () => {
     const w = use(fakeWorld({ permission: 'granted' }));
     await seedOn(w, 'u1');
@@ -260,6 +206,52 @@ describe('U 推播列', () => {
     await waitFor(() => expect(stateOf(container)).toBe('on'));
     rerender(<WebPushRow uid="u2" env="capable" iosStandalone={false} uiPublic={false} />);
     await waitFor(() => expect(stateOf(container)).toBe('off'));
+  });
+
+  it('C 案（2026-11-25）：未開啟各狀態是橫幅 .wp-c.is-banner，已開啟收成一般卡片；鈴鐺圖示不給讀屏', async () => {
+    const banner = (c: Element): boolean => !!c.querySelector('.wp-block.wp-c.is-banner');
+    const card = (c: Element): boolean => !!c.querySelector('.wp-block.wp-c:not(.is-banner)');
+    const w = use(fakeWorld());
+    const a = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
+    expect(stateOf(a.container)).toBe('loading');
+    expect(banner(a.container)).toBe(true);
+    await waitFor(() => expect(stateOf(a.container)).toBe('off'));
+    expect(banner(a.container)).toBe(true);
+    const icon = a.container.querySelector('.wp-block > .wp-c-icon')!;
+    expect(icon.getAttribute('aria-hidden')).toBe('true');
+    expect(icon.querySelector('svg')).not.toBeNull();
+    expect(a.container.querySelector('.wp-block > .wp-c-icon + .line-notify-row.wp-row')).not.toBeNull();
+    // 開啟送出中仍是橫幅（開關已在目標位置），完成後收成一般卡片。
+    act(() => {
+      fireEvent.click(toggleOf(a.container));
+    });
+    expect(stateOf(a.container)).toBe('sending');
+    expect(banner(a.container)).toBe(true);
+    await waitFor(() => expect(stateOf(a.container)).toBe('on'));
+    expect(card(a.container)).toBe(true);
+    expect(a.container.querySelector('.wp-c-icon')).not.toBeNull();
+    // 關閉送出中維持一般卡片（不先跳回橫幅）。
+    w.deps.unregister = () => new Promise<never>(() => {});
+    act(() => {
+      fireEvent.click(toggleOf(a.container));
+    });
+    expect(stateOf(a.container)).toBe('sending');
+    expect(card(a.container)).toBe(true);
+    cleanup();
+
+    use(fakeWorld({ permission: 'denied' }));
+    const b = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
+    await waitFor(() => expect(stateOf(b.container)).toBe('blocked'));
+    expect(banner(b.container)).toBe(true);
+    expect(b.container.querySelector('.wp-c.is-banner > .wp-hint.warn')).not.toBeNull();
+    cleanup();
+
+    for (const env of ['line-android', 'line-ios', 'ios-home'] as const) {
+      const r = render(<WebPushRow uid="u1" env={env} iosStandalone={false} uiPublic={false} />);
+      expect(banner(r.container)).toBe(true);
+      expect(r.container.querySelector('.wp-c.is-banner > .wp-hint .line-notify-friend-btn')).not.toBeNull();
+      cleanup();
+    }
   });
 
   it('語系切換只換字（外語按需載入）', async () => {

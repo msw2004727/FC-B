@@ -15,8 +15,11 @@
   *
  * 範圍與已知盲點（審查 P3-2、P3-3）：只認 `limit(`、`fs.limit(`、`sdk.limit(` 呼叫；不含 REST structuredQuery 的
  * `limit` 欄位（例如 src/features/home/data/banners-rest.ts 與 index.html 的首頁橫幅預讀，和 banners.ts 同一條查詢）。
- * 掃描器不認得：解構改名（`const { limit: l } = fs`）、中括號呼叫（`fs['limit']`）、同一行 JSX 文字裡的 `//` 或落單引號、
- * `if (x) /re/` 這類正規式；寫查詢時避免這些寫法。
+ * 可選呼叫 `fs.limit?.(n)` 照樣算。掃描器數不到的解構改名（`const { limit: l } = fs`）與中括號呼叫（`fs['limit'](n)`）
+ * 由測試另行擋下。仍不認得：函式參數解構改名、`import { limit as l }`、先存變數再呼叫（`const l = fs.limit`）、
+ * 解構時 limit 前面有預設值、變數當鍵（`fs[k](n)`）、`fs['limit']?.(n)`、同一行前面有含 `//` 的字串（中括號守門會漏）、
+ * 同一行 JSX 文字裡的 `//` 或落單引號、`if (x) /re/` 這類正規式；
+ * 零參數的方法簽章 `limit(): T` 會被誤算成呼叫（只會假紅，不會漏算）。寫查詢時避免這些寫法。
  */
 
 export type QueryLimitStatus = 'ok' | 'known-gap-batch-D' | 'known-gap-batch-E' | 'known-gap-other';

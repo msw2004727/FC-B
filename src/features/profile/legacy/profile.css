@@ -216,6 +216,8 @@ a.social-btn { text-decoration: none; }
   border-radius: 10px;
   font-weight: 850;
 }
+/* 2026-11-25 站長：資料頁編輯狀態的「取消」「儲存」比照「編輯」鈕大小。實心「儲存」的內距與字級改成和 .outline-btn 相同。 */
+.primary-btn.profile-action-btn { padding: .5rem 1rem; font-size: .82rem; }
 /* 刪除夥伴、解除綁定：紅字＋紅色內框。個人頁玻璃鈕（profile-glass.css #page-profile .outline-btn）拿掉了邊框、文字改主色，
  * 這裡權重要高過它（含 hover），用內框還原 A 的紅框警示（同社群連結「清除」的做法）。 */
 #page-profile .profile-action-btn.is-danger,

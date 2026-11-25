@@ -167,7 +167,8 @@ export function stripCommentsAndStrings(source: string): string {
   return out;
 }
 
-const LIMIT_CALL_RE = /(?<![\w$])(limit(?:ToLast)?)\s*\(/g;
+// `limit?.(n)`（可選呼叫）也算；介面的可選方法 `limit?(n)` 沒有點，不算。
+const LIMIT_CALL_RE = /(?<![\w$])(limit(?:ToLast)?)\s*(?:\?\.\s*)?\(/g;
 
 /** 數已去除註解與字串的程式碼裡有幾個 limit 呼叫；方法簽章與函式宣告不算。 */
 export function countLimitCalls(source: string): number {
@@ -278,6 +279,15 @@ describe('countLimitCalls（掃描器本身）', () => {
     expect(countLimitCalls(src)).toBe(2);
   });
 
+  it('算可選呼叫 fs.limit?.(n)；不算介面可選方法 limit?(n)', () => {
+    const src = [
+      'const q = query(col, fs.limit?.(5));',
+      'const r = sdk.limitToLast ?. (2);',
+      'interface S { limit?(n: number): unknown }',
+    ].join('\n');
+    expect(countLimitCalls(src)).toBe(2);
+  });
+
   it('JSX 文字裡的撇號不會吃掉後面的程式', () => {
     const src = [
       'const el = <p>It\'s fine</p>;',
@@ -348,6 +358,45 @@ describe('帶筆數上限的查詢登記表', () => {
       .filter(isProductionSource)
       .filter((rel) => /\blimit(?:ToLast)?\s+as\s+[\w$]+/.test(stripCommentsAndStrings(readFileSync(join(ROOT, rel), 'utf8'))));
     expect(aliased).toEqual([]);
+  });
+});
+
+/** 掃描器數不到的取用法：解構改名（`const { limit: l } = fs`）與中括號取用（`fs['limit']`）。 */
+export function hasHiddenLimitAccess(source: string): boolean {
+  const code = stripCommentsAndStrings(source);
+  if (/\b(?:const|let|var)\s*\{[^}=]*\blimit(?:ToLast)?\s*:\s*[A-Za-z_$]/.test(code)) return true;
+  return /\[\s*['"`]limit(?:ToLast)?['"`]\s*\]\s*\(/.test(source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ''));
+}
+
+describe('掃描器盲點的守門（審查 P3）', () => {
+  it('偵測解構改名與中括號取用；一般物件欄位 { limit: n } 與解構不改名不算', () => {
+    expect(hasHiddenLimitAccess('const { limit: l } = fs;')).toBe(true);
+    expect(hasHiddenLimitAccess('let { where, limitToLast: tail } = sdk;')).toBe(true);
+    expect(hasHiddenLimitAccess("const q = query(col, fs['limit'](5));")).toBe(true);
+    expect(hasHiddenLimitAccess('const q = query(col, fs["limitToLast"](5));')).toBe(true);
+    expect(hasHiddenLimitAccess('const body = { structuredQuery: { limit: 20 } };')).toBe(false);
+    expect(hasHiddenLimitAccess('const opts = { limit: LIMIT };')).toBe(false);
+    expect(hasHiddenLimitAccess('const { limit, where } = fs;')).toBe(false);
+    expect(hasHiddenLimitAccess("// fs['limit'](1) 只是註解")).toBe(false);
+    expect(hasHiddenLimitAccess("/** fs['limit'](1) */")).toBe(false);
+    expect(hasHiddenLimitAccess("const n = num(item['limit']);")).toBe(false);
+  });
+
+  it('正式碼沒有解構改名或中括號取用 limit', () => {
+    const hidden = walk(SRC)
+      .map((full) => relative(ROOT, full).split('\\').join('/'))
+      .filter(isProductionSource)
+      .filter((rel) => hasHiddenLimitAccess(readFileSync(join(ROOT, rel), 'utf8')));
+    expect(hidden).toEqual([]);
+  });
+
+  it('正式碼不 import 登記表（只給測試讀，不進打包）', () => {
+    const importers = walk(SRC)
+      .map((full) => relative(ROOT, full).split('\\').join('/'))
+      .filter(isProductionSource)
+      .filter((rel) => rel !== 'src/data/contract/query-limit-registry.ts')
+      .filter((rel) => /query-limit-registry/.test(readFileSync(join(ROOT, rel), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')));
+    expect(importers).toEqual([]);
   });
 });
 

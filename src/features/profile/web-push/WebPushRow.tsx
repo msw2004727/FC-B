@@ -2,8 +2,10 @@
 // DOM 與 class 照預覽：.wp-block > .line-notify-row.wp-row（＋提示列 .line-notify-hint.wp-hint）、下方 .wp-sep。
 // 狀態機見設計書 §4：H 不畫、L1／L2 LINE 內、I iPhone 未加主畫面、C 讀取中、B 已封鎖、O 可開啟、S 送出中、N 已開啟。
 // 讀取中用全站共用轉圈（ui-spin，站長同意的差異 1）；本列程式與字典到之前由 WebPushSlot 先放等高空白（差異 2）。
-// 開通前只有 QA 帳號與最高管理員看得到（顧問 §3.699 Q5，WEB_PUSH_UI_PUBLIC；最高管理員供站長本人實機實測，
-// 伺服器 registerWebPushSubscription 同步放行 role claim＝super_admin）。
+// 開通前只有 QA 帳號看得到（顧問 §3.699 Q5，WEB_PUSH_UI_PUBLIC）。
+// 2026-11-25 站長選定預覽 `2026-11-25-push-card` 的 C 案（橫幅提示卡），取代 W5 的一般列外觀：
+// 未開啟（含讀取中、送出中、已封鎖、LINE 內、iPhone 未加主畫面）是漸層橫幅（.wp-c.is-banner），已開啟收成一般卡片（.wp-c）。
+// 列與提示列的 DOM／class 不變，只在 .wp-block 前面多一個鈴鐺圖示（.wp-c-icon），版面由 web-push.css 排。
 
 import './web-push.css';
 import type { JSX } from 'preact';
@@ -11,7 +13,6 @@ import { lazy, Suspense } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { getReadyLiff } from '@/data/liff-init';
 import type { PwaModalStep } from '@/features/pwa/PwaModals';
-import { useSettledViewerRole } from '@/features/profile/data/viewer';
 import { useQaSession } from '@/features/qa-login/data/qa-session';
 import { useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
@@ -27,7 +28,7 @@ import {
 } from './flows';
 import { useWebPushT, type WebPushT } from './i18n';
 
-// 既有 iPhone 安裝教學彈窗（PwaModals）由側邊選單分塊取得：直接 import 會把它拆成新的共用分塊，改到首頁主程式。
+// 既有 iPhone 安裝教學彈窗（PwaModals）由側邊選單分塊取得（2026-11-25 起首頁浮球直接 import，PwaModals 已是獨立分塊；這裡沿用不改）。
 const PwaModals = lazy(() => import('@/ui/SideDrawer').then((m) => ({ default: m.PwaModals })));
 
 type View =
@@ -38,9 +39,13 @@ type View =
   | { kind: 'blocked' }
   | { kind: 'sending'; target: boolean };
 
+/** 上方間距＋橫幅高度＋下方間距（與 web-push.css 的 .wp-c、.wp-c.is-banner、.wp-sep 一致；WebPushSlot 的佔位同值，WebPushSlot.test 斷言兩處相同）。
+ * 11-25 審查 P2-1 起已開啟卡片也與橫幅同高，讀取中、橫幅、已開啟、佔位四者等高。 */
+const PLACEHOLDER_STYLE = 'min-height:calc(2.45rem + 44px + var(--space-2))';
+
 /** 與列等高的空白：程式、字典或 QA 判斷還沒到時先佔位，下方 LINE 區不跳動。 */
 export function WebPushPlaceholder(): JSX.Element {
-  return <div class="wp-placeholder" style="min-height:calc(2.1rem + 1rem + 1px)" aria-hidden="true" />;
+  return <div class="wp-placeholder" style={PLACEHOLDER_STYLE} aria-hidden="true" />;
 }
 
 /** 在目前網址的 hash 前加 openExternalBrowser=1（同 open-external.ts 的寫法；那支在入口且未 export）。 */
@@ -65,6 +70,15 @@ export function openInExternalBrowser(): void {
     /* LIFF 不可用就走網址參數 */
   }
   location.assign(withOpenExternalBrowser(href));
+}
+
+function Bell({ size }: { size: number }): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+      <path d="M6 16V11a6 6 0 0112 0v5l1.5 2h-15z" />
+      <path d="M10 20.5a2 2 0 004 0" />
+    </svg>
+  );
 }
 
 function Toggle({ wt, checked, disabled, onToggle }: {
@@ -109,7 +123,7 @@ export interface WebPushRowProps {
   env: WebPushEnv;
   /** iPhone／iPad 主畫面 App：封鎖時顯示 iPhone 設定步驟。 */
   iosStandalone: boolean;
-  /** env.ts 的 WEB_PUSH_UI_PUBLIC（由 WebPushSlot 傳入，同上理由）。false＝開通前只給 QA 帳號與最高管理員看。 */
+  /** env.ts 的 WEB_PUSH_UI_PUBLIC（由 WebPushSlot 傳入，同上理由）。false＝開通前只給 QA 帳號看。 */
   uiPublic: boolean;
 }
 
@@ -117,17 +131,13 @@ export function WebPushRow({ uid, env, iosStandalone, uiPublic }: WebPushRowProp
   const t = useT();
   const wt = useWebPushT();
   const qa = useQaSession(uiPublic ? null : uid);
-  // 角色來自 viewer 既有的 users/{uid} 讀取（loadViewer → publishSettledRole），本檔不另讀資料庫；
-  // 還沒讀到或讀取失敗時為 null＝不算最高管理員（照現行規則先不畫，一般使用者不會看到開關一閃）。
-  const settledRole = useSettledViewerRole(uiPublic ? null : uid);
-  const isSuperAdmin = settledRole === 'super_admin';
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [pwaStep, setPwaStep] = useState<PwaModalStep>('none');
   const mountedRef = useRef(true);
   const uidRef = useRef(uid);
   uidRef.current = uid;
   const checkSeq = useRef(0);
-  const visible = uiPublic || !!qa || isSuperAdmin;
+  const visible = uiPublic || !!qa;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -273,9 +283,13 @@ export function WebPushRow({ uid, env, iosStandalone, uiPublic }: WebPushRowProp
     right = <Toggle wt={wt} checked={view.kind === 'on'} onToggle={handleToggle} />;
   }
 
+  // 已開啟（含關閉送出中）收成一般卡片；其餘狀態都是橫幅。
+  const banner = !(env === 'capable' && (view.kind === 'on' || (view.kind === 'sending' && !view.target)));
+
   return (
     <>
-      <div class="wp-block" data-wp-state={env === 'capable' ? view.kind : env}>
+      <div class={`wp-block wp-c${banner ? ' is-banner' : ''}`} data-wp-state={env === 'capable' ? view.kind : env}>
+        <span class="wp-c-icon" aria-hidden="true"><Bell size={banner ? 24 : 18} /></span>
         <div class="line-notify-row wp-row">
           <span>
             {wt('webPush.label')}

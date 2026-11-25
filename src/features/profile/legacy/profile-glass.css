@@ -257,12 +257,15 @@
 /* 方案 A：圖示在上、字在下，頁籤包成一整片玻璃，分隔線區分；選中＝片內淡色圓角填底＋主色 */
 #page-profile .profile-quick-sep { display: none; }
 #page-profile .profile-quick-bar { margin: 12px 0 8px; padding: 2px 0 8px; }
+/* 2026-11-25 站長：頁籤列撐滿內容寬、N 個頁籤等分（取代原本依字寬 max-content 置中）。
+ * 個別標籤字寬超過等分寬時，該頁籤至少保留字寬（min-width: max-content），全部放不下才沿用原本的橫向捲動。 */
 #page-profile .profile-quick-bar-in {
+  width: 100%; min-width: max-content;
   gap: 0; padding: 2px; border-radius: 14px;
   background: var(--color-roster-slab-bg);
   box-shadow: var(--color-roster-slab-shadow);
 }
-#page-profile .profile-quick-btn { z-index: 0; width: auto; min-width: 46px; min-height: 60px; padding: 8px 4px 0; color: var(--text-secondary); }
+#page-profile .profile-quick-btn { z-index: 0; flex: 1 1 0; width: auto; min-width: max-content; min-height: 60px; padding: 8px 4px 0; color: var(--text-secondary); }
 #page-profile .profile-quick-lb { white-space: nowrap; }
 #page-profile .profile-quick-btn + .profile-quick-btn::before {
   content: ''; position: absolute; top: 14px; bottom: 14px; left: 0; width: 1px; background: var(--color-roster-slab-sep);

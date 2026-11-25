@@ -196,26 +196,6 @@ export function LegacyProfileInfoCard({
     <span id={id} class={text ? cls : `${cls} pfi-empty`}>{text || t('profile.dataTab.notSet')}</span>
   );
 
-  // 編輯模式沿用原本的俱樂部連結（不改）。
-  const renderTeams = (): JSX.Element | string => {
-    if (teams.length === 0) return '無';
-    return (
-      <>
-        {teams.map((team, idx) => (
-          <span
-            key={team.id || `${team.name}-${idx}`}
-            class="uc-team-link"
-            onClick={() => {
-              if (team.id) location.route(`/teams/${encodeURIComponent(team.id)}`);
-            }}
-          >
-            {team.name}
-          </span>
-        ))}
-      </>
-    );
-  };
-
   // P2 顯示模式的俱樂部列：首字圖示＋名稱，一列一個。
   const renderClubRows = (): JSX.Element => {
     if (teams.length === 0) {
@@ -470,10 +450,6 @@ export function LegacyProfileInfoCard({
             <span id="profile-sports-display">{stringValue(profile['sports']) || '-'}</span>
           </div>
           <div class="info-row">
-            <span data-i18n="profile.team">{lt('profile.team', '所屬俱樂部')}</span>
-            <span id="profile-team-display">{renderTeams()}</span>
-          </div>
-          <div class="info-row">
             <span data-i18n="profile.phone">{lt('profile.phone', '聯繫方式')}</span>
             <input
               type="tel"
@@ -493,8 +469,7 @@ export function LegacyProfileInfoCard({
           <div style="display:flex;gap:.5rem;margin-top:.5rem;justify-content:flex-end">
             <button
               type="button"
-              class="outline-btn"
-              style="font-size:.75rem;padding:.3rem .8rem"
+              class="outline-btn small profile-action-btn"
               disabled={pending}
               data-i18n="取消"
               onClick={cancelEdit}
@@ -505,7 +480,7 @@ export function LegacyProfileInfoCard({
               control={saveRing}
               busyLabel={lt('儲存中...', '儲存中...')}
               type="button"
-              class="primary-btn small"
+              class="primary-btn small profile-action-btn"
               disabled={pending}
               data-i18n="儲存"
               onClick={() => {

@@ -15,7 +15,7 @@ describe('G 設定', () => {
     expect(WEB_PUSH_VAPID_KEY_ID).toBe(createHash('sha256').update(WEB_PUSH_VAPID_PUBLIC_KEY).digest('hex').slice(0, 16));
   });
 
-  it('開通前只給 QA 帳號看（顧問 §3.699 Q5）', () => {
-    expect(WEB_PUSH_UI_PUBLIC).toBe(false);
+  it('已公開：正式常數為 true（站長 2026-11-25；開通前只給 QA 的保護改由 WebPushRow／WebPushSlot 測試注入 false 鎖住）', () => {
+    expect(WEB_PUSH_UI_PUBLIC).toBe(true);
   });
 });

@@ -112,7 +112,7 @@ function load({ rejectShow = [], clients = [], matchAllReject = false, openWindo
  * 假視窗：focus 回自己，focus／navigate 可設定拒絕。
  * reply：頁面經 port 回的內容；undefined＝不回（舊頁面或監聽還沒載入），'throw'＝postMessage 丟錯。
  */
-function fakeClient(log, url, { focused = false, visibilityState = 'hidden', navigateReject = false, navigateThrow = false, focusReject = false, reply } = {}) {
+function fakeClient(log, url, { focused = false, visibilityState = 'hidden', navigateReject = false, navigateThrow = false, navigateNull = false, noNavigate = false, focusReject = false, reply } = {}) {
   const client = {
     url,
     focused,
@@ -129,9 +129,11 @@ function fakeClient(log, url, { focused = false, visibilityState = 'hidden', nav
     navigate: (href) => {
       log.push(['navigate', url, href]);
       if (navigateThrow) throw new TypeError('navigate is not supported');
+      if (navigateNull) return Promise.resolve(null);
       return navigateReject ? Promise.reject(new TypeError('not controlled')) : Promise.resolve(client);
     },
   };
+  if (noNavigate) delete client.navigate;
   return client;
 }
 
@@ -454,6 +456,29 @@ describe('sw-push：notificationclick 事件', () => {
     expect(sync.log.filter((x) => x[0] === 'openWindow')).toEqual([['openWindow', HREF]]);
   });
 
+  it('C4b navigate resolve 成 null（不允許或跨源）：改開新視窗，只開一次；openWindow 也被拒時 waitUntil 仍 resolve', async () => {
+    const log = [];
+    const ctx = load({ clients: [fakeClient(log, `${ORIGIN}/events`, { navigateNull: true })] });
+    expect((await click(ctx, { url: '/inbox' })).result).toBe('resolved');
+    expect(log.map((x) => x[0])).toEqual(['focus', 'postMessage', 'navigate']);
+    expect(ctx.log.filter((x) => x[0] === 'openWindow')).toEqual([['openWindow', HREF]]);
+    const both = load({ clients: [fakeClient([], `${ORIGIN}/events`, { navigateNull: true })], openWindowReject: true });
+    expect((await click(both, { url: '/inbox' })).result).toBe('resolved');
+    expect(both.log.filter((x) => x[0] === 'openWindow')).toEqual([['openWindow', HREF]]);
+    // navigate 被拒且 openWindow 被拒：也只試一次 openWindow。
+    const rej = load({ clients: [fakeClient([], `${ORIGIN}/events`, { navigateReject: true })], openWindowReject: true });
+    expect((await click(rej, { url: '/inbox' })).result).toBe('resolved');
+    expect(rej.log.filter((x) => x[0] === 'openWindow')).toEqual([['openWindow', HREF]]);
+  });
+
+  it('C4c 視窗沒有 navigate（不支援）：改開新視窗，waitUntil resolve', async () => {
+    const log = [];
+    const ctx = load({ clients: [fakeClient(log, `${ORIGIN}/events`, { noNavigate: true })] });
+    expect((await click(ctx, { url: '/inbox' })).result).toBe('resolved');
+    expect(log.map((x) => x[0])).toEqual(['focus', 'postMessage']);
+    expect(ctx.log.filter((x) => x[0] === 'openWindow')).toEqual([['openWindow', HREF]]);
+  });
+
   it('C12 askPage 結束一律關 port：回覆、逾時、postMessage 丟錯三條路徑', async () => {
     const portOf = (log) => log.find((x) => x[0] === 'postMessage')[3];
     // 回覆
@@ -526,6 +551,7 @@ describe('sw-push：notificationclick 事件', () => {
       [{ url: 'https://evil.com/x' }, '/'],
       [{ url: '/..//evil.com' }, '/'],
       [{ url: 123 }, '/'],
+      [{ url: 'javascript:alert(1)' }, '/'],
     ];
     for (const [data, path] of cases) {
       const log = [];
@@ -569,7 +595,7 @@ describe('sw-push：notificationclick 事件', () => {
   });
 
   it('C7 通知資料被竄改：一律開首頁', async () => {
-    for (const data of [null, undefined, { url: 'https://evil.com' }, { url: 123 }, { url: '/..//evil.com' }]) {
+    for (const data of [null, undefined, { url: 'https://evil.com' }, { url: 123 }, { url: '/..//evil.com' }, { url: 'javascript:alert(1)' }]) {
       const ctx = load();
       await click(ctx, data);
       expect(ctx.log.filter((x) => x[0] === 'openWindow'), JSON.stringify(data)).toEqual([['openWindow', `${ORIGIN}/`]]);
