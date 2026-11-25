@@ -106,12 +106,23 @@ async function shoot({ name, scene, kind, action, width, theme, lang, save }) {
     }
     const sep = document.querySelector('.wp-sep');
     const sepH = sep ? sep.getBoundingClientRect().height : 0;
-    return { out, hscroll: document.scrollingElement.scrollWidth > window.innerWidth, blockH: br.height, sepH, banner: block.classList.contains('is-banner'), toggle: cr ? { w: cr.width, h: cr.height } : null };
+    // 「?」說明鈕到卡片上緣的距離；佔位高度（同 WebPushSlot 的 style）與「上方間距＋卡片＋下方間距」的差。
+    const help = document.querySelector('.profile-quick-help');
+    const helpGap = help ? br.top - help.getBoundingClientRect().bottom : null;
+    const ph = document.createElement('div');
+    ph.setAttribute('style', 'min-height:calc(2.45rem + 44px + var(--space-2))');
+    block.parentElement.insertBefore(ph, block);
+    const phH = ph.getBoundingClientRect().height;
+    ph.remove();
+    const used = (sep ? sep.getBoundingClientRect().bottom : br.bottom) - (help ? help.getBoundingClientRect().bottom : br.top);
+    return { out, hscroll: document.scrollingElement.scrollWidth > window.innerWidth, blockH: br.height, sepH, helpGap, phDiff: phH - used, banner: block.classList.contains('is-banner'), toggle: cr ? { w: cr.width, h: cr.height } : null };
   });
   if (check.out.length) report.problems.push({ tag, wraps: check.out });
   if (check.hscroll) report.problems.push({ tag, hscroll: true });
-  report.heights[tag] = { block: check.blockH, sep: check.sepH, total: check.blockH + check.sepH, banner: check.banner, toggle: check.toggle };
+  report.heights[tag] = { block: check.blockH, sep: check.sepH, total: check.blockH + check.sepH, helpGap: check.helpGap, phDiff: check.phDiff, banner: check.banner, toggle: check.toggle };
   if (save) {
+    // 點開關後頁面會捲動，截圖前捲回頂端，各狀態位置一致。
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: join(OUT, `${tag}.jpg`), type: 'jpeg', quality: 84 });
     report.shots.push(tag);
   }

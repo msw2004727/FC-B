@@ -39,8 +39,8 @@ type View =
   | { kind: 'blocked' }
   | { kind: 'sending'; target: boolean };
 
-/** 橫幅高度＋下方間距（與 web-push.css 的 .wp-c.is-banner、.wp-sep 一致；WebPushSlot 的佔位同值）。 */
-const PLACEHOLDER_STYLE = 'min-height:calc(2.45rem + 44px)';
+/** 上方間距＋橫幅高度＋下方間距（與 web-push.css 的 .wp-c、.wp-c.is-banner、.wp-sep 一致；WebPushSlot 的佔位同值）。 */
+const PLACEHOLDER_STYLE = 'min-height:calc(2.45rem + 44px + var(--space-2))';
 
 /** 與列等高的空白：程式、字典或 QA 判斷還沒到時先佔位，下方 LINE 區不跳動。 */
 export function WebPushPlaceholder(): JSX.Element {
