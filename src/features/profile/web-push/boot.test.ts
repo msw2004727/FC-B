@@ -20,6 +20,7 @@ import { _resetWebPushFlowsForTest, _setWebPushDepsForTest, enableWebPush } from
 import { clearWebPushRecord, hash32, readWebPushRecord, writeWebPushRecord } from './store';
 import { fakeWorld, trackedSub } from './test-fakes';
 import { WEB_PUSH_VAPID_KEY_ID } from './config';
+import { ALL_FEATURES } from '@/features.config';
 
 const ORIGIN = 'https://toosterx.com';
 
@@ -135,7 +136,7 @@ describe('P 頁面端訊息（D1 (B)，W4.1 SW 協定）', () => {
     (document.activeElement as HTMLElement).blur();
   });
 
-  it('靜態頁路徑（§3.716 乙）：安全時先回 routed 再整頁換，不走站內路由', () => {
+  it('靜態頁路徑（§3.716 乙）：安全時先整頁換再回 routed，不走站內路由', () => {
     for (const path of ['/privacy', '/privacy.html', '/terms', '/blog/', '/blog/football-rules.html', '/seo/football.html', '/manual?x=1', '/event-share/abc']) {
       const order: string[] = [];
       const port = { postMessage: vi.fn((_m: unknown) => { order.push('reply'); }) };
@@ -145,10 +146,30 @@ describe('P 頁面端訊息（D1 (B)，W4.1 SW 協定）', () => {
       expect(e.route, path).not.toHaveBeenCalled();
       expect(assign, path).toHaveBeenCalledWith(path);
       expect(port.postMessage.mock.calls[0]![0], path).toStrictEqual({ v: 1, result: 'routed' });
-      expect(order, path).toEqual(['reply', 'assign']);
+      expect(order, path).toEqual(['assign', 'reply']);
     }
     for (const path of ['/', '/inbox', '/events/abc', '/blogx', '/privacy-x', '/teams/blog']) {
       expect(isStaticSitePath(path), path).toBe(false);
+    }
+  });
+
+  it('assign 同步丟錯 → 不回覆、不往外拋，SW 逾時後照常 navigate', () => {
+    const port = makePort();
+    const e = env({ assign: () => { throw new Error('SecurityError'); } });
+    expect(() => handleWebPushOpenMessage(msg({ type: WEB_PUSH_OPEN_MESSAGE, v: 1, path: '/privacy' }, CONTROLLER, port), e)).not.toThrow();
+    expect(port.postMessage).not.toHaveBeenCalled();
+    expect(e.route).not.toHaveBeenCalled();
+  });
+
+  it('javascript: 等非站內路徑 → 不整頁換，站內路由退回 /', () => {
+    for (const bad of ['javascript:alert(1)', 'JavaScript:location.assign(1)', ' javascript:x', 'data:text/html,x']) {
+      const port = makePort();
+      const assign = vi.fn();
+      const e = env({ assign });
+      handleWebPushOpenMessage(msg({ type: WEB_PUSH_OPEN_MESSAGE, v: 1, path: bad }, CONTROLLER, port), e);
+      expect(assign, bad).not.toHaveBeenCalled();
+      expect(e.route, bad).toHaveBeenCalledWith('/');
+      expect(port.postMessage.mock.calls[0]![0], bad).toStrictEqual({ v: 1, result: 'routed' });
     }
   });
 
@@ -179,6 +200,18 @@ describe('P 頁面端訊息（D1 (B)，W4.1 SW 協定）', () => {
     const fromWorker = routes.include.map((p) => p.slice(1).split('/')[0]!);
     const expected = [...new Set([...fromPublic, ...fromWorker])].sort();
     expect([...STATIC_SITE_SEGMENTS].sort()).toEqual(expected);
+  });
+
+  it('靜態路徑清單不與站內路由第一段撞名（所有功能，不分是否啟用）', () => {
+    const firsts = new Set<string>();
+    for (const m of ALL_FEATURES) {
+      for (const p of [...m.routes.map((r) => r.path), ...(m.nav ?? []).map((n) => n.path)]) firsts.add(p.slice(1).split('/')[0]!);
+    }
+    expect(firsts.size).toBeGreaterThan(5);
+    // 第一段是參數或萬用字元時會吃下任何路徑，撞名核對就沒有意義。
+    expect([...firsts].filter((f) => f.startsWith(':') || f.includes('*'))).toEqual([]);
+    expect(STATIC_SITE_SEGMENTS.filter((s) => firsts.has(s) || firsts.has(s.replace(/\.html$/, '')))).toEqual([]);
+    for (const f of firsts) expect(isStaticSitePath(`/${f}`), f).toBe(false);
   });
 
   it('route 丟錯 → 不回覆、不往外拋', () => {

@@ -29,7 +29,9 @@ export function sanitizeOpenPath(value: unknown, origin: string): string {
 
 /**
  * 不是 SPA 路由、由靜態檔或 _worker.js 回應的第一段路徑（public/ 頂層的頁面、資料夾、檔案，去掉 .html；加 _routes.json 的 worker 路徑）。
- * 這些路徑站內路由切不過去，點通知時改整頁換（顧問 §3.716 乙）；boot.test.ts 對著 public/ 與 _routes.json 核對，新增靜態頁時測試會紅。
+ * 這些路徑站內路由切不過去，點通知時改整頁換（顧問 §3.716 乙）；boot.test.ts 對著 public/ 與 _routes.json 核對，新增靜態頁時測試會紅，
+ * 另核對不與站內路由第一段撞名。只涵蓋 public/ 與 _routes.json：建置時才產生在根目錄的檔（index.html、sw.js、version.json 等）不在內。
+ * 伺服器目前只送 /inbox（FC functions/web-push-config.js 的 WEB_PUSH_CLICK_URL），這張表是日後送其他路徑時的防線。
  */
 export const STATIC_SITE_SEGMENTS: readonly string[] = [
   'LOGO', 'PWA', '_routes.json', '_worker.js', 'appicon.png', 'assets', 'blog', 'event-share', 'fonts', 'img', 'inventory',
@@ -73,8 +75,9 @@ export interface OpenMessageEnv {
 /**
  * 處理 SW 的 `{ type: 'toosterx:webpush-open', v: 1, path }`：只收目前 controller 送來、型別與版本對、帶 port 的訊息。
  * 安全（彈窗、輸入中、送出中都沒有）→ 站內路由切過去、回 routed；不安全 → 留在原頁、回 kept（不提示，§11 Q6 (A)）。
- * 安全且是靜態頁路徑（isStaticSitePath）→ 先回 routed 再整頁換；不安全時不分路徑一律 kept。
- * 任何例外都不回覆，讓 SW 逾時後退回 navigate。
+ * 安全且是靜態頁路徑（isStaticSitePath）→ 先整頁換再回 routed；不安全時不分路徑一律 kept。
+ * 任何例外都不回覆，讓 SW 逾時後退回 navigate（assign 同步丟錯也一樣，所以 assign 排在回覆前面；
+ * assign 只是排定換頁，同一段同步程式裡頁面還沒卸載、port 還開著，回覆送得出去）。
  */
 export function handleWebPushOpenMessage(event: MessageEvent, env: OpenMessageEnv): void {
   try {
@@ -84,12 +87,8 @@ export function handleWebPushOpenMessage(event: MessageEvent, env: OpenMessageEn
     if (!data || data.type !== WEB_PUSH_OPEN_MESSAGE || data.v !== 1 || !port) return;
     const path = sanitizeOpenPath(data.path, env.origin);
     if (env.isSafe()) {
-      if (isStaticSitePath(path)) {
-        port.postMessage({ v: 1, result: 'routed' });
-        (env.assign ?? ((p: string) => location.assign(p)))(path);
-        return;
-      }
-      env.route(path);
+      if (isStaticSitePath(path)) (env.assign ?? ((p: string) => location.assign(p)))(path);
+      else env.route(path);
       port.postMessage({ v: 1, result: 'routed' });
     } else {
       port.postMessage({ v: 1, result: 'kept' });
