@@ -7,6 +7,7 @@ import { WEB_PUSH_STORE_KEY } from '@/features/profile/web-push/store';
 import { _setDeferredInstallPromptForTest, type BeforeInstallPromptEvent } from '@/features/pwa/pwa-install';
 import {
   PWA_FAB_HINT_DELAY_MS,
+  PWA_FAB_HINT_GAP_MS,
   PwaInstallFab,
   WEB_PUSH_RECORD_KEY,
   decidePwaFab,
@@ -232,6 +233,60 @@ describe('PwaInstallFab', () => {
     vi.advanceTimersByTime(1);
     expect(document.querySelector('.pwa-install-fab-hint')).not.toBeNull();
     unmount();
+    expect(document.querySelector('.pwa-install-fab-hint')).toBeNull();
+  });
+
+  // 顧問 §3.752：冷載入時聯繫站長提示 chunk 較晚到，6 秒時它的泡泡還在，原本就跳過這次。
+  it('冷載入：6 秒時聯繫站長泡泡還在，等它關掉後隔一下補出安裝泡泡（只出一次）', async () => {
+    vi.useFakeTimers();
+    const { unmount } = render(<PwaInstallFab />);
+    const contactHint = document.createElement('div');
+    contactHint.className = 'contact-owner-fab-hint';
+    await vi.advanceTimersByTimeAsync(PWA_FAB_HINT_DELAY_MS - 500);
+    document.body.appendChild(contactHint);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(document.querySelector('.pwa-install-fab-hint')).toBeNull();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(document.querySelector('.pwa-install-fab-hint')).toBeNull();
+    contactHint.remove();
+    await vi.advanceTimersByTimeAsync(PWA_FAB_HINT_GAP_MS - 1);
+    expect(document.querySelector('.pwa-install-fab-hint')).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(document.querySelectorAll('.pwa-install-fab-hint')).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(document.querySelector('.pwa-install-fab-hint')).toBeNull();
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(document.querySelector('.pwa-install-fab-hint')).toBeNull();
+    unmount();
+  });
+
+  it('安裝泡泡顯示中聯繫站長泡泡才出現：先收起，等聯繫站長關掉再補出', async () => {
+    vi.useFakeTimers();
+    const { unmount } = render(<PwaInstallFab />);
+    await vi.advanceTimersByTimeAsync(PWA_FAB_HINT_DELAY_MS);
+    expect(document.querySelector('.pwa-install-fab-hint')).not.toBeNull();
+    const contactHint = document.createElement('div');
+    contactHint.className = 'contact-owner-fab-hint';
+    document.body.appendChild(contactHint);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('.pwa-install-fab-hint')).toBeNull();
+    contactHint.remove();
+    await vi.advanceTimersByTimeAsync(PWA_FAB_HINT_GAP_MS);
+    expect(document.querySelectorAll('.pwa-install-fab-hint')).toHaveLength(1);
+    unmount();
+    expect(document.querySelector('.pwa-install-fab-hint')).toBeNull();
+  });
+
+  it('等聯繫站長泡泡期間卸下：之後不再補出', async () => {
+    vi.useFakeTimers();
+    const { unmount } = render(<PwaInstallFab />);
+    const contactHint = document.createElement('div');
+    contactHint.className = 'contact-owner-fab-hint';
+    document.body.appendChild(contactHint);
+    await vi.advanceTimersByTimeAsync(PWA_FAB_HINT_DELAY_MS);
+    unmount();
+    contactHint.remove();
+    await vi.advanceTimersByTimeAsync(PWA_FAB_HINT_GAP_MS + 10000);
     expect(document.querySelector('.pwa-install-fab-hint')).toBeNull();
   });
 

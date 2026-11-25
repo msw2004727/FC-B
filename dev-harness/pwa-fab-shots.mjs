@@ -26,6 +26,8 @@ for (const lang of ['en', 'ja', 'ko', 'th', 'vi', 'zh-CN']) for (const w of [360
 for (const theme of ['light', 'dark']) shots.push({ name: `update-360-${theme}`, w: 360, theme, q: '&update=1' });
 shots.push({ name: 'update-hint-360-light', w: 360, theme: 'light', q: '&update=1&hint=pwa' });
 shots.push({ name: 'toast-360-light', w: 360, theme: 'light', q: '&toast=' + encodeURIComponent('已加入你的報名清單，記得準時到場') });
+for (const w of [390, 1280]) shots.push({ name: `update-${w}-light`, w, theme: 'light', q: '&update=1' });
+for (const w of [390, 1280]) shots.push({ name: `reduced-${w}-light`, w, theme: 'light', q: '&hint=pwa', rm: true });
 shots.push({ name: 'ads-360-light', w: 360, theme: 'light', q: '&ads=1&hint=contact' });
 
 const browser = await chromium.launch({ args: ['--noerrdialogs'] });
@@ -39,6 +41,7 @@ for (const s of shots) {
     colorScheme: s.theme,
     userAgent: s.w >= 1000 ? DESKTOP : (s.q.includes('android') ? ANDROID : IPHONE),
     hasTouch: s.w < 1000,
+    reducedMotion: s.rm ? 'reduce' : 'no-preference',
   });
   const page = await ctx.newPage();
   await page.route('**/*', (route) => {
@@ -52,6 +55,11 @@ for (const s of shots) {
   await page.goto(`${BASE}/dev-harness/pwa-fab.html?theme=${s.theme}${s.q}`);
   await page.waitForFunction(() => window.__PF_READY === true, null, { timeout: 20000 });
   await page.waitForTimeout(700);
+  const motion = await page.evaluate(() => {
+    const f = document.querySelector('.pwa-install-fab'); const c = document.querySelector('.contact-owner-fab');
+    const an = (el, pe) => (el ? getComputedStyle(el, pe).animationName : null);
+    return { pwaFab: an(f), pwaGlow: an(f, '::before'), pwaRing: an(f, '::after'), pwaSheen: an(f?.querySelector('.fab-gloss'), '::after'), contactGlow: an(c, '::before'), contactSheen: an(c?.querySelector('.fab-gloss'), '::after'), pwaShaking: f?.classList.contains('is-shaking') ?? null };
+  });
   // 動畫凍結在好看的一格：光澤掃到中間、光環外擴中、柔光最亮；聯繫站長抖動停在 0 度。
   await page.addStyleTag({ content: `
     .pwa-install-fab { animation: none !important; }
@@ -92,7 +100,7 @@ for (const s of shots) {
   for (const [k, v] of Object.entries(m.others)) if (v) report.problems.push(`${s.name}: 與 ${k} 重疊`);
   if (m.fabBump) report.problems.push(`${s.name}: 浮球壓到導覽凸起`);
   if (m.wraps.length) report.problems.push(`${s.name}: 教學文字折行 ${JSON.stringify(m.wraps)}`);
-  report.shots.push({ name: s.name, label: m.label, bumpGap: m.bumpGap, hScroll: m.hScroll });
+  report.shots.push({ name: s.name, label: m.label, bumpGap: m.bumpGap, hScroll: m.hScroll, fabTop: m.fab?.y, contactTop: m.contact?.y, motion: s.rm ? motion : undefined });
   if (s.full) {
     await page.addStyleTag({ content: '.pwa-modal-overlay{position:absolute!important;inset:0 auto auto 0!important;width:100%;min-height:100%;height:auto!important;align-items:flex-start!important;padding:16px 0!important}.pwa-guide-panel,.pwa-guide-body{max-height:none!important;overflow:visible!important}' });
     await page.waitForTimeout(150);

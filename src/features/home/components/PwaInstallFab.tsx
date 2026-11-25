@@ -133,6 +133,64 @@ export function showPwaFabHint(): (() => void) | undefined {
   return close;
 }
 
+/** 聯繫站長泡泡關掉後，隔這麼久再出安裝泡泡，免得兩個泡泡像同時閃。 */
+export const PWA_FAB_HINT_GAP_MS = 600;
+
+/**
+ * 每次回首頁出一次安裝泡泡，與聯繫站長泡泡錯開（顧問 §3.752：冷載入時聯繫站長提示 chunk 晚到，原本直接跳過這次）。
+ * - 聯繫站長泡泡還在：等它關掉，隔 PWA_FAB_HINT_GAP_MS 再出。
+ * - 安裝泡泡顯示中聯繫站長泡泡才出現：先收起安裝泡泡，等聯繫站長關掉再補出。
+ * 只看 body 直屬子節點的增減（兩個泡泡都直接掛在 body）。回傳收尾函式。
+ */
+export function showPwaFabHintWhenFree(): () => void {
+  const contactOpen = (): boolean => Boolean(document.querySelector('.contact-owner-fab-hint'));
+  let stopHint: (() => void) | undefined;
+  let gap: ReturnType<typeof setTimeout> | undefined;
+  let observer: MutationObserver | undefined;
+  const finish = (): void => {
+    observer?.disconnect();
+    clearTimeout(gap);
+  };
+  const tryShow = (): void => {
+    gap = undefined;
+    if (contactOpen()) return;
+    stopHint = showPwaFabHint();
+    if (!stopHint) finish();
+  };
+  const onChange = (): void => {
+    if (contactOpen()) {
+      clearTimeout(gap);
+      gap = undefined;
+      if (document.querySelector('.pwa-install-fab-hint')) {
+        stopHint?.();
+        stopHint = undefined;
+      } else if (stopHint) {
+        finish();
+      }
+      return;
+    }
+    if (stopHint) {
+      if (!document.querySelector('.pwa-install-fab-hint')) finish();
+      return;
+    }
+    if (!gap) gap = setTimeout(tryShow, PWA_FAB_HINT_GAP_MS);
+  };
+  if (contactOpen()) {
+    observer = new MutationObserver(onChange);
+    observer.observe(document.body, { childList: true });
+  } else {
+    stopHint = showPwaFabHint();
+    if (stopHint) {
+      observer = new MutationObserver(onChange);
+      observer.observe(document.body, { childList: true });
+    }
+  }
+  return () => {
+    finish();
+    stopHint?.();
+  };
+}
+
 type ModalsComponent = (props: PwaModalsProps) => JSX.Element | null;
 
 export function PwaInstallFab(): JSX.Element | null {
@@ -143,7 +201,7 @@ export function PwaInstallFab(): JSX.Element | null {
   useEffect(() => {
     let stop: (() => void) | undefined;
     const id = setTimeout(() => {
-      stop = showPwaFabHint();
+      stop = showPwaFabHintWhenFree();
     }, PWA_FAB_HINT_DELAY_MS);
     const onInstalled = (): void => setInstalled(true);
     addEventListener('appinstalled', onInstalled);
