@@ -116,8 +116,9 @@
         var c = client || hit.client;
         if (hit.exact) return c;
         return askPage(c, path).then(function (handled) {
-          // navigate 被拒、同步丟錯、不存在，或 resolve 成 null（不允許或跨源）時最後一搏開新窗，只開一次；
-          // 互動權限已被 focus 用掉的引擎會拒絕，由外層 catch 吞掉。
+          // navigate 被拒、同步丟錯、不存在，或 resolve 成 null（規格上是導覽完成但結果頁跨源，例如轉址到站外，或分頁中途被關）
+          // 時最後一搏開新窗，只開一次；互動權限已被 focus 用掉的引擎會拒絕，由外層 catch 吞掉。
+          // 跨源那種情況原分頁已換頁，可能多開一個視窗；伺服器日後要送會轉址到站外的路徑前先回頭看這裡（三方審 P3）。
           if (handled) return c;
           return Promise.resolve().then(function () { return c.navigate(href); }).catch(function () { return null; }).then(function (w) {
             return w || self.clients.openWindow(href);

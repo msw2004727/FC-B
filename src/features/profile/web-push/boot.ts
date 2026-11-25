@@ -77,7 +77,8 @@ export interface OpenMessageEnv {
  * 安全（彈窗、輸入中、送出中都沒有）→ 站內路由切過去、回 routed；不安全 → 留在原頁、回 kept（不提示，§11 Q6 (A)）。
  * 安全且是靜態頁路徑（isStaticSitePath）→ 先整頁換再回 routed；不安全時不分路徑一律 kept。
  * 任何例外都不回覆，讓 SW 逾時後退回 navigate（assign 同步丟錯也一樣，所以 assign 排在回覆前面；
- * assign 只是排定換頁，同一段同步程式裡頁面還沒卸載、port 還開著，回覆送得出去）。
+ * assign 只是排定換頁，同一段同步程式裡頁面還沒卸載、port 還開著，回覆通常送得出去；萬一 SW 沒收到，
+ * 逾時後會對同一網址再 navigate，最壞是重載一次或多開一個同網址分頁，不會跳到別頁）。
  */
 export function handleWebPushOpenMessage(event: MessageEvent, env: OpenMessageEnv): void {
   try {
