@@ -4,6 +4,7 @@ import './pwa-install-fab.css';
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
+import { useLocation } from 'preact-iso';
 import { t, useT } from '@/i18n/i18n';
 import {
   clearDeferredInstallPrompt,
@@ -29,14 +30,15 @@ export interface PwaFabEnv {
 export type PwaFabDecision = 'show' | 'hide' | 'wait-install-event';
 
 /**
- * 顯示判斷（純函式）：
- * - 已從主畫面 App 開啟、或這個瀏覽器已開推播：不顯示。
+ * 顯示判斷（純函式）：站長 2026-11-26「點了不消失，確認開了推播才隱藏」（取代原本已安裝／點過就收）。
+ * - 這個瀏覽器已開推播：不顯示。
+ * - 從主畫面 App 開啟（還沒開推播）：顯示，點了帶去「我的」開通知。
  * - 手機（含 LINE 內建瀏覽器）：顯示，點了開教學或原生安裝。
- * - 電腦：只有攔到原生安裝事件（一鍵安裝）才顯示；還沒攔到就等事件。
+ * - 電腦一般分頁：只有攔到原生安裝事件（一鍵安裝）才顯示；還沒攔到就等事件。
  */
 export function decidePwaFab(env: PwaFabEnv): PwaFabDecision {
-  if (env.standalone || env.hasPushRecord) return 'hide';
-  if (env.mobile || env.hasInstallEvent) return 'show';
+  if (env.hasPushRecord) return 'hide';
+  if (env.standalone || env.mobile || env.hasInstallEvent) return 'show';
   return 'wait-install-event';
 }
 
@@ -105,13 +107,13 @@ function prefersReducedMotion(): boolean {
  * 安裝提示泡泡（同聯繫站長提示）：浮球抖兩輪（減少動態時不抖）、泡泡 6 秒；點泡泡＝點浮球，點其他地方關閉。
  * 聯繫站長泡泡還在就跳過這次，兩個泡泡不同時出現。回傳收尾函式。
  */
-export function showPwaFabHint(): (() => void) | undefined {
+export function showPwaFabHint(text = t('home.pwaFab.hint')): (() => void) | undefined {
   const fab = document.querySelector<HTMLElement>('.pwa-install-fab');
   if (!fab?.isConnected || document.querySelector('.contact-owner-fab-hint')) return undefined;
   const bubble = document.createElement('div');
   bubble.className = 'pwa-install-fab-hint';
   bubble.setAttribute('role', 'status');
-  bubble.textContent = t('home.pwaFab.hint');
+  bubble.textContent = text;
   const onPointerDown = (e: Event): void => {
     if (!bubble.contains(e.target as Node)) close();
   };
@@ -142,7 +144,7 @@ export const PWA_FAB_HINT_GAP_MS = 600;
  * - 安裝泡泡顯示中聯繫站長泡泡才出現：先收起安裝泡泡，等聯繫站長關掉再補出。
  * 只看 body 直屬子節點的增減（兩個泡泡都直接掛在 body）。回傳收尾函式。
  */
-export function showPwaFabHintWhenFree(): () => void {
+export function showPwaFabHintWhenFree(text?: string): () => void {
   const contactOpen = (): boolean => Boolean(document.querySelector('.contact-owner-fab-hint'));
   let stopHint: (() => void) | undefined;
   let gap: ReturnType<typeof setTimeout> | undefined;
@@ -154,7 +156,7 @@ export function showPwaFabHintWhenFree(): () => void {
   const tryShow = (): void => {
     gap = undefined;
     if (contactOpen()) return;
-    stopHint = showPwaFabHint();
+    stopHint = showPwaFabHint(text);
     if (!stopHint) finish();
   };
   const onChange = (): void => {
@@ -179,7 +181,7 @@ export function showPwaFabHintWhenFree(): () => void {
     observer = new MutationObserver(onChange);
     observer.observe(document.body, { childList: true });
   } else {
-    stopHint = showPwaFabHint();
+    stopHint = showPwaFabHint(text);
     if (stopHint) {
       observer = new MutationObserver(onChange);
       observer.observe(document.body, { childList: true });
@@ -193,31 +195,35 @@ export function showPwaFabHintWhenFree(): () => void {
 
 type ModalsComponent = (props: PwaModalsProps) => JSX.Element | null;
 
+/** 從主畫面 App 點浮球：到「我的」並直接展開通知區（ProfilePage 讀 ?open=line）。 */
+export const PWA_FAB_PUSH_ROUTE = '/profile?open=line';
+
 export function PwaInstallFab(): JSX.Element | null {
   const [step, setStep] = useState<PwaModalStep>('none');
   const [Modals, setModals] = useState<ModalsComponent | null>(null);
-  const [installed, setInstalled] = useState(false);
   const tr = useT();
+  const { route } = useLocation();
+  // 已裝好（主畫面 App 開啟，或這個分頁剛收到 appinstalled）：改成「開啟通知」，點了帶去開通知。
+  const [standalone, setStandalone] = useState(() => readPwaFabEnv().standalone);
 
   useEffect(() => {
     let stop: (() => void) | undefined;
     const id = setTimeout(() => {
-      stop = showPwaFabHintWhenFree();
+      stop = showPwaFabHintWhenFree(standalone ? t('home.pwaFab.pushHint') : undefined);
     }, PWA_FAB_HINT_DELAY_MS);
-    // 裝好就連提示泡泡一起收（審查：泡泡顯示中安裝完成會殘留）。
-    const onInstalled = (): void => {
-      stop?.();
-      setInstalled(true);
-    };
-    addEventListener('appinstalled', onInstalled);
     return () => {
       clearTimeout(id);
       stop?.();
-      removeEventListener('appinstalled', onInstalled);
     };
+  }, [standalone]);
+
+  useEffect(() => {
+    const onInstalled = (): void => setStandalone(true);
+    addEventListener('appinstalled', onInstalled);
+    return () => removeEventListener('appinstalled', onInstalled);
   }, []);
 
-  if (typeof document === 'undefined' || installed) return null;
+  if (typeof document === 'undefined') return null;
 
   const openGuide = async (): Promise<void> => {
     setStep('picker');
@@ -230,25 +236,17 @@ export function PwaInstallFab(): JSX.Element | null {
     }
   };
 
-  const watchChoice = async (choice: Promise<{ outcome: string }>): Promise<void> => {
-    try {
-      // 電腦沒有手機教學可開：原生視窗用掉後不論結果都收起浮球（審查：再點會跳出手機教學）。
-      if ((await choice).outcome === 'accepted' || !readPwaFabEnv().mobile) setInstalled(true);
-    } catch {
-      /* 使用者關掉或瀏覽器不回應就維持顯示 */
-    }
-  };
-
+  // 點了不消失（站長 2026-11-26）：已安裝 App 帶去開通知；瀏覽器有原生安裝事件就跳原生視窗，否則開教學（電腦也開）。
   const onClick = (): void => {
+    if (standalone) {
+      route(PWA_FAB_PUSH_ROUTE);
+      return;
+    }
     const deferred = getDeferredInstallPrompt();
     if (deferred) {
       clearDeferredInstallPrompt();
       deferred.prompt().catch(() => undefined);
-      void watchChoice(deferred.userChoice);
-      return;
-    }
-    if (!readPwaFabEnv().mobile) {
-      setInstalled(true);
+      deferred.userChoice.catch(() => undefined);
       return;
     }
     void openGuide();
@@ -257,7 +255,12 @@ export function PwaInstallFab(): JSX.Element | null {
   return (
     <>
       {createPortal(
-        <button type="button" class="pwa-install-fab" aria-label={tr('home.pwaFab.label')} onClick={onClick}>
+        <button
+          type="button"
+          class="pwa-install-fab"
+          aria-label={tr(standalone ? 'home.pwaFab.pushLabel' : 'home.pwaFab.label')}
+          onClick={onClick}
+        >
           <span class="fab-gloss" aria-hidden="true" />
           <InstallIcon />
         </button>,

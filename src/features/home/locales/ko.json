@@ -25,7 +25,9 @@
   "recentTitle": "최근 활동",
   "pwaFab": {
     "label": "홈 화면에 추가",
-    "hint": "앱 설치하고 알림 놓치지 마세요"
+    "hint": "앱 설치하고 알림 놓치지 마세요",
+    "pushLabel": "알림 켜기",
+    "pushHint": "알림 켜고 소식 놓치지 마세요"
   },
   "contactOwner": {
     "label": "운영자에게 연락",

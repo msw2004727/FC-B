@@ -21,7 +21,7 @@
   "iosShareStep": "Tap \"Share\"",
   "iosShareHint": "At the top of the menu",
   "iosMoreStep": "Tap \"View More\"",
-  "iosMoreHint": "The down arrow at the right of row 2",
+  "iosMoreHint": "Arrow at end of row 2; skip if none",
   "iosAddStep": "Tap \"Add to Home Screen\"",
   "iosAddHint": "It is in the Share menu list",
   "iosWebAppStep": "Keep \"Open as Web App\" turned on",

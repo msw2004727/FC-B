@@ -263,7 +263,11 @@ function ProfileContent({
         onEdit={(platform) => setEditor({ kind: 'social', platform })}
       />
 
-      <ProfileQuickBar items={quickItems} groupLabel={t('profile.quick.group')} />
+      <ProfileQuickBar
+        items={quickItems}
+        groupLabel={t('profile.quick.group')}
+        initialOpenKey={new URLSearchParams(location.search).get('open')}
+      />
 
       {SHOW_FAVORITES && (
         <LegacyFavoritesCard uid={uid} profile={profile} />

@@ -61,6 +61,16 @@ describe('ProfileQuickBar', () => {
     expect(document.activeElement).toBe(btn('a'));
   });
 
+  it('initialOpenKey：進頁就展開該項（首頁浮球 ?open=line）；不存在的 key 忽略', () => {
+    const { unmount } = render(<ProfileQuickBar items={items()} groupLabel="個人設定" initialOpenKey="b" />);
+    expect(btn('b').getAttribute('aria-expanded')).toBe('true');
+    expect(document.body.textContent).toContain('B 內容');
+    unmount();
+    render(<ProfileQuickBar items={items()} groupLabel="個人設定" initialOpenKey="nope" />);
+    expect(btn('a').getAttribute('aria-expanded')).toBe('false');
+    expect(btn('b').getAttribute('aria-expanded')).toBe('false');
+  });
+
   it('已被攔下（defaultPrevented）的 Esc 不收合', () => {
     render(<ProfileQuickBar items={items()} groupLabel="個人設定" />);
     fireEvent.click(btn('b'));

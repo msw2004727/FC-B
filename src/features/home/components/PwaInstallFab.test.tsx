@@ -2,12 +2,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/preact';
+import { LocationProvider } from 'preact-iso';
 import { setLocale } from '@/i18n/i18n';
 import { WEB_PUSH_STORE_KEY } from '@/features/profile/web-push/store';
 import { _setDeferredInstallPromptForTest, type BeforeInstallPromptEvent } from '@/features/pwa/pwa-install';
 import {
   PWA_FAB_HINT_DELAY_MS,
   PWA_FAB_HINT_GAP_MS,
+  PWA_FAB_PUSH_ROUTE,
   PwaInstallFab,
   WEB_PUSH_RECORD_KEY,
   decidePwaFab,
@@ -68,9 +70,10 @@ describe('顯示判斷 decidePwaFab', () => {
   const base = { standalone: false, hasPushRecord: false, mobile: true, hasInstallEvent: false };
   it.each([
     ['手機一般分頁（含 LINE）', base, 'show'],
-    ['已從主畫面 App 開啟', { ...base, standalone: true }, 'hide'],
+    ['已從主畫面 App 開啟、還沒開推播：顯示（站長 11-26）', { ...base, standalone: true }, 'show'],
+    ['App 開啟且已開推播', { ...base, standalone: true, hasPushRecord: true }, 'hide'],
     ['這個瀏覽器已開推播', { ...base, hasPushRecord: true }, 'hide'],
-    ['App 開啟且有安裝事件仍不顯示', { ...base, standalone: true, hasInstallEvent: true }, 'hide'],
+    ['電腦主畫面 App、沒有安裝事件：顯示', { ...base, standalone: true, mobile: false }, 'show'],
     ['電腦、已攔到安裝事件', { ...base, mobile: false, hasInstallEvent: true }, 'show'],
     ['電腦、沒有安裝事件：等事件', { ...base, mobile: false }, 'wait-install-event'],
     ['電腦、已開推播', { ...base, mobile: false, hasInstallEvent: true, hasPushRecord: true }, 'hide'],
@@ -290,7 +293,7 @@ describe('PwaInstallFab', () => {
     expect(document.querySelector('.pwa-install-fab-hint')).toBeNull();
   });
 
-  it('有安裝事件：點了跳原生安裝、事件清掉；接受安裝後浮球消失', async () => {
+  it('有安裝事件：點了跳原生安裝、事件清掉；接受安裝後浮球仍保留（站長 11-26：開推播才隱藏）', async () => {
     const ev = fakeInstallEvent('accepted');
     _setDeferredInstallPromptForTest(ev);
     render(<PwaInstallFab />);
@@ -300,7 +303,7 @@ describe('PwaInstallFab', () => {
     });
     expect(ev.prompt).toHaveBeenCalledTimes(1);
     expect(readPwaFabEnv().hasInstallEvent).toBe(false);
-    expect(document.querySelector('.pwa-install-fab')).toBeNull();
+    expect(document.querySelector('.pwa-install-fab')).not.toBeNull();
     expect(document.getElementById('pwa-system-picker')).toBeNull();
   });
 
@@ -314,7 +317,7 @@ describe('PwaInstallFab', () => {
     await vi.waitFor(() => expect(document.getElementById('pwa-system-picker')).not.toBeNull());
   });
 
-  it('電腦：原生安裝視窗被關掉後浮球收起，不會再點出手機教學', async () => {
+  it('電腦：原生安裝視窗用掉後浮球保留，再點開系統選擇教學', async () => {
     stubUa('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/142.0.0.0 Safari/537.36');
     const ev = fakeInstallEvent('dismissed');
     _setDeferredInstallPromptForTest(ev);
@@ -325,8 +328,14 @@ describe('PwaInstallFab', () => {
       await Promise.resolve();
     });
     expect(ev.prompt).toHaveBeenCalledTimes(1);
-    expect(document.querySelector('.pwa-install-fab')).toBeNull();
+    expect(document.querySelector('.pwa-install-fab')).not.toBeNull();
     expect(document.getElementById('pwa-system-picker')).toBeNull();
+    await act(async () => {
+      fireEvent.click(document.querySelector('.pwa-install-fab')!);
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(ev.prompt).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(document.getElementById('pwa-system-picker')).not.toBeNull());
   });
 
   it('手機：原生安裝視窗被關掉後浮球保留', async () => {
@@ -341,20 +350,6 @@ describe('PwaInstallFab', () => {
     expect(document.querySelector('.pwa-install-fab')).not.toBeNull();
   });
 
-  it('安裝泡泡顯示中收到 appinstalled：浮球與泡泡一起收', async () => {
-    vi.useFakeTimers();
-    render(<PwaInstallFab />);
-    act(() => {
-      vi.advanceTimersByTime(PWA_FAB_HINT_DELAY_MS);
-    });
-    expect(document.querySelector('.pwa-install-fab-hint')).not.toBeNull();
-    act(() => {
-      window.dispatchEvent(new Event('appinstalled'));
-    });
-    expect(document.querySelector('.pwa-install-fab')).toBeNull();
-    expect(document.querySelector('.pwa-install-fab-hint')).toBeNull();
-  });
-
   it('切換語系後浮球標籤跟著換', async () => {
     render(<PwaInstallFab />);
     await act(async () => {
@@ -363,12 +358,35 @@ describe('PwaInstallFab', () => {
     expect(document.querySelector('.pwa-install-fab')?.getAttribute('aria-label')).not.toBe('加到主畫面');
   });
 
-  it('收到 appinstalled 後浮球消失', async () => {
+  it('收到 appinstalled 後浮球仍保留，改成「開啟通知」', async () => {
     render(<PwaInstallFab />);
     await act(async () => {
       window.dispatchEvent(new Event('appinstalled'));
     });
-    expect(document.querySelector('.pwa-install-fab')).toBeNull();
+    expect(document.querySelector('.pwa-install-fab')?.getAttribute('aria-label')).toBe('開啟通知');
+  });
+
+  it('主畫面 App（還沒開推播）：標籤與泡泡改成開通知，點了帶去「我的」展開通知', async () => {
+    vi.useFakeTimers();
+    stubMatchMedia({ '(display-mode: standalone)': true });
+    history.replaceState(null, '', '/');
+    render(
+      <LocationProvider>
+        <PwaInstallFab />
+      </LocationProvider>,
+    );
+    const fab = document.querySelector('.pwa-install-fab')!;
+    expect(fab.getAttribute('aria-label')).toBe('開啟通知');
+    act(() => {
+      vi.advanceTimersByTime(PWA_FAB_HINT_DELAY_MS);
+    });
+    expect(document.querySelector('.pwa-install-fab-hint')?.textContent).toBe('開啟通知，活動消息不漏接');
+    act(() => {
+      fireEvent.click(fab);
+    });
+    expect(location.pathname + location.search).toBe(PWA_FAB_PUSH_ROUTE);
+    expect(document.getElementById('pwa-system-picker')).toBeNull();
+    history.replaceState(null, '', '/');
   });
 });
 

@@ -25,7 +25,9 @@
   "recentTitle": "最近のイベント",
   "pwaFab": {
     "label": "ホーム画面に追加",
-    "hint": "アプリを入れて通知を逃さない"
+    "hint": "アプリを入れて通知を逃さない",
+    "pushLabel": "通知をオンにする",
+    "pushHint": "通知をオンにして見逃さない"
   },
   "contactOwner": {
     "label": "運営者に連絡",

@@ -25,7 +25,9 @@
   "recentTitle": "Recent activities",
   "pwaFab": {
     "label": "Add to Home Screen",
-    "hint": "Install the app for event alerts"
+    "hint": "Install the app for event alerts",
+    "pushLabel": "Turn on notifications",
+    "pushHint": "Turn on alerts for event news"
   },
   "contactOwner": {
     "label": "Contact the owner",

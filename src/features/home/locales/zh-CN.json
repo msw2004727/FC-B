@@ -25,7 +25,9 @@
   "recentTitle": "近期活动",
   "pwaFab": {
     "label": "添加到主屏幕",
-    "hint": "安装 App，活动通知不漏接"
+    "hint": "安装 App，活动通知不漏接",
+    "pushLabel": "开启通知",
+    "pushHint": "开启通知，活动消息不漏接"
   },
   "contactOwner": {
     "label": "联系站长",

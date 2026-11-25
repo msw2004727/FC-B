@@ -25,7 +25,9 @@
   "recentTitle": "Hoạt động gần đây",
   "pwaFab": {
     "label": "Thêm vào Màn hình chính",
-    "hint": "Cài app để không lỡ thông báo"
+    "hint": "Cài app để không lỡ thông báo",
+    "pushLabel": "Bật thông báo",
+    "pushHint": "Bật thông báo để không lỡ tin"
   },
   "contactOwner": {
     "label": "Liên hệ quản trị",
