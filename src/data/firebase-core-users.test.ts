@@ -21,6 +21,8 @@ const ALLOWED_CORE_USERS = [
   'src/features/clubs/data/teams-repo.ts',
   'src/features/home/data/announcements.ts',
   'src/features/home/pages/HomePage.tsx',
+  // 營運儀表板 W6 截圖台的假模組（不進正式建置）：把 getFirebaseCore 換成一律拒絕，不是執行期呼叫端。
+  'src/dev/ops-w6-firebase-fake.ts',
 ];
 
 describe('getFirebaseCore 的使用者', () => {

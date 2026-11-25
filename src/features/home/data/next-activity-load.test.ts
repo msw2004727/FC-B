@@ -178,6 +178,8 @@ function active(docId: string, data: Partial<EventDoc> = {}): EventDoc {
 }
 
 beforeEach(() => {
+  // 超量回報每台裝置每天一次（limit-report）：每案清掉，避免前一案的紀錄吞掉後一案的回報。
+  localStorage.clear();
   store = { events: [], registrations: [] };
   mockedGetDocs.mockReset();
   mockedGetDocs.mockImplementation(fakeGetDocs);
@@ -279,6 +281,14 @@ describe('next-activity-load', () => {
     expect(logger.warn).toHaveBeenCalledWith('[NextActivity] active event list may be incomplete; using registration query fallback');
     expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('u1');
     expect(mockedReport).toHaveBeenCalledWith('next-activity-active-list-incomplete', expect.any(Error));
+  });
+
+  test('T-6b 清單 ≥ 200：同一天第二次開頁照樣退回報名查詢，但回報每台裝置每天只送一次', async () => {
+    const activeEvents = Array.from({ length: ACTIVE_EVENTS_LIST_CAP }, (_, i) => active(`e${i}`));
+    await loadNextActivityInputs({ activeEvents, logger: makeLogger() }, 'u1');
+    await loadNextActivityInputs({ activeEvents, logger: makeLogger() }, 'u1');
+    expect(queries().filter((q) => q.base?.kind === 'collectionGroup')).toHaveLength(2);
+    expect(mockedReport.mock.calls.filter(([c]) => c === 'next-activity-active-list-incomplete')).toHaveLength(1);
   });
 
   test('T-7 沒傳清單：行為與 HEAD 相同，不記 fallback 警告', async () => {
@@ -470,6 +480,20 @@ describe('next-activity-load', () => {
     expect(call).toBeTruthy();
     expect((call?.[1] as Error).message).toBe('creator query hit the limit');
     expect(JSON.stringify(mockedReport.mock.calls)).not.toContain('u1');
+  });
+
+  test('T-E E-1b 報名與主辦上限回報：同一天第二次載入不再送（每台裝置每天一次）', async () => {
+    for (let i = 0; i < REGISTRATION_QUERY_LIMIT; i += 1) {
+      addReg(`events/e${i}/registrations/r${i}`, { userId: 'u1', eventId: `e${i}`, status: 'confirmed' });
+    }
+    for (let i = 0; i < EVENT_QUERY_LIMIT; i += 1) {
+      addEvent(`managed-${i}`, { creatorUid: 'u1', status: 'open', date: TOMORROW });
+    }
+    await loadNextActivityInputs({ logger: makeLogger() }, 'u1');
+    await loadNextActivityInputs({ logger: makeLogger() }, 'u1');
+    const count = (ctx: string): number => mockedReport.mock.calls.filter(([c]) => c === ctx).length;
+    expect(count('next-activity-registration-limit')).toBe(1);
+    expect(mockedReport.mock.calls.filter(([c, e]) => c === 'next-activity-managed-limit' && (e as Error).message === 'creator query hit the limit')).toHaveLength(1);
   });
 
   test('T-E E-3 清單不完整回報', async () => {

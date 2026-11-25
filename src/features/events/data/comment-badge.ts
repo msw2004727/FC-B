@@ -7,12 +7,19 @@
  * 不改計數欄位、不放寬併發 2（不同活動仍各查各的子集合）。
  * 健檢 B2-04（2026-11-13）：數法改 count() 聚合（每張卡 2 次讀取），整份讀取只留作備援，見 countVisibleComments。
  */
+import { reportLimitOncePerDay } from '@/core/limit-report';
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
 
 export const COMMENT_BADGE_CACHE_TTL_MS = 300000;
 export const COMMENT_BADGE_MAX_CONCURRENT = 2;
 
 const COMMENT_LIMIT = 80;
+
+/** 多抓一筆偵測超量（R-QUERY-001）：超過時只取上限筆數並送錯誤回報（內容固定，不帶 uid、活動代號；每台裝置每天一次）。 */
+function cappedDocs<T>(docs: readonly T[], cap: number): readonly T[] {
+  if (docs.length > cap) reportLimitOncePerDay('comment-badge-limit', `comments exceed ${cap}`);
+  return docs.slice(0, cap);
+}
 
 export type CommentScope = 'manage' | 'member';
 
@@ -251,25 +258,25 @@ async function fetchCommentCountByDocs(
   manage: boolean,
 ): Promise<number> {
   if (manage) {
-    const snap = await fs.getDocs(fs.query(commentsRef, fs.limit(COMMENT_LIMIT)));
-    return sumCommentSnapshot(snap.docs.map((d) => ({ id: d.id, data: d.data() })));
+    const snap = await fs.getDocs(fs.query(commentsRef, fs.limit(COMMENT_LIMIT + 1)));
+    return sumCommentSnapshot(cappedDocs(snap.docs, COMMENT_LIMIT).map((d) => ({ id: d.id, data: d.data() })));
   }
 
   const [publicSnap, ownSnap] = await Promise.all([
     fs.getDocs(fs.query(
       commentsRef,
       fs.where('visibility', '==', 'public'),
-      fs.limit(Math.min(COMMENT_LIMIT, 60)),
+      fs.limit(Math.min(COMMENT_LIMIT, 60) + 1),
     )),
     fs.getDocs(fs.query(
       commentsRef,
       fs.where('authorUid', '==', viewerUid),
-      fs.limit(Math.min(COMMENT_LIMIT, 30)),
+      fs.limit(Math.min(COMMENT_LIMIT, 30) + 1),
     )),
   ]);
   const byId = new Map<string, { id: string; data: unknown }>();
-  for (const d of publicSnap.docs) byId.set(d.id, { id: d.id, data: d.data() });
-  for (const d of ownSnap.docs) byId.set(d.id, { id: d.id, data: d.data() });
+  for (const d of cappedDocs(publicSnap.docs, Math.min(COMMENT_LIMIT, 60))) byId.set(d.id, { id: d.id, data: d.data() });
+  for (const d of cappedDocs(ownSnap.docs, Math.min(COMMENT_LIMIT, 30))) byId.set(d.id, { id: d.id, data: d.data() });
   return sumCommentSnapshot(Array.from(byId.values()));
 }
 

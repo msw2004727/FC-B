@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant-TW" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>加到主畫面浮球 harness</title>
+    <script>
+      document.addEventListener('load', function (e) {
+        if (e.target && e.target.tagName === 'IMG') e.target.classList.add('img-loaded');
+      }, true);
+      document.addEventListener('error', function (e) {
+        if (e.target && e.target.tagName === 'IMG') e.target.classList.add('img-loaded');
+      }, true);
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/dev/pwa-fab-harness.tsx"></script>
+  </body>
+</html>

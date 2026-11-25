@@ -23,6 +23,10 @@
   "countUnavailable": "Chưa rõ số lượng",
   "more": "Xem thêm",
   "recentTitle": "Hoạt động gần đây",
+  "pwaFab": {
+    "label": "Thêm vào Màn hình chính",
+    "hint": "Cài app để không lỡ thông báo"
+  },
   "contactOwner": {
     "label": "Liên hệ quản trị",
     "hint": "Có thắc mắc? Chạm để liên hệ quản trị",

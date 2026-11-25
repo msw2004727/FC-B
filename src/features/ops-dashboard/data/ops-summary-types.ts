@@ -113,6 +113,18 @@ export interface LineQuota {
   limit: number;
 }
 
+/**
+ * W6 推播開啟統計：`opsSummary/latest.webPush`，每日彙總時依 `platform` 計的裝置訂閱數。
+ * 個別數字不是非負整數 → null（畫面顯示「—」）。
+ */
+export interface WebPushCounts {
+  android: number | null;
+  desktop: number | null;
+  ios_pwa: number | null;
+  other: number | null;
+  total: number | null;
+}
+
 export interface IntegrityBlock {
   lastReconcileAtMs: number | null;
   lastMismatchDays: string[];
@@ -132,6 +144,8 @@ export interface OpsSummaryLatest {
   cost: CostBlock | null;
   lineQuota: LineQuota | null;
   integrity: IntegrityBlock;
+  /** 欄位不存在、為 null 或不是物件 → null；壞掉不影響其他欄位。 */
+  webPush: WebPushCounts | null;
 }
 
 export interface NoShowPeriod {

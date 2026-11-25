@@ -176,15 +176,17 @@ function loadNamespaces() {
       isDir = false;
     }
     if (!isDir) continue;
-    if (!existsSync(join(featureDir, 'index.ts'))) continue;
-
-    namespaces.push({
-      name: id,
-      files: readNamespaceFiles(join(featureDir, 'locales')),
-    });
 
     // 按需載入、不進主程式的字典（例如課程 education/locales-lazy）；有目錄就同樣要求 7 語系一致。
+    // 沒有 index.ts 的共用模組（例如 pwa 安裝教學）也檢查：取代原本只檢查有 index.ts 的 feature（2026-11-25，避免 pwa:lazy 漏檢）。
     const lazyDir = join(featureDir, 'locales-lazy');
+    const hasIndex = existsSync(join(featureDir, 'index.ts'));
+    if (hasIndex) {
+      namespaces.push({
+        name: id,
+        files: readNamespaceFiles(join(featureDir, 'locales')),
+      });
+    }
     if (existsSync(lazyDir)) {
       namespaces.push({ name: `${id}:lazy`, files: readNamespaceFiles(lazyDir) });
     }

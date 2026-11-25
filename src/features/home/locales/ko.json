@@ -23,6 +23,10 @@
   "countUnavailable": "개수 확인 불가",
   "more": "더 보기",
   "recentTitle": "최근 활동",
+  "pwaFab": {
+    "label": "홈 화면에 추가",
+    "hint": "앱 설치하고 알림 놓치지 마세요"
+  },
   "contactOwner": {
     "label": "운영자에게 연락",
     "hint": "궁금한 점은 여기서 운영자에게 연락",

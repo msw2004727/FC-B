@@ -49,3 +49,108 @@
     transform: none;
   }
 }
+
+/* 預覽稿第三版（站長 11-25）：與加到主畫面浮球同一套反光＋光芒（第一版風格），顏色維持琥珀。 */
+.contact-owner-fab {
+  --fab-c: var(--warning);
+  background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--fab-c) 70%, #fff) 0%, var(--fab-c) 58%, color-mix(in srgb, var(--fab-c) 78%, #000) 100%);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .18), 0 0 14px 2px color-mix(in srgb, var(--fab-c) 45%, transparent);
+  isolation: isolate;
+}
+
+/* 反光：上半部橢圓高光＋每 4 秒一道斜向光澤掃過（裁在圓內）。 */
+.contact-owner-fab .fab-gloss {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.contact-owner-fab .fab-gloss::before {
+  content: '';
+  position: absolute;
+  left: 14%;
+  top: 6%;
+  width: 72%;
+  height: 46%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0));
+}
+
+.contact-owner-fab .fab-gloss::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: -60%;
+  width: 40%;
+  height: 140%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .6), rgba(255, 255, 255, 0));
+  transform: rotate(24deg);
+  animation: contact-glossy-sheen 4s ease-in-out 3s infinite;
+}
+
+/* 光芒：球後方一圈柔光呼吸＋外擴光環（不攔點擊）。 */
+.contact-owner-fab::before,
+.contact-owner-fab::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.contact-owner-fab::before {
+  background: radial-gradient(circle, color-mix(in srgb, var(--fab-c) 42%, transparent) 50%, transparent 72%);
+  animation: contact-glossy-breathe 2.4s ease-in-out infinite;
+}
+
+.contact-owner-fab::after {
+  inset: 0;
+  border: 2px solid color-mix(in srgb, var(--fab-c) 60%, transparent);
+  animation: contact-glossy-ring 2.4s ease-out infinite;
+}
+
+.contact-owner-fab svg {
+  position: relative;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .25));
+}
+
+[data-theme="dark"] .contact-owner-fab svg {
+  filter: none;
+}
+
+/* 只動 transform（顧問 §3.733 第 1 條：常駐動畫不動 left，免得每輪觸發版面重排）。
+   光澤條寬 40%（球寬的 0.4），從 left:-60% 移到 130%＝位移 190% 球寬＝475% 自身寬。 */
+@keyframes contact-glossy-sheen {
+  0%, 60% { transform: translateX(0) rotate(24deg); }
+  85%, 100% { transform: translateX(475%) rotate(24deg); }
+}
+
+@keyframes contact-glossy-breathe {
+  0%, 100% { opacity: .55; transform: scale(.92); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+
+@keyframes contact-glossy-ring {
+  0% { opacity: .8; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.5); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contact-owner-fab::before,
+  .contact-owner-fab::after,
+  .contact-owner-fab .fab-gloss::after {
+    animation: none;
+  }
+  .contact-owner-fab::after {
+    opacity: 0;
+  }
+}
+
+/* 「有新版本可用」提示框顯示時（body.fcb-update-open）與加到主畫面浮球一起上移 68px，不被提示框蓋住（2026-11-25）。 */
+body.fcb-update-open .contact-owner-fab {
+  bottom: calc(var(--bottombar-h, 64px) + env(safe-area-inset-bottom, 0px) + 88px);
+}

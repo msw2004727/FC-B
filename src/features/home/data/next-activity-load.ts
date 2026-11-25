@@ -6,6 +6,7 @@
  */
 
 import { reportClientError } from '@/core/error-report';
+import { reportLimitOncePerDay } from '@/core/limit-report';
 import type { DocumentData, Firestore, Query } from 'firebase/firestore';
 import { getFirebase as defaultGetFirebase } from '@/data/firebase';
 import { loadFirestoreSdk, type FirestoreSdk } from '@/data/firestore-sdk';
@@ -163,7 +164,7 @@ async function fetchManagedEvents(
           `[NextActivity] ${label} query hit the limit; events may be missing:`,
           EVENT_QUERY_LIMIT,
         );
-        reportClientError('next-activity-managed-limit', new Error(`${label} query hit the limit`));
+        reportLimitOncePerDay('next-activity-managed-limit', `${label} query hit the limit`);
       }
       return snap;
     } catch (err) {
@@ -219,7 +220,7 @@ async function loadRegistrationsWithQuery(
         '[NextActivity] registration query hit the limit; later registrations may be missing:',
         REGISTRATION_QUERY_LIMIT,
       );
-      reportClientError('next-activity-registration-limit', new Error('registration query hit the limit'));
+      reportLimitOncePerDay('next-activity-registration-limit', 'registration query hit the limit');
     }
     const subcollectionDocs = filterSubcollectionDocs(regSnap.docs);
     subcollectionDocs.forEach((d) => registrations.push(mapRegistration(d)));
@@ -394,7 +395,7 @@ export async function loadNextActivityInputs(
   if (Array.isArray(activeEvents)) {
     if (activeEvents.length >= ACTIVE_EVENTS_LIST_CAP) {
       logger.warn('[NextActivity] active event list may be incomplete; using registration query fallback');
-      reportClientError('next-activity-active-list-incomplete', new Error('active event list may be incomplete'));
+      reportLimitOncePerDay('next-activity-active-list-incomplete', 'active event list may be incomplete');
       return loadWithRegistrationQuery(db, sdk, safeUid, logger);
     }
     return loadWithScopedRegistrationQuery(db, sdk, safeUid, logger, activeEvents);

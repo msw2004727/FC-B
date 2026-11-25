@@ -1,0 +1,220 @@
+/* 首頁「加到主畫面」浮球（預覽稿第三版）：站長 11-25 指定第一版的反光＋光芒，位置在畫面左下角，
+   與右下角聯繫站長浮球左右對稱（同尺寸、同高度）。只隨延後 chunk 載入，不進首頁主程式。 */
+.pwa-install-fab {
+  position: fixed;
+  left: .9rem;
+  bottom: calc(var(--bottombar-h, 64px) + env(safe-area-inset-bottom, 0px) + 20px);
+  z-index: 60;
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  animation: pwa-fab-in .35s ease-out;
+}
+
+.pwa-install-fab {
+  --fab-c: var(--primary);
+  background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--fab-c) 70%, #fff) 0%, var(--fab-c) 58%, color-mix(in srgb, var(--fab-c) 78%, #000) 100%);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .18), 0 0 14px 2px color-mix(in srgb, var(--fab-c) 45%, transparent);
+  isolation: isolate;
+}
+
+/* 反光：上半部橢圓高光＋每 4 秒一道斜向光澤掃過（裁在圓內）。 */
+.pwa-install-fab .fab-gloss {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pwa-install-fab .fab-gloss::before {
+  content: '';
+  position: absolute;
+  left: 14%;
+  top: 6%;
+  width: 72%;
+  height: 46%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0));
+}
+
+.pwa-install-fab .fab-gloss::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: -60%;
+  width: 40%;
+  height: 140%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .6), rgba(255, 255, 255, 0));
+  transform: rotate(24deg);
+  animation: glossy-fab-sheen 4s ease-in-out 1s infinite;
+}
+
+/* 光芒：球後方一圈柔光呼吸＋外擴光環（不攔點擊）。 */
+.pwa-install-fab::before,
+.pwa-install-fab::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.pwa-install-fab::before {
+  background: radial-gradient(circle, color-mix(in srgb, var(--fab-c) 42%, transparent) 50%, transparent 72%);
+  animation: glossy-fab-breathe 2.4s ease-in-out infinite;
+}
+
+.pwa-install-fab::after {
+  inset: 0;
+  border: 2px solid color-mix(in srgb, var(--fab-c) 60%, transparent);
+  animation: glossy-fab-ring 2.4s ease-out infinite;
+}
+
+.pwa-install-fab svg {
+  position: relative;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .25));
+}
+
+[data-theme="dark"] .pwa-install-fab svg {
+  filter: none;
+}
+
+.pwa-install-fab svg {
+  width: 24px;
+  height: 24px;
+}
+
+[data-theme="dark"] .pwa-install-fab {
+  color: var(--bg-card);
+}
+
+.pwa-install-fab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pwa-install-fab:active {
+  transform: scale(0.96);
+}
+
+.pwa-install-fab.is-shaking {
+  animation: contact-owner-fab-shake 1.6s ease-in-out 0s, contact-owner-fab-shake-2 1.6s ease-in-out 3.2s;
+}
+
+/* 安裝提示泡泡：與聯繫站長提示同款（鏡像），邊框換本球顏色，小三角在左側指向本球。 */
+.pwa-install-fab-hint {
+  position: fixed;
+  left: .9rem;
+  bottom: calc(var(--bottombar-h, 64px) + env(safe-area-inset-bottom, 0px) + 80px);
+  z-index: 60;
+  padding: 7px 12px;
+  border: 1.5px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  animation: pwa-fab-hint-in .2s ease-out;
+}
+
+.pwa-install-fab-hint::after {
+  content: '';
+  position: absolute;
+  left: 20px;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border: inherit;
+  border-top: 0;
+  border-left: 0;
+  border-radius: 0 0 2px 0;
+  transform: rotate(45deg);
+}
+
+@keyframes pwa-fab-in {
+  from { opacity: 0; transform: scale(.6); }
+}
+
+@keyframes pwa-fab-hint-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+/* 抖動與聯繫站長同一組關鍵影格；聯繫站長的關鍵影格在它的提示 chunk，本 chunk 自帶一份以免先後載入順序影響。 */
+@keyframes contact-owner-fab-shake {
+  0%, 100% { transform: rotate(0); }
+  3.125%, 15.625%, 28.125%, 40.625%, 53.125%, 65.625%, 78.125%, 90.625% { transform: rotate(-14deg); }
+  9.375%, 21.875%, 34.375%, 46.875%, 59.375%, 71.875%, 84.375%, 96.875% { transform: rotate(14deg); }
+}
+
+@keyframes contact-owner-fab-shake-2 {
+  0%, 100% { transform: rotate(0); }
+  3.125%, 15.625%, 28.125%, 40.625%, 53.125%, 65.625%, 78.125%, 90.625% { transform: rotate(-14deg); }
+  9.375%, 21.875%, 34.375%, 46.875%, 59.375%, 71.875%, 84.375%, 96.875% { transform: rotate(14deg); }
+}
+
+/* 只動 transform（顧問 §3.733 第 1 條：常駐動畫不動 left，免得每輪觸發版面重排）。
+   光澤條寬 40%（球寬的 0.4），從 left:-60% 移到 130%＝位移 190% 球寬＝475% 自身寬。 */
+@keyframes glossy-fab-sheen {
+  0%, 60% { transform: translateX(0) rotate(24deg); }
+  85%, 100% { transform: translateX(475%) rotate(24deg); }
+}
+
+@keyframes glossy-fab-breathe {
+  0%, 100% { opacity: .55; transform: scale(.92); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+
+@keyframes glossy-fab-ring {
+  0% { opacity: .8; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.5); }
+}
+
+/* 「有新版本可用」提示框（高約 60px，停在導覽列上方 8px）顯示時，浮球與泡泡跟吐司一樣上移 68px，不被蓋住。 */
+body.fcb-update-open .pwa-install-fab {
+  bottom: calc(var(--bottombar-h, 64px) + env(safe-area-inset-bottom, 0px) + 88px);
+}
+
+body.fcb-update-open .pwa-install-fab-hint {
+  bottom: calc(var(--bottombar-h, 64px) + env(safe-area-inset-bottom, 0px) + 148px);
+}
+
+/* 桌機導覽列置中（max-width 640px）後，浮球貼著導覽列左緣 .9rem。 */
+@media (min-width: 800px) {
+  .pwa-install-fab,
+  .pwa-install-fab-hint {
+    left: max(.9rem, calc(50vw - 320px + .9rem));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pwa-install-fab,
+  .pwa-install-fab-hint {
+    animation: none;
+  }
+  .pwa-install-fab:active {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pwa-install-fab::before,
+  .pwa-install-fab::after,
+  .pwa-install-fab .fab-gloss::after {
+    animation: none;
+  }
+  .pwa-install-fab::after {
+    opacity: 0;
+  }
+}

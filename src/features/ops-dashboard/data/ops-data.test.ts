@@ -231,3 +231,60 @@ describe('opsSummary 形狀與放鴿子讀取（C3a）', () => {
     expect(queriesWithoutLimitOrIdList()).toEqual([]);
   });
 });
+
+describe('W6 推播裝置數（opsSummary/latest.webPush）', () => {
+  async function latestWith(extra: Record<string, unknown>) {
+    resetStore({ opsSummary: [{ id: 'latest', data: summaryData(extra) }], events: [] });
+    const load = await loadDashboard();
+    if (load.latest.kind !== 'ok') throw new Error(`latest ${load.latest.kind}`);
+    return { load, value: load.latest.value };
+  }
+
+  function expectOthersIntact(load: Awaited<ReturnType<typeof loadDashboard>>): void {
+    expect(load.summary).toEqual({ kind: 'ok', value: { generatedAtMs: GENERATED, asOf: '2026-11-08' } });
+    if (load.latest.kind !== 'ok') throw new Error('latest not ok');
+    expect(load.latest.value.users).toEqual({ totalUsers: 200, qaUsers: 4 });
+    expect(load.latest.value.periods.d30?.kpi.activeUsers).toEqual({ cur: 120, prev: 100 });
+    expect(load.latest.value.periods.d30?.topEvents[0]?.docId).toBe('ev_top');
+    expect(load.latest.value.trend.daily).toHaveLength(1);
+    expect(load.openEvents.kind).toBe('ok');
+  }
+
+  it('五個數字照收；讀取次數不變（latest＋報名中 2 次，不另讀）', async () => {
+    const { load, value } = await latestWith({ webPush: { android: 12, desktop: 8, ios_pwa: 3, other: 1, total: 24 } });
+    expect(value.webPush).toEqual({ android: 12, desktop: 8, ios_pwa: 3, other: 1, total: 24 });
+    expectOthersIntact(load);
+    expect(totalReads()).toBe(2);
+    expect(calls.filter((c) => c.kind === 'doc').map((c) => c.id)).toEqual(['latest']);
+    expectBudget();
+  });
+
+  it('多一個 webPush 欄位（含不認得的子欄位）不會讓整份 latest 被拒絕', async () => {
+    const { load, value } = await latestWith({ webPush: { android: 1, desktop: 0, ios_pwa: 0, other: 0, total: 1, extra: 'x' } });
+    expect(value.webPush).toEqual({ android: 1, desktop: 0, ios_pwa: 0, other: 0, total: 1 });
+    expectOthersIntact(load);
+  });
+
+  it.each([
+    ['欄位不存在', {}],
+    ['null', { webPush: null }],
+    ['數字', { webPush: 5 }],
+    ['字串', { webPush: 'broken' }],
+    ['陣列', { webPush: [12, 8, 3, 1, 24] }],
+    ['布林', { webPush: true }],
+  ])('webPush %s → null，其他欄位照常', async (_label, extra) => {
+    const { load, value } = await latestWith(extra);
+    expect(value.webPush).toBeNull();
+    expectOthersIntact(load);
+  });
+
+  it('個別數字負數、小數、字串、null、NaN、Infinity、缺漏 → null，其他平台照收', async () => {
+    const { load, value } = await latestWith({
+      webPush: { android: -1, desktop: 2.5, ios_pwa: '3', other: null, total: Number.NaN },
+    });
+    expect(value.webPush).toEqual({ android: null, desktop: null, ios_pwa: null, other: null, total: null });
+    expectOthersIntact(load);
+    const mixed = await latestWith({ webPush: { android: 7, desktop: Number.POSITIVE_INFINITY, ios_pwa: 0, total: 9 } });
+    expect(mixed.value.webPush).toEqual({ android: 7, desktop: null, ios_pwa: 0, other: null, total: 9 });
+  });
+});

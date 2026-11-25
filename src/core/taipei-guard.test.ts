@@ -120,7 +120,7 @@ const ALLOWED_LINES: readonly AllowedLine[] = [
   },
   {
     file: 'src/features/events/data/event-comments.ts',
-    line: 92,
+    line: 93,
     source: "return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;",
     reason: 'D 類格式化：留言的絕對時間沿用裝置時區顯示，不參與活動結束判斷。',
   },

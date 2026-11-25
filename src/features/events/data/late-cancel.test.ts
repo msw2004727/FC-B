@@ -54,7 +54,7 @@ describe('normalizeLateCancelHours（契約 §1，與 Functions 同一組案例�
   it('常數：允許值與預設', () => {
     expect([...LATE_CANCEL_HOURS]).toEqual([0, 2, 3, 6, 12, 24, 48]);
     expect(DEFAULT_LATE_CANCEL_HOURS).toBe(2);
-    expect(LATE_CANCEL_SINCE).toBe(Date.parse('2026-11-27T00:00:00+08:00'));
+    expect(LATE_CANCEL_SINCE).toBe(Date.parse('2026-11-25T00:00:00+08:00'));
   });
 
   it('對照：缺值時團隊預留 normalizeReleaseHours 回 0、本函式回 2；壞值兩邊都 0', () => {
@@ -99,8 +99,8 @@ describe('活動層條件與小字（契約 §3）', () => {
     expect(isWithinLateCancelWindow({ date: DATE }, START - 2 * HOUR - 1)).toBe(false);
     expect(isWithinLateCancelWindow({ date: DATE }, START)).toBe(false);
     expect(isWithinLateCancelWindow({ date: DATE, lateCancelHours: 24 }, START - 20 * HOUR)).toBe(true);
-    const before = '2026/11/26 20:00~22:00';
-    expect(isWithinLateCancelWindow({ date: before }, Date.parse('2026-11-26T19:00:00+08:00'))).toBe(false);
+    const before = '2026/11/24 20:00~22:00';
+    expect(isWithinLateCancelWindow({ date: before }, Date.parse('2026-11-24T19:00:00+08:00'))).toBe(false);
   });
 });
 

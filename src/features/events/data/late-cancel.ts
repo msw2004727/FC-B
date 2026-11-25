@@ -15,7 +15,7 @@ export const DEFAULT_LATE_CANCEL_HOURS = 2;
  * 起算點（與 Functions 同值）：活動開始時間早於此不記點，彈窗也不寫標記後果。
  * 暫定值：上線時由 PM／顧問依「前端上線日＋至少 1 天」確認，前後端同步改。
  */
-export const LATE_CANCEL_SINCE = Date.parse('2026-11-27T00:00:00+08:00');
+export const LATE_CANCEL_SINCE = Date.parse('2026-11-25T00:00:00+08:00');
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;

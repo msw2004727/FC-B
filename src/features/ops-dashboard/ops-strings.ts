@@ -83,6 +83,12 @@ const zhTW = {
   costMtd: '本月已花',
   costProjected: '預估月底',
   costPrev: '上月',
+  pushTitle: '推播裝置',
+  pushDaily: '每日更新',
+  pushAndroid: 'Android',
+  pushDesktop: '電腦',
+  pushIosPwa: 'iPhone 主畫面',
+  pushOther: '其他',
 } as const;
 
 export type OpsStringKey = keyof typeof zhTW;
@@ -161,6 +167,12 @@ const zhCN: Dict = {
   costMtd: '本月已花',
   costProjected: '预估月底',
   costPrev: '上月',
+  pushTitle: '推播设备',
+  pushDaily: '每日更新',
+  pushAndroid: 'Android',
+  pushDesktop: '电脑',
+  pushIosPwa: 'iPhone 主屏幕',
+  pushOther: '其他',
 };
 
 const en: Dict = {
@@ -236,6 +248,12 @@ const en: Dict = {
   costMtd: 'Spent',
   costProjected: 'Forecast',
   costPrev: 'Last mo',
+  pushTitle: 'Push devices',
+  pushDaily: 'Updated daily',
+  pushAndroid: 'Android',
+  pushDesktop: 'Desktop',
+  pushIosPwa: 'iPhone home screen',
+  pushOther: 'Other',
 };
 
 const ja: Dict = {
@@ -311,6 +329,12 @@ const ja: Dict = {
   costMtd: '今月',
   costProjected: '月末見込',
   costPrev: '先月',
+  pushTitle: 'プッシュ通知端末',
+  pushDaily: '毎日更新',
+  pushAndroid: 'Android',
+  pushDesktop: 'パソコン',
+  pushIosPwa: 'iPhoneホーム画面',
+  pushOther: 'その他',
 };
 
 const vi: Dict = {
@@ -386,6 +410,12 @@ const vi: Dict = {
   costMtd: 'Đã chi',
   costProjected: 'Ước tính',
   costPrev: 'Tháng trước',
+  pushTitle: 'Thiết bị thông báo',
+  pushDaily: 'Hằng ngày',
+  pushAndroid: 'Android',
+  pushDesktop: 'Máy tính',
+  pushIosPwa: 'iPhone màn hình chính',
+  pushOther: 'Khác',
 };
 
 const th: Dict = {
@@ -461,6 +491,12 @@ const th: Dict = {
   costMtd: 'ใช้ไป',
   costProjected: 'ประมาณ',
   costPrev: 'เดือนก่อน',
+  pushTitle: 'อุปกรณ์พุช',
+  pushDaily: 'อัปเดตรายวัน',
+  pushAndroid: 'Android',
+  pushDesktop: 'คอมพิวเตอร์',
+  pushIosPwa: 'iPhone หน้าจอโฮม',
+  pushOther: 'อื่นๆ',
 };
 
 const ko: Dict = {
@@ -536,6 +572,12 @@ const ko: Dict = {
   costMtd: '이번 달',
   costProjected: '월말 예상',
   costPrev: '지난달',
+  pushTitle: '푸시 기기',
+  pushDaily: '매일 갱신',
+  pushAndroid: 'Android',
+  pushDesktop: 'PC',
+  pushIosPwa: 'iPhone 홈 화면',
+  pushOther: '기타',
 };
 
 export const OPS_STRINGS: Readonly<Record<Locale, Dict>> = {

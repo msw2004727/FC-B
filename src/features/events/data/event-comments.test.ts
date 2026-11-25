@@ -24,6 +24,7 @@ import {
   type CommentContext,
 } from './event-comments';
 import { getEventCommentAuthor } from './identity-snapshot';
+import { reportClientError } from '@/core/error-report';
 import {
   _resetCommentBadgeForTest,
   clearCommentBadgeCacheForEvent,
@@ -50,6 +51,7 @@ const mock = vi.hoisted(() => ({
 vi.mock('@/data/firebase', () => ({
   getFirebase: mock.getFirebase,
 }));
+vi.mock('@/core/error-report', () => ({ reportClientError: vi.fn() }));
 vi.mock('firebase/firestore', () => ({
   collection: (parent: { path?: string }, ...parts: string[]) => ({
     path: [parent.path, ...parts].filter(Boolean).join('/'),
@@ -92,6 +94,8 @@ function snap(id: string, data: Record<string, unknown>) {
 }
 
 beforeEach(() => {
+  // 超量回報每台裝置每天一次（limit-report）：每案清掉，避免前一案的紀錄把後一案的回報吞掉而假綠（Opus P3-1）。
+  localStorage.clear();
   vi.resetAllMocks();
   _resetCommentBadgeForTest();
   _resetEventCommentsForTest();
@@ -190,13 +194,27 @@ describe('M-093 讀取', () => {
     expect(result.map((entry) => entry.id)).toEqual(['c3', 'c2', 'c1']);
     expect(mock.getDocs.mock.calls[0]?.[0]).toMatchObject({
       path: 'events/different-document/comments',
-      constraints: [{ where: ['visibility', '==', 'public'] }, { limit: 60 }],
+      constraints: [{ where: ['visibility', '==', 'public'] }, { limit: 61 }],
     });
     expect(mock.getDocs.mock.calls[1]?.[0]).toMatchObject({
-      constraints: [{ where: ['authorUid', '==', 'member'] }, { limit: 30 }],
+      constraints: [{ where: ['authorUid', '==', 'member'] }, { limit: 31 }],
     });
     expect(mock.getDocs.mock.calls.some(([ref]) =>
       (ref as { path: string }).path.endsWith('/c1/replies'))).toBe(false);
+  });
+
+  it('公開留言超過 60 則：只取 60 則並送固定內容的錯誤回報（不帶 uid、活動代號、留言）', async () => {
+    vi.mocked(reportClientError).mockClear();
+    const many = Array.from({ length: 61 }, (_, i) => snap(`p${i}`, { visibility: 'public', createdAt: i, likeCount: 0, deleted: true }));
+    mock.getDocs
+      .mockResolvedValueOnce({ docs: many })
+      .mockResolvedValueOnce({ docs: [] });
+    const result = await loadEventComments(context);
+    expect(result).toHaveLength(60);
+    expect(vi.mocked(reportClientError)).toHaveBeenCalledTimes(1);
+    const [ctx, err] = vi.mocked(reportClientError).mock.calls[0] ?? [];
+    expect(ctx).toBe('event-comments-limit');
+    expect((err as Error).message).toBe('comments exceed 60');
   });
 
   it('管理者 limit 80；第二身份回覆保留公開快照；摘要外本人讚仍讀 likes/uid', async () => {
@@ -212,11 +230,65 @@ describe('M-093 讀取', () => {
     const result = await loadEventComments({
       ...context, viewer: { ...context.viewer, roleLevel: 4 },
     });
-    expect(mock.getDocs.mock.calls[0]?.[0]).toMatchObject({ constraints: [{ limit: 80 }] });
+    expect(mock.getDocs.mock.calls[0]?.[0]).toMatchObject({ constraints: [{ limit: 81 }] });
     expect(result[0]?.replies[0]).toMatchObject({ authorName: '官方', likedByMe: true });
     expect(mock.getDoc).toHaveBeenCalledWith({
       path: 'events/different-document/comments/c/replies/r/likes/member',
     });
+  });
+
+  it('本人留言超過 30 則、管理者超過 80 則：各只取上限並送固定內容的錯誤回報', async () => {
+    vi.mocked(reportClientError).mockClear();
+    const own = Array.from({ length: 31 }, (_, i) => snap(`o${i}`, { visibility: 'private', createdAt: i, likeCount: 0, deleted: true }));
+    mock.getDocs
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValueOnce({ docs: own });
+    expect(await loadEventComments(context)).toHaveLength(30);
+    expect(vi.mocked(reportClientError).mock.calls.map(([c, e]) => [c, (e as Error).message]))
+      .toEqual([['event-comments-limit', 'comments exceed 30']]);
+
+    vi.mocked(reportClientError).mockClear();
+    const all = Array.from({ length: 81 }, (_, i) => snap(`m${i}`, { visibility: 'public', createdAt: i, likeCount: 0, deleted: true }));
+    mock.getDocs.mockResolvedValueOnce({ docs: all });
+    expect(await loadEventComments({ ...context, viewer: { ...context.viewer, roleLevel: 4 } })).toHaveLength(80);
+    expect(vi.mocked(reportClientError).mock.calls.map(([c, e]) => [c, (e as Error).message]))
+      .toEqual([['event-comments-limit', 'comments exceed 80']]);
+  });
+
+  it('一般會員：公開 60＋本人 30 都沒超過各自上限，去重後 90 則 → 只留最新 80 則並送回報（顧問 §3.719）', async () => {
+    vi.mocked(reportClientError).mockClear();
+    const pub = Array.from({ length: 60 }, (_, i) => snap(`p${i}`, { visibility: 'public', createdAt: 100 + i, likeCount: 0, deleted: true }));
+    const own = Array.from({ length: 30 }, (_, i) => snap(`o${i}`, { visibility: 'private', createdAt: i, likeCount: 0, deleted: true }));
+    mock.getDocs
+      .mockResolvedValueOnce({ docs: pub })
+      .mockResolvedValueOnce({ docs: own });
+    expect(await loadEventComments(context)).toHaveLength(80);
+    expect(vi.mocked(reportClientError).mock.calls.map(([c, e]) => [c, (e as Error).message]))
+      .toEqual([['event-comments-limit', 'merged comments exceed 80']]);
+
+    vi.mocked(reportClientError).mockClear();
+    localStorage.clear(); // 前半段已記下 merged 那則；不清的話誤報也會被每日去重吞掉
+    const overlap = pub.slice(0, 20).map((d) => d);
+    mock.getDocs
+      .mockResolvedValueOnce({ docs: pub })
+      .mockResolvedValueOnce({ docs: overlap });
+    expect(await loadEventComments(context)).toHaveLength(60);
+    expect(vi.mocked(reportClientError)).not.toHaveBeenCalled();
+  });
+
+  it('回覆超過 20 則：查詢 limit 21、只留 20 則並送固定內容的錯誤回報', async () => {
+    vi.mocked(reportClientError).mockClear();
+    const replies = Array.from({ length: 21 }, (_, i) => snap(`r${i}`, { createdAt: i, likeCount: 0, recentLikers: [] }));
+    mock.getDocs
+      .mockResolvedValueOnce({ docs: [snap('c', { likeCount: 0, recentLikers: [] })] })
+      .mockResolvedValueOnce({ docs: replies })
+      .mockResolvedValue({ docs: [] });
+    const result = await loadEventComments({ ...context, viewer: { ...context.viewer, roleLevel: 4 } });
+    const repliesCall = mock.getDocs.mock.calls.find(([ref]) => (ref as { path: string }).path.endsWith('/c/replies'));
+    expect(repliesCall?.[0]).toMatchObject({ constraints: [{ limit: 21 }] });
+    expect(result[0]?.replies).toHaveLength(20);
+    expect(vi.mocked(reportClientError).mock.calls.map(([c, e]) => [c, (e as Error).message]))
+      .toEqual([['event-comment-replies-limit', 'replies exceed 20']]);
   });
 
   it('未登入依 A 不發送 Rules 必拒的查詢', async () => {

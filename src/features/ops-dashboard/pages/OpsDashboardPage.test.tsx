@@ -719,6 +719,91 @@ describe('排行與費用卡', () => {
     expect(screen.queryByText('費用偏高')).toBeNull();
   });
 
+  function pushText(key: string): string | null | undefined {
+    return document.querySelector(`.od-a-push [data-push="${key}"]`)?.textContent;
+  }
+
+  it('W6 推播裝置卡：總數、四平台數字與「每日更新」，放在費用卡後、查詢入口前；不另讀', async () => {
+    rankDoc({ webPush: { android: 12, desktop: 8, ios_pwa: 3, other: 1, total: 1024 } });
+    await openAs(viewer('super_admin'));
+    await screen.findByText('推播裝置');
+    expect(screen.getByText('每日更新')).toBeTruthy();
+    expect(screen.getByText('iPhone 主畫面')).toBeTruthy();
+    expect(pushText('total')).toBe('1,024');
+    expect(pushText('android')).toBe('12');
+    expect(pushText('desktop')).toBe('8');
+    expect(pushText('ios_pwa')).toBe('3');
+    expect(pushText('other')).toBe('1');
+    const order = [...document.querySelectorAll('.od-grid > section')].map((el) => el.className);
+    const at = (cls: string): number => order.findIndex((c) => c.includes(cls));
+    expect(at('od-a-push')).toBe(at('od-a-cost') + 1);
+    expect(at('od-a-query')).toBe(at('od-a-push') + 1);
+    expect(document.querySelector('.od-a-push')?.textContent).not.toContain('ios_pwa');
+    expect(calls.filter((c) => c.kind === 'doc').map((c) => c.id).sort()).toEqual(['latest', 'noshow']);
+  });
+
+  it.each([
+    ['欄位不存在', {}],
+    ['null', { webPush: null }],
+    ['型別不對', { webPush: 'broken' }],
+    ['負數與小數', { webPush: { android: -1, desktop: 1.5, ios_pwa: '3', other: null, total: -24 } }],
+  ])('W6 webPush %s：卡片照放、五格都是「—」，其他卡片不受影響、沒有讀取失敗', async (_label, extra) => {
+    rankDoc(extra);
+    await openAs(viewer('super_admin'));
+    await screen.findByText('推播裝置');
+    for (const key of ['total', 'android', 'desktop', 'ios_pwa', 'other']) expect(pushText(key), key).toBe('—');
+    expect(screen.getByText('熱門活動')).toBeTruthy();
+    expect(document.querySelector('.od-a-cost')).not.toBeNull();
+    expect(document.querySelector('.od-a-kpi')).not.toBeNull();
+    expect(screen.queryByText('讀取失敗')).toBeNull();
+  });
+
+  it('W6 方案 A：色段照比例，數字放得下寫在段內、放不下寫在圖例旁（1 台 iPhone）', async () => {
+    rankDoc({ webPush: { android: 156, desktop: 41, ios_pwa: 1, other: 9, total: 207 } });
+    await openAs(viewer('super_admin'));
+    await screen.findByText('推播裝置');
+    const bar = document.querySelector('.od-a-push .od-push-bar');
+    expect(bar?.classList.contains('empty')).toBe(false);
+    const segs = [...(bar?.querySelectorAll('.od-push-seg') ?? [])] as HTMLElement[];
+    expect(segs.map((el) => el.getAttribute('data-seg'))).toEqual(['android', 'desktop', 'ios_pwa', 'other']);
+    expect(Number(segs[0]?.style.flexGrow)).toBeCloseTo(156 / 207, 5);
+    expect(Number(segs[2]?.style.flexGrow)).toBeCloseTo(1 / 207, 5);
+    expect(bar?.querySelector('[data-push="android"]')?.textContent).toBe('156');
+    expect(bar?.querySelector('[data-push="desktop"]')?.textContent).toBe('41');
+    expect(bar?.querySelector('[data-push="ios_pwa"]')).toBeNull();
+    expect(bar?.querySelector('[data-push="other"]')).toBeNull();
+    expect(document.querySelector('.od-push-legend [data-push="ios_pwa"]')?.textContent).toBe('1');
+    expect(document.querySelector('.od-push-legend [data-push="other"]')?.textContent).toBe('9');
+    expect(document.querySelectorAll('.od-a-push [data-push]')).toHaveLength(5);
+  });
+
+  it('W6 方案 A：全部 0 → 空的灰條、不畫色段，數字顯示 0', async () => {
+    rankDoc({ webPush: { android: 0, desktop: 0, ios_pwa: 0, other: 0, total: 0 } });
+    await openAs(viewer('super_admin'));
+    await screen.findByText('推播裝置');
+    expect(document.querySelector('.od-push-bar')?.classList.contains('empty')).toBe(true);
+    expect(document.querySelectorAll('.od-push-seg')).toHaveLength(0);
+    for (const key of ['total', 'android', 'desktop', 'ios_pwa', 'other']) expect(pushText(key), key).toBe('0');
+  });
+
+  it('W6 方案 A：任一平台數字不合格 → 不算比例，灰條；合格的照顯示', async () => {
+    rankDoc({ webPush: { android: 12, desktop: 8, ios_pwa: -3, other: 1, total: 24 } });
+    await openAs(viewer('super_admin'));
+    await screen.findByText('推播裝置');
+    expect(document.querySelector('.od-push-bar')?.classList.contains('empty')).toBe(true);
+    expect(pushText('ios_pwa')).toBe('—');
+    expect(pushText('android')).toBe('12');
+    expect(pushText('total')).toBe('24');
+  });
+
+  it('W6 latest 不存在：不顯示推播裝置卡', async () => {
+    seed(false);
+    await openAs(viewer('super_admin'));
+    await screen.findByText('活動參與查詢');
+    expect(document.querySelector('.od-a-push')).toBeNull();
+    expect(screen.queryByText('推播裝置')).toBeNull();
+  });
+
   it.each([
     ['admin（沒有入口碼）', viewer('admin')],
     ['user', viewer('user')],

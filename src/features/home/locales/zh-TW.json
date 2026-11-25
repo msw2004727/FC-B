@@ -23,6 +23,10 @@
   "countUnavailable": "數量暫無法取得",
   "more": "查看更多",
   "recentTitle": "近期活動",
+  "pwaFab": {
+    "label": "加到主畫面",
+    "hint": "安裝 App，活動通知不漏接"
+  },
   "contactOwner": {
     "label": "聯繫站長",
     "hint": "有問題？點這裡聯繫站長",

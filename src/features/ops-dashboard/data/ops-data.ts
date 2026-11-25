@@ -38,6 +38,7 @@ import type {
   TopHost,
   TrendDaily,
   TrendMonthly,
+  WebPushCounts,
 } from './ops-summary-types';
 import { OPS_PERIODS } from './ops-summary-types';
 
@@ -308,6 +309,22 @@ function integrity(value: unknown): IntegrityBlock {
   return { lastReconcileAtMs: toMillis(raw['lastReconcileAt']), lastMismatchDays: days };
 }
 
+/** 計數只收非負整數；負數、小數、字串、NaN 一律 null（顯示「—」）。 */
+function count(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function webPushCounts(value: unknown): WebPushCounts | null {
+  if (!isRecord(value)) return null;
+  return {
+    android: count(value['android']),
+    desktop: count(value['desktop']),
+    ios_pwa: count(value['ios_pwa']),
+    other: count(value['other']),
+    total: count(value['total']),
+  };
+}
+
 export function parseOpsSummaryLatest(data: Record<string, unknown>): OpsSummaryLatest {
   const users = isRecord(data['users']) ? data['users'] : {};
   const trend = isRecord(data['trend']) ? data['trend'] : {};
@@ -326,6 +343,7 @@ export function parseOpsSummaryLatest(data: Record<string, unknown>): OpsSummary
     cost: costBlock(data['cost']),
     lineQuota: lineQuota(data['lineQuota']),
     integrity: integrity(data['integrity']),
+    webPush: webPushCounts(data['webPush']),
   };
 }
 

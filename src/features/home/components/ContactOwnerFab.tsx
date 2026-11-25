@@ -65,6 +65,7 @@ export function ContactOwnerFab({ onClick }: ContactOwnerFabProps): JSX.Element 
         onClick();
       }}
     >
+      <span class="fab-gloss" aria-hidden="true" />
       <EnvelopeIcon />
     </button>,
     document.body,

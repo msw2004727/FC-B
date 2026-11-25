@@ -1,5 +1,6 @@
 // adminMessages 讀寫：讀取預算（進頁 ≤ 54）、排程搶占／標記／退回都用 transaction。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { reportClientError } from '@/core/error-report';
 
 import { fakeSdk, fakeState, limitOf, resetFakeFirestore, totalReads, type FakeDoc } from '../fake-firestore.test-helper';
 import {
@@ -18,12 +19,15 @@ import {
 const fakeModule = await vi.hoisted(async () => import('../fake-firestore.test-helper'));
 vi.mock('firebase/firestore', () => fakeModule.fakeSdk);
 vi.mock('@/data/firebase', () => ({ getFirebase: async () => ({ db: { __db: true } }) }));
+vi.mock('@/core/error-report', () => ({ reportClientError: vi.fn() }));
 
 function docs(n: number, status = 'sent'): FakeDoc[] {
   return Array.from({ length: n }, (_, i) => ({ id: `d${i}`, data: { id: `mg_${i}`, title: `T${i}`, body: 'b', status } }));
 }
 
 beforeEach(() => {
+  // 超量回報每台裝置每天一次（limit-report）：每案清掉，避免前一案的紀錄把後一案的回報吞掉而假綠（Opus P3-1）。
+  localStorage.clear();
   resetFakeFirestore();
 });
 
@@ -71,14 +75,27 @@ describe('讀取預算', () => {
     expect(fakeState.writes).toEqual([{ op: 'update', path: 'adminMessages/d1', data: { status: 'recalled' } }]);
   });
 
-  it('排程檢查：where status == scheduled＋limit 20（單欄位索引）', async () => {
+  it('排程檢查：where status == scheduled＋limit 21（多抓一筆偵測超量，單欄位索引）', async () => {
+    vi.mocked(reportClientError).mockClear();
     fakeState.docsHandler = () => docs(2, 'scheduled');
     const list = await loadScheduledAdminMessages();
     expect(list).toHaveLength(2);
     const q = fakeState.reads[0]?.q;
     expect(q?.constraints.find((c) => c.type === 'where')?.args).toEqual(['status', '==', 'scheduled']);
     expect(q?.constraints.some((c) => c.type === 'orderBy')).toBe(false);
-    expect(limitOf(q)).toBe(20);
+    expect(limitOf(q)).toBe(21);
+    expect(vi.mocked(reportClientError)).not.toHaveBeenCalled();
+  });
+
+  it('排程檢查超過 20 筆：只回前 20 筆並送固定內容的錯誤回報', async () => {
+    vi.mocked(reportClientError).mockClear();
+    fakeState.docsHandler = () => docs(21, 'scheduled');
+    const list = await loadScheduledAdminMessages();
+    expect(list).toHaveLength(20);
+    expect(vi.mocked(reportClientError)).toHaveBeenCalledTimes(1);
+    const [context, err] = vi.mocked(reportClientError).mock.calls[0] ?? [];
+    expect(context).toBe('admin-scheduled-limit');
+    expect((err as Error).message).toBe('scheduled messages exceed 20');
   });
 });
 
