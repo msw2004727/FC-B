@@ -23,6 +23,10 @@
   "countUnavailable": "Count unavailable",
   "more": "See more",
   "recentTitle": "Recent activities",
+  "pwaFab": {
+    "label": "Add to Home Screen",
+    "hint": "Install the app for event alerts"
+  },
   "contactOwner": {
     "label": "Contact the owner",
     "hint": "Questions? Tap to contact the owner",

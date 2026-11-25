@@ -3,10 +3,13 @@ import { cleanup, fireEvent, render } from '@testing-library/preact';
 import { LocationProvider } from 'preact-iso';
 import { SideDrawer } from '@/ui/SideDrawer';
 import { getToasts, toast } from '@/ui/Toast';
+import { setLocale } from '@/i18n/i18n';
 import {
   _setDeferredInstallPromptForTest,
+  getDeferredInstallPrompt,
   type BeforeInstallPromptEvent,
 } from './pwa-install';
+import { PwaModals } from './PwaModals';
 
 vi.mock('@/i18n/i18n', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -54,6 +57,8 @@ describe('PWA Install button and Modals (M-030, M-031, U-007)', () => {
     fireEvent.click(document.getElementById('pwa-install-btn')!);
     expect(promptFn).toHaveBeenCalledTimes(1);
     expect(document.getElementById('pwa-system-picker')).toBeNull();
+    // 安裝事件只能用一次，首頁浮球共用同一個事件：用過要清掉。
+    expect(getDeferredInstallPrompt()).toBeNull();
   });
 
   it('無原生安裝提示時，點擊打開系統選擇彈窗，並可切換至 Android 與 iOS 教學（含 /PWA/PWA01~03.jpg）', () => {
@@ -105,5 +110,26 @@ describe('PWA Install button and Modals (M-030, M-031, U-007)', () => {
     fireEvent.click(document.getElementById('pwa-install-btn')!);
     expect(getToasts().some((t) => t.message === '你已在使用 APP 版')).toBe(true);
     expect(document.getElementById('pwa-system-picker')).not.toBeNull();
+  });
+
+  it('教學跟著語系：英文介面顯示英文、iOS 步驟含「⋯」與「Open as Web App」', async () => {
+    await setLocale('en');
+    try {
+      render(<PwaModals step="ios" onChangeStep={vi.fn()} />);
+      const text = document.getElementById('pwa-ios-modal')!.textContent ?? '';
+      expect(text).toContain('iPhone / iPad install guide');
+      expect(text).toContain('Tap "⋯", then "Share"');
+      expect(text).toContain('Keep "Open as Web App" turned on');
+    } finally {
+      await setLocale('zh-TW');
+    }
+  });
+
+  it('繁中 iOS 教學：分享在「⋯」裡、提醒開啟「打開為網頁 App」', async () => {
+    await setLocale('zh-TW');
+    render(<PwaModals step="ios" onChangeStep={vi.fn()} />);
+    const text = document.getElementById('pwa-ios-modal')!.textContent ?? '';
+    expect(text).toContain('點網址列旁的「⋯」，再點「分享」');
+    expect(text).toContain('確認「打開為網頁 App」已開啟');
   });
 });

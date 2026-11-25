@@ -23,6 +23,10 @@
   "countUnavailable": "件数不明",
   "more": "もっと見る",
   "recentTitle": "最近のイベント",
+  "pwaFab": {
+    "label": "ホーム画面に追加",
+    "hint": "アプリを入れて通知を逃さない"
+  },
   "contactOwner": {
     "label": "運営者に連絡",
     "hint": "お困りですか？ここから運営者に連絡",

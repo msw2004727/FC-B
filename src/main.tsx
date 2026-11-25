@@ -31,6 +31,12 @@ installFailedPreloadRecorder();
 // 顧問 §3.255 B′：改插 <link rel="modulepreload">（網址由建置時注入），不用 import()，失敗不耗掉 chunk-reload 的機會。
 preloadEventDetailChunks(location.pathname);
 
+// 加到主畫面：Chrome 的安裝事件可能早於延後分塊發出，入口先接住（features/pwa/pwa-install.ts 讀 __fcbBip）。
+addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  (window as { __fcbBip?: Event }).__fcbBip = e;
+});
+
 // 越早越好：首屏的路由 chunk 載入失敗也要能接住。
 installChunkReloadGuard();
 installErrorReporter();

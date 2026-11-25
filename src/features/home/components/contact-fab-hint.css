@@ -67,3 +67,8 @@
     animation: none;
   }
 }
+
+/* 「有新版本可用」提示框顯示時浮球上移 68px（contact-owner-fab.css），泡泡跟著上移（2026-11-25）。 */
+body.fcb-update-open .contact-owner-fab-hint {
+  bottom: calc(var(--bottombar-h, 64px) + env(safe-area-inset-bottom, 0px) + 148px);
+}

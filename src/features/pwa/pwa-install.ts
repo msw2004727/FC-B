@@ -21,13 +21,24 @@ export function initPwaInstallListener(): void {
   window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 }
 
+/** 入口（main.tsx）先接住的安裝事件；本模組載入前發出的也拿得到。 */
+type BipWindow = Window & { __fcbBip?: BeforeInstallPromptEvent };
+
 export function getDeferredInstallPrompt(): BeforeInstallPromptEvent | null {
-  return deferredInstallPrompt;
+  if (deferredInstallPrompt) return deferredInstallPrompt;
+  return (typeof window !== 'undefined' && (window as BipWindow).__fcbBip) || null;
+}
+
+/** 安裝事件只能 prompt() 一次；用過就清掉兩處。 */
+export function clearDeferredInstallPrompt(): void {
+  deferredInstallPrompt = null;
+  if (typeof window !== 'undefined') delete (window as BipWindow).__fcbBip;
 }
 
 /** 測試用：設定或清除 deferredInstallPrompt。 */
 export function _setDeferredInstallPromptForTest(prompt: BeforeInstallPromptEvent | null): void {
   deferredInstallPrompt = prompt;
+  if (!prompt && typeof window !== 'undefined') delete (window as BipWindow).__fcbBip;
 }
 
 /** U-007：偵測是否已在獨立 APP 模式（standalone）執行。 */

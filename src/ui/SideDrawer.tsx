@@ -52,6 +52,7 @@ import {
 import {
   copyTextToClipboard,
   getDeferredInstallPrompt,
+  clearDeferredInstallPrompt,
   initPwaInstallListener,
   isStandalonePwa,
 } from '@/features/pwa/pwa-install';
@@ -506,6 +507,8 @@ export function SideDrawer({
     e.stopPropagation();
     const deferred = getDeferredInstallPrompt();
     if (deferred) {
+      // 安裝事件只能 prompt() 一次；首頁浮球共用同一個事件，用過就清掉。
+      clearDeferredInstallPrompt();
       deferred.prompt().catch(() => undefined);
       deferred.userChoice.catch(() => undefined);
       return;
