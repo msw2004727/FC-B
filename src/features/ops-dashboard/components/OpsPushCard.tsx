@@ -20,11 +20,11 @@ export function shownCount(value: number | null | undefined): string {
 }
 
 /** 數字（.78rem 粗體、等寬數字）放進色段需要的寬度：左右內距合計 14px＋每字 8px。 */
-export function pushNumFits(share: number, value: number, barPx: number): boolean {
+function pushNumFits(share: number, value: number, barPx: number): boolean {
   return share * barPx >= 14 + value.toLocaleString('en-US').length * 8;
 }
 
-export interface PushShare {
+interface PushShare {
   key: PushPlatform;
   label: OpsStringKey;
   value: number | null;
@@ -36,7 +36,7 @@ export interface PushShare {
  * 四個平台的比例。四個數字都合格且加總 > 0 才算比例（`drawable`）；
  * 任一個是 null 或全部 0 → 條畫成空的灰條，數字照「—」／0 顯示。比例以四平台加總為底，不用 total。
  */
-export function pushShares(counts: WebPushCounts | null): { rows: PushShare[]; drawable: boolean } {
+function pushShares(counts: WebPushCounts | null): { rows: PushShare[]; drawable: boolean } {
   const values = PUSH_PLATFORMS.map((p) => (counts ? counts[p.key] : null));
   const sum = values.reduce<number>((acc, v) => acc + (v ?? 0), 0);
   const drawable = values.every((v) => v !== null) && sum > 0;
@@ -50,7 +50,7 @@ export function pushShares(counts: WebPushCounts | null): { rows: PushShare[]; d
 }
 
 /** 卡名＋總數（卡名旁）＋右上「每日更新」。兩個方案共用。 */
-export function PushHead({ counts, t }: { counts: WebPushCounts | null; t: OpsT }): JSX.Element {
+function PushHead({ counts, t }: { counts: WebPushCounts | null; t: OpsT }): JSX.Element {
   return (
     <div class="od-push-head">
       <div class="od-push-title">

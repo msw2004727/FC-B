@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 營運儀表板 W6 推播裝置卡真元件截圖：對 ops-w6 harness 開發伺服器截圖，假資料、不登入、非本機請求一律擋下。
-// 方案 A／B（?variant=）各截：full × 360／1280 × 淺深、extreme（1 台 iPhone）× 360 淺、empty × 360 淺（卡片前後脈絡＋整頁）。
+// 方案 A（站長 11-25 選定）截：full × 360／1280 × 淺深、extreme（1 台 iPhone）× 360 淺、empty × 360 淺（卡片前後脈絡＋整頁）。
 // 量：兩方案 × 7 語系 × 360／1280 × full／extreme／zero，推播卡文字不得截斷或折行、條內數字不得超出色段、條外數字不得超出條框、不得橫向捲動；console 錯誤。
 // 用法：node dev-harness/ops-w6-shots.mjs <輸出資料夾> <base url>
 import { chromium } from '@playwright/test';
@@ -82,7 +82,7 @@ const SHOTS = [
   ['full', 360, 'light'], ['full', 360, 'dark'], ['full', 1280, 'light'], ['full', 1280, 'dark'],
   ['extreme', 360, 'light'], ['empty', 360, 'light'],
 ];
-for (const variant of ['A', 'B']) {
+for (const variant of ['A']) {  // 站長 11-25 選 A，B 已移除
   for (const [scene, width, theme] of SHOTS) {
     const { ctx, page, tag } = await open({ variant, scene, width, theme, lang: 'zh-TW' });
     await measure(page, tag);

@@ -13,8 +13,6 @@ const SWAPS: readonly [RegExp, string][] = [
   [/\/src\/features\/ops-dashboard\/data\/ops-data\.ts$/, fake('data')],
   [/\/src\/features\/profile\/data\/viewer\.ts$/, fake('viewer')],
   [/\/src\/data\/firebase\.ts$/, fake('firebase')],
-  // ?variant=A｜B 切推播裝置卡方案（A＝正式程式碼）。
-  [/\/src\/features\/ops-dashboard\/components\/OpsPushCard\.tsx$/, dev('ops-w6-push-switch.tsx')],
 ];
 
 export default defineConfig({
