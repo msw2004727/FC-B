@@ -205,3 +205,14 @@ describe('UidQrModal：卡面與關閉鈕改由 CSS 提供', () => {
     expect(src).not.toContain('font-size:1.2rem;cursor:pointer;color:var(--text-muted)');
   });
 });
+
+describe('profile-glass.css：頁籤列 N 等分（2026-11-25 站長）', () => {
+  it('頁籤容器撐滿寬、每顆頁籤 flex 等分且至少保留字寬（不寫死頁籤數）', () => {
+    const rules = scoped('profile-glass.css');
+    const barIn = rules.find((r) => r.selector.endsWith('#page-profile .profile-quick-bar-in') && r.atrule === null);
+    const btn = rules.find((r) => r.selector.endsWith('#page-profile .profile-quick-btn') && r.atrule === null);
+    expect(barIn?.decls).toMatchObject({ width: '100%', 'min-width': 'max-content' });
+    expect(btn?.decls).toMatchObject({ flex: '1 1 0', 'min-width': 'max-content' });
+    expect(readRaw(PROFILE_DIR, 'profile-glass.css')).not.toMatch(/nth-child|calc\(100%\s*\/\s*\d/);
+  });
+});

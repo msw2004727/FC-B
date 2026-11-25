@@ -161,13 +161,49 @@ describe('我的資料 P2 兩張卡（顯示模式）', () => {
     expect(routeMock).not.toHaveBeenCalled();
   });
 
-  it('編輯模式不變：仍沿用原本的俱樂部連結與「-」加入時間', () => {
+  it('編輯模式：不顯示所屬俱樂部（無法編輯，2026-11-25 站長）；加入時間照舊「-」', () => {
     const { container } = renderCard(mk({ teamIds: ['t1'], teamNames: ['測試俱樂部'] }));
     fireEvent.click(container.querySelector('#profile-edit-btn') as HTMLElement);
-    expect(container.querySelector('#profile-team-display .uc-team-link')?.textContent).toBe('測試俱樂部');
+    const edit = container.querySelector('#profile-info-edit') as HTMLElement;
+    expect(edit.querySelector('#profile-team-display')).toBeNull();
+    expect(edit.querySelector('[data-i18n="profile.team"]')).toBeNull();
+    expect(edit.textContent).not.toContain('測試俱樂部');
+    // 檢視狀態的俱樂部卡仍在（只是編輯中隱藏）。
+    expect(container.querySelector('#profile-team .pfi-club-name')?.textContent).toBe('測試俱樂部');
     expect(container.querySelector('#profile-join-date-edit')?.textContent).toBe('-');
     // 編輯中沒有基本資料卡標題，說明「?」回到頂端。
     expect(container.querySelector('.profile-quick-help .edu-info-btn')).not.toBeNull();
+  });
+});
+
+describe('我的資料編輯：存檔不碰俱樂部欄位', () => {
+  it('送出的欄位只有性別、生日、地區、聯繫方式，沒有任何俱樂部欄位', async () => {
+    vi.mocked(updateProfileFields).mockReset();
+    vi.mocked(updateProfileFields).mockResolvedValueOnce(undefined);
+    const onSaved = vi.fn();
+    const view = render(<LegacyProfileInfoCard embedded uid="U-me" profile={mk({
+      gender: '男', birthday: '1985/11/21', region: '台中市', phone: '0912',
+      teamId: 't1', teamIds: ['t1', 't2'], teamName: 'A隊', teamNames: ['A隊', 'B隊'],
+    })} onSaved={onSaved} />);
+    fireEvent.click(view.container.querySelector('#profile-edit-btn') as HTMLElement);
+    fireEvent.click(view.container.querySelector('button[data-i18n="儲存"]') as HTMLElement);
+    await waitFor(() => expect(updateProfileFields).toHaveBeenCalledTimes(1));
+    const [uid, patch] = vi.mocked(updateProfileFields).mock.calls[0]!;
+    expect(uid).toBe('U-me');
+    expect(Object.keys(patch).sort()).toEqual(['birthday', 'gender', 'phone', 'region']);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(Object.keys(onSaved.mock.calls[0]![0] as object).some((k) => /^team/.test(k))).toBe(false);
+  });
+
+  it('取消與儲存鈕沿用「編輯」鈕的尺寸 class', () => {
+    const { container } = renderCard(mk());
+    expect(container.querySelector('#profile-edit-btn')?.classList.contains('profile-action-btn')).toBe(true);
+    fireEvent.click(container.querySelector('#profile-edit-btn') as HTMLElement);
+    const cancel = container.querySelector('#profile-info-edit button[data-i18n="取消"]') as HTMLElement;
+    const save = container.querySelector('#profile-info-edit button[data-i18n="儲存"]') as HTMLElement;
+    expect(cancel.className).toBe('outline-btn small profile-action-btn');
+    expect(cancel.getAttribute('style')).toBeNull();
+    expect(save.classList.contains('profile-action-btn')).toBe(true);
   });
 });
 
