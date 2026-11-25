@@ -4,11 +4,12 @@
 // 本檔只給個人頁（WebPushSlot）用；推播列與開機模組不得 import（會讓個人頁分塊多出匯出或拆出共用分塊，改到入口）。
 
 /**
- * 開通前只有 QA 帳號看得到開關（顧問 §3.699 Q5）；開通批次改成 true 讓所有人看到。
+ * 已公開（站長 2026-11-25 決定）：所有登入者都看得到開關，推播列程式到之前個人頁先放等高空白。
+ * 取代開通前「只有 QA 帳號看得到」（顧問 §3.699 Q5）；false 分支保留，WebPushRow／WebPushSlot 測試以注入 false 繼續鎖住。
  * 不用 isInternalTestMode()：那是建置層級旗標，正式建置預設為真，不能拿來分人。
  * 設計書原列在 config.ts；移到這裡是因為個人頁（WebPushSlot）要同步讀它，config.ts 被開機模組共用，放那裡會改到入口。
  */
-export const WEB_PUSH_UI_PUBLIC = false;
+export const WEB_PUSH_UI_PUBLIC = true;
 
 export type WebPushEnv = 'line-android' | 'line-ios' | 'ios-home' | 'unsupported' | 'capable';
 
