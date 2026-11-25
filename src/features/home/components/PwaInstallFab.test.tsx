@@ -304,13 +304,63 @@ describe('PwaInstallFab', () => {
     expect(document.getElementById('pwa-system-picker')).toBeNull();
   });
 
-  it('沒有安裝事件：點了打開安裝教學（選系統）', async () => {
+  it('沒有安裝事件：手機點了打開安裝教學（選系統）', async () => {
+    stubUa('Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1');
     render(<PwaInstallFab />);
     await act(async () => {
       fireEvent.click(document.querySelector('.pwa-install-fab')!);
       await new Promise((r) => setTimeout(r, 50));
     });
     await vi.waitFor(() => expect(document.getElementById('pwa-system-picker')).not.toBeNull());
+  });
+
+  it('電腦：原生安裝視窗被關掉後浮球收起，不會再點出手機教學', async () => {
+    stubUa('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/142.0.0.0 Safari/537.36');
+    const ev = fakeInstallEvent('dismissed');
+    _setDeferredInstallPromptForTest(ev);
+    render(<PwaInstallFab />);
+    await act(async () => {
+      fireEvent.click(document.querySelector('.pwa-install-fab')!);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(ev.prompt).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.pwa-install-fab')).toBeNull();
+    expect(document.getElementById('pwa-system-picker')).toBeNull();
+  });
+
+  it('手機：原生安裝視窗被關掉後浮球保留', async () => {
+    stubUa('Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/142.0.0.0 Mobile Safari/537.36');
+    _setDeferredInstallPromptForTest(fakeInstallEvent('dismissed'));
+    render(<PwaInstallFab />);
+    await act(async () => {
+      fireEvent.click(document.querySelector('.pwa-install-fab')!);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(document.querySelector('.pwa-install-fab')).not.toBeNull();
+  });
+
+  it('安裝泡泡顯示中收到 appinstalled：浮球與泡泡一起收', async () => {
+    vi.useFakeTimers();
+    render(<PwaInstallFab />);
+    act(() => {
+      vi.advanceTimersByTime(PWA_FAB_HINT_DELAY_MS);
+    });
+    expect(document.querySelector('.pwa-install-fab-hint')).not.toBeNull();
+    act(() => {
+      window.dispatchEvent(new Event('appinstalled'));
+    });
+    expect(document.querySelector('.pwa-install-fab')).toBeNull();
+    expect(document.querySelector('.pwa-install-fab-hint')).toBeNull();
+  });
+
+  it('切換語系後浮球標籤跟著換', async () => {
+    render(<PwaInstallFab />);
+    await act(async () => {
+      await setLocale('en');
+    });
+    expect(document.querySelector('.pwa-install-fab')?.getAttribute('aria-label')).not.toBe('加到主畫面');
   });
 
   it('收到 appinstalled 後浮球消失', async () => {

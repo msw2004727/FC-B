@@ -4,7 +4,7 @@ import './pwa-install-fab.css';
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
-import { t } from '@/i18n/i18n';
+import { t, useT } from '@/i18n/i18n';
 import {
   clearDeferredInstallPrompt,
   getDeferredInstallPrompt,
@@ -197,13 +197,18 @@ export function PwaInstallFab(): JSX.Element | null {
   const [step, setStep] = useState<PwaModalStep>('none');
   const [Modals, setModals] = useState<ModalsComponent | null>(null);
   const [installed, setInstalled] = useState(false);
+  const tr = useT();
 
   useEffect(() => {
     let stop: (() => void) | undefined;
     const id = setTimeout(() => {
       stop = showPwaFabHintWhenFree();
     }, PWA_FAB_HINT_DELAY_MS);
-    const onInstalled = (): void => setInstalled(true);
+    // 裝好就連提示泡泡一起收（審查：泡泡顯示中安裝完成會殘留）。
+    const onInstalled = (): void => {
+      stop?.();
+      setInstalled(true);
+    };
     addEventListener('appinstalled', onInstalled);
     return () => {
       clearTimeout(id);
@@ -227,7 +232,8 @@ export function PwaInstallFab(): JSX.Element | null {
 
   const watchChoice = async (choice: Promise<{ outcome: string }>): Promise<void> => {
     try {
-      if ((await choice).outcome === 'accepted') setInstalled(true);
+      // 電腦沒有手機教學可開：原生視窗用掉後不論結果都收起浮球（審查：再點會跳出手機教學）。
+      if ((await choice).outcome === 'accepted' || !readPwaFabEnv().mobile) setInstalled(true);
     } catch {
       /* 使用者關掉或瀏覽器不回應就維持顯示 */
     }
@@ -241,13 +247,17 @@ export function PwaInstallFab(): JSX.Element | null {
       void watchChoice(deferred.userChoice);
       return;
     }
+    if (!readPwaFabEnv().mobile) {
+      setInstalled(true);
+      return;
+    }
     void openGuide();
   };
 
   return (
     <>
       {createPortal(
-        <button type="button" class="pwa-install-fab" aria-label={t('home.pwaFab.label')} onClick={onClick}>
+        <button type="button" class="pwa-install-fab" aria-label={tr('home.pwaFab.label')} onClick={onClick}>
           <span class="fab-gloss" aria-hidden="true" />
           <InstallIcon />
         </button>,

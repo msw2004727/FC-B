@@ -18,8 +18,10 @@
 
 .pwa-install-fab {
   --fab-c: var(--primary);
+  background: var(--primary); /* 不支援 color-mix 的舊瀏覽器退回單色（審查 P3-1） */
   background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--fab-c) 70%, #fff) 0%, var(--fab-c) 58%, color-mix(in srgb, var(--fab-c) 78%, #000) 100%);
   color: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
   box-shadow: 0 6px 18px rgba(0, 0, 0, .18), 0 0 14px 2px color-mix(in srgb, var(--fab-c) 45%, transparent);
   isolation: isolate;
 }

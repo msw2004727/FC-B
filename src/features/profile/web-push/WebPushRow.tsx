@@ -28,7 +28,7 @@ import {
 } from './flows';
 import { useWebPushT, type WebPushT } from './i18n';
 
-// 既有 iPhone 安裝教學彈窗（PwaModals）由側邊選單分塊取得：直接 import 會把它拆成新的共用分塊，改到首頁主程式。
+// 既有 iPhone 安裝教學彈窗（PwaModals）由側邊選單分塊取得（2026-11-25 起首頁浮球直接 import，PwaModals 已是獨立分塊；這裡沿用不改）。
 const PwaModals = lazy(() => import('@/ui/SideDrawer').then((m) => ({ default: m.PwaModals })));
 
 type View =
