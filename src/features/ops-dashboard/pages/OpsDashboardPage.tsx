@@ -11,6 +11,7 @@ import { PageSpinner } from '@/ui/PageSpinner';
 import { OpsAttention } from '../components/OpsAttention';
 import { OpsCostCard } from '../components/OpsCostCard';
 import { OpsKpiGrid } from '../components/OpsKpiGrid';
+import { OpsPushCard } from '../components/OpsPushCard';
 import { OpsRankCard } from '../components/OpsRankCard';
 import { OpsTrendChart } from '../components/OpsTrendChart';
 import { OpsShell, ReadFailed, StatusNote, useOpsGate } from '../components/OpsShell';
@@ -54,6 +55,7 @@ const CHEVRON = (
  * C3a：六個關鍵數字、需要注意、彙總過期（頁首警示色）。
  * C3b：趨勢圖只用這次已讀的 `trend`，切期間、切指標不再讀。
  * C3c：排行跟同一個期間鈕（`topEvents`／`topHosts`）；費用卡讀 `cost`。兩者缺資料就整塊不顯示，不當成錯誤。
+ * W6：推播裝置卡讀同一份 latest 的 `webPush`，放在費用卡後；latest 有讀到就顯示，缺資料是「—」。
  * 沒有放鴿子權限不讀 `opsSummary/noshow`，版面 5 格、趨勢鈕也少一顆。
  * `opsSummary` 不存在或 `trend` 為空時，相關區塊不顯示；讀取失敗（含權限錯誤）顯示「讀取失敗」。
  */
@@ -170,6 +172,7 @@ export default function OpsDashboardPage(): JSX.Element {
             <OpsRankCard kind="hosts" rows={hostRanks} t={t} onOpen={(href) => route(href)} />
           )}
           {costView && <OpsCostCard figures={costView} t={t} />}
+          {latest && <OpsPushCard counts={latest.webPush} t={t} />}
           {!cards && openEvents.kind === 'ok' && (
             <section class="od-a-kpi">
               <div class="od-summary">

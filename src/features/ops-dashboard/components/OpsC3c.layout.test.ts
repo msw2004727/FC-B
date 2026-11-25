@@ -79,6 +79,35 @@ describe('C3c 一行與不進首頁入口', () => {
     }
   });
 
+  it('W6 推播裝置卡：標籤在 360／375／390（2 欄）與 1280（4 欄）放得下，卡名＋每日更新同一列', () => {
+    const platforms: OpsStringKey[] = ['pushTotal', 'pushAndroid', 'pushDesktop', 'pushIosPwa', 'pushOther'];
+    for (const locale of LOCALES) {
+      for (const key of [...platforms, 'pushTitle' as const, 'pushDaily' as const]) {
+        expect(OPS_STRINGS[locale][key].includes('\n'), `${locale}.${key}`).toBe(false);
+        expect(OPS_STRINGS[locale][key], `${locale}.${key}`).not.toMatch(/ios_pwa|_/);
+      }
+      for (const viewport of [360, 375, 390, 1280]) {
+        const inner = contentWidth(viewport) - 0.85 * 16 * 2;
+        const gap = 0.35 * 16;
+        const width = (key: OpsStringKey): number => textPx(OPS_STRINGS[locale][key], 0.74 * 16);
+        if (viewport >= 600) {
+          // 4 欄 minmax(min-content, 1fr)：四個標籤加間距放得進卡內即不截斷。
+          const row = platforms.slice(1).reduce((sum, key) => sum + width(key), 0) + gap * 3;
+          expect(row, `${locale} push row @ ${viewport}`).toBeLessThan(inner);
+          expect(width('pushTotal'), `${locale}.pushTotal @ ${viewport}`).toBeLessThan(inner);
+        } else {
+          const cell = (inner - gap) / 2;
+          for (const key of platforms) expect(width(key), `${locale}.${key} @ ${viewport}`).toBeLessThan(cell);
+        }
+        const head = textPx(OPS_STRINGS[locale].pushTitle, 0.78 * 16) + 0.6 * 16 + textPx(OPS_STRINGS[locale].pushDaily, 0.72 * 16);
+        expect(head, `${locale} push head @ ${viewport}`).toBeLessThan(inner);
+      }
+    }
+    expect(css).toMatch(/\.od-push-daily \{[^}]*white-space:\s*nowrap/);
+    expect(css).toMatch(/\.od-push \{ grid-template-columns: repeat\(4, minmax\(min-content, 1fr\)\); \}/);
+    expect(indexSource).not.toContain('OpsPushCard');
+  });
+
   it('排行與費用文字 nowrap，且不進首頁入口的靜態 import', () => {
     expect(css).toMatch(/\.od-rank-head \{[^}]*white-space:\s*nowrap/);
     expect(css).toMatch(/\.od-cost-label \{[^}]*white-space:\s*nowrap/);

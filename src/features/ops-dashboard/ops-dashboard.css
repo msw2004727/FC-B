@@ -106,6 +106,14 @@
 .ops-dash .od-cost-label { display: block; font-size: .74rem; font-weight: 700; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ops-dash .od-cost-num { display: block; margin-top: .2rem; font-family: var(--font-display); font-size: .95rem; font-weight: 700; line-height: 1.1; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* W6 推播裝置數：卡名＋每日更新一列，總數一列，四平台手機 2 欄、600 以上 4 欄（欄寬至少容得下標籤，長標籤不被截斷）。標籤與數字都不換行。 */
+.ops-dash .od-push-head { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; margin-bottom: .45rem; min-width: 0; }
+.ops-dash .od-push-head .od-rank-head { margin: 0; min-width: 0; }
+.ops-dash .od-push-daily { flex: 0 0 auto; font-size: .72rem; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
+.ops-dash .od-push { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem .35rem; }
+.ops-dash .od-push-total { grid-column: 1 / -1; }
+.ops-dash .od-push-total .od-num { display: block; margin-top: .2rem; }
+
 /* 名單（預覽排行列樣式） */
 .ops-dash .od-rank { list-style: none; margin: 0; padding: 0; }
 .ops-dash .od-rank li + li { border-top: 1px solid var(--border); }
@@ -137,6 +145,7 @@
   .ops-dash .od-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }
   .ops-dash .od-form { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); align-items: end; }
   .ops-dash .od-field-kw { grid-column: auto; }
+  .ops-dash .od-push { grid-template-columns: repeat(4, minmax(min-content, 1fr)); }
 }
 
 /* 趨勢圖（§2.3）。色只用既有 token；文字 nowrap（R-UI-027）；圖本身不橫向溢出。 */
