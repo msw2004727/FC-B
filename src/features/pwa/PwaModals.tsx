@@ -1,6 +1,7 @@
 // PWA 安裝教學彈窗（M-030、M-031、U-007）：DOM、id、class 照 A `js/modules/pwa-install.js`。
 // 文字 2026-11-25 依站長同意的核對結果修正（iOS 26「⋯」裡的分享、「打開為網頁 App」開關、390 寬不折行），並改為七語（pwa-guide-i18n）。
 
+import { Fragment } from 'preact';
 import { createPortal } from 'preact/compat';
 import { toast } from '@/ui/Toast';
 import { copyTextToClipboard, isLineInAppBrowser } from './pwa-install';
@@ -206,41 +207,31 @@ export function PwaModals({ step, onChangeStep }: PwaModalsProps): preact.JSX.El
             </button>
             <div class="pwa-guide-url-hint">toosterx.com</div>
             <div class="pwa-guide-divider" />
-            <div class="pwa-guide-step">
-              <div class="pwa-guide-num">2</div>
-              <div class="pwa-guide-text">
-                <strong>{t('iosShareStep')}</strong>
-                <br />
-                {t('iosShareHint')}
-              </div>
-            </div>
-            <div class="pwa-guide-img-wrap">
-              <img class="pwa-guide-img" src="/PWA/PWA01.jpg" alt={t('stepAlt', { n: 2 })} />
-            </div>
-            <div class="pwa-guide-divider" />
-            <div class="pwa-guide-step">
-              <div class="pwa-guide-num">3</div>
-              <div class="pwa-guide-text">
-                <strong>{t('iosAddStep')}</strong>
-                <br />
-                {t('iosAddHint')}
-              </div>
-            </div>
-            <div class="pwa-guide-img-wrap">
-              <img class="pwa-guide-img" src="/PWA/PWA02.jpg" alt={t('stepAlt', { n: 3 })} />
-            </div>
-            <div class="pwa-guide-divider" />
-            <div class="pwa-guide-step">
-              <div class="pwa-guide-num">4</div>
-              <div class="pwa-guide-text">
-                <strong>{t('iosWebAppStep')}</strong>
-                <br />
-                {t('iosWebAppHint')}
-              </div>
-            </div>
-            <div class="pwa-guide-img-wrap">
-              <img class="pwa-guide-img" src="/PWA/PWA03.jpg" alt={t('stepAlt', { n: 4 })} />
-            </div>
+            {/* 站長 2026-11-25 iPhone 實測後補兩步（第 2 步「≡」、第 4 步「檢視較多」），其餘順延。 */}
+            {(
+              [
+                ['iosMenuStep', 'iosMenuHint', '/PWA/PWA-ios-menu.jpg'],
+                ['iosShareStep', 'iosShareHint', '/PWA/PWA01.jpg'],
+                ['iosMoreStep', 'iosMoreHint', '/PWA/PWA-ios-more.jpg'],
+                ['iosAddStep', 'iosAddHint', '/PWA/PWA02.jpg'],
+                ['iosWebAppStep', 'iosWebAppHint', '/PWA/PWA03.jpg'],
+              ] as const
+            ).map(([step, hint, img], i) => (
+              <Fragment key={step}>
+                {i > 0 && <div class="pwa-guide-divider" />}
+                <div class="pwa-guide-step">
+                  <div class="pwa-guide-num">{i + 2}</div>
+                  <div class="pwa-guide-text">
+                    <strong>{t(step)}</strong>
+                    <br />
+                    {t(hint)}
+                  </div>
+                </div>
+                <div class="pwa-guide-img-wrap">
+                  <img class="pwa-guide-img" src={img} alt={t('stepAlt', { n: i + 2 })} />
+                </div>
+              </Fragment>
+            ))}
           </div>
         </div>
       </div>
