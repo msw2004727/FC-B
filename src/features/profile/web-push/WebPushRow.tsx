@@ -2,7 +2,8 @@
 // DOM 與 class 照預覽：.wp-block > .line-notify-row.wp-row（＋提示列 .line-notify-hint.wp-hint）、下方 .wp-sep。
 // 狀態機見設計書 §4：H 不畫、L1／L2 LINE 內、I iPhone 未加主畫面、C 讀取中、B 已封鎖、O 可開啟、S 送出中、N 已開啟。
 // 讀取中用全站共用轉圈（ui-spin，站長同意的差異 1）；本列程式與字典到之前由 WebPushSlot 先放等高空白（差異 2）。
-// 開通前只有 QA 帳號看得到（顧問 §3.699 Q5，WEB_PUSH_UI_PUBLIC）。
+// 開通前只有 QA 帳號與最高管理員看得到（顧問 §3.699 Q5，WEB_PUSH_UI_PUBLIC；最高管理員供站長本人實機實測，
+// 伺服器 registerWebPushSubscription 同步放行 role claim＝super_admin）。
 
 import './web-push.css';
 import type { JSX } from 'preact';
@@ -10,6 +11,7 @@ import { lazy, Suspense } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { getReadyLiff } from '@/data/liff-init';
 import type { PwaModalStep } from '@/features/pwa/PwaModals';
+import { useSettledViewerRole } from '@/features/profile/data/viewer';
 import { useQaSession } from '@/features/qa-login/data/qa-session';
 import { useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
@@ -107,7 +109,7 @@ export interface WebPushRowProps {
   env: WebPushEnv;
   /** iPhone／iPad 主畫面 App：封鎖時顯示 iPhone 設定步驟。 */
   iosStandalone: boolean;
-  /** env.ts 的 WEB_PUSH_UI_PUBLIC（由 WebPushSlot 傳入，同上理由）。false＝開通前只給 QA 帳號看。 */
+  /** env.ts 的 WEB_PUSH_UI_PUBLIC（由 WebPushSlot 傳入，同上理由）。false＝開通前只給 QA 帳號與最高管理員看。 */
   uiPublic: boolean;
 }
 
@@ -115,13 +117,17 @@ export function WebPushRow({ uid, env, iosStandalone, uiPublic }: WebPushRowProp
   const t = useT();
   const wt = useWebPushT();
   const qa = useQaSession(uiPublic ? null : uid);
+  // 角色來自 viewer 既有的 users/{uid} 讀取（loadViewer → publishSettledRole），本檔不另讀資料庫；
+  // 還沒讀到或讀取失敗時為 null＝不算最高管理員（照現行規則先不畫，一般使用者不會看到開關一閃）。
+  const settledRole = useSettledViewerRole(uiPublic ? null : uid);
+  const isSuperAdmin = settledRole === 'super_admin';
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [pwaStep, setPwaStep] = useState<PwaModalStep>('none');
   const mountedRef = useRef(true);
   const uidRef = useRef(uid);
   uidRef.current = uid;
   const checkSeq = useRef(0);
-  const visible = uiPublic || !!qa;
+  const visible = uiPublic || !!qa || isSuperAdmin;
 
   useEffect(() => {
     mountedRef.current = true;

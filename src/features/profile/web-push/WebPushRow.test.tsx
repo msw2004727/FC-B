@@ -6,6 +6,11 @@ const qaState = vi.hoisted(() => ({ value: { persona: 'memberA', agent: null } a
 vi.mock('@/features/qa-login/data/qa-session', () => ({
   useQaSession: (uid: string | null) => (uid === null ? null : qaState.value),
 }));
+// 已確定角色（viewer 讀 users/{uid} 後發出）；null＝還沒讀到或讀取失敗。uid 為 null（開通後）時回 null。
+const roleState = vi.hoisted(() => ({ value: null as string | null }));
+vi.mock('@/features/profile/data/viewer', () => ({
+  useSettledViewerRole: (uid: string | null) => (uid === null ? null : roleState.value),
+}));
 vi.mock('@/data/liff-init', () => ({ getReadyLiff: vi.fn(() => null) }));
 vi.mock('@/ui/SideDrawer', () => ({
   PwaModals: ({ step }: { step: string }) => <div data-testid="pwa-modal" data-step={step} />,
@@ -47,6 +52,7 @@ beforeEach(async () => {
   _resetWebPushFlowsForTest();
   _resetWebPushDictForTest();
   qaState.value = { persona: 'memberA', agent: null };
+  roleState.value = null;
   vi.mocked(toast.show).mockClear();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   await setLocale('zh-TW');
@@ -197,6 +203,54 @@ describe('U 推播列', () => {
     cleanup();
     const c = render(<WebPushRow uid="u1" env="line-android" iosStandalone={false} uiPublic />);
     expect(c.container.querySelector('.wp-row')).not.toBeNull();
+  });
+
+  it('開通前最高管理員（非 QA）：看得到開關並照常查狀態', async () => {
+    use(fakeWorld());
+    qaState.value = null;
+    roleState.value = 'super_admin';
+    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
+    await waitFor(() => expect(stateOf(container)).toBe('off'));
+    expect(toggleOf(container)).not.toBeNull();
+  });
+
+  it.each([
+    ['user', 'user'],
+    ['admin', 'admin'],
+    ['coach', 'coach'],
+    ['大小寫不同 Super_Admin', 'Super_Admin'],
+    ['大寫 SUPER_ADMIN', 'SUPER_ADMIN'],
+    ['角色還沒確定（null）', null],
+  ])('開通前非最高管理員（%s）且非 QA → 不畫、不查狀態', async (_label, role) => {
+    const w = use(fakeWorld());
+    const spy = vi.spyOn(w.deps, 'getRegistration');
+    qaState.value = null;
+    roleState.value = role;
+    const { container } = render(<WebPushRow uid="u1" env="capable" iosStandalone={false} uiPublic={false} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container.innerHTML).toBe('');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('最高管理員但 QA 判斷中 → 先不畫（照現行規則，不放空白）', () => {
+    use(fakeWorld());
+    qaState.value = undefined;
+    roleState.value = 'super_admin';
+    const { container } = render(<WebPushRow uid="u1" env="line-android" iosStandalone={false} uiPublic={false} />);
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('角色晚到：一般使用者全程不畫；確定為最高管理員後才出現', async () => {
+    use(fakeWorld());
+    qaState.value = null;
+    roleState.value = null;
+    const r = render(<WebPushRow uid="u1" env="line-android" iosStandalone={false} uiPublic={false} />);
+    expect(r.container.innerHTML).toBe('');
+    roleState.value = 'super_admin';
+    r.rerender(<WebPushRow uid="u1" env="line-android" iosStandalone={false} uiPublic={false} />);
+    expect(r.container.querySelector('.wp-row')).not.toBeNull();
   });
 
   it('L-43：uid 換人 → 重設並重查（舊 uid 的結果丟棄）', async () => {
