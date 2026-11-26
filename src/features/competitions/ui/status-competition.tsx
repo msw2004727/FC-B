@@ -206,6 +206,7 @@ export function StatusCompetitionDialog(props: StatusCompetitionProps & { onClos
         {showReason ? (
           <Textarea
             label={ct('statusReason')}
+            hint={ct('statusReasonHint')}
             required
             value={reason}
             maxLength={STATUS_REASON_MAX}

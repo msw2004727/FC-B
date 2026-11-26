@@ -213,7 +213,7 @@ describe('狀態確認框', () => {
     fireEvent.click(button('延期或取消賽事'));
     await waitFor(() => expect(dialog()).toBeTruthy());
     fireEvent.click(screen.getByLabelText('延期（日期另行公布）'));
-    fillTextarea('原因（會公開）', '場地整修');
+    fillTextarea('原因', '場地整修');
     fireEvent.click(footerButton('確定延期'));
     await waitFor(() => {
       expect(setCompetitionStatus).toHaveBeenCalledTimes(1);
@@ -231,7 +231,7 @@ describe('狀態確認框', () => {
     fireEvent.click(button('延期或取消賽事'));
     await waitFor(() => expect(dialog()).toBeTruthy());
     fireEvent.click(screen.getByLabelText('取消賽事'));
-    fillTextarea('原因（會公開）', '颱風');
+    fillTextarea('原因', '颱風');
     const before = armedButton();
     expect(before.disabled).toBe(true);
     expect(before.getAttribute('data-confirm-armed')).toBe('false');
@@ -268,7 +268,7 @@ describe('狀態確認框', () => {
     fireEvent.click(button('延期或取消賽事'));
     await waitFor(() => expect(dialog()).toBeTruthy());
     fireEvent.click(screen.getByLabelText('延期（日期另行公布）'));
-    fillTextarea('原因（會公開）', '場地整修');
+    fillTextarea('原因', '場地整修');
     fireEvent.click(footerButton('確定延期'));
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('賽事目前的狀態不能這樣改');
