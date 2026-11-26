@@ -16,7 +16,7 @@ import {
 import { CpEnvProvider, type CpInjectedEnv } from '../env';
 import { loadCompetitionsDict } from '../i18n';
 import cpZh from '../locales-lazy/zh-TW.json';
-import { memberActor, screenEnv } from '../testing/screen-fixtures';
+import { memberActor, repActor, screenEnv } from '../testing/screen-fixtures';
 import JoinRosterPage from './JoinRosterPage';
 import RosterPage from './RosterPage';
 
@@ -70,7 +70,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
 const BLOCKED = '只有俱樂部成員可以做這個操作';
 
 /** 名單頁 fixture 的報隊 en_a 屬 club_a（teams 文件 id）。reader 回 teams/club_a 的 id 欄位（undefined＝文件不存在）。 */
-function envWith(memberClubIds: string[], idField: unknown, screenName: 'roster' | 'form-self-adult' = 'roster') {
+function envWith(memberClubIds: string[], idField: unknown, screenName: 'roster' | 'roster-member' | 'form-self-adult' = 'roster') {
   const reader = vi.fn(async (_teamId: string) => idField);
   const env: CpInjectedEnv = {
     ...screenEnv(screenName),
@@ -189,6 +189,57 @@ describe('名單頁與自己登錄頁（六種情況）', () => {
   it('沒注入 clubKeys（harness）：只用文件 id、不讀網路，行為與改前相同', async () => {
     const env: CpInjectedEnv = { ...screenEnv('roster'), actor: { ...memberActor, memberClubIds: ['legacy_a'] } };
     mount(RosterPage, env);
+    expect(screen.queryByRole('button', { name: JOIN_BTN })).toBeNull();
+  });
+});
+
+describe('整合版名單頁（cp-batch-0930）：canSelfJoin＝代表或雙鍵成員', () => {
+  /** 換算永遠不回來：用來確認「換算中」的畫面。 */
+  const never = () => new Promise<readonly string[]>(() => {});
+
+  it('只有自訂 id 的成員：換算完看得到「登錄名單」（主要鈕）', async () => {
+    const { env, reader } = envWith(['legacy_a'], 'legacy_a', 'roster-member');
+    mount(RosterPage, env);
+    const join = await screen.findByRole('button', { name: JOIN_BTN });
+    expect(join.className).toContain('ui-button--primary');
+    expect(reader).toHaveBeenCalledWith('club_a');
+  });
+
+  it('換算中：只有自訂 id 的成員先看不到「登錄名單」', () => {
+    const env: CpInjectedEnv = {
+      ...screenEnv('roster-member'),
+      actor: { ...memberActor, memberClubIds: ['legacy_a'] },
+      clubKeys: never,
+    };
+    mount(RosterPage, env);
+    expect(screen.queryByRole('button', { name: JOIN_BTN })).toBeNull();
+  });
+
+  it('代表不必等換算：換算中也直接看得到「登錄名單」（次要鈕）', () => {
+    const env: CpInjectedEnv = {
+      ...screenEnv('roster'),
+      actor: { ...repActor, memberClubIds: ['legacy_a'] },
+      clubKeys: never,
+    };
+    mount(RosterPage, env);
+    expect(screen.getByRole('button', { name: JOIN_BTN }).className).toContain('ui-button--secondary');
+  });
+
+  it('只有自訂 id 的成員：賽事延期時仍看不到「登錄名單」（rosterPhaseOpen 照整合版）', async () => {
+    const { env, reader } = envWith(['legacy_a'], 'legacy_a', 'roster-member');
+    env.bundle = { ...env.bundle!, competition: { ...env.bundle!.competition!, status: 'postponed' } };
+    mount(RosterPage, env);
+    await waitFor(() => expect(reader).toHaveBeenCalled());
+    await reader.mock.results[0]!.value;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole('button', { name: JOIN_BTN })).toBeNull();
+  });
+
+  it('只有自訂 id 的成員、已在本隊名單：不顯示「登錄名單」，自己那列是「退出名單」', async () => {
+    const { env } = envWith(['legacy_a'], 'legacy_a', 'roster-member');
+    env.bundle = { ...env.bundle!, myPlIds: ['pl_2'] };
+    mount(RosterPage, env);
+    expect(await screen.findByRole('button', { name: '退出名單' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: JOIN_BTN })).toBeNull();
   });
 });
