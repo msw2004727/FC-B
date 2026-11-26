@@ -55,6 +55,8 @@ const ERROR_TEXT: Readonly<Record<string, string>> = {
   DRY_RUN_REQUIRED: C.required,
   SUMMARY_TOO_LARGE: C.tooLarge,
   SUPER_ADMIN_ONLY: C.superOnly,
+  // 伺服器另對站長 uid 白名單（cpOwnerConfig/removal）；不在名單同樣顯示需由站長本人操作
+  OWNER_ONLY: C.superOnly,
 };
 
 const ROW = 'display:flex;gap:.6rem;align-items:center;flex-wrap:wrap';

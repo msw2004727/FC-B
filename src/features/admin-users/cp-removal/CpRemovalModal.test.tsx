@@ -196,6 +196,7 @@ describe('賽事個資移除面板：執行', () => {
 
   it.each([
     ['SUPER_ADMIN_ONLY', '執行需由站長本人操作'],
+    ['OWNER_ONLY', '執行需由站長本人操作'],
     ['SUMMARY_TOO_LARGE', '資料太多，這次無法執行'],
     ['DRY_RUN_REQUIRED', '請先產生試算'],
     ['INTERNAL', '操作失敗，請稍後再試'],
