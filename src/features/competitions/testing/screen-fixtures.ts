@@ -1762,6 +1762,9 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return base(actions, memberActor, { ...rosterBundle(SHORT_PLAYERS, false), myPlIds: ['pl_2'] });
     case 'roster-self-locked':
       return base(actions, memberActor, { ...rosterBundle(SHORT_PLAYERS, true), myPlIds: ['pl_2'] });
+    case 'roster-self-started':
+      // 第一場已開打（名單未鎖）：一樣不顯示退出鍵
+      return { ...base(actions, memberActor, { ...rosterBundle(SHORT_PLAYERS, false), myPlIds: ['pl_2'] }), now: FIRST_MATCH };
     // 已在本賽事其他隊伍名單：送出登錄時後端回 ALREADY_IN_ROSTER
     case 'form-already':
       return base({

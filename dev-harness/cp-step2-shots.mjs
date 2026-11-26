@@ -26,7 +26,7 @@ const ANCHORS = {
   'edit-started': '首場已開始，時間不能再改', 'edit-locked': '名單已鎖定，組別只能改名稱', 'edit-denied': '這場賽事目前不能編輯',
   'edit-1-personal': '主辦名稱', 'edit-scheduled': '已排賽程，既有場地不能更改', 'edit-3': '儲存變更', 'edit-entry-manage': '編輯賽事', 'edit-entry-detail': '編輯賽事',
   'roster-member': '登錄名單', 'roster-remove': '確定要移除',
-  'roster-self': '退出名單', 'roster-self-confirm': '確定要退出', 'roster-self-locked': '名單已鎖定', 'form-already': '你已在本賽事其他隊伍名單', 'form-error': '送出', 'form-custom-pos': '自訂', 'form-ineligible': '只有俱樂部成員可以做這個操作',
+  'roster-self': '退出名單', 'roster-self-confirm': '確定要退出', 'roster-self-locked': '名單已鎖定', 'roster-self-started': '林示範', 'form-already': '你已在本賽事其他隊伍名單', 'form-error': '送出', 'form-custom-pos': '自訂', 'form-ineligible': '只有俱樂部成員可以做這個操作',
 };
 const THEMES_ALL = ['light', 'dark'];
 // [畫面, 寬度組, 主題組, 是否整頁（對話框／底部面板只截可視範圍）]
@@ -74,6 +74,7 @@ const SCREENS = [
   ['roster-self', ALL, THEMES_ALL, true],
   ['roster-self-confirm', ALL, THEMES_ALL, false],
   ['roster-self-locked', ALL, THEMES_ALL, true],
+  ['roster-self-started', ALL, THEMES_ALL, true],
   ['form-already', ALL, THEMES_ALL, true],
   // 既有小修（顧問 §3.505）
   ['host-pending-empty', NEW, THEMES_ALL, true],

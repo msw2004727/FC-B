@@ -139,6 +139,19 @@ describe('名單頁：球員本人退出（CP-PO-08）', () => {
   });
 
   it('已開賽（第一場開打後）：沒有退出鍵', () => {
+    mount(RosterPage, screenEnv('roster-self-started'));
+    expect(screen.getByText('林示範')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: LEAVE })).toBeNull();
+  });
+
+  it('開賽前一毫秒仍可退出（與後端 nowMs >= firstMatchAt 同一邊界）', () => {
+    const env = screenEnv('roster-self');
+    env.now = FIRST_MATCH - 1;
+    mount(RosterPage, env);
+    expect(screen.getByRole('button', { name: LEAVE })).toBeTruthy();
+  });
+
+  it('已開賽（直接改 now）：沒有退出鍵', () => {
     const env = screenEnv('roster-self');
     env.now = FIRST_MATCH;
     mount(RosterPage, env);

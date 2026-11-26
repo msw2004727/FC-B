@@ -81,6 +81,7 @@ const PAGES: Record<string, ComponentType> = {
   'roster-self': RosterPage,
   'roster-self-confirm': RosterPage,
   'roster-self-locked': RosterPage,
+  'roster-self-started': RosterPage,
   'form-already': JoinRosterPage,
   'form-error': JoinRosterPage,
   'form-custom-pos': JoinRosterPage,
