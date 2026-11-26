@@ -9,7 +9,7 @@ import { CpEnvProvider, type CpActor, type CpInjectedEnv } from '../env';
 import { loadCompetitionsDict } from '../i18n';
 import { createFakeCpRepo, type FakeCpRepo } from '../testing/fake-cp-repo';
 import { competition, idleActions, memberActor, NOW, screenEnv } from '../testing/screen-fixtures';
-import CompetitionDetailPage from './CompetitionDetailPage';
+import CompetitionDetailPage, { FOREGROUND_RELOAD_MIN_MS } from './CompetitionDetailPage';
 
 const pendingActor: CpActor = { ...memberActor, uid: null, authPending: true };
 const guestActor: CpActor = { ...memberActor, uid: null, authPending: false };
@@ -148,6 +148,63 @@ describe('詳情頁登入待定時先不讀（d3）', () => {
   });
 });
 
+describe('詳情頁指派快取：晚到的合併讀不覆蓋（d1）', () => {
+  it('cid1 的合併讀還沒回來就換到 cid2：cid1 晚到不改快取，cid2 回前景只重讀 getStaff', async () => {
+    const base = createFakeCpRepo({
+      competitions: [competition({ id: 'cup', name: '示範盃' }), competition({ id: 'cup2', name: '第二盃' })],
+      assignments: {
+        cup: [{ uid: memberActor.uid ?? 'uid_member', roles: ['referee'], matchIds: [], expiresAt: null }],
+        cup2: [{ uid: memberActor.uid ?? 'uid_member', roles: ['scorer'], matchIds: ['mt_2'], expiresAt: null }],
+      },
+    });
+    let releaseFirst: () => void = () => undefined;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const merged: string[] = [];
+    const repo = {
+      ...base,
+      getStaffWithAssignment: async (cid: string, uid: string) => {
+        merged.push(cid);
+        if (cid === 'cup') await firstGate;
+        return base.getStaffWithAssignment(cid, uid);
+      },
+    };
+    const clock = 1_700_000_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(clock);
+    try {
+      const env1: CpInjectedEnv = { ...envOf(memberActor, repo), route: { cid: 'cup' } };
+      const view = render(node(env1));
+      await waitFor(() => expect(merged).toEqual(['cup']));
+      view.rerender(node({ ...env1, route: { cid: 'cup2' } }));
+      expect(await screen.findByRole('heading', { level: 1, name: '第二盃' })).toBeTruthy();
+      expect(await screen.findByRole('button', { name: '我的場次' })).toBeTruthy();
+      expect(merged).toEqual(['cup', 'cup2']);
+
+      // cid1 晚到：不得把快取改成 cid1，畫面仍是 cid2。
+      await act(async () => {
+        releaseFirst();
+      });
+      await flush();
+      expect(screen.getByRole('heading', { level: 1, name: '第二盃' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: '我的場次' })).toBeTruthy();
+
+      const staffBefore = base.calls().filter((name) => name === 'getStaff').length;
+      nowSpy.mockReturnValue(clock + FOREGROUND_RELOAD_MIN_MS);
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+      await waitFor(() => expect(base.calls().filter((name) => name === 'getStaff')).toHaveLength(staffBefore + 1));
+      await flush();
+      // 回前景只打 getStaff，不再合併讀；指派仍是 cid2 的記分員。
+      expect(merged).toEqual(['cup', 'cup2']);
+      expect(base.calls()).not.toContain('getStaffAssignment');
+      expect(screen.getByRole('button', { name: '我的場次' })).toBeTruthy();
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+});
+
 describe('詳情頁量測標記（d4）', () => {
   it('名稱第一次畫出時記一次 cp:detail-title，不帶任何參數；重新渲染不再記', async () => {
     const mark = vi.spyOn(performance, 'mark');
@@ -158,7 +215,11 @@ describe('詳情頁量測標記（d4）', () => {
     await flush();
     expect(titleMarks()).toHaveLength(1);
     expect(titleMarks()[0]).toEqual(['cp:detail-title']);
-    view.rerender(node({ ...envOf(memberActor, repo), now: NOW + 1 }));
+    // 換登入者會讓頁面再走一次 loading → ready（名稱再畫一次），同一次掛載仍只記一次。
+    const calls = repo.calls().filter((name) => name === 'getStaffWithAssignment').length;
+    view.rerender(node(envOf({ ...memberActor, uid: 'uid_other' }, repo)));
+    await waitFor(() => expect(repo.calls().filter((name) => name === 'getStaffWithAssignment')).toHaveLength(calls + 1));
+    await screen.findByRole('heading', { level: 1, name: '示範盃' });
     await flush();
     expect(titleMarks()).toHaveLength(1);
   });

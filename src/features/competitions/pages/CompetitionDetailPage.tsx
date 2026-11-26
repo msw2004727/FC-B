@@ -498,7 +498,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const competition = bundle?.competition ?? null;
-  // 登入還在確認時先轉圈：主辦從深連結進來，uid 到之前會被拒，不先閃「不公開」（uid 到了 effect 會重讀）。
+  // 登入還在確認時先轉圈：主辦從深連結進來，uid 到之前會被拒，不先閃「不公開」。
+  // CP-DETAIL-SPEED d3 之後待定時不讀，正常流程到不了 hidden＋authPending；條件留著當防線。
   if (loadState === 'loading' || (loadState === 'hidden' && env.actor.authPending)) {
     return <div class="cps-root"><PageSpinner /></div>;
   }
