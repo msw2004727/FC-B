@@ -151,12 +151,15 @@ export function StaffListScreen(props: {
           })}
         </ul>
       </S4bCard>
-      <div class="s4b-pair">
-        <Button variant="primary" onClick={props.onAssign}>{copy.assignScorer}</Button>
-        {props.onInvite ? (
-          <Button variant="secondary" onClick={props.onInvite}>{props.inviteLabel ?? copy.generateInvite}</Button>
-        ) : null}
-      </div>
+      {/* 正式頁在賽事結束後不給 onAssign／onInvite（一致性盤點 #11），兩顆都沒有就整列不畫；示範頁（不受控）照舊。 */}
+      {!controlled || props.onAssign || props.onInvite ? (
+        <div class="s4b-pair">
+          {!controlled || props.onAssign ? <Button variant="primary" onClick={props.onAssign}>{copy.assignScorer}</Button> : null}
+          {props.onInvite ? (
+            <Button variant="secondary" onClick={props.onInvite}>{props.inviteLabel ?? copy.generateInvite}</Button>
+          ) : null}
+        </div>
+      ) : null}
       {props.children}
       {props.confirm ? (
         <Modal
@@ -573,7 +576,8 @@ export function OpenInviteList(props: {
   empty: string;
   rows: readonly OpenInviteRow[];
   revokeLabel: string;
-  onRevoke: (id: string) => void;
+  /** 沒給就不畫撤銷鈕（賽事結束後撤銷會被後端拒絕）。 */
+  onRevoke?: (id: string) => void;
   /** 讀取失敗：顯示訊息與重試，不顯示「沒有」。 */
   failed?: { message: string; retryLabel: string; onRetry: () => void } | null;
 }): JSX.Element {
@@ -596,9 +600,11 @@ export function OpenInviteList(props: {
                   <span class="s4b-k s4b-inv__role">{row.roleLabel}</span>
                   <span class="s4b-k s4b-inv__n">{row.countLabel}</span>
                   <span class="s4b-staff__gap" />
-                  <span class="s4b-mini">
-                    <Button variant="danger" size="sm" onClick={() => props.onRevoke(row.id)}>{props.revokeLabel}</Button>
-                  </span>
+                  {props.onRevoke ? (
+                    <span class="s4b-mini">
+                      <Button variant="danger" size="sm" onClick={() => props.onRevoke?.(row.id)}>{props.revokeLabel}</Button>
+                    </span>
+                  ) : null}
                 </div>
                 <p class="s4b-inv__exp">{row.expiresLabel}</p>
               </div>

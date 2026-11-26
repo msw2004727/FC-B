@@ -133,7 +133,8 @@ describe('工作人員頁（K11）', () => {
     const exp = [...view.container.querySelectorAll('.s4b-staff__exp')].map((el) => el.textContent);
     // 只有陳小明（記分員、有到期）。共同主辦沒有記分角色不顯示；裁判 null 不顯示。
     expect(exp).toEqual(['01/16 18:00 到期']);
-    expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites']);
+    // A 組 #11：主辦、管理員另讀賽事主文件一次（與名單並行），判斷結束後收起按鈕
+    expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites', 'getCompetition']);
   });
 
   it('顧問 11-20：主辦兼記分顯示「主辦」「記分員」兩個標籤，到期跟著記分角色；只有主辦一個標籤', async () => {

@@ -270,6 +270,14 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
       </CpFrame>
     );
   }
+  // 下架時排賽程只留管理員（後端 hostComp COMPETITION_HIDDEN，#14）。
+  if (competition.hidden && !isCpAdmin(env.actor.role)) {
+    return (
+      <CpFrame title={ct('hostSchedTitle')}>
+        <p class="cps-note" role="alert">{ct('reason.COMPETITION_HIDDEN')}</p>
+      </CpFrame>
+    );
+  }
 
   function patchDay(index: number, patch: Partial<DayDraft>): void {
     setDays((prev) => prev.map((day, i) => (i === index ? { ...day, ...patch } : day)));

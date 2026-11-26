@@ -13,7 +13,7 @@ import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
-import { canEndCompetition, canHostOrCo, canShowFlexSchedule, isCpAdmin } from '../access';
+import { canEndCompetition, canHostOrCo, canShowFlexSchedule, hostEditsOpen, isCpAdmin } from '../access';
 import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import {
@@ -32,6 +32,7 @@ import {
   groupHostMatches,
   hostActions,
   hostBadgeKey,
+  scoreEntryOpen,
   hostShowsScore,
   isTransportFailure,
   matchDigest,
@@ -675,9 +676,16 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   const groups = groupHostMatches(matches, divisions, now, scheduleLabels(ct));
   const active = panel ? matches.find((row) => row.id === panel.mtId) ?? null : null;
   // 已發布、未結束就顯示結束賽事；延期、草稿不顯示。站長 11-23：沒排賽程也要能手動結束（後端同步拿掉 SCHEDULE_REQUIRED），取代原本「已有場次才顯示」。
-  const showEnd = canEndCompetition(comp);
-  // 順延／對調比照結束賽事，但已結束時管理員仍看得到。沒有場次不顯示。
-  const showFlex = canShowFlexSchedule(comp, isCpAdmin(env.actor.role)) && matches.length > 0;
+  const isAdmin = isCpAdmin(env.actor.role);
+  // 下架時只留管理員（後端 hostComp：hidden 且非管理員回 COMPETITION_HIDDEN，一致性盤點 #14）。
+  const hiddenBlock = comp.hidden && !isAdmin;
+  const showEnd = canEndCompetition(comp) && !hiddenBlock;
+  // 順延／對調：末場確認結束 3 天內主辦仍可用，管理員不受限（一致性盤點 #4）。沒有場次不顯示。
+  const showFlex = canShowFlexSchedule(comp, isAdmin, now) && matches.length > 0;
+  // 場次按鈕（確認、登錄比分、改期、取消、重置、棄權）都先過後端 assertNotEnded；結束後照同一條收起（#4）。
+  const rowsEditable = hostEditsOpen(comp, isAdmin, now) && !hiddenBlock;
+  // 「記分」走 Rules compScorableData（已發布、未下架）；賽事結束後記完也確認不了，一律不給（記分盤點 S1）。
+  const liveScoring = comp.endedAt == null && !comp.hidden;
 
   // 矮板（3.4）：只用這頁已讀到的場次與賽事文件。場次讀到上限（100）時數字都可能少算，整塊不放。
   // 第一格「進行中 N」或「下一場 HH:MM」；再加「今天 N 場」「待確認 N 場」；是 0 的格不放；一格都沒有不放板。
@@ -753,11 +761,14 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
               <CpCard>
                 <ul class="cp3-ml">
                   {day.matches.map((match) => {
-                    const actions = hostActions(match.status);
+                    const actions = rowsEditable ? hostActions(match.status) : [];
                     const badge = hostBadgeKey(match.status);
                     const reset = actions.includes('reset');
                     const rowActions = actions.filter((action) => action !== 'reset');
-                    const scoreEntry = showScoreEntry(match, now);
+                    const scoreEntry = liveScoring && showScoreEntry(match, now);
+                    // 開賽前不給「登錄比分」（後端 MATCH_NOT_STARTED），判棄權照舊可用（#8）。
+                    const scoreOpen = rowActions.includes('score') && scoreEntryOpen(match, now);
+                    const forfeitOnly = rowActions.includes('score') && !scoreOpen;
                     return (
                       <li class={`cp3-m${badge === 'live' ? ' cp3-m--live' : badge === 'cancelled' ? ' cp3-m--off' : match.id === nextId ? ' cp3-m--next' : ''}`} key={match.id}>
                         <div class="cp3-m__top">
@@ -791,8 +802,11 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
                             {rowActions.includes('confirm') ? (
                               <Button key="confirm" variant="primary" size="sm" disabled={busy} onClick={() => { void submitConfirm(match); }}>{ct('confirmMatch')}</Button>
                             ) : null}
-                            {rowActions.includes('score') ? (
+                            {scoreOpen ? (
                               <Button key="score" variant="secondary" size="sm" disabled={busy} onClick={() => openScore(match)}>{ct('enterScore')}</Button>
+                            ) : null}
+                            {forfeitOnly ? (
+                              <Button key="forfeit" variant="secondary" size="sm" disabled={busy} onClick={() => openForfeit(match)}>{ct('forfeitTitle')}</Button>
                             ) : null}
                             {scoreEntry ? (
                               <Button key="score-live" variant="secondary" size="sm" trailing={<NextIcon />} disabled={busy} onClick={() => route(`/competitions/${cid}/matches/${match.id}/score`)}>{ct('scoreTitle')}</Button>

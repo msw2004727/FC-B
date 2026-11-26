@@ -13,7 +13,7 @@ import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
-import { canEditCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canRestoreCompetition, isCpAdmin } from '../access';
+import { canEditCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canRestoreCompetition, hostEditsOpen, isCpAdmin } from '../access';
 import { canDeleteCompetition, isPrimaryHostView } from '../delete-access';
 import { canSetCompetitionStatus } from '../status-access';
 import { representativeClubs } from '../rep-clubs';
@@ -534,6 +534,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     repClubIds: clubs.map((club) => club.id),
     status: competition.status,
     hidden: competition.hidden,
+    rostersLockedAt: competition.rostersLockedAt,
+    endedAt: competition.endedAt,
     regOpenAt: competition.regOpenAt,
     regCloseAt: competition.regCloseAt,
     now,
@@ -561,11 +563,17 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     repClubIds: clubs.map((club) => club.id),
     hidden: competition.hidden,
     deletingAt,
+    endedAt: competition.endedAt,
     firstMatchAt: competition.firstMatchAt,
     now,
   });
   // 刪到一半：只留續刪入口與返回，其他主辦操作一律藏起來（後端也會回 COMPETITION_DELETING）。
   const frozen = deletingAt != null;
+  // 下架時主辦寫入只留管理員（後端 hostComp COMPETITION_HIDDEN，#14）；發布連管理員也不行（host.ts publish）。
+  const hiddenBlock = competition.hidden && !isAdmin;
+  const noticeHost = hostOps && !frozen && !hiddenBlock;
+  // 同分裁定另外過 assertNotEnded（末場確認 3 天寬限、管理員不受限）。
+  const tieHost = noticeHost && hostEditsOpen(competition, isAdmin, now);
   // 卡住時的說明：能續刪的人按下方；主辦但首場已過（只剩管理員能續刪）請聯絡管理員；共同主辦只看到刪除中。
   const stuckText = showDelete
     ? ct('deleteStuck')
@@ -838,7 +846,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         <nav class="cps-card d2-rows d2-manage d2-lines d2-lines--48" aria-label={ct('hostOnly')}>
           <div class="d2-manage__k">
             <span>{ct('hostOnly')}</span>
-            {manage && competition.status === 'draft' ? (
+            {manage && competition.status === 'draft' && !competition.hidden ? (
               <Button variant="primary" size="sm" loading={busy} onClick={() => { void publish(); }}>
                 {ct('publish')}
               </Button>
@@ -1001,7 +1009,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       <PublicBoard
         ct={ct}
         notices={competition.notices}
-        hostOps={hostOps && !frozen}
+        hostOps={noticeHost}
         busy={busy}
         onPost={publishNotice}
         onDelete={removeNotice}
@@ -1094,7 +1102,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                 docs={docs}
                 crests={entries}
                 divisions={divisions}
-                canHost={hostOps && !frozen}
+                canHost={tieHost}
                 cid={cid}
                 actions={env.actions}
                 summary={fullSchedule ?? summary}

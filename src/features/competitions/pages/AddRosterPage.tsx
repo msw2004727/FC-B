@@ -150,6 +150,8 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
     return <CpLoadFailed title={ct('addTitle')} fail={phase === 'hidden' ? 'hidden' : 'error'} />;
   }
 
+  // 代表清單還沒回來時，空陣列不代表「不是代表」（一致性盤點 #21，與登錄頁同一條）。
+  if (env.actor.repClubsPending === true) return <div class="cps-root"><PageSpinner /></div>;
   const block = rosterFormBlock({
     kind: 'rep',
     isMember: env.actor.memberClubIds.includes(entry?.teamId ?? ''),

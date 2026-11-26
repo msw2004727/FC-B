@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { canEndCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canSeeInAppSection, canShowFlexSchedule, canUnlockRosters, isCpAdmin, isCurrentClubRep, rosterFormBlock } from './access';
 import type { StaffRole } from './data/types';
 
-const window = { repClubIds: ['club_a'], status: 'published' as const, hidden: false, regOpenAt: 10, regCloseAt: 20, now: 15 };
+const window = { repClubIds: ['club_a'], status: 'published' as const, hidden: false, rostersLockedAt: null, endedAt: null, regOpenAt: 10, regCloseAt: 20, now: 15 };
 
 describe('賽事權限顯示', () => {
   it('管理員是 admin 或 super_admin', () => {
@@ -89,12 +89,12 @@ describe('賽事權限顯示', () => {
   });
 
   it('順延與對調只在已發布、且未結束或是管理員時顯示', () => {
-    expect(canShowFlexSchedule({ status: 'published', endedAt: null }, false)).toBe(true);
-    expect(canShowFlexSchedule({ status: 'published', endedAt: 1 }, false)).toBe(false);
-    expect(canShowFlexSchedule({ status: 'published', endedAt: 1 }, true)).toBe(true);
-    expect(canShowFlexSchedule({ status: 'draft', endedAt: null }, true)).toBe(false);
-    expect(canShowFlexSchedule({ status: 'postponed', endedAt: null }, false)).toBe(false);
-    expect(canShowFlexSchedule({ status: 'cancelled', endedAt: null }, true)).toBe(false);
+    expect(canShowFlexSchedule({ status: 'published', endedAt: null, endedBy: null, hidden: false }, false, 5)).toBe(true);
+    expect(canShowFlexSchedule({ status: 'published', endedAt: 1, endedBy: 'host', hidden: false }, false, 5)).toBe(false);
+    expect(canShowFlexSchedule({ status: 'published', endedAt: 1, endedBy: 'host', hidden: false }, true, 5)).toBe(true);
+    expect(canShowFlexSchedule({ status: 'draft', endedAt: null, endedBy: null, hidden: false }, true, 5)).toBe(false);
+    expect(canShowFlexSchedule({ status: 'postponed', endedAt: null, endedBy: null, hidden: false }, false, 5)).toBe(false);
+    expect(canShowFlexSchedule({ status: 'cancelled', endedAt: null, endedBy: null, hidden: false }, true, 5)).toBe(false);
   });
 
   it('解鎖：未鎖定不顯示；首場前主辦可解，首場後只留管理員', () => {

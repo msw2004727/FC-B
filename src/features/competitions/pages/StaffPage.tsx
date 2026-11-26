@@ -5,7 +5,7 @@ import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { PageSpinner } from '@/ui/PageSpinner';
-import { isCpAdmin } from '../access';
+import { hostEditsOpen, isCpAdmin } from '../access';
 import { liveCpActions } from '../actions';
 import {
   canRemoveStaffRow,
@@ -19,7 +19,7 @@ import {
 } from '../data/staff-assign';
 import { resolveHostAccess } from '../data/host-access';
 import { recallCompName, rememberCompName } from '../data/comp-name-hint';
-import type { InviteDoc, StaffAssignment, StaffAssignmentRole } from '../data/types';
+import type { CompetitionDoc, InviteDoc, StaffAssignment, StaffAssignmentRole } from '../data/types';
 import { formatTaipeiShort } from '../format';
 import type { CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
@@ -104,6 +104,8 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
   const [removeError, setRemoveError] = useState<string | null>(null);
   // 俱樂部目前代表：自己那一列顯示主辦（後端沒有代表的主辦 staff 文件）。
   const [clubRep, setClubRep] = useState(false);
+  // 賽事主文件：判斷結束、下架、取消（後端 staff-host.ts openHost）。讀不到就是 null，按鈕照舊交給伺服器判斷。
+  const [comp, setComp] = useState<CompetitionDoc | null>(null);
   // 頁首賽事名小字：代表那條路已讀到賽事就用它，否則用報隊管理、排賽程記下的名稱（不為名稱多讀）。
   const [compName, setCompName] = useState<string | undefined>(() => recallCompName(cid));
   const repKey = env.actor.repClubs.map((club) => club.id).join('\n');
@@ -134,11 +136,14 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
         setPhase('denied');
         return;
       }
-      const [next, open] = await Promise.all([
+      // 代表判斷已讀過賽事就沿用；主辦、管理員另讀一次（+1 讀，與名單並行），用來收起結束後一定失敗的按鈕（#11）。
+      const [next, open, loadedComp] = await Promise.all([
         env.repo.listStaff(cid),
         env.repo.listInvites(cid).then((rows) => ({ ok: true as const, rows }), () => ({ ok: false as const, rows: [] as InviteDoc[] })),
+        access.competition ? Promise.resolve(access.competition) : env.repo.getCompetition(cid).catch(() => null),
       ]);
       if (!alive) return;
+      setComp(loadedComp);
       setList(next);
       setInvites(open.rows);
       setInvitesFailed(!open.ok);
@@ -215,6 +220,17 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
     );
   }
   const uid = env.actor.uid;
+  const isAdmin = isCpAdmin(env.actor.role);
+  const now = env.now ?? Date.now();
+  // 指派、移除、撤銷邀請走 openHost：下架（非管理員）、刪除中、取消、assertNotEnded（末場確認 3 天寬限、管理員不受限）。
+  const staffOpen = comp == null || (
+    !(comp.hidden && !isAdmin)
+    && comp.deletingAt == null
+    && comp.status !== 'cancelled'
+    && hostEditsOpen(comp, isAdmin, now)
+  );
+  // 產生邀請另外擋任何已結束（staff-host.ts createInvite：endedAt 有值一律 COMPETITION_ENDED，管理員也一樣）。
+  const inviteOpen = staffOpen && (comp == null || comp.endedAt == null);
   const confirmCopy = confirmTarget?.kind === 'invite'
     ? { title: ct('inviteRevokeTitle'), body: ct('inviteRevokeBody'), confirmLabel: ct('inviteRevoke') }
     : { title: ct('staffRemoveTitle'), body: ct('staffRemoveBody'), confirmLabel: ct('remove') };
@@ -224,15 +240,15 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
       title={ct('staffTitle')}
       context={compName}
       removeLabel={(name) => ct('removePlayer', { name })}
-      rows={toRows(ct, clubRep ? withRepSelf(list, uid) : list, uid, viewer)}
+      rows={toRows(ct, clubRep ? withRepSelf(list, uid) : list, uid, viewer).map((row) => (staffOpen ? row : { ...row, removable: false }))}
       onBack={back}
-      onAssign={() => route(`/competitions/${cid}/staff/assign`)}
+      onAssign={staffOpen ? () => route(`/competitions/${cid}/staff/assign`) : undefined}
       onRemove={(id) => {
         setRemoveError(null);
         setConfirmTarget({ kind: 'staff', id });
       }}
       inviteLabel={ct('staffInvite')}
-      onInvite={() => route(`/competitions/${cid}/staff/invite`)}
+      onInvite={inviteOpen ? () => route(`/competitions/${cid}/staff/invite`) : undefined}
       confirmBusy={busy}
       confirm={confirmTarget ? {
         ...confirmCopy,
@@ -252,10 +268,10 @@ function StaffView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Eleme
         rows={inviteRows(ct, invites)}
         revokeLabel={ct('inviteRevoke')}
         failed={invitesFailed ? { message: ct('loadFailed'), retryLabel: ct('retry'), onRetry: () => { void retryInvites(); } } : null}
-        onRevoke={(id) => {
+        onRevoke={staffOpen ? (id) => {
           setRemoveError(null);
           setConfirmTarget({ kind: 'invite', id });
-        }}
+        } : undefined}
       />
     </StaffListScreen>
   );

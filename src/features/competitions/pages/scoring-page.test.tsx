@@ -225,6 +225,25 @@ describe('正式記分頁權限', () => {
     expect(unused).not.toHaveBeenCalled();
   });
 
+  it('A 組 S1：賽事已結束時不給記分板，顯示賽事已結束；沒結束照常', async () => {
+    const made = await deps({ staffRoles: ['scorer'], matchIds: [MT] });
+    render(
+      <LocationProvider>
+        <ScoringScreen cid={CID} mtId={MT} deps={made.deps} nowMs={NOW} endedCheck={async () => true} />
+      </LocationProvider>,
+    );
+    expect(await screen.findByText('賽事已結束，不能再修改')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '開賽' })).toBeNull();
+    cleanup();
+    const open = await deps({ staffRoles: ['scorer'], matchIds: [MT] });
+    render(
+      <LocationProvider>
+        <ScoringScreen cid={CID} mtId={MT} deps={open.deps} nowMs={NOW} endedCheck={async () => false} />
+      </LocationProvider>,
+    );
+    expect(await screen.findByRole('button', { name: '開賽' })).toBeTruthy();
+  });
+
   it('指派過期不開記分板', async () => {
     const made = await deps({ staffRoles: ['scorer'], matchIds: [MT], expiresAt: NOW });
     draw(made.deps);

@@ -82,6 +82,8 @@ export interface RegisterInput {
   repClubIds: readonly string[];
   status: CompetitionStatus;
   hidden: boolean;
+  rostersLockedAt: number | null;
+  endedAt: number | null;
   regOpenAt: number;
   regCloseAt: number;
   now: number;
@@ -97,17 +99,36 @@ export function canEndCompetition(doc: { status: CompetitionStatus; endedAt: num
   return doc.status === 'published';
 }
 
+/** 後端 match-host.ts SCHEDULE_LIMITS.endedGraceMs：末場確認造成的結束，主辦還有 3 天可以改場次。 */
+export const ENDED_GRACE_MS = 3 * 86_400_000;
+
+/**
+ * 結束後主辦還能不能動場次、順延對調、指派人員。對齊後端 match-host.ts assertNotEnded
+ * （staff-host.ts openHost 也走它）：沒結束、管理員，或末場確認（endedBy confirm）結束後 3 天內。
+ * 主辦手動結束與自動結束沒有寬限。
+ */
+export function hostEditsOpen(
+  doc: { endedAt: number | null; endedBy: 'confirm' | 'host' | 'auto' | null },
+  isAdmin: boolean,
+  now: number,
+): boolean {
+  if (doc.endedAt == null || isAdmin) return true;
+  return doc.endedBy === 'confirm' && now < doc.endedAt + ENDED_GRACE_MS;
+}
+
 /**
  * 整天順延與兩場對調。比照結束賽事：只有已發布才顯示。
- * 還沒結束時主辦看得到；已結束只留管理員。賽程頁還要已有場次。
- * 前端只藏卡片，伺服器仍會拒絕。
+ * 結束後照 hostEditsOpen（末場確認 3 天寬限、管理員不受限）；下架時只留管理員（後端 hostComp COMPETITION_HIDDEN）。
+ * 賽程頁還要已有場次。前端只藏卡片，伺服器仍會拒絕。
  */
 export function canShowFlexSchedule(
-  doc: { status: CompetitionStatus; endedAt: number | null },
+  doc: { status: CompetitionStatus; endedAt: number | null; endedBy: 'confirm' | 'host' | 'auto' | null; hidden: boolean },
   isAdmin: boolean,
+  now: number,
 ): boolean {
   if (doc.status !== 'published') return false;
-  return doc.endedAt == null || isAdmin;
+  if (doc.hidden && !isAdmin) return false;
+  return hostEditsOpen(doc, isAdmin, now);
 }
 
 /**
@@ -122,11 +143,16 @@ export function canRestoreCompetition(
   return doc.endedBy === 'host' || doc.endedBy === 'auto';
 }
 
-/** 「以俱樂部報隊」：我是某俱樂部代表，且賽事公開招募中、正在報名期間。 */
+/**
+ * 「以俱樂部報隊」：我是某俱樂部代表，且賽事公開招募中、正在報名期間。
+ * 對齊後端 entry.ts registerEntry：assertRosterPhase（名單未鎖、未結束）、
+ * REG_NOT_OPEN（now < regOpenAt）、REG_CLOSED（now >= regCloseAt，截止那一毫秒就不收）。
+ */
 export function canRegisterClubEntry(input: RegisterInput): boolean {
   if (input.repClubIds.length === 0) return false;
   if (input.hidden || input.status !== 'published') return false;
-  return input.now >= input.regOpenAt && input.now <= input.regCloseAt;
+  if (input.rostersLockedAt != null || input.endedAt != null) return false;
+  return input.now >= input.regOpenAt && input.now < input.regCloseAt;
 }
 
 /**

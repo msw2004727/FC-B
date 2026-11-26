@@ -58,7 +58,8 @@ export function competitionPhase(
   if (doc.endedAt != null || doc.status === 'cancelled') return 'done';
   if (now >= taipeiDayEnd(doc.lastMatchAt)) return 'done';
   if (now >= doc.firstMatchAt) return 'live';
-  if (now > doc.regCloseAt) return 'warm';
+  // 與後端 REG_CLOSED（now >= regCloseAt）同一條邊界。
+  if (now >= doc.regCloseAt) return 'warm';
   return 'recruit';
 }
 

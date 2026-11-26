@@ -413,6 +413,12 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const isAdmin = isCpAdmin(env.actor.role);
   const coverNow = shownCover(competition, isAdmin);
   const coverClosed = competition.status === 'cancelled' || competition.endedAt != null;
+  // 下架時主辦操作只留管理員（後端 lockRosters／unlockRosters／setPaymentStatus／update：hidden 且非管理員回 COMPETITION_HIDDEN，#14）。
+  const hiddenBlock = competition.hidden && !isAdmin;
+  // 審核走 assertRosterPhase：下架時連管理員也會被拒（#14）。
+  const canReview = manage && !competition.hidden;
+  // 分類與聯絡文字走 update：已結束／已取消回 COMPETITION_CLOSED（#17），下架非管理員回 COMPETITION_HIDDEN。
+  const infoEditable = !coverClosed && !hiddenBlock;
   const coverField = manage && !(competition.hidden && !isAdmin) && (!coverClosed || coverNow) ? (
     <CoverField
       ct={ct}
@@ -424,7 +430,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     />
   ) : null;
 
-  const showUnlock = canUnlockRosters({
+  const showUnlock = !hiddenBlock && competition.status === 'published' && canUnlockRosters({
     locked,
     canManage: manage,
     isAdmin: isCpAdmin(env.actor.role),
@@ -450,7 +456,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                 <div class="cph-kv"><span>{ct('contact')}</span><span>{priv.contactName}</span></div>
               </div>
             ) : null}
-            {manage ? (
+            {canReview ? (
               <div class="cph-decide">
                 <Button variant="danger" onClick={() => { setRejectError(null); setRejectId(entry.id); }}>{ct('reject')}</Button>
                 <Button variant="primary" onClick={() => { void approve(entry.id); }}>{ct('approve')}</Button>
@@ -496,7 +502,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               {division && club ? (
                 <FeeLine amount={division.feePerTeam} tag={manage ? <StatusTag kind="neutral" label={pay} /> : null} />
               ) : null}
-              {manage && club ? (
+              {manage && club && !hiddenBlock ? (
                 <Switch
                   class="cph-switch"
                   label={ct('markPaid')}
@@ -509,7 +515,8 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         );
       })}
       {approved.length === 0 ? <CpCard><p class="s4b-mempty">{ct('approvedEmpty')}</p></CpCard> : null}
-      {manage && !locked ? (
+      {/* 鎖定只在已發布（後端 lockRosters COMPETITION_NOT_OPEN，#6）、下架只留管理員（#14） */}
+      {manage && !locked && competition.status === 'published' && !hiddenBlock ? (
         <div class="cph-end">
           <Button variant="danger" onClick={() => { void lock(); }}>{ct('lockAll')}</Button>
         </div>
@@ -586,7 +593,7 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     <CpFrame
       title={ct('manageTitle')}
       context={competition.name}
-      menu={manage || hostOps ? (
+      menu={(manage && (infoEditable || coverField)) || (hostOps && infoEditable) ? (
         <Button
           id={INFO_TOGGLE_ID}
           class="cph-pill"
@@ -602,13 +609,14 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         </Button>
       ) : null}
     >
-      {(manage || hostOps) && infoOpen ? (
+      {((manage && (infoEditable || coverField)) || (hostOps && infoEditable)) && infoOpen ? (
       <div id={INFO_PANEL_ID} class="cps-stack">
-      {manage ? (
+      {manage && (infoEditable || coverField) ? (
         <CpCard>
           {/* ASSUMPTION: 沒有獨立的編輯賽事路由。分類改在報隊管理；建立仍走精靈步驟 1。封面在分類上面（計畫書第 6 題）。 */}
           <div class="cps-fields">
           {coverField}
+          {infoEditable ? (
           <RadioGroup
             label={ct('category')}
             orientation="horizontal"
@@ -622,10 +630,11 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
               { value: 'friendly', label: ct('categoryFriendly') },
             ]}
           />
+          ) : null}
           </div>
         </CpCard>
       ) : null}
-      {hostOps ? (
+      {hostOps && infoEditable ? (
         <CpCard>
           <div class="cps-fields">
             <Input
