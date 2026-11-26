@@ -1,5 +1,7 @@
 // CP-PO-08 球員本人退出名單：自己那一列（cpMine 的 plIds）顯示「退出名單」，先確認再呼叫 leaveRoster。
-// 顯示條件跟後端 leaveRoster 一致：名單未鎖定、尚未開賽。登錄時後端回 ALREADY_IN_ROSTER 要提示先退出原本隊伍。
+// 顯示條件跟後端 leaveRoster 的 assertRosterPhase 一致（rosterPhaseOpen）：已發布、未下架、未結束、名單未鎖定、尚未開賽。
+// 登錄時後端回 ALREADY_IN_ROSTER 要提示先退出原本隊伍。
+// 後半段併入 po-host（CP-PO-05）原本同名測試檔的撤回報名與 assertRosterPhase 情境（整合 cp-batch-0930，顧問 §3.852 甲案）。
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import type { ComponentType } from 'preact';
@@ -9,12 +11,12 @@ import coreZh from '@/i18n/messages/zh-TW.json';
 import { AppConfirmHost, _resetAppConfirmForTest } from '@/ui/AppConfirm';
 import type { CpActions } from '../actions';
 import { CpCallError } from '../data/cp-callables';
-import type { CpMineItem } from '../data/types';
+import type { CompetitionDoc, CpMineItem, EntryStatus } from '../data/types';
 import { CpEnvProvider, type CpInjectedEnv } from '../env';
 import { loadCompetitionsDict } from '../i18n';
 import cpZh from '../locales-lazy/zh-TW.json';
 import { createFakeCpRepo } from '../testing/fake-cp-repo';
-import { FIRST_MATCH, memberActor, repActor, screenEnv } from '../testing/screen-fixtures';
+import { FIRST_MATCH, NOW, memberActor, repActor, screenEnv } from '../testing/screen-fixtures';
 import JoinRosterPage from './JoinRosterPage';
 import RosterPage from './RosterPage';
 
@@ -356,5 +358,91 @@ describe('登錄：已在本賽事其他隊伍名單', () => {
       expect(flat.leaveRoster, file).toBe('退出名單');
       expect(flat.leaveRosterConfirm, file).toContain('{team}');
     }
+  });
+});
+
+/** 把賽事或報隊狀態改掉（注入的 bundle 不讀 repo）。 */
+function withComp(env: CpInjectedEnv, comp: Partial<CompetitionDoc>): CpInjectedEnv {
+  env.bundle = { ...env.bundle!, competition: { ...env.bundle!.competition!, ...comp } };
+  return env;
+}
+
+function withEntryStatus(env: CpInjectedEnv, status: EntryStatus): CpInjectedEnv {
+  env.bundle = { ...env.bundle!, entries: env.bundle!.entries.map((row) => ({ ...row, status })) };
+  return env;
+}
+
+describe('名單頁：退出鍵與 assertRosterPhase 同一組條件（rosterPhaseOpen）', () => {
+  const blocked: Array<[string, Partial<CompetitionDoc>]> = [
+    ['賽事延期', { status: 'postponed' }],
+    ['下架', { hidden: true, hiddenReason: '資料不實' }],
+    ['已結束', { endedAt: NOW - 60_000 }],
+    ['未發布', { status: 'draft' }],
+  ];
+
+  it.each(blocked)('%s：自己那列看不到退出鍵，名單照常顯示', (_label, comp) => {
+    mount(RosterPage, withComp(screenEnv('roster-self'), comp));
+    expect(screen.getByText('林示範')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: LEAVE })).toBeNull();
+  });
+
+  it.each(blocked)('%s：代表自己那列也看不到退出鍵', (_label, comp) => {
+    mount(RosterPage, withComp(screenEnv('roster-rep-self'), comp));
+    expect(screen.queryByRole('button', { name: LEAVE })).toBeNull();
+  });
+});
+
+describe('名單頁：代表撤回報名與名單權限（CP-PO-05，原 po-host 測試）', () => {
+  it.each(['pending', 'approved'] as EntryStatus[])('代表（entry=%s）看得到撤回報名與垃圾桶', (status) => {
+    mount(RosterPage, withEntryStatus(screenEnv('roster'), status));
+    expect(screen.getByRole('button', { name: '撤回報名' })).toBeTruthy();
+    expect(screen.getByLabelText('移除 林示範')).toBeTruthy();
+  });
+
+  it('報隊待審：代表看得到垃圾桶（代表刪人跟後端 leaveRoster 一致，不看報隊狀態）', () => {
+    mount(RosterPage, withEntryStatus(screenEnv('roster'), 'pending'));
+    expect(rowOf('林示範').querySelector('.cps-iconbtn')).toBeTruthy();
+  });
+
+  // 被拒、已退出時後端已清空名單（reviewEntry／withdrawEntry 的 prepareClearRoster）；撤回（withdrawEntry）要審核中或已核准。
+  it.each(['rejected', 'withdrawn'] as EntryStatus[])('代表（entry=%s）看不到撤回報名', (status) => {
+    mount(RosterPage, withEntryStatus(screenEnv('roster'), status));
+    expect(screen.queryByRole('button', { name: '撤回報名' })).toBeNull();
+  });
+
+  it('延期中：代表看不到代為新增球員、垃圾桶與撤回報名，成員看不到登錄名單；開放時成員看得到', () => {
+    const rep = mount(RosterPage, withComp(screenEnv('roster'), { status: 'postponed' }));
+    expect(screen.queryByRole('button', { name: '代為新增球員' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '撤回報名' })).toBeNull();
+    expect(screen.queryByLabelText('移除 林示範')).toBeNull();
+    rep.unmount();
+    const member = mount(RosterPage, withComp(screenEnv('roster-member'), { status: 'postponed' }));
+    expect(screen.queryByRole('button', { name: '登錄名單' })).toBeNull();
+    member.unmount();
+    mount(RosterPage, screenEnv('roster-member'));
+    expect(screen.getByRole('button', { name: '登錄名單' })).toBeTruthy();
+  });
+
+  it('代表按撤回報名：確認句含隊名，確定後 withdrawEntry 收到參數', async () => {
+    const env = screenEnv('roster');
+    const withdrawEntry = vi.fn(async () => ({}));
+    env.actions = { ...env.actions, withdrawEntry: withdrawEntry as unknown as CpActions['withdrawEntry'] };
+    mount(RosterPage, env);
+    fireEvent.click(screen.getByRole('button', { name: '撤回報名' }));
+    const box = screen.getByRole('alertdialog');
+    expect(box.textContent ?? '').toContain('示範隊A');
+    fireEvent.click([...box.querySelectorAll('button')].find((node) => node.textContent?.trim() === '撤回報名')!);
+    await waitFor(() => expect(withdrawEntry).toHaveBeenCalledWith({ cid: 'cup', enId: 'en_a' }));
+  });
+
+  it('一般成員與未登入看不到撤回報名', () => {
+    const member = mount(RosterPage, screenEnv('roster-self'));
+    expect(screen.queryByRole('button', { name: '撤回報名' })).toBeNull();
+    member.unmount();
+    const guest = screenEnv('roster-member');
+    guest.actor = { ...memberActor, uid: '', memberClubIds: [] };
+    mount(RosterPage, guest);
+    expect(screen.queryByRole('button', { name: '撤回報名' })).toBeNull();
+    expect(screen.queryByRole('button', { name: LEAVE })).toBeNull();
   });
 });
