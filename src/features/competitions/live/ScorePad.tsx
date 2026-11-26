@@ -30,10 +30,11 @@ import {
   timeoutLeftText,
   timeoutTeamChoice,
   undoWithin,
+  subPairLine,
 } from './copy';
 import { EventSheet } from './EventSheet';
 import { ConfirmFooter, KickoffConfirmDialog, Mark, PendingTag, PkConfirmDialog, useConfirmArmed } from './score-states';
-import { PlayerSheet } from './PlayerSheet';
+import { PlayerSheet, RosterGrid } from './PlayerSheet';
 import {
   EVENT_MAX,
   EVENT_RESERVE,
@@ -136,6 +137,8 @@ export interface ScorePadProps {
   /** 正式頁：球隊暫停只回呼，不跑預覽倒數。 */
   timeoutControlled?: boolean;
   onTimeout?: (side: MatchSideName) => void;
+  /** CP-PO-07：換人（選單→選隊→換下→換上→確認）。沒傳不顯示選單項。 */
+  onSub?: (input: { side: MatchSideName; outPlId: string; inPlId: string }) => void | boolean;
   /** 有傳才改次數判斷。沒傳維持預覽的每半場 1 次。 */
   timeoutRule?: { enabled: boolean; per: 'half' | 'match'; count: number; seconds: number; stopsClock: boolean };
   timeoutUses?: { home: number; away: number };
@@ -172,7 +175,8 @@ export interface ScoreFeedRow {
   pending: boolean;
   text: string;
   label: string;
-  kind: 'goal' | 'yellow' | 'red' | 'pk';
+  /** sub＝換人（只顯示，不能點開復原或改判：Rules 不允許作廢換人）。 */
+  kind: 'goal' | 'yellow' | 'red' | 'pk' | 'sub';
   secondYellow: boolean;
   pkScored?: boolean;
   voided: boolean;
@@ -196,6 +200,12 @@ interface TimeoutUses {
   home: number;
   away: number;
 }
+
+type SubFlow =
+  | { step: 'team' }
+  | { step: 'out'; side: MatchSideName }
+  | { step: 'in'; side: MatchSideName; outId: string }
+  | { step: 'confirm'; side: MatchSideName; outId: string; inId: string };
 
 type ConfirmPair =
   | { mode: 'undo'; first: number; second: number }
@@ -363,6 +373,8 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const [takeoverOpen, setTakeoverOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [timeoutOpen, setTimeoutOpen] = useState(false);
+  const [subFlow, setSubFlow] = useState<SubFlow | null>(null);
+  const subArmed = useConfirmArmed(subFlow?.step === 'confirm');
   const [teamTimeout, setTeamTimeout] = useState<TeamTimeoutState | null>(() => previewTimeout(props.timeoutView));
   const [hiddenStart, setHiddenStart] = useState<number | null>(null);
   const [timeoutUses, setTimeoutUses] = useState<TimeoutUses>({
@@ -861,7 +873,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
             {props.feed.map((row) => (
               <li key={row.key} class={`s4-ev${row.voided ? ' s4-ev--void' : ''}${row.side ? ` s4-ev--${row.side}` : ''}`}>
                 <Mark kind={row.kind} second={row.secondYellow} scored={row.pkScored} />
-                {row.pending || row.voided || !phaseOpen ? (
+                {row.pending || row.voided || !phaseOpen || row.kind === 'sub' ? (
                   <>
                     <div class="s4-ev__main">{row.text}</div>
                     <span class="s4-sr">{row.label}</span>
@@ -1077,6 +1089,18 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
                     {LIVE_COPY.teamTimeout}
                   </Button>
                 ) : null}
+                {props.onSub && (phase === 'play' || phase === 'ht') && !pk ? (
+                  <Button
+                    variant="ghost"
+                    disabled={cardOff}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setSubFlow({ step: 'team' });
+                    }}
+                  >
+                    {LIVE_COPY.sub}
+                  </Button>
+                ) : null}
                 {props.onLeave ? (
                   <Button
                     variant="ghost"
@@ -1099,6 +1123,72 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       ) : null}
     </div>
   );
+
+  // CP-PO-07 換人：選隊 → 換下 → 換上 → 確認（換人不能作廢，送出前一定確認）。比賽狀態變了（不在進行中／中場、停用）就收掉。
+  function subSheet(flow: SubFlow): JSX.Element | null {
+    if (cardOff || pk) return null;
+    const close = () => setSubFlow(null);
+    if (flow.step === 'team') {
+      return (
+        <BottomSheet open class="s4-sheet d2-panel" title={LIVE_COPY.sub} onClose={close}>
+          <div class="s4-timeout-picks">
+            <Button onClick={() => setSubFlow({ step: 'out', side: 'home' })}>{match.home.name}</Button>
+            <Button onClick={() => setSubFlow({ step: 'out', side: 'away' })}>{match.away.name}</Button>
+          </div>
+        </BottomSheet>
+      );
+    }
+    const roster = flow.side === 'away' ? awayRoster : homeRoster;
+    const team = sideName(flow.side);
+    if (flow.step === 'out' || flow.step === 'in') {
+      const list = flow.step === 'in' ? roster.filter((player) => player.id !== flow.outId) : roster;
+      const word = flow.step === 'out' ? LIVE_COPY.subOut : LIVE_COPY.subIn;
+      return (
+        <BottomSheet
+          open
+          class={`s4-sheet${list.length > 8 ? ' s4-sheet--long' : ''} d2-panel s4-sheet--${flow.side}`}
+          title={`${team} ${LIVE_COPY.sub} ${word}`}
+          onClose={close}
+        >
+          {list.length === 0 ? <p class="s4-note">{LIVE_COPY.subNoRoster}</p> : null}
+          <div class="s4-pick">
+            <RosterGrid
+              roster={list}
+              onPick={(plId) => setSubFlow(flow.step === 'out'
+                ? { step: 'in', side: flow.side, outId: plId }
+                : { step: 'confirm', side: flow.side, outId: flow.outId, inId: plId })}
+            />
+          </div>
+        </BottomSheet>
+      );
+    }
+    const out = roster.find((player) => player.id === flow.outId);
+    const into = roster.find((player) => player.id === flow.inId);
+    return (
+      <Modal
+        open
+        class="s4-dialog d2-panel"
+        title={`${team} ${LIVE_COPY.sub}`}
+        onClose={close}
+        footer={(
+          <ConfirmFooter
+            armed={subArmed}
+            confirmLabel={LIVE_COPY.subConfirm}
+            cancelLabel={LIVE_COPY.takeoverLater}
+            confirmVariant="primary"
+            onConfirm={() => {
+              setSubFlow(null);
+              props.onSub?.({ side: flow.side, outPlId: flow.outId, inPlId: flow.inId });
+            }}
+            onCancel={close}
+          />
+        )}
+      >
+        <p class="s4-note">{subPairLine(out?.number ?? null, out?.displayName ?? '', into?.number ?? null, into?.displayName ?? '')}</p>
+        <p class="s4-note">{LIVE_COPY.subNote}</p>
+      </Modal>
+    );
+  }
 
   const alertBlock = alerts.length > 0 ? <div key="alerts" class="s4-alerts">{alerts}</div> : null;
   const homeTimeoutLeft = timeoutLeft('home');
@@ -1221,6 +1311,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           </div>
         </BottomSheet>
       ) : null}
+      {subFlow ? subSheet(subFlow) : null}
       {flash ? <CardFlash {...flash} onClose={closeFlash} /> : null}
       <UnappliedSheet
         open={unappliedOpen}

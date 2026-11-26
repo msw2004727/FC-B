@@ -80,7 +80,8 @@ function Screen() {
   }
   if (screenName in S4_SCORE_SCENES) {
     const scene = S4_SCORE_SCENES[screenName as keyof typeof S4_SCORE_SCENES];
-    return <ScorePad {...scene} crests={shotCrests(scene.crests)} />;
+    // CP-PO-07：給假的 onSub，選單才有「換人」（截圖用，不送任何東西）。
+    return <ScorePad {...scene} crests={shotCrests(scene.crests)} onSub={() => true} />;
   }
   if (screenName === 'live-match') {
     const scene = S4_SCENE_LIVE;

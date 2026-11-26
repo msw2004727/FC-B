@@ -105,6 +105,13 @@ export const LIVE_COPY = {
   loadFailed: '讀取失敗',
   retry: '重試',
   leaveScore: '離開記分',
+  /** CP-PO-07 換人（計畫書事件模型 sub；Rules 不允許作廢換人，送出前要確認）。 */
+  sub: '換人',
+  subOut: '換下',
+  subIn: '換上',
+  subConfirm: '確認換人',
+  subNote: '換人送出後不能復原',
+  subNoRoster: '這隊名單沒有球員，無法記換人',
   assignScorerHint: '請先在指派頁把自己指派為記分員',
 } as const;
 
@@ -218,4 +225,10 @@ export function withEvent(action: string, detail: string): string {
 /** 球隊暫停選隊鈕的第二行「剩 1 次」（選隊鈕一律兩行：隊名、剩幾次）。 */
 export function timeoutLeftText(left: number): string {
   return `剩 ${left} 次`;
+}
+
+/** 換人確認框與紀錄列：「7 王小明 換下、12 李大華 換上」。 */
+export function subPairLine(outNo: number | null, outName: string, inNo: number | null, inName: string): string {
+  const who = (no: number | null, name: string) => (no == null ? name : `${no} ${name}`);
+  return `${who(outNo, outName)} ${LIVE_COPY.subOut}、${who(inNo, inName)} ${LIVE_COPY.subIn}`;
 }

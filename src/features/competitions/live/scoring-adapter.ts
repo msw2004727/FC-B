@@ -2,7 +2,7 @@
 
 import type { MatchDoc, MatchStatus, RosterPublicDoc } from '../data/types';
 import type { LiveClock, LiveLink } from './clock';
-import { blockedStep, heldQueued, heldRejected, LIVE_COPY, minuteMark, pkKickLine } from './copy';
+import { blockedStep, heldQueued, heldRejected, LIVE_COPY, minuteMark, pkKickLine, subPairLine } from './copy';
 import { eventLines, findPlayer, nextPkRound, type EventLine } from './present';
 import type { ScoreFeedRow, ScoreHeldLine, ScorePadProps, ScorePick, TimeoutView } from './ScorePad';
 import type { ScoringView } from './data/session';
@@ -166,6 +166,9 @@ function pendingRow(
   const match = view.match;
   if (!match) return null;
   const intent = row.intent;
+  if (intent.kind === 'sub') {
+    return subRow(view, row.op, -1, true, intent.side, intent.outPlId, intent.inPlId, intent.matchSecond);
+  }
   if (intent.kind !== 'goal' && intent.kind !== 'card' && intent.kind !== 'pk') return null;
   const side = intent.side;
   const team = side === 'home' ? match.home.name : match.away.name;
@@ -212,6 +215,37 @@ function pendingRow(
   };
 }
 
+/** CP-PO-07：換人列（記分頁紀錄區才有；觀眾頁的 eventLines 不收換人）。 */
+function subRow(
+  view: ScoringView,
+  key: string,
+  seq: number,
+  pending: boolean,
+  side: 'home' | 'away',
+  outPlId: string,
+  inPlId: string,
+  matchSecond: number,
+): ScoreFeedRow | null {
+  const match = view.match;
+  if (!match) return null;
+  const team = side === 'home' ? match.home.name : match.away.name;
+  const out = findPlayer(view.roster.home, view.roster.away, outPlId);
+  const into = findPlayer(view.roster.home, view.roster.away, inPlId);
+  const minute = minuteMark(Math.floor(matchSecond / 60));
+  const pair = subPairLine(out?.number ?? null, out?.displayName ?? '', into?.number ?? null, into?.displayName ?? '');
+  return {
+    key,
+    seq,
+    pending,
+    text: `${minute} ${team} ${pair}`,
+    label: `${minute} ${LIVE_COPY.sub} ${team} ${pair}`,
+    kind: 'sub',
+    secondYellow: false,
+    voided: false,
+    side,
+  };
+}
+
 function feedOf(view: ScoringView, timeline: readonly TimelineEvent[], voids: readonly VoidMark[]): ScoreFeedRow[] {
   const home = view.match?.home.name ?? '';
   const away = view.match?.away.name ?? '';
@@ -239,6 +273,13 @@ function feedOf(view: ScoringView, timeline: readonly TimelineEvent[], voids: re
     voided: line.voided,
     side: line.side,
   }));
+  // 換人列併進伺服器列，照 seq 新到舊（eventLines 的 recent 排序）。
+  for (const event of timeline) {
+    if (event.type !== 'sub') continue;
+    const built = subRow(view, opBySeq.get(event.seq) || String(event.seq), event.seq, false, event.side, event.outPlId, event.inPlId, event.matchSecond);
+    if (built) serverRows.push(built);
+  }
+  serverRows.sort((a, b) => b.seq - a.seq);
   const pending = view.unapplied
     .filter((row) => (row.state === 'pending' || row.state === 'sending') && !serverOps.has(row.op))
     .sort((a, b) => b.createdAt - a.createdAt);
@@ -467,6 +508,10 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     clockControlled: true,
     timeoutControlled: true,
     onTimeout: (side) => { void view.actions.timeout({ side }); },
+    onSub: (input) => {
+      void view.actions.sub(input);
+      return true;
+    },
     timeoutRule: view.timeoutRule,
     timeoutUses: timeoutUsesFrom(view),
     pkCanStart: view.pk.canStart,
