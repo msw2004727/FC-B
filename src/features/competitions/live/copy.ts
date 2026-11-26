@@ -110,7 +110,7 @@ export const LIVE_COPY = {
   subOut: '換下',
   subIn: '換上',
   subConfirm: '確認換人',
-  subNote: '換人送出後不能復原',
+  subNote: '換人送出後不能作廢',
   subNoRoster: '這隊名單沒有球員，無法記換人',
   assignScorerHint: '請先在指派頁把自己指派為記分員',
 } as const;

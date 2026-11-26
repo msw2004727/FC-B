@@ -75,14 +75,14 @@ describe('換人入口', () => {
     expect(screen.queryByRole('button', { name: `${out.number} ${out.displayName}` })).toBeNull();
     fireEvent.click(button(`${into.number} ${into.displayName}`));
     expect(screen.getByText(`${out.number} ${out.displayName} 換下、${into.number} ${into.displayName} 換上`)).toBeTruthy();
-    expect(screen.getByText('換人送出後不能復原')).toBeTruthy();
+    expect(screen.getByText('換人送出後不能作廢')).toBeTruthy();
     fireEvent.click(button('確認換人'));
     expect(onSub).not.toHaveBeenCalled();
     act(() => { vi.advanceTimersByTime(CONFIRM_ARM_MS); });
     fireEvent.click(button('確認換人'));
     expect(onSub).toHaveBeenCalledTimes(1);
     expect(onSub).toHaveBeenCalledWith({ side: 'home', outPlId: out.id, inPlId: into.id });
-    expect(screen.queryByText('換人送出後不能復原')).toBeNull();
+    expect(screen.queryByText('換人送出後不能作廢')).toBeNull();
   });
 
   it('確認框開著時被接手（記分停用）：流程收掉，恢復後不會重開', () => {
@@ -95,11 +95,11 @@ describe('換人入口', () => {
     fireEvent.click(button(S4_SCENE_LIVE.match.home.name));
     fireEvent.click(button(`${out.number} ${out.displayName}`));
     fireEvent.click(button(`${into.number} ${into.displayName}`));
-    expect(screen.getByText('換人送出後不能復原')).toBeTruthy();
+    expect(screen.getByText('換人送出後不能作廢')).toBeTruthy();
     view.rerender(<ScorePad {...S4_SCENE_LIVE} onSub={onSub} takeoverOffered />);
-    expect(screen.queryByText('換人送出後不能復原')).toBeNull();
+    expect(screen.queryByText('換人送出後不能作廢')).toBeNull();
     view.rerender(<ScorePad {...S4_SCENE_LIVE} onSub={onSub} takeoverOffered={false} />);
-    expect(screen.queryByText('換人送出後不能復原')).toBeNull();
+    expect(screen.queryByText('換人送出後不能作廢')).toBeNull();
     expect(onSub).not.toHaveBeenCalled();
   });
 
@@ -117,7 +117,7 @@ describe('換人入口', () => {
     act(() => { vi.advanceTimersByTime(CONFIRM_ARM_MS); });
     fireEvent.click(button('先不要'));
     expect(onSub).not.toHaveBeenCalled();
-    expect(screen.queryByText('換人送出後不能復原')).toBeNull();
+    expect(screen.queryByText('換人送出後不能作廢')).toBeNull();
   });
 });
 
