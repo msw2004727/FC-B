@@ -339,6 +339,30 @@ describe('顧問 §3.454 G-14：改判沿用原事件的比賽秒', () => {
   });
 });
 
+describe('S2：兩張黃牌的復原與改判走原子群組', () => {
+  it('onUndoPair 呼叫 undoFirstYellow；onAmend 依改判內容組出新紀錄並呼叫 amend', () => {
+    const undoFirstYellow = vi.fn(async () => ({ status: 'applied' as const }));
+    const amend = vi.fn(async () => ({ status: 'applied' as const }));
+    const voidEvent = vi.fn(async () => ({ status: 'applied' as const }));
+    const props = scorePadPropsFrom(view({
+      actions: { undoFirstYellow, amend, voidEvent } as unknown as ScoringView['actions'],
+    }), NOW);
+    expect(props.onUndoPair?.(3)).toBe(true);
+    expect(undoFirstYellow).toHaveBeenCalledWith({ seq: 3 });
+    expect(props.onAmend?.(3, { side: 'away', action: 'red', plId: 'pl_hf4', goalKind: null, minute: 12, refSeq: null, matchSecond: 760 })).toBe(true);
+    expect(amend).toHaveBeenLastCalledWith({ seq: 3 }, { kind: 'card', side: 'away', plId: 'pl_hf4', cardType: 'red', matchSecond: 760 });
+    expect(props.onAmend?.(7, { side: 'home', action: 'yellow', plId: 'pl_th9', goalKind: null, minute: 5, refSeq: 2, matchSecond: 300 })).toBe(true);
+    expect(amend).toHaveBeenLastCalledWith({ seq: 7 }, { kind: 'card', side: 'home', plId: 'pl_th9', cardType: 'second_yellow', matchSecond: 300, refSeq: 2 });
+    expect(props.onAmend?.(2, { side: 'home', action: 'goal', plId: null, goalKind: 'own', minute: 0, matchSecond: 0 })).toBe(true);
+    expect(amend).toHaveBeenLastCalledWith({ seq: 2 }, { kind: 'goal', side: 'home', goalKind: 'own', matchSecond: 0 });
+    // 牌沒有球員、PK 不能改判：不送
+    expect(props.onAmend?.(2, { side: 'home', action: 'red', plId: null, goalKind: null, minute: 1 })).toBe(false);
+    expect(props.onAmend?.(2, { side: 'home', action: 'pk-in', plId: null, goalKind: null, minute: 1 })).toBe(false);
+    expect(amend).toHaveBeenCalledTimes(3);
+    expect(voidEvent).not.toHaveBeenCalled();
+  });
+});
+
 describe('pkCanStart 與 shootoutOffered', () => {
   const periods = ['h1', 'ht', 'h2', 'et', 'et1', 'et2', 'pk', 'ft'];
   const statuses = ['live', 'halftime', 'scheduled', 'finished'];

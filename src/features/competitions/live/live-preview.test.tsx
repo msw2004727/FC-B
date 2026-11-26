@@ -26,6 +26,7 @@ import {
   type S4ScoreScene,
 } from '../testing/step4-fixtures';
 import { CardFlash } from './CardFlash';
+import { LIVE_COPY } from './copy';
 import { stageLabel } from './clock';
 import { LiveMatchView } from './LiveMatchView';
 import { LiveScoreBadge } from './LiveScoreBadge';
@@ -358,6 +359,46 @@ describe('第 4 步預覽元件', () => {
     expect(screen.getByRole('alert').textContent).toContain('原紀錄已復原，新紀錄未送出');
     fireEvent.click(button('未套用的動作'));
     expect(screen.getByText("雷霆隊 10 號 5' 點球")).toBeTruthy();
+  });
+
+  it('有 onUndoPair／onAmend 時，兩張黃牌的復原與改判各只呼叫一次原子群組（S2）', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const onUndo = vi.fn(() => true);
+    const onRecord = vi.fn(() => true);
+    const onUndoPair = vi.fn(() => true);
+    const onAmend = vi.fn(() => true);
+    pad(S4_SCENE_LIVE, { onUndo, onRecord, onUndoPair, onAmend });
+    fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
+    fireEvent.click(button(/^復原/));
+    armConfirm();
+    fireEvent.click(button(LIVE_COPY.undoBothConfirm));
+    expect(onUndoPair.mock.calls).toEqual([[3]]);
+    expect(onUndo).not.toHaveBeenCalled();
+
+    fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
+    fireEvent.click(button('紅牌'));
+    fireEvent.click(button(/^改判/));
+    armConfirm();
+    fireEvent.click(button('確定改判'));
+    expect(onAmend.mock.calls).toEqual([[3, {
+      side: 'away', action: 'red', plId: 'pl_hf4', goalKind: null, minute: 12, refSeq: null, matchSecond: 12 * 60 + 40,
+    }]]);
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(onRecord).not.toHaveBeenCalled();
+    cleanup();
+
+    // 沒有連結的改判也走同一個群組（作廢與新紀錄不分開送）。
+    const plainAmend = vi.fn(() => true);
+    pad(S4_SCENE_LIVE, { onUndo, onRecord, onAmend: plainAmend });
+    fireEvent.click(button("5' 進球 雷霆隊 9 劉冠廷"));
+    fireEvent.click(button('點球'));
+    fireEvent.click(button('10 蔡明哲'));
+    fireEvent.click(button(/^改判/));
+    expect(plainAmend.mock.calls).toEqual([[2, {
+      side: 'home', action: 'goal', plId: 'pl_th10', goalKind: 'penalty', minute: 5, matchSecond: 5 * 60 + 12,
+    }]]);
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(onRecord).not.toHaveBeenCalled();
   });
 
   it('改判被引用的第一張黃牌先確認，再依序復原第二黃、第一黃、記新的', () => {

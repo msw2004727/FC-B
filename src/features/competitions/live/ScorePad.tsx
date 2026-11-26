@@ -111,6 +111,10 @@ export interface ScorePadProps {
   takeoverFree?: boolean;
   onRecord?: (pick: ScorePick) => void | boolean;
   onUndo?: (seq: number) => void | boolean;
+  /** 復原被第二黃引用的第一黃：兩筆作廢走同一個原子群組（依建立序送出）。沒傳時沿用兩次 onUndo。 */
+  onUndoPair?: (firstSeq: number) => void | boolean;
+  /** 改判：作廢原事件（被引用的第一黃連第二黃）與新紀錄走同一個原子群組。沒傳時沿用 onUndo＋onRecord。 */
+  onAmend?: (seq: number, pick: ScorePick) => void | boolean;
   /** 停錶／繼續只改 clockBase，不改狀態與比分。 */
   onClock?: (clockBase: MatchClock) => void;
   onKickoff?: () => void;
@@ -603,6 +607,13 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   }
 
   function finishAmend(first: number, pick: ScorePick, second?: number): void {
+    // 分開送時同一毫秒建立的幾筆會依隨機 op 排序，第一黃作廢可能排在第二黃作廢前面而被規則拒（S2）。
+    if (props.onAmend) {
+      props.onAmend(first, pick);
+      setConfirmPair(null);
+      setEventSeq(null);
+      return;
+    }
     if (second != null) {
       const secondOk = props.onUndo?.(second) !== false;
       if (!secondOk) {
@@ -686,6 +697,12 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   function runConfirm(): void {
     if (!confirmPair) return;
     if (confirmPair.mode === 'undo') {
+      if (props.onUndoPair) {
+        props.onUndoPair(confirmPair.first);
+        setConfirmPair(null);
+        setEventSeq(null);
+        return;
+      }
       const secondOk = props.onUndo?.(confirmPair.second) !== false;
       if (!secondOk) {
         setConfirmPair(null);

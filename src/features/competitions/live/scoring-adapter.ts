@@ -6,7 +6,7 @@ import { blockedStep, heldQueued, heldRejected, LIVE_COPY, minuteMark, pkKickLin
 import { eventLines, findPlayer, nextPkRound, type EventLine } from './present';
 import type { ScoreFeedRow, ScoreHeldLine, ScorePadProps, ScorePick, TimeoutView } from './ScorePad';
 import type { ScoringView } from './data/session';
-import type { ServerEvent, UnappliedView } from './data/types';
+import type { CardIntent, GoalIntent, ServerEvent, UnappliedView } from './data/types';
 import type { ActionLogEntry, CardType, GoalKind, TimelineEvent, VoidMark } from './types';
 
 const MATCH_STATUS: readonly MatchStatus[] = [
@@ -405,6 +405,34 @@ function sendRecord(view: ScoringView, pick: ScorePick): void {
   });
 }
 
+/** 改判的新紀錄。只有進球與牌可改判；牌沒有球員時不送。比賽秒沿用原事件。 */
+function amendIntentOf(pick: ScorePick): GoalIntent | CardIntent | null {
+  const matchSecond = typeof pick.matchSecond === 'number' && Number.isFinite(pick.matchSecond)
+    ? pick.matchSecond
+    : Math.max(0, Math.floor(pick.minute * 60));
+  if (pick.action === 'goal') {
+    return {
+      kind: 'goal',
+      side: pick.side,
+      goalKind: pick.goalKind === 'penalty' || pick.goalKind === 'own' ? pick.goalKind : 'normal',
+      matchSecond,
+      ...(pick.plId ? { plId: pick.plId } : {}),
+    };
+  }
+  if ((pick.action === 'yellow' || pick.action === 'red') && pick.plId) {
+    const second = pick.action === 'yellow' && pick.refSeq != null;
+    return {
+      kind: 'card',
+      side: pick.side,
+      plId: pick.plId,
+      cardType: second ? 'second_yellow' : pick.action,
+      matchSecond,
+      ...(second ? { refSeq: pick.refSeq as number } : {}),
+    };
+  }
+  return null;
+}
+
 function timeoutSide(value: string | undefined): 'home' | 'away' | null {
   if (value === 'home' || value === 'away') return value;
   return null;
@@ -486,6 +514,17 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     },
     onUndo: (seq) => {
       void view.actions.voidEvent({ seq });
+      return true;
+    },
+    // 第二黃與第一黃的作廢、改判的作廢與新紀錄，要用工作階段的原子群組依序送（S2）。
+    onUndoPair: (seq) => {
+      void view.actions.undoFirstYellow({ seq });
+      return true;
+    },
+    onAmend: (seq, pick) => {
+      const next = amendIntentOf(pick);
+      if (!next) return false;
+      void view.actions.amend({ seq }, next);
       return true;
     },
     onClock: (next) => {

@@ -14,10 +14,11 @@ import {
 } from 'firebase/firestore';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LIVE_COPY } from '../copy';
-import { MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
+import { compareEntries, MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
 import { createFirestoreBackend } from './live-repo';
 import { Sender } from './sender';
 import { createScoringSession, type ScoringSession } from './session';
+import { scorePadPropsFrom } from '../scoring-adapter';
 import { memorySidStore, type SidStore } from './sid';
 import type { BatchPlan, LogEntry } from './types';
 
@@ -314,6 +315,8 @@ async function startLive(name: string, options?: {
   beforeCommit?: (plan: BatchPlan, nth: number) => Promise<void> | void;
   afterCommit?: (plan: BatchPlan, nth: number) => Promise<void> | void;
   visible?: { value: boolean };
+  now?: () => number;
+  randomBytes?: (n: number) => Uint8Array;
 }): Promise<Live> {
   const app = initializeApp({ apiKey: 'demo', projectId: PROJECT, appId: 'demo-u1' }, `${name}-${Date.now()}-${Math.random()}`);
   const db = initializeFirestore(app, {
@@ -347,6 +350,8 @@ async function startLive(name: string, options?: {
     backend,
     log,
     sids,
+    ...(options?.now ? { now: options.now } : {}),
+    ...(options?.randomBytes ? { randomBytes: options.randomBytes } : {}),
     online: () => online.value,
     watchOnline: (cb) => {
       notify = cb;
@@ -435,6 +440,30 @@ async function expectBoard(score: { home: number; away: number }, opts?: { conti
     expect(seqs[0]).toBe(1);
     for (let i = 1; i < seqs.length; i += 1) expect(seqs[i]).toBe((seqs[i - 1] ?? 0) + 1);
   }
+}
+
+/**
+ * 照 IndexedDbActionLog.list 的排法：索引 getAll 依主鍵（op）出列，再做穩定排序 compareEntries。
+ * createdAt 相同時，先後由隨機 op 決定，不是建立順序。
+ */
+class OpOrderedLog extends MemoryActionLog {
+  override async list(cid: string, mtId: string): Promise<LogEntry[]> {
+    const out = await super.list(cid, mtId);
+    return out.sort((a, b) => (a.op < b.op ? -1 : a.op > b.op ? 1 : 0)).sort(compareEntries);
+  }
+}
+
+/** arm 之後的前幾次用指定位元組填滿（控制 op 字典序），其餘照常隨機。 */
+function fillQueue(): { bytes: (n: number) => Uint8Array; arm: (fills: number[]) => void } {
+  const fills: number[] = [];
+  return {
+    bytes: (n) => {
+      const fill = fills.shift();
+      if (fill === undefined) return globalThis.crypto.getRandomValues(new Uint8Array(n));
+      return new Uint8Array(n).fill(fill);
+    },
+    arm: (next) => { fills.push(...next); },
+  };
 }
 
 describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
@@ -918,5 +947,59 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
     const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
     expect(events.some((event) => event.type === 'pkStart')).toBe(false);
     expect(await rows(live.log)).toHaveLength(0);
+  });
+
+  // S2：ScorePad 復原、改判兩張黃牌時，原本 adapter 連呼兩次 voidEvent（不等結果）。同一毫秒建立的兩筆，
+  // IndexedDB 依 op 出列；後建的第一黃作廢 op 較小時排到前面，第二黃還沒作廢就被 Rules 拒、佇列停住。
+  // 修正後走工作階段的原子群組（at + index），與 op 字典序無關。這裡固定讓後建的 op 較小
+  // （base64url 首字元 'A'(65) < '_'(95) < 'g'(103)）。
+  async function twoYellows(): Promise<void> {
+    const live = await startLive('s2pre');
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    await live.release();
+    opened.length = 0;
+  }
+  async function settled(log: ActionLog, count: number): Promise<LogEntry[]> {
+    await waitUntil('都送完或停住', async () => {
+      const logged = await rows(log);
+      return logged.length === count && logged.every((row) => row.state === 'applied' || row.state === 'rejected');
+    }, 200).catch(() => {});
+    return rows(log);
+  }
+
+  it('20. 復原兩張黃牌：同毫秒、op 反序仍依序送出', async () => {
+    await twoYellows();
+    const at = Date.now();
+    const ops = fillQueue();
+    const s = await startLive('s20', { log: new OpOrderedLog(), now: () => at, randomBytes: ops.bytes });
+    await waitUntil('兩張黃牌已載入', () => s.session.getState().events.length >= 2, 200);
+    const props = scorePadPropsFrom(s.session.getState(), at);
+    // 依序：群組 id、作廢第二黃 'g…'、作廢第一黃 'A…'（'A' < 'g'）。
+    ops.arm([0x11, 0x80, 0x00]);
+    expect(props.onUndoPair?.(1)).toBe(true);
+    const logged = await settled(s.log, 2);
+    expect(logged.map((row) => row.state)).toEqual(['applied', 'applied']);
+    expect(s.commits.map((plan) => (plan.event as { targetSeq?: number }).targetSeq)).toEqual([2, 1]);
+    expect(await listCollection(`competitions/${CID}/matches/${MT}/voids`)).toHaveLength(2);
+  });
+
+  it('21. 改判被引用的第一黃為紅牌：三筆同毫秒、op 反序仍依序送出', async () => {
+    await twoYellows();
+    const at = Date.now();
+    const ops = fillQueue();
+    const s = await startLive('s21', { log: new OpOrderedLog(), now: () => at, randomBytes: ops.bytes });
+    await waitUntil('兩張黃牌已載入', () => s.session.getState().events.length >= 2, 200);
+    const props = scorePadPropsFrom(s.session.getState(), at);
+    // 依序：群組 id、作廢第二黃 'g…'、作廢第一黃 '_…'、紅牌 'A…'（'A' < '_' < 'g'，與建立序相反）。
+    ops.arm([0x11, 0x80, 0xff, 0x00]);
+    expect(props.onAmend?.(1, {
+      side: 'home', action: 'red', plId: 'pl_h1', goalKind: null, minute: 0, refSeq: null, matchSecond: 30,
+    })).toBe(true);
+    const logged = await settled(s.log, 3);
+    expect(logged.map((row) => row.state)).toEqual(['applied', 'applied', 'applied']);
+    expect(s.commits.map((plan) => plan.event.type)).toEqual(['void', 'void', 'card']);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.find((event) => Number(event.seq) === 5)).toMatchObject({ type: 'card', cardType: 'red', matchSecond: 30 });
   });
 });
