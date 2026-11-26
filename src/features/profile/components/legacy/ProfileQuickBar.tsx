@@ -109,6 +109,13 @@ export function ProfileQuickBar({
   const active = items.find((item) => item.key === openKey) ?? null;
   const itemKeys = items.map((item) => item.key).join('|');
 
+  // 同一頁再次帶 ?open=（例如九宮格存檔後「開啟通知」）時展開該項；不存在的 key 忽略。
+  useEffect(() => {
+    if (!initialOpenKey || !itemKeys.split('|').includes(initialOpenKey)) return;
+    setOpenKey(initialOpenKey);
+    setMountedKeys((prev) => (prev.includes(initialOpenKey) ? prev : [...prev, initialOpenKey]));
+  }, [initialOpenKey]);
+
   // 項目消失（例如權限被收回）時收合並卸載它；之後再出現也不自動展開（審查 P3-2）。
   useEffect(() => {
     const present = new Set(itemKeys.split('|'));

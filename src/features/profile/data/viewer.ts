@@ -64,6 +64,7 @@ export interface ViewerView extends ViewerContext {
   capabilities: readonly string[];
   /** M-038：帳號是否受限（照 A `user.isRestricted === true`）。 */
   isRestricted?: boolean;
+  sportPromptDue?: boolean;
   /** 選填：測試替身可省略，使用端視為「無任何權限來源」。 */
   permissionSources?: ViewerPermissionSources;
   /**
@@ -137,10 +138,15 @@ interface UserInfo {
   displayName: string | null;
   pictureUrl: string | null;
   isRestricted: boolean;
+  sportPromptDue?: boolean;
 }
 
 function defaultUserInfo(): UserInfo {
   return { role: 'user', displayName: null, pictureUrl: null, isRestricted: false };
+}
+
+export function computeSportPromptDue(data: Record<string, unknown>): boolean {
+  return !data.favSportsPromptAt && !!data.gender && !!data.birthday && !!data.region;
 }
 
 function parseUserInfo(data: Record<string, unknown> | null | undefined): UserInfo {
@@ -157,8 +163,9 @@ function parseUserInfo(data: Record<string, unknown> | null | undefined): UserIn
   else if (typeof data.picture === 'string') pictureUrl = data.picture;
 
   const isRestricted = data.isRestricted === true;
+  const sportPromptDue = computeSportPromptDue(data);
 
-  return { role, displayName, pictureUrl, isRestricted };
+  return { role, displayName, pictureUrl, isRestricted, sportPromptDue };
 }
 
 /**
@@ -412,6 +419,7 @@ export async function loadViewer(
     pictureUrl: userInfo.pictureUrl,
     capabilities,
     isRestricted: userInfo.isRestricted,
+    sportPromptDue: userInfo.sportPromptDue,
     permissionSources: {
       rolePermissions: checkerInput.rolePermissions?.[role] ?? null,
       userGrants: checkerInput.userGrants ?? [],

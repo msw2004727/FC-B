@@ -1,4 +1,5 @@
 import type { JSX } from 'preact';
+import { lazy, Suspense } from 'preact/compat';
 import { useEffect, useState } from 'preact/hooks';
 
 import { emit, on } from '@/core/events';
@@ -49,6 +50,8 @@ import '@/features/events/legacy/activity.css';
 import '../legacy/profile.css';
 // 2026-11-16 站長選定液態玻璃（PROFILE-GLASS），寫在 A 的 profile.css 之後。
 import '../legacy/profile-glass.css';
+
+const SportPrefsGate = lazy(() => import('@/features/sport-prefs/SportPrefsGate').then((m) => ({ default: m.SportPrefsGate })).catch(() => ({ default: () => null })));
 
 // M-128：移除 eduChildren；M-127：companions 改成就地展開的 LegacyCompanionsCard，
 // 不再走 B 既有 PeopleEditor。
@@ -110,6 +113,7 @@ function ProfileContent({
 }): JSX.Element {
   const [profile, setProfile] = useState(initial);
   const [dismissed, setDismissed] = useState(false);
+  const [afterFirst, setAfterFirst] = useState(false);
   const [editor, setEditor] = useState<Editor>(null);
   const [summary, setSummary] = useState<UserAttendanceSummary | null>(null);
 
@@ -278,12 +282,21 @@ function ProfileContent({
         <FirstLoginEditor
           uid={uid}
           profile={profile}
-          onSaved={saved}
+          onSaved={(patch) => { saved(patch); setAfterFirst(true); }}
           onClose={() => {
             setDismissed(true);
             close();
           }}
         />
+      )}
+      {afterFirst && !profile['favSportsPromptAt'] && (
+        <Suspense fallback={null}>
+          <SportPrefsGate
+            uid={uid}
+            owned={Array.isArray(profile['favSports']) ? (profile['favSports'] as string[]) : []}
+            onSaved={(r) => setProfile((previous) => ({ ...previous, favSports: r.favSports, newEventNotify: r.newEventNotify }))}
+          />
+        </Suspense>
       )}
       {!firstOpen && editor?.kind === 'social' && (
         <SocialEditor
