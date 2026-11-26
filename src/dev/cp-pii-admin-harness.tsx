@@ -29,7 +29,7 @@ function user(id: string, name: string, patch: Partial<AdminUser> = {}): AdminUs
     _docId: id, uid: id, lineUserId: '', name, role: 'user', email: '', gender: '', region: '台北市', sports: '足球',
     phone: '', birthday: '', exp: 0, pictureUrl: '', teamName: '', isRestricted: false, stealth: false,
     joinedAtMs: null, lastLoginMs: Date.UTC(2026, 10, 25, 4, 30), lastLoginIp: '', lastLoginRegion: '', lastLoginIsp: '',
-    lateCancelLevel: null, lateCancelTotal: 0, lateCancelLastMs: null, ...patch,
+    lateCancelLevel: null, lateCancelTotal: 0, lateCancelLastMs: null, lateCancelUntilMs: null, ...patch,
   };
 }
 const USERS = [

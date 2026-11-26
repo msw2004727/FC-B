@@ -79,6 +79,8 @@ export interface AdminUser {
   lateCancelLevel: 'black' | 'red' | null;
   lateCancelTotal: number;
   lateCancelLastMs: number | null;
+  /** 黑標到期（毫秒）；沒有或不是黑標為 null。 */
+  lateCancelUntilMs: number | null;
 }
 
 function text(value: unknown): string {
@@ -145,6 +147,7 @@ export function mapUserDoc(data: Record<string, unknown> | undefined, docId: str
     lateCancelLevel: d['lateCancelLevel'] === 'black' || d['lateCancelLevel'] === 'red' ? d['lateCancelLevel'] : null,
     lateCancelTotal: Number(d['lateCancelTotal']) > 0 ? Math.floor(Number(d['lateCancelTotal'])) : 0,
     lateCancelLastMs: lastLateCancelMs(d['lateCancelRecent']),
+    lateCancelUntilMs: coerceTimeMs(d['lateCancelUntil']),
   };
 }
 
@@ -158,12 +161,23 @@ function lastLateCancelMs(raw: unknown): number | null {
   return last;
 }
 
-/** 用戶卡「臨取狀態」一行（預覽 ⑥）：只有紅標才回字串。 */
-export function lateCancelStatusText(user: AdminUser): string | null {
-  if (user.lateCancelLevel !== 'red') return null;
-  if (user.lateCancelLastMs === null) return `紅標（${user.lateCancelTotal} 次）`;
-  const p = taipeiParts(user.lateCancelLastMs);
-  return `紅標（${user.lateCancelTotal} 次，最近 ${p.month}/${p.day}）`;
+/**
+ * 用戶卡「臨取狀態」一行（預覽 ⑥）：紅標與黑標才回字串。
+ * 黑標：有到期且未過期 → 「黑標，到 M/D 恢復」；無到期 → 「黑標」；已過期 → 不顯示。
+ */
+export function lateCancelStatusText(user: AdminUser, nowMs: number = Date.now()): string | null {
+  if (user.lateCancelLevel === 'red') {
+    if (user.lateCancelLastMs === null) return `紅標（${user.lateCancelTotal} 次）`;
+    const p = taipeiParts(user.lateCancelLastMs);
+    return `紅標（${user.lateCancelTotal} 次，最近 ${p.month}/${p.day}）`;
+  }
+  if (user.lateCancelLevel === 'black') {
+    if (user.lateCancelUntilMs === null) return '黑標';
+    if (user.lateCancelUntilMs <= nowMs) return null;
+    const p = taipeiParts(user.lateCancelUntilMs);
+    return `黑標，到 ${p.month}/${p.day} 恢復`;
+  }
+  return null;
 }
 
 /** 「解除臨取紅標」：該用戶是紅標且操作者有 admin.repair.no_show_adjust。 */

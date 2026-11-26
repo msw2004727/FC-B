@@ -128,7 +128,7 @@ function makeUser(id: string, patch: Partial<AdminUser> = {}): AdminUser {
   return {
     _docId: id, uid: id, lineUserId: '', name: `名字-${id}`, role: 'user', email: '', gender: '', region: '', sports: '',
     phone: '', birthday: '', exp: 0, pictureUrl: '', teamName: '', isRestricted: false, stealth: false,
-    joinedAtMs: null, lastLoginMs: null, lastLoginIp: '', lastLoginRegion: '', lastLoginIsp: '', lateCancelLevel: null, lateCancelTotal: 0, lateCancelLastMs: null, ...patch,
+    joinedAtMs: null, lastLoginMs: null, lastLoginIp: '', lastLoginRegion: '', lastLoginIsp: '', lateCancelLevel: null, lateCancelTotal: 0, lateCancelLastMs: null, lateCancelUntilMs: null, ...patch,
   };
 }
 
@@ -567,6 +567,19 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     expect(mockConfirm).toHaveBeenCalledWith('確定要解除 Kai 的臨取紅標？');
     await waitFor(() => expect(cardOf('Kai').textContent).not.toContain('臨取狀態'));
     expect(toastMessages()).toContain('已解除臨取紅標');
+  });
+
+  it('臨取黑標：顯示臨取狀態一行（黑標），沒有「解除臨取紅標」按鈕', async () => {
+    const black = makeUser('b1', {
+      name: 'Blackie', lateCancelLevel: 'black', lateCancelUntilMs: Date.now() + 7 * 86_400_000,
+    });
+    const perms = [...FULL_ADMIN_PERMS, 'admin.repair.no_show_adjust'];
+    mockUseViewer.mockReturnValue(viewerOf('admin', perms));
+    mockLoadUsers.mockResolvedValue(loadOf([black]));
+    render(<AdminUsersPage lateCancelClearEnabled />);
+    await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
+    expect(cardOf('Blackie').textContent).toContain('臨取狀態：黑標，到');
+    expect(within(cardOf('Blackie')).queryByRole('button', { name: '解除臨取紅標' })).toBeNull();
   });
 
   it('「查看」與膠囊都導向該用戶名片（以 UID 為準）', async () => {

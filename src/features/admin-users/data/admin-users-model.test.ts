@@ -24,6 +24,7 @@ import {
   formatLastLogin,
   getAssignableRoleKeys,
   hasActiveFilters,
+  lateCancelStatusText,
   mapUserDoc,
   matchesDayRange,
   normalizeBirthdayForInput,
@@ -68,6 +69,7 @@ function user(patch: Partial<AdminUser> = {}): AdminUser {
     lateCancelLevel: null,
     lateCancelTotal: 0,
     lateCancelLastMs: null,
+    lateCancelUntilMs: null,
     ...patch,
   };
 }
@@ -83,14 +85,15 @@ function inputs(patch: Partial<AdminUserFilterInputs>): AdminUserFilterInputs {
 const ALL_USER_PERMS = [PERM_USERS_EDIT_PROFILE, PERM_USERS_CHANGE_ROLE, PERM_USERS_RESTRICT] as const;
 
 describe('mapUserDoc（A _mapUserDoc 投影）', () => {
-  it('臨時取消欄位：等級只認 black／red，累計次數，最近一次取最大時間', () => {
+  it('臨時取消欄位：等級只認 black／red，累計次數，最近一次取最大時間，黑標到期時間', () => {
     const u = mapUserDoc({
       lateCancelLevel: 'red', lateCancelTotal: 4,
       lateCancelRecent: [{ toMillis: () => 2_000_000_000_000 }, { seconds: 1_900_000_000 }],
+      lateCancelUntil: { toMillis: () => 2_100_000_000_000 },
     }, 'doc');
-    expect(u).toMatchObject({ lateCancelLevel: 'red', lateCancelTotal: 4, lateCancelLastMs: 2_000_000_000_000 });
+    expect(u).toMatchObject({ lateCancelLevel: 'red', lateCancelTotal: 4, lateCancelLastMs: 2_000_000_000_000, lateCancelUntilMs: 2_100_000_000_000 });
     expect(mapUserDoc({ lateCancelLevel: 'x', lateCancelRecent: 'no' }, 'doc'))
-      .toMatchObject({ lateCancelLevel: null, lateCancelTotal: 0, lateCancelLastMs: null });
+      .toMatchObject({ lateCancelLevel: null, lateCancelTotal: 0, lateCancelLastMs: null, lateCancelUntilMs: null });
   });
 
   it('name = displayName || name || 未知；uid = uid || lineUserId || docId', () => {
@@ -305,6 +308,30 @@ describe('顯示 helper', () => {
     expect(tagRole(user({ role: 'super_admin', stealth: true }))).toBe('user');
     expect(tagRole(user({ role: 'admin', stealth: false }))).toBe('admin');
     expect(tagRole(user({ role: 'coach', stealth: true }))).toBe('coach');
+  });
+});
+
+describe('lateCancelStatusText 黑標', () => {
+  const NOW_MS = Date.parse('2026-11-26T12:00:00+08:00');
+
+  it('黑標、到期在未來 → 顯示「黑標，到 M/D 恢復」', () => {
+    const u = user({ lateCancelLevel: 'black', lateCancelUntilMs: Date.parse('2026-12-03T09:00:00+08:00') });
+    expect(lateCancelStatusText(u, NOW_MS)).toBe('黑標，到 12/3 恢復');
+  });
+
+  it('黑標、沒有到期 → 只顯示「黑標」', () => {
+    const u = user({ lateCancelLevel: 'black', lateCancelUntilMs: null });
+    expect(lateCancelStatusText(u, NOW_MS)).toBe('黑標');
+  });
+
+  it('黑標、已過期 → null（不顯示）', () => {
+    const u = user({ lateCancelLevel: 'black', lateCancelUntilMs: NOW_MS - 1000 });
+    expect(lateCancelStatusText(u, NOW_MS)).toBeNull();
+  });
+
+  it('紅標輸出不變', () => {
+    const u = user({ lateCancelLevel: 'red', lateCancelTotal: 3, lateCancelLastMs: Date.parse('2026-11-20T10:00:00+08:00') });
+    expect(lateCancelStatusText(u, NOW_MS)).toBe('紅標（3 次，最近 11/20）');
   });
 });
 

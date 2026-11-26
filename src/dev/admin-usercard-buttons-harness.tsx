@@ -41,7 +41,7 @@ const START: AdminUser = {
   _docId: 'U_demo_a', uid: 'U_demo_a', lineUserId: '', name: '王示範', role: 'user', email: 'demo-a@example.com', gender: '',
   region: '台北市', sports: '足球', phone: '', birthday: '', exp: 0, pictureUrl: '', teamName: '', isRestricted: false, stealth: false,
   joinedAtMs: null, lastLoginMs: Date.UTC(2026, 10, 25, 4, 30), lastLoginIp: '', lastLoginRegion: '', lastLoginIsp: '',
-  lateCancelLevel: red ? 'red' : null, lateCancelTotal: red ? 3 : 0, lateCancelLastMs: red ? Date.UTC(2026, 10, 25, 11, 0) : null,
+  lateCancelLevel: red ? 'red' : null, lateCancelTotal: red ? 3 : 0, lateCancelLastMs: red ? Date.UTC(2026, 10, 25, 11, 0) : null, lateCancelUntilMs: null,
 };
 
 /** 建議版（B）：解除紅標搬到「臨取狀態」那一行尾端當小按鈕；按鈕列只留一般操作，賽事個資移除排最後、前面加間隔。 */
