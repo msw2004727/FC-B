@@ -419,16 +419,9 @@ function amendIntentOf(pick: ScorePick): GoalIntent | CardIntent | null {
       ...(pick.plId ? { plId: pick.plId } : {}),
     };
   }
+  // 是不是第二黃由工作階段的 amend 判斷（看得到待送的牌與作廢），不用畫面算的 refSeq。
   if ((pick.action === 'yellow' || pick.action === 'red') && pick.plId) {
-    const second = pick.action === 'yellow' && pick.refSeq != null;
-    return {
-      kind: 'card',
-      side: pick.side,
-      plId: pick.plId,
-      cardType: second ? 'second_yellow' : pick.action,
-      matchSecond,
-      ...(second ? { refSeq: pick.refSeq as number } : {}),
-    };
+    return { kind: 'card', side: pick.side, plId: pick.plId, cardType: pick.action, matchSecond };
   }
   return null;
 }
@@ -512,8 +505,9 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
       sendRecord(view, pick);
       return true;
     },
+    // 一律走 undoFirstYellow：沒有連結時它自己退回 voidEvent；第二黃還在待送時也看得到（S2 審查 P3-4）。
     onUndo: (seq) => {
-      void view.actions.voidEvent({ seq });
+      void view.actions.undoFirstYellow({ seq });
       return true;
     },
     // 第二黃與第一黃的作廢、改判的作廢與新紀錄，要用工作階段的原子群組依序送（S2）。

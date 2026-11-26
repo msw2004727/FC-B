@@ -952,7 +952,7 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
   // S2：ScorePad 復原、改判兩張黃牌時，原本 adapter 連呼兩次 voidEvent（不等結果）。同一毫秒建立的兩筆，
   // IndexedDB 依 op 出列；後建的第一黃作廢 op 較小時排到前面，第二黃還沒作廢就被 Rules 拒、佇列停住。
   // 修正後走工作階段的原子群組（at + index），與 op 字典序無關。這裡固定讓後建的 op 較小
-  // （base64url 首字元 'A'(65) < '_'(95) < 'g'(103)）。
+  // （base64url 首字元 'A'(65) < 'E'(69) < '_'(95) < 'g'(103)）。
   async function twoYellows(): Promise<void> {
     const live = await startLive('s2pre');
     await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
@@ -975,8 +975,8 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
     const s = await startLive('s20', { log: new OpOrderedLog(), now: () => at, randomBytes: ops.bytes });
     await waitUntil('兩張黃牌已載入', () => s.session.getState().events.length >= 2, 200);
     const props = scorePadPropsFrom(s.session.getState(), at);
-    // 依序：群組 id、作廢第二黃 'g…'、作廢第一黃 'A…'（'A' < 'g'）。
-    ops.arm([0x11, 0x80, 0x00]);
+    // 依取號順序遞減：'g' > '_' > 'E' > 'A'。不論走群組（先取群組 id）還是改回逐筆送，後建的 op 都比較小。
+    ops.arm([0x80, 0xff, 0x11, 0x00]);
     expect(props.onUndoPair?.(1)).toBe(true);
     const logged = await settled(s.log, 2);
     expect(logged.map((row) => row.state)).toEqual(['applied', 'applied']);
@@ -991,8 +991,8 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
     const s = await startLive('s21', { log: new OpOrderedLog(), now: () => at, randomBytes: ops.bytes });
     await waitUntil('兩張黃牌已載入', () => s.session.getState().events.length >= 2, 200);
     const props = scorePadPropsFrom(s.session.getState(), at);
-    // 依序：群組 id、作廢第二黃 'g…'、作廢第一黃 '_…'、紅牌 'A…'（'A' < '_' < 'g'，與建立序相反）。
-    ops.arm([0x11, 0x80, 0xff, 0x00]);
+    // 同上：取號順序遞減，與建立序相反。
+    ops.arm([0x80, 0xff, 0x11, 0x00]);
     expect(props.onAmend?.(1, {
       side: 'home', action: 'red', plId: 'pl_h1', goalKind: null, minute: 0, refSeq: null, matchSecond: 30,
     })).toBe(true);
@@ -1001,5 +1001,27 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
     expect(s.commits.map((plan) => plan.event.type)).toEqual(['void', 'void', 'card']);
     const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
     expect(events.find((event) => Number(event.seq) === 5)).toMatchObject({ type: 'card', cardType: 'red', matchSecond: 30 });
+  });
+
+  it('22. 離線先記一張待送黃牌，再把別的牌改判成同一人黃牌：寫成第二黃', async () => {
+    const live = await startLive('s22');
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h2', cardType: 'red' });
+    await waitUntil('紅牌已載入', () => live.session.getState().events.length >= 1, 200);
+    await goOffline(live);
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    const props = scorePadPropsFrom(live.session.getState(), Date.now());
+    expect(props.onAmend?.(1, {
+      side: 'home', action: 'yellow', plId: 'pl_h1', goalKind: null, minute: 0, refSeq: null, matchSecond: 40,
+    })).toBe(true);
+    await waitUntil('改判已排入', async () => (await rows(live.log)).length === 3, 200);
+    const queued = (await rows(live.log)).find((row) => row.group && row.intent.kind === 'card');
+    expect(queued?.intent).toMatchObject({ kind: 'card', cardType: 'second_yellow', plId: 'pl_h1' });
+    await goOnline(live);
+    await waitUntil('三筆都送完', async () => (await rows(live.log)).every((row) => row.state === 'applied'), 200);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    const yellow = events.find((event) => event.cardType === 'yellow');
+    const second = events.find((event) => event.cardType === 'second_yellow');
+    expect(second).toMatchObject({ plId: 'pl_h1', refSeq: Number(yellow?.seq), matchSecond: 40 });
+    expect(await listCollection(`competitions/${CID}/matches/${MT}/voids`)).toHaveLength(1);
   });
 });
