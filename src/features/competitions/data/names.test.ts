@@ -13,6 +13,7 @@ describe('cleanLine（照後端 text.ts）', () => {
     expect(cleanLine('  Ａ　b  ')).toBe('A b');
     expect(cleanLine('王\u200b小\ufeff明')).toBe('王小明');
     expect(cleanLine('\u0000林\u2800')).toBe('林');
+    expect(cleanLine('王\u2066小\u2069明')).toBe('王小明');
   });
 });
 

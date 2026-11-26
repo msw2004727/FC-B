@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { emit } from '@/core/events';
 import { peekViewerTeamScan, resetViewerTeamScanForTest, seedViewerTeamScanForTest } from '@/features/profile/data/viewer-team-scan';
 import { collectRepClubs, isClubRepresentative, loadRepClubs, representativeClubs, resetRepClubsCacheForTest } from './rep-clubs';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const firebaseBox = vi.hoisted(() => ({
   getFirebase: vi.fn(async () => ({ db: { kind: 'db' } })),
@@ -55,6 +58,25 @@ describe('俱樂部代表（對齊 Rules isCurrentUserTeamCaptainOrLeader）', (
   it('三處讀的是同一份 repClubs，不是另一份清單', () => {
     const clubs = [{ id: 'club_a', name: '示範隊A' }];
     expect(representativeClubs({ repClubs: clubs })).toBe(clubs);
+  });
+});
+
+// P2-2 跨 repo 向量：cp-rep-vectors.json 是 FC tests/fixtures/cp-rep-vectors.json 的逐位元組複本
+// （FC 的 functions/cp-club-mirror.js 與 Rules 模擬器讀同一份）。改向量要兩邊一起改；
+// CI 規則測試的「規則副本對正本」步驟會比對 FC main 的正本（scripts/check-rules-sync.mjs）。
+// 測試環境是 jsdom（import.meta.url 不是 file:），照 drawer-menu.test.ts 用 repo 根目錄組路徑。
+const VECTOR_FILE = join(process.cwd(), 'src/features/competitions/cp-rep-vectors.json');
+const VECTOR_SHA256 = '165e4bac60cc12a3dc61f07301cd31e6539dc4844443780fdf0b6f7badcad92d';
+describe('俱樂部代表共用向量（cp-rep-vectors.json）', () => {
+  const raw = readFileSync(VECTOR_FILE);
+  const vectors = (JSON.parse(raw.toString('utf8')) as { vectors: Array<{ name: string; team: Record<string, unknown>; reps: string[]; nonReps: string[] }> }).vectors;
+  it('複本雜湊與記錄一致（改向量要同步 FC 正本並更新這個常數）', () => {
+    expect(createHash('sha256').update(raw).digest('hex')).toBe(VECTOR_SHA256);
+    expect(vectors.length).toBeGreaterThan(0);
+  });
+  it.each(vectors.map((v) => [v.name, v] as const))('%s', (_name, v) => {
+    for (const uid of v.reps) expect(isClubRepresentative(uid, v.team)).toBe(true);
+    for (const uid of v.nonReps) expect(isClubRepresentative(uid, v.team)).toBe(false);
   });
 });
 
