@@ -137,7 +137,7 @@ export function StatusCompetitionDialog(props: StatusCompetitionProps & { onClos
       } else {
         await actions.setCompetitionStatus({ cid, status: choice, reason: reason.trim() });
       }
-      onDone({ status: choice, statusReason: choice === 'published' ? null : reason.trim() });
+      if (alive.current) onDone({ status: choice, statusReason: choice === 'published' ? null : reason.trim() });
     } catch (err) {
       const info = errorOf(err);
       if (alive.current) setError(reasonText(ct, info.reason, info.params));

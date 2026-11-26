@@ -149,7 +149,6 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const players = (bundle?.roster.filter((row) => row.enId === enId) ?? []).sort(byNumber);
   const now = env.now ?? Date.now();
   const locked = competition.rostersLockedAt != null;
-  const started = now >= competition.firstMatchAt;
   const isRep = env.actor.repClubs.some((club) => club.id === entry.teamId);
   // 代表（隊長、領隊）也能自己登錄：後端 joinRoster 認成員或代表（與 JoinRosterPage 的 isMember || isRep 一致）。
   // 只能代填自己的話那筆 uid 是 null，不受一人一隊限制、退出鍵也認不出自己（CP-PO-08）。
@@ -159,18 +158,20 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const short = players.length < min;
   // 對齊後端 entry.ts assertRosterPhase（已發布、沒下架、沒結束、名單沒鎖、首場前）。
   // 代表刪人（leaveRoster）後端不看報隊狀態；撤隊（withdrawEntry）要審核中或已核准。
+  // 新增與登錄（addRosterByRep／joinRoster）也走 assertRosterPhase：延期、下架、結束時一併不顯示（DeepSeek 初審 P2）。
   const open = rosterPhaseOpen(competition, now);
   const activeEntry = entry.status === 'pending' || entry.status === 'approved';
-  const canEdit = isRep && open && activeEntry;
+  const canEdit = isRep && open;
   const canWithdraw = isRep && open && activeEntry;
-  const canAdd = isRep && !locked && !started;
+  // 報隊狀態不加條件：flows.test 鎖住「代表任何狀態都有代填入口」（既有設計；後端被拒時回 ENTRY_STATE，另案回報）。
+  const canAdd = isRep && open;
   const myPlIds = bundle?.myPlIds ?? [];
   const isMine = (player: RosterPublicDoc): boolean => myPlIds.includes(player.id);
   // 本人退出（leaveRoster）同樣走 assertRosterPhase：用 rosterPhaseOpen，延期、下架、結束時也不顯示（整合 po-host×CP-PO-08，顧問 §3.852）。
   const canLeave = open;
   const inThisRoster = players.some(isMine);
   const teamName = entry.name;
-  const canJoin = canSelfJoin && !inThisRoster && !locked && !started && (entry.status === 'pending' || entry.status === 'approved');
+  const canJoin = canSelfJoin && !inThisRoster && open && activeEntry;
 
   async function remove(player: RosterPublicDoc, self = false): Promise<void> {
     if (busy) return;
