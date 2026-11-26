@@ -280,6 +280,8 @@ export function SideDrawer({
   });
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  // 切換中先顯示按下的語言（載完前按鈕變淡、下拉 disabled），讓使用者馬上看到有按到；失敗時清掉、跳回原語言。
+  const [pendingLocale, setPendingLocale] = useState<Locale | null>(null);
   const [stealth, setStealth] = useState<boolean>(() => readLocalAdminStealth());
   const [brokenUrls, setBrokenUrls] = useState<ReadonlySet<string>>(() => new Set());
   const [pwaStep, setPwaStep] = useState<PwaModalStep>('none');
@@ -591,6 +593,7 @@ export function SideDrawer({
     const sequence = ++request.current;
     loadingRef.current = true;
     setLoading(true);
+    setPendingLocale(value as Locale);
     setLoadError(false);
     if (errorTimer.current !== null) {
       clearTimeout(errorTimer.current);
@@ -610,6 +613,7 @@ export function SideDrawer({
     } finally {
       if (sequence === request.current) {
         loadingRef.current = false;
+        setPendingLocale(null);
         const cur = getCurrentLocale();
         setLocaleState(cur === 'zh-CN' ? 'zh-TW' : cur);
         setLoading(false);
@@ -917,14 +921,14 @@ export function SideDrawer({
                 );
               })}
             </div>
-            <label id="lang-switcher" class="drawer-lang" title={t('ui.sideDrawer.language')}>
+            <label id="lang-switcher" class={loading ? 'drawer-lang is-loading' : 'drawer-lang'} title={t('ui.sideDrawer.language')}>
               <GlobeIcon />
-              <span class="drawer-lang-code">{LOCALE_SHORT_LABELS[locale]}</span>
+              <span class="drawer-lang-code">{LOCALE_SHORT_LABELS[pendingLocale ?? locale]}</span>
               <CaretIcon />
               <select
                 id="lang-select"
                 aria-label={t('ui.sideDrawer.language')}
-                value={locale}
+                value={pendingLocale ?? locale}
                 disabled={loading}
                 aria-busy={loading ? 'true' : undefined}
                 aria-describedby={loadError ? 'drawer-locale-error' : undefined}
@@ -987,7 +991,8 @@ export function SideDrawer({
               </button>
             </div>
           )}
-          {loading && <div role="status">{t('ui.sideDrawer.loading')}</div>}
+          {/* 切換語言的處理中提示只給讀屏，畫面不露字（原本會閃出 1～2 秒） */}
+          {loading && <div role="status" class="drawer-sr-only">{t('ui.sideDrawer.loading')}</div>}
           {loadError && (
             <div id="drawer-locale-error" role="alert">
               {t('ui.sideDrawer.localeError')}
