@@ -34,6 +34,8 @@ const report = { shots: [], consoleErrors: [], blocked: [], overflows: [], wraps
 
 const modalBody = '#cp-removal-modal';
 async function step(page, to) {
+  // 頁面有 0.3 秒淡入（A 的 pageIn），等它跑完再拍
+  await page.waitForTimeout(600);
   if (to === 'entry') return;
   if (!to.startsWith('admin')) {
     await page.locator('.admin-user-card').first().locator('button', { hasText: '賽事個資移除' }).click();
