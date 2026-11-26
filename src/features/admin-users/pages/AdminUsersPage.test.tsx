@@ -578,7 +578,7 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     mockLoadUsers.mockResolvedValue(loadOf([black]));
     render(<AdminUsersPage lateCancelClearEnabled />);
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
-    expect(cardOf('Blackie').textContent).toContain('臨取狀態：黑標，到');
+    expect(cardOf('Blackie').textContent).toContain('臨取狀態：黑標，最晚');
     expect(within(cardOf('Blackie')).queryByRole('button', { name: '解除臨取紅標' })).toBeNull();
   });
 

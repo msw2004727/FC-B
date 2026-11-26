@@ -163,7 +163,7 @@ function lastLateCancelMs(raw: unknown): number | null {
 
 /**
  * 用戶卡「臨取狀態」一行（預覽 ⑥）：紅標與黑標才回字串。
- * 黑標：有到期且未過期 → 「黑標，到 M/D 恢復」；無到期 → 「黑標」；已過期 → 不顯示。
+ * 黑標：有到期且未過期 → 「黑標，最晚 M/D 恢復」（站長 11-26 選；到期日或出席滿場數先到者恢復，所以是最晚日）；無到期 → 「黑標」；已過期 → 不顯示。
  */
 export function lateCancelStatusText(user: AdminUser, nowMs: number = Date.now()): string | null {
   if (user.lateCancelLevel === 'red') {
@@ -175,7 +175,7 @@ export function lateCancelStatusText(user: AdminUser, nowMs: number = Date.now()
     if (user.lateCancelUntilMs === null) return '黑標';
     if (user.lateCancelUntilMs <= nowMs) return null;
     const p = taipeiParts(user.lateCancelUntilMs);
-    return `黑標，到 ${p.month}/${p.day} 恢復`;
+    return `黑標，最晚 ${p.month}/${p.day} 恢復`;
   }
   return null;
 }

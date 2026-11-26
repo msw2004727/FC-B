@@ -314,9 +314,9 @@ describe('顯示 helper', () => {
 describe('lateCancelStatusText 黑標', () => {
   const NOW_MS = Date.parse('2026-11-26T12:00:00+08:00');
 
-  it('黑標、到期在未來 → 顯示「黑標，到 M/D 恢復」', () => {
+  it('黑標、到期在未來 → 顯示「黑標，最晚 M/D 恢復」', () => {
     const u = user({ lateCancelLevel: 'black', lateCancelUntilMs: Date.parse('2026-12-03T09:00:00+08:00') });
-    expect(lateCancelStatusText(u, NOW_MS)).toBe('黑標，到 12/3 恢復');
+    expect(lateCancelStatusText(u, NOW_MS)).toBe('黑標，最晚 12/3 恢復');
   });
 
   it('黑標、沒有到期 → 只顯示「黑標」', () => {
