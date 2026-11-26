@@ -105,6 +105,7 @@ export function idleActions(): CpActions {
     deleteCompetition: async ({ cid }) => ({ cid, deleted: true }),
     setCompetitionStatus: async ({ cid, status }) => ({ cid, status }),
     withdrawEntry: async () => ({}),
+    requestMyDataRemoval: async () => ({ status: 'done', processed: 0, waiting: [] }),
   };
 }
 

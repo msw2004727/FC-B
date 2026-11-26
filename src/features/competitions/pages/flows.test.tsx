@@ -127,6 +127,7 @@ function spyActions() {
     deleteCompetition: vi.fn(actions.deleteCompetition),
     setCompetitionStatus: vi.fn(actions.setCompetitionStatus),
     withdrawEntry: vi.fn(actions.withdrawEntry),
+    requestMyDataRemoval: vi.fn(actions.requestMyDataRemoval),
   };
 }
 

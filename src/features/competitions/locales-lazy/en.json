@@ -608,7 +608,8 @@
     "NOT_ROSTER_OWNER": "只有本人、俱樂部代表或主辦可以移除",
     "ENTRY_STATE": "這筆報名目前的狀態不能這樣改",
     "PLAYER_NOT_FOUND": "找不到這位球員，可能已被移除",
-    "COMPETITION_NOT_OPEN": "賽事目前不開放這個操作"
+    "COMPETITION_NOT_OPEN": "賽事目前不開放這個操作",
+    "REMOVAL_RATE_LIMITED": "剛剛已送出，請稍後再試"
   },
   "cover": "封面圖",
   "coverUpload": "上傳封面",
@@ -654,5 +655,16 @@
   "statusDoneCancelled": "賽事已取消",
   "withdrawEntry": "撤回報名",
   "withdrawEntryConfirm": "確定要撤回「{name}」的報名？名單會一併移除，之後可以重新報名。",
-  "withdrawDone": "已撤回報名"
+  "withdrawDone": "已撤回報名",
+  "removeMine": "移除我的賽事資料",
+  "removeMineLine1": "報名中的名單：直接把你從隊伍移除。",
+  "removeMineLine2": "已開賽的賽事：名字改成『球員』或『成員』，\n比分和比賽紀錄會保留。",
+  "removeMineLine3": "目前還在擔任記分員的賽事，\n結束後才會完全移除。",
+  "removeMineContinue": "繼續",
+  "removeMineAsk": "移除後無法復原，確定要移除嗎？",
+  "removeMineOk": "移除",
+  "removeMineBusy": "處理中…",
+  "removeMineDone": "已移除你的賽事資料",
+  "removeMineLater": "已移除大部分資料，\n其餘 {n} 場會在賽事結束或指派到期後自動處理",
+  "removeMineLaterNoCount": "已移除大部分資料，\n其餘會在賽事結束或指派到期後自動處理"
 }

@@ -39,10 +39,12 @@ import {
   cpHostCreateInvite,
   cpHostRevokeInvite,
   cpParticipantAcceptInvite,
+  cpParticipantRequestMyDataRemoval,
   cpHostModerate,
   cpHostReviewReport,
   type CpAcceptInviteResult,
   type CpCreateInviteResult,
+  type CpDataRemovalResult,
   type CpDeleteResult,
   type CpHostSetStatusInput,
   type CpModerateInput,
@@ -169,6 +171,8 @@ export interface CpActions {
   setCompetitionStatus(input: CpHostSetStatusInput): Promise<unknown>;
   /** 代表撤回報名（cpEntry withdrawEntry），連同這隊名單一併移除。 */
   withdrawEntry(input: { cid: string; enId: string }): Promise<unknown>;
+  /** 本人移除自己的賽事資料（cpParticipant requestMyDataRemoval，設計 §4.11）。 */
+  requestMyDataRemoval(): Promise<CpDataRemovalResult>;
 }
 
 export const liveCpActions: CpActions = {
@@ -212,4 +216,5 @@ export const liveCpActions: CpActions = {
   deleteCompetition: cpHostDelete,
   setCompetitionStatus: cpHostSetStatus,
   withdrawEntry: cpEntryWithdraw,
+  requestMyDataRemoval: cpParticipantRequestMyDataRemoval,
 };

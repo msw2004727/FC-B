@@ -128,6 +128,8 @@ export const CP_REASON_CODES = [
   'ENTRY_STATE',
   'PLAYER_NOT_FOUND',
   'COMPETITION_NOT_OPEN',
+  // 本人移除賽事資料（cpParticipant requestMyDataRemoval，設計 §4.11）。
+  'REMOVAL_RATE_LIMITED',
 ] as const;
 
 export type CpReasonCode = (typeof CP_REASON_CODES)[number];

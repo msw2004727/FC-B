@@ -54,6 +54,7 @@ import { useInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { representativeClubs } from '../rep-clubs';
 import { InAppCardList } from './InAppCardList';
+import { MyDataRemoval } from './MyDataRemoval';
 import { liveCpActions, type CpActions } from '../actions';
 import { DeleteDialog, teamCountOf } from '../ui/delete-competition';
 import { dangerConfirm } from '../ui/danger-confirm';
@@ -376,6 +377,20 @@ function SectionBody({
     const ok = await dangerConfirm(ct('deleteAsk', { name }), { okText: ct('deleteComp'), danger: true });
     if (ok) setDel({ cid, name });
   };
+  // 「只看我的」清單最下方的移除我的資料（設計 §4.11）：清單空的、快照畫面、未登入都不畫。
+  const showRemoval = onlyMine && visible.length > 0 && !!actor.uid && !actor.authPending && !showingSnap;
+  // 移除完只重讀我的清單（公開與俱樂部主辦不因本人移除而變）；讀失敗留原畫面。
+  const reloadMine = async (): Promise<void> => {
+    const uid = actor.uid;
+    if (!uid) return;
+    try {
+      const items = await repo.listMine(uid);
+      const rows = await Promise.all(items.map((item) => resolveMine(repo, item)));
+      if (appliedUid.current === uid) setBaseMine(dedupeMine(rows));
+    } catch {
+      // 留原畫面
+    }
+  };
   const dropDoc = (cid: string): void => {
     setPublicDocs((list) => list.filter((doc) => doc.id !== cid));
     setHosted((list) => list.filter((doc) => doc.id !== cid));
@@ -402,6 +417,7 @@ function SectionBody({
       filtered={tab !== 'all' || status !== 'all' || onlyMine}
       statusSlot={statusSlot}
     />
+    {showRemoval ? <MyDataRemoval ct={ct} actions={actions} onRemoved={() => void reloadMine()} /> : null}
     {/* 換帳號或權限變了不再顯示（審查 P2-2） */}
     {del && canDelete ? (
       <DeleteDialog

@@ -650,7 +650,19 @@ export function cpParticipantAcceptInvite(input: { cid: string; ivId: string; co
   return callAction('cpParticipant', payload('acceptInvite', { cid: input.cid, ivId: input.ivId, code: input.code }));
 }
 
-export type CpModerateInput = { cid: string; hidden: true; reason: string } | { cid: string; hidden: false };
+export interface CpDataRemovalResult {
+  status: 'done' | 'partial' | 'waiting';
+  processed: number;
+  /** 還不能完全移除的賽事（同一場可能因多個原因列多筆）。 */
+  waiting: Array<{ cid: string; reason: string }>;
+}
+
+/** 本人移除自己的賽事資料（設計 §4.11）。不帶 uid，伺服器只認登入者；confirm 固定 REMOVE。 */
+export function cpParticipantRequestMyDataRemoval(): Promise<CpDataRemovalResult> {
+  return callAction('cpParticipant', payload('requestMyDataRemoval', { confirm: 'REMOVE' }));
+}
+
+export type CpModerateInput ={ cid: string; hidden: true; reason: string } | { cid: string; hidden: false };
 
 /** 管理員下架（帶原因）或恢復（不帶 reason，帶了伺服器回 UNKNOWN_FIELD）。 */
 export function cpHostModerate(input: CpModerateInput): Promise<{ cid: string; hidden: boolean }> {
