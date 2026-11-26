@@ -113,6 +113,34 @@ describe('第二黃待送時，復原／改判第一黃先確認', () => {
     act(() => { vi.advanceTimersByTime(CONFIRM_ARM_MS); });
     fireEvent.click(button('確定改判'));
     expect(amend).toHaveBeenCalledTimes(1);
+    expect(amend).toHaveBeenCalledWith({ seq: 1 }, expect.objectContaining({ kind: 'card', cardType: 'red', plId: 'pl_th9' }));
+  });
+
+  it('sending 的第二黃也算引用；rejected 的不算', () => {
+    const undoFirstYellow = vi.fn(async () => ({ status: 'applied' as const }));
+    render(<ScorePad {...scene([{ ...pendingSecond(), state: 'sending' }], { undoFirstYellow })} />);
+    openFirstYellow();
+    fireEvent.click(button(/^復原/));
+    expect(button(LIVE_COPY.undoBothConfirm)).toBeTruthy();
+    expect(undoFirstYellow).not.toHaveBeenCalled();
+    cleanup();
+
+    render(<ScorePad {...scene([{ ...pendingSecond(), state: 'rejected', rejectReason: 'rules' }], { undoFirstYellow })} />);
+    openFirstYellow();
+    fireEvent.click(button(/^復原/));
+    expect(screen.queryByRole('button', { name: LIVE_COPY.undoBothConfirm })).toBeNull();
+    expect(undoFirstYellow.mock.calls).toEqual([[{ seq: 1 }]]);
+  });
+
+  it('沒接 onUndoPair／onAmend（預覽）時不採用 pendingSecondRefs，直接 onUndo，-1 不外流', () => {
+    const onUndo = vi.fn(() => true);
+    const props = scene([pendingSecond()], {});
+    render(<ScorePad {...props} onUndoPair={undefined} onAmend={undefined} onUndo={onUndo} />);
+    expect(props.pendingSecondRefs).toEqual([1]);
+    openFirstYellow();
+    fireEvent.click(button(/^復原/));
+    expect(screen.queryByRole('button', { name: LIVE_COPY.undoBothConfirm })).toBeNull();
+    expect(onUndo.mock.calls).toEqual([[1]]);
   });
 
   it('待送第二黃自己已排了作廢：不算引用，直接復原', () => {
