@@ -166,3 +166,15 @@ export function canUnlockRosters(input: {
   if (input.isAdmin) return true;
   return input.canManage && input.now < input.firstMatchAt;
 }
+
+/** 名單還能改：對齊後端 entry.ts assertRosterPhase。 */
+export function rosterPhaseOpen(
+  competition: { status: string; hidden: boolean; endedAt: number | null; rostersLockedAt: number | null; firstMatchAt: number },
+  now: number,
+): boolean {
+  return competition.status === 'published'
+    && !competition.hidden
+    && competition.endedAt == null
+    && competition.rostersLockedAt == null
+    && now < competition.firstMatchAt;
+}

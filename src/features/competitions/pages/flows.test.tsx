@@ -125,6 +125,8 @@ function spyActions() {
     moderate: vi.fn(actions.moderate),
     reviewReport: vi.fn(actions.reviewReport),
     deleteCompetition: vi.fn(actions.deleteCompetition),
+    setCompetitionStatus: vi.fn(actions.setCompetitionStatus),
+    withdrawEntry: vi.fn(actions.withdrawEntry),
   };
 }
 

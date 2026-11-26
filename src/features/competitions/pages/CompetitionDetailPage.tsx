@@ -15,6 +15,7 @@ import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
 import { canEditCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canRestoreCompetition, isCpAdmin } from '../access';
 import { canDeleteCompetition, isPrimaryHostView } from '../delete-access';
+import { canSetCompetitionStatus } from '../status-access';
 import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import type { CpBundle, CpInjectedEnv } from '../env';
@@ -50,6 +51,7 @@ import { shownCover } from '../data/cover';
 import { TieWorkspace } from '../ui/tie-panel';
 import { AdminPanel, HiddenNotice } from '../ui/admin-moderation';
 import { DeleteCompetition, teamCountOf } from '../ui/delete-competition';
+import { StatusCompetitionEntry } from '../ui/status-competition';
 import { HostLine, hostLineShown, PublicBoard } from '../ui/public-board';
 import { StatusTag, type StatusKind } from '../ui/status-tag';
 import { CpCard, CpFrame, CpI18nPending, CpRow, AlertIcon, MoreIcon, NextIcon } from '../ui/shell';
@@ -805,6 +807,26 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           {canEditCompetition(competition, { canHost: hostOps, isAdmin: hostInput.isAdmin }) ? (
             <Button variant="ghost" trailing={<NextIcon />} onClick={() => route(`/competitions/new?edit=${cid}`)}>{ct('editTitle')}</Button>
           ) : null}
+          {/* CP-PO-05：延期、取消、延期後恢復（cpHost setStatus）。顯示條件對齊後端（status-access.ts）。 */}
+          {(competition.status === 'published' || competition.status === 'postponed')
+            && canSetCompetitionStatus(competition, { canHost: hostOps, isAdmin: hostInput.isAdmin }) ? (
+              <StatusCompetitionEntry
+                ct={ct}
+                cid={cid}
+                status={competition.status}
+                actions={env.actions}
+                previewOpen={env.preview?.statusDialog}
+                onDone={(next) => {
+                  setBundle((current) => (current?.competition
+                    ? { ...current, competition: { ...current.competition, status: next.status, statusReason: next.statusReason } }
+                    : current));
+                  toast.show({
+                    message: ct(next.status === 'postponed' ? 'statusDonePostponed' : next.status === 'cancelled' ? 'statusDoneCancelled' : 'statusDoneResumed'),
+                    tone: 'success',
+                  });
+                }}
+              />
+            ) : null}
         </nav>
       ) : null}
       {error ? <CpError reason={error.reason} params={error.params} /> : null}

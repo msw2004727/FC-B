@@ -122,6 +122,12 @@ export const CP_REASON_CODES = [
   'DIVISION_BELOW_APPROVED',
   // 主辦賽事開關關閉（host.ts createCompetition，顧問 §3.612）。文案與建賽頁 hostDisabled 同一句。
   'HOST_DISABLED',
+  // CP-PO-05／08：延期取消、撤隊、球員退出
+  'STATUS_TRANSITION',
+  'NOT_ROSTER_OWNER',
+  'ENTRY_STATE',
+  'PLAYER_NOT_FOUND',
+  'COMPETITION_NOT_OPEN',
 ] as const;
 
 export type CpReasonCode = (typeof CP_REASON_CODES)[number];

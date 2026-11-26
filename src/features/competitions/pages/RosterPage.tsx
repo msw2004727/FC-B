@@ -8,6 +8,7 @@ import { useGoBack } from '@/core/back-guard';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { Button } from '@/ui/Button';
 import { PageSpinner } from '@/ui/PageSpinner';
+import { rosterPhaseOpen } from '../access';
 import { liveCpActions } from '../actions';
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
@@ -18,6 +19,7 @@ import { CpError, CpLoadFailed, errorOf, loadFailOf, type CpLoadFail } from '../
 import { dangerConfirm } from '../ui/danger-confirm';
 import { CpCard, CpFrame, CpI18nPending, TrashIcon } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
+import { toast } from '@/ui/Toast';
 import { TeamCrest } from '../ui/TeamCrest';
 
 /** 我在這場賽事的名單列 id。讀不到（沒登入、沒文件、讀取失敗）就當空：只是不顯示退出鍵，名單照常顯示。 */
@@ -68,7 +70,7 @@ function PlayerRow({
 }: {
   player: RosterPublicDoc;
   canEdit: boolean;
-  /** 這一列是我自己，而且還能退出（名單未鎖定、尚未開賽；與後端 leaveRoster 一致）。 */
+  /** 這一列是我自己，而且還能退出（rosterPhaseOpen：已發布、未下架、未結束、名單未鎖、首場前；與後端 leaveRoster 的 assertRosterPhase 一致）。 */
   canLeave: boolean;
   busy: boolean;
   onRemove: () => void;
@@ -155,13 +157,17 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const min = division.rosterMin;
   const max = division.rosterMax;
   const short = players.length < min;
-  const canEdit = isRep && !locked && !started && entry.status === 'approved';
+  // 對齊後端 entry.ts assertRosterPhase（已發布、沒下架、沒結束、名單沒鎖、首場前）。
+  // 代表刪人（leaveRoster）後端不看報隊狀態；撤隊（withdrawEntry）要審核中或已核准。
+  const open = rosterPhaseOpen(competition, now);
+  const activeEntry = entry.status === 'pending' || entry.status === 'approved';
+  const canEdit = isRep && open && activeEntry;
+  const canWithdraw = isRep && open && activeEntry;
   const canAdd = isRep && !locked && !started;
   const myPlIds = bundle?.myPlIds ?? [];
   const isMine = (player: RosterPublicDoc): boolean => myPlIds.includes(player.id);
-  // 對齊後端 leaveRoster 的 assertRosterPhase 裡名單相關的兩條：名單未鎖定、第一場還沒開打（nowMs >= firstMatchAt 就擋）。
-  // 後端另擋未發布／下架／已結束；這些狀態本頁讀不到或必在開賽後，前端不另判。
-  const canLeave = !locked && !started;
+  // 本人退出（leaveRoster）同樣走 assertRosterPhase：用 rosterPhaseOpen，延期、下架、結束時也不顯示（整合 po-host×CP-PO-08，顧問 §3.852）。
+  const canLeave = open;
   const inThisRoster = players.some(isMine);
   const teamName = entry.name;
   const canJoin = canSelfJoin && !inThisRoster && !locked && !started && (entry.status === 'pending' || entry.status === 'approved');
@@ -192,6 +198,26 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
     } catch (err) {
       setError(errorOf(err));
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function withdraw(): Promise<void> {
+    if (busy || !entry) return;
+    const ok = await dangerConfirm(ct('withdrawEntryConfirm', { name: entry.name }), {
+      okText: ct('withdrawEntry'),
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await env.actions.withdrawEntry({ cid, enId });
+      toast.show({ message: ct('withdrawDone'), tone: 'success' });
+      // 後端已把這隊改成已退出、名單清空：回賽事詳情（取代這筆，返回不會回到已撤回的名單）。
+      route(`/competitions/${cid}`, true);
+    } catch (err) {
+      setError(errorOf(err));
       setBusy(false);
     }
   }
@@ -272,6 +298,12 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
         <div class="cps-actions cp3-roster-act">
           {/* 代表這頁的主要動作是確認名單；自己登錄放次要鈕，不讓兩顆主要鈕疊在一起。一般成員仍是主要鈕。 */}
           <Button variant={canAdd ? 'secondary' : 'primary'} onClick={() => route(`/competitions/${cid}/entries/${enId}/join`)}>{ct('joinAction')}</Button>
+        </div>
+      ) : null}
+      {/* 撤回報名：沿用刪除賽事的危險區外觀（置中、上面一條細線），放在最後。 */}
+      {canWithdraw ? (
+        <div class="cps-del-zone">
+          <Button variant="danger" disabled={busy} onClick={() => { void withdraw(); }}>{ct('withdrawEntry')}</Button>
         </div>
       ) : null}
     </CpFrame>

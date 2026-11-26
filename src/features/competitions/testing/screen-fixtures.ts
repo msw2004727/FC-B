@@ -103,6 +103,8 @@ export function idleActions(): CpActions {
     moderate: async () => ({}),
     reviewReport: async () => ({}),
     deleteCompetition: async ({ cid }) => ({ cid, deleted: true }),
+    setCompetitionStatus: async ({ cid, status }) => ({ cid, status }),
+    withdrawEntry: async () => ({}),
   };
 }
 
