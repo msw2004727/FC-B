@@ -758,7 +758,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       const intents: Intent[] = [];
       if (secondYellow) intents.push(voidOf(secondYellow));
       intents.push(voidOf(target));
-      intents.push(next.kind === 'goal' ? { ...next, matchSecond: next.matchSecond || second() } : { ...next });
+      intents.push(next.kind === 'goal' ? { ...next, matchSecond: next.matchSecond ?? second() } : { ...next });
       if (intents.some((intent) => intentForbidden(intent))) return rejected('rules');
       if (!allowGroup(intents)) return rejected('limit');
       const label: GroupLabel = secondYellow ? 'amendFirstYellow' : 'amend';
