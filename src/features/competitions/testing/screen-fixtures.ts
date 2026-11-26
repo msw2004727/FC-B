@@ -1762,6 +1762,9 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return base(actions, memberActor, { ...rosterBundle(SHORT_PLAYERS, false), myPlIds: ['pl_2'] });
     case 'roster-self-locked':
       return base(actions, memberActor, { ...rosterBundle(SHORT_PLAYERS, true), myPlIds: ['pl_2'] });
+    case 'roster-rep-self':
+      // 代表自己已登錄（pl_1 王示範）：自己那列是退出鍵，別人的列是垃圾桶；「登錄名單」不出現
+      return base(actions, repActor, { ...rosterBundle(SHORT_PLAYERS, false), myPlIds: ['pl_1'] });
     case 'roster-self-long': {
       // 審查 P2-1：自己那一列是 20 字暱稱＋未成年標籤，退出鍵不能被壓扁，由暱稱省略讓位
       const players = SHORT_PLAYERS.map((row) => (row.id === 'pl_2' ? { ...row, displayName: '上官歐陽司徒長孫東方西門南宮慕容令狐皇甫', isMinor: true } : row));

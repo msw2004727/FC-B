@@ -184,9 +184,8 @@ describe('名單頁：代表也能自己登錄（CP-PO-08 追加）', () => {
   });
 
   it('代表已在本隊名單：不顯示「登錄名單」，代為新增與確認名單照舊', () => {
-    const env = screenEnv('roster');
-    env.bundle = { ...env.bundle!, myPlIds: ['pl_1'] };
-    mount(RosterPage, env);
+    mount(RosterPage, screenEnv('roster-rep-self'));
+    expect(rowOf('王示範').textContent).toContain(LEAVE);
     expect(screen.queryByRole('button', { name: JOIN })).toBeNull();
     expect(screen.getByRole('button', { name: '代為新增球員' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '確認名單' })).toBeTruthy();
@@ -204,10 +203,13 @@ describe('名單頁：代表也能自己登錄（CP-PO-08 追加）', () => {
     expect(screen.queryByRole('button', { name: JOIN })).toBeNull();
     startedView.unmount();
 
-    const rejected = screenEnv('roster');
-    rejected.bundle = { ...rejected.bundle!, entries: rejected.bundle!.entries.map((row) => ({ ...row, status: 'rejected' as const })) };
-    mount(RosterPage, rejected);
-    expect(screen.queryByRole('button', { name: JOIN })).toBeNull();
+    for (const status of ['rejected', 'withdrawn'] as const) {
+      const env = screenEnv('roster');
+      env.bundle = { ...env.bundle!, entries: env.bundle!.entries.map((row) => ({ ...row, status })) };
+      const view = mount(RosterPage, env);
+      expect(screen.queryByRole('button', { name: JOIN }), status).toBeNull();
+      view.unmount();
+    }
   });
 
   it('代表報隊待審時也能登錄（與一般成員同條件）', () => {
