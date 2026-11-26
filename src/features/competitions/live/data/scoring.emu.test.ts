@@ -740,12 +740,25 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
       const goals = (await rows(live.log)).filter((row) => row.kind === 'goal');
       return goals.length === 1 && goals[0]?.state === 'discarded' && goals[0]?.rejectReason === 'reset';
     }, 80);
-    expect(result.status).not.toBe('applied');
+    // 回應遺失後重讀場次可能讀到本機監聽的舊快照（主辦重置還沒到），先判成 applied；
+    // 監聽追上後由 discardStale 改成 discarded。中間回報 applied 或 queued 都可以，不可以是被拒（顧問 §3.810）。
+    expect(['queued', 'applied']).toContain(result.status);
     const op = (await goalOps(live.log))[0];
     const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
     expect(events.some((event) => event.op === op && Number(event.seq) <= line)).toBe(true);
     expect(events.some((event) => event.op === op && Number(event.seq) > line)).toBe(false);
     expect(live.commits).toHaveLength(1);
+    // 收尾再送一輪也不重送（比照第 12 條）。
+    await live.session.whenIdle();
+    expect(live.commits).toHaveLength(1);
+    // 比分以伺服器為準：伺服器 0:0、resetRev 是重置線；畫面也回到 0:0、沒有待送。
+    const match = await readDoc(`competitions/${CID}/matches/${MT}`);
+    expect(match?.score).toEqual({ home: 0, away: 0 });
+    expect(Number(match?.resetRev)).toBe(line);
+    await waitUntil('畫面比分回到伺服器 0:0', () => {
+      const score = live.session.getState().score;
+      return score.home === 0 && score.away === 0 && score.pendingCount === 0;
+    }, 80);
   });
 
   it('14. 隱藏期間另一裝置進球，恢復可見後作廢成功', async () => {
