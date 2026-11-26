@@ -416,7 +416,7 @@ describe('回前景重讀', () => {
       // 新外觀卡 1b-3：「距開賽 19 天」拆成頂部數字格的小標與數字
       expect(await screen.findByText('距開賽')).toBeTruthy();
       expect(repo.calls()).toEqual([
-        'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff', 'getSummaryShard', 'getStaffAssignment',
+        'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaffWithAssignment', 'getSummaryShard',
       ]);
       expect(repo.readCount()).toBeLessThanOrEqual(40);
       expect(repo.calls()).not.toContain('listSummary');

@@ -447,6 +447,9 @@ describe('詳情頂部', () => {
     const img = document.querySelector<HTMLImageElement>('.d2-hero > .d2-hero__cover');
     expect(img?.getAttribute('src')).toBe(URL1);
     expect(img?.nextElementSibling?.classList.contains('d2-board')).toBe(true);
+    // CP-DETAIL-SPEED d5：封面圖優先下載（不是 lazy）。
+    expect(img?.getAttribute('fetchpriority')).toBe('high');
+    expect(img?.getAttribute('loading')).toBeNull();
   });
 
   it('沒封面：與現況相同（沒有圖）', () => {

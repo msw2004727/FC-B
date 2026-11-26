@@ -253,6 +253,15 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
       return found ? copyAssignment(found) : null;
     },
 
+    async getStaffWithAssignment(cid, uid) {
+      if (!isSafeId(cid) || !isSafeId(uid)) return { staff: null, assignment: null };
+      // 同一份文件只算 1 筆。staff 形狀取 staff 種子、指派取 staffRows，與兩個單讀方法各自的結果相同。
+      note('getStaffWithAssignment', 1);
+      const staffRow = (staff[cid] ?? []).find((row) => row.uid === uid) ?? null;
+      const found = staffRows(cid).find((row) => row.uid === uid);
+      return { staff: staffRow, assignment: found ? copyAssignment(found) : null };
+    },
+
     async listMatches(cid) {
       if (!isSafeId(cid)) return [];
       const rows = [...(matches[cid] ?? [])].sort(

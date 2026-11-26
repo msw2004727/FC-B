@@ -105,8 +105,8 @@ interface DetailData {
 }
 
 /**
- * 自己的 staff 指派。同一個 cid＋uid 在這次開頁只打一次 getStaffAssignment。
- * 重新渲染、切分頁、回前景、重試都不重讀。換賽事或換登入者才再讀。
+ * 自己的 staff 指派。同一個 cid＋uid 在這次開頁只讀一次：第一次跟職員合併讀（getStaffWithAssignment），
+ * 之後重新渲染、切分頁、回前景、重試都不重讀指派。換賽事或換登入者才再讀。
  */
 interface MineReadCache {
   readyKey: string;
@@ -161,13 +161,38 @@ async function loadDetail(env: CpInjectedEnv, cid: string, mine: MineReadCache):
   // ASSUMPTION: 詳情的隊伍圖示用隊徽查詢（上限 32），不用 listEntries（上限 100）。
   // ASSUMPTION: 內部期 3 筆由列表閘門負責，詳情頁不重讀。
   // 不傳 internal，所以這裡不會打 getLaunch、getLaunchTester、listMine。
+  const uid = env.actor.uid;
+  const key = uid ? mineKey(cid, uid) : '';
+  // CP-DETAIL-SPEED d1：這個 cid＋uid 還沒讀過指派，就讓職員那 1 筆改成合併讀，順便拿到自己的指派（保留 scorer／referee），
+  // 少一筆讀取、少一段來回。已讀過或正在讀，照舊只讀 getStaff，指派走 readMyAssignment 的快取。
+  const merge = !!uid && mine.readyKey !== key && mine.flight?.key !== key;
+  let token = 0;
+  if (merge) {
+    // 作廢還在飛的另一個 cid／uid，避免晚到的結果蓋掉這次。
+    token = mine.token + 1;
+    mine.token = token;
+    mine.flight = null;
+  }
   const view = await loadScheduleDetail(env.repo, {
     cid,
-    uid: env.actor.uid,
+    uid,
     now: env.now ?? Date.now(),
+    withAssignment: merge,
   });
-  // 登入才多讀自己的 staff（保留 scorer／referee）。未登入不讀。同一次開頁只讀一次。
-  const myAssignment = await readMyAssignment(env, cid, mine);
+  let myAssignment: StaffAssignment | null;
+  if (!merge) {
+    // 未登入不讀；已讀過用快取。
+    myAssignment = await readMyAssignment(env, cid, mine);
+  } else if (view.assignment !== undefined) {
+    myAssignment = view.assignment;
+    if (mine.token === token) {
+      mine.readyKey = key;
+      mine.value = myAssignment;
+    }
+  } else {
+    // 賽事不存在：沒讀職員，也不記快取（之後重試讀到賽事才合併讀）。
+    myAssignment = null;
+  }
   return {
     bundle: {
       competition: view.competition,
@@ -346,6 +371,9 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   useEffect(() => {
     if (env.bundle) return;
+    // CP-DETAIL-SPEED d3：登入狀態還沒確定先不讀（畫面維持轉圈）。uid 到了或確定是訪客才讀一輪，
+    // 不會先用訪客身分整組讀一次、uid 到了再整組重讀並閃回轉圈。authPending 一定會解除（viewer 的 Auth 等待有 10 秒上限、失敗也發訪客快照）。
+    if (env.actor.authPending) return;
     // ASSUMPTION: 審核在管理頁，詳情頁沒有審核成功處可呼叫 invalidateCrests。
     // 進入詳情頁先讓這個 cid 的隊徽快取失效，這次讀到新的。同頁回前景不走這裡。
     // 主辦在別頁核准後，要再進一次詳情才看得到新隊徽。
@@ -361,9 +389,23 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     return () => {
       alive = false;
     };
-    // 注入的 bundle 是首屏快照。正式頁只在賽事 id 或帳號變了才重讀。
+    // 注入的 bundle 是首屏快照。正式頁只在賽事 id、帳號或登入判定變了才重讀。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cid, env.actor.uid, env.bundle]);
+  }, [cid, env.actor.uid, env.actor.authPending, env.bundle]);
+
+  // CP-DETAIL-SPEED d4：賽事名稱第一次畫出時記一個本機效能標記，給 staging 量測用（只寫瀏覽器效能時間軸，不送資料、不帶網址或任何參數）。
+  // 每次掛載最多一次；注入的 bundle（harness、畫面測試）不記。
+  const titleMarked = useRef(false);
+  const titleShown = loadState === 'ready' && !!bundle?.competition && !!cpDict.ct;
+  useEffect(() => {
+    if (env.bundle || titleMarked.current || !titleShown) return;
+    titleMarked.current = true;
+    try {
+      performance.mark('cp:detail-title');
+    } catch {
+      // 不支援 performance.mark 就略過。
+    }
+  }, [env.bundle, titleShown]);
 
   const phaseNow = bundle?.competition ? competitionPhase(bundle.competition, now) : null;
   const phaseRef = useRef(phaseNow);

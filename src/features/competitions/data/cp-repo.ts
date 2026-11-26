@@ -84,6 +84,11 @@ export interface CompetitionsRepo {
   listStaff(cid: string): Promise<StaffAssignment[]>;
   /** 單筆 staff。保留記分角色。沒有文件是 null。 */
   getStaffAssignment(cid: string, uid: string): Promise<StaffAssignment | null>;
+  /**
+   * 自己的 staff 一次讀（CP-DETAIL-SPEED d1）：同一份 staff/{uid} 只 getDoc 一次，
+   * 同時回 getStaff 與 getStaffAssignment 的形狀。沒有文件兩者都是 null。
+   */
+  getStaffWithAssignment(cid: string, uid: string): Promise<{ staff: StaffDoc | null; assignment: StaffAssignment | null }>;
   /** 該賽事場次，最多 CP_READ_LIMIT.matches。不監聽。 */
   listMatches(cid: string): Promise<MatchDoc[]>;
   /** 單筆場次。沒有或壞掉是 null。 */
@@ -957,6 +962,17 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
       if (!snap.exists()) return null;
       const data = snap.data();
       return data ? assignmentFromDoc(uid, data) : null;
+    },
+
+    async getStaffWithAssignment(cid, uid) {
+      if (!isSafeId(cid) || !isSafeId(uid)) return { staff: null, assignment: null };
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDoc(sdk.doc(db, `competitions/${cid}/staff/${uid}`));
+      if (!snap.exists()) return { staff: null, assignment: null };
+      const data = snap.data();
+      return data
+        ? { staff: staffFromDoc(uid, data), assignment: assignmentFromDoc(uid, data) }
+        : { staff: null, assignment: null };
     },
 
     async listMatches(cid) {

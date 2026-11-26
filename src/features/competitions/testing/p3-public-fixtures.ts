@@ -409,7 +409,7 @@ export const P3_MY_MATCHES: Record<string, MatchDoc[]> = {
 };
 
 /**
- * 我的場次注入環境：記分員身分，repo 只換 getStaffAssignment／getMatch。
+ * 我的場次注入環境：記分員身分，repo 只換 getStaffAssignment／getStaffWithAssignment 的指派／getMatch。
  * 原 repo 用原型鏈保留（不展開，避免類別方法遺失）。
  */
 export function myMatchesEnv(key: string): CpInjectedEnv {
@@ -423,6 +423,10 @@ export function myMatchesEnv(key: string): CpInjectedEnv {
   };
   const repo = Object.assign(Object.create(env.repo) as CpInjectedEnv['repo'], {
     getStaffAssignment: async () => assignment,
+    getStaffWithAssignment: async (cid: string, uid: string) => ({
+      staff: (await env.repo.getStaffWithAssignment(cid, uid)).staff,
+      assignment,
+    }),
     getMatch: async (_cid: string, mtId: string) => matches.find((m) => m.id === mtId) ?? null,
   });
   return {

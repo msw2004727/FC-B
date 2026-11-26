@@ -687,7 +687,10 @@ describe('指派頁與我的場次', () => {
       route: { cid: 'cup' },
     }, <CompetitionDetailPage />);
     expect(await screen.findByRole('button', { name: '我的場次' })).toBeTruthy();
-    expect(scorer.calls()).toContain('getStaffAssignment');
+    // CP-DETAIL-SPEED d1：指派跟職員合併成一次讀，不再另打 getStaff／getStaffAssignment。
+    expect(scorer.calls().filter((name) => name === 'getStaffWithAssignment')).toHaveLength(1);
+    expect(scorer.calls()).not.toContain('getStaffAssignment');
+    expect(scorer.calls()).not.toContain('getStaff');
     fireEvent.click(screen.getByRole('button', { name: '我的場次' }));
     expect(window.location.pathname).toBe('/competitions/cup/my-matches');
     window.history.pushState(null, '', previous || '/');
@@ -705,7 +708,8 @@ describe('指派頁與我的場次', () => {
       route: { cid: 'cup' },
     }, <CompetitionDetailPage />);
     expect(await screen.findByText('示範盃')).toBeTruthy();
-    expect(hostOnly.calls()).toContain('getStaffAssignment');
+    expect(hostOnly.calls()).toContain('getStaffWithAssignment');
+    expect(hostOnly.calls()).not.toContain('getStaffAssignment');
     expect(plain.container.querySelector('button') && screen.queryByRole('button', { name: '我的場次' })).toBeNull();
     cleanup();
 
@@ -720,12 +724,14 @@ describe('指派頁與我的場次', () => {
     expect(await screen.findByText('示範盃')).toBeTruthy();
     expect(guest.calls()).not.toContain('getStaff');
     expect(guest.calls()).not.toContain('getStaffAssignment');
+    expect(guest.calls()).not.toContain('getStaffWithAssignment');
     expect(screen.queryByRole('button', { name: '我的場次' })).toBeNull();
   });
 
   it('詳情頁登入才讀自己的 staff，重新渲染與切換分頁不重讀', async () => {
     const repo = createFakeCpRepo({
-      competitions: [competition({ id: 'cup' })],
+      // 換 cid 要讀得到賽事根才會合併讀指派（賽事不存在就不讀職員）。
+      competitions: [competition({ id: 'cup' }), competition({ id: 'other' })],
       assignments: {
         cup: [{ uid: 'uid_member', roles: ['scorer'], matchIds: ['mt_1'], expiresAt: null, memberNo: 4 }],
       },
@@ -742,8 +748,11 @@ describe('指派頁與我的場次', () => {
     const view = draw(base, <CompetitionDetailPage />);
     try {
       expect(await screen.findByRole('tab', { name: '積分' })).toBeTruthy();
-      const assignment = () => repo.calls().filter((name) => name === 'getStaffAssignment');
+      // CP-DETAIL-SPEED d1：第一次跟職員合併讀；之後指派走頁內快取，回前景只重讀 getStaff。
+      const assignment = () => repo.calls().filter((name) => name === 'getStaffWithAssignment' || name === 'getStaffAssignment');
+      const staffOnly = () => repo.calls().filter((name) => name === 'getStaff');
       expect(assignment()).toHaveLength(1);
+      expect(staffOnly()).toHaveLength(0);
 
       const again = (env: CpInjectedEnv) => {
         view.rerender(
@@ -764,12 +773,15 @@ describe('指派頁與我的場次', () => {
       Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
       document.dispatchEvent(new Event('visibilitychange'));
       await waitFor(() => expect(repo.calls().filter((name) => name === 'getCompetition').length).toBeGreaterThan(1));
+      await waitFor(() => expect(staffOnly()).toHaveLength(1));
       expect(assignment()).toHaveLength(1);
 
       again({ ...base, actor: { ...memberActor, uid: 'uid_other' } });
       await waitFor(() => expect(assignment()).toHaveLength(2));
       again({ ...base, route: { cid: 'other' } });
       await waitFor(() => expect(assignment()).toHaveLength(3));
+      expect(repo.calls()).not.toContain('getStaffAssignment');
+      expect(staffOnly()).toHaveLength(1);
     } finally {
       nowSpy.mockRestore();
     }
@@ -786,6 +798,7 @@ describe('指派頁與我的場次', () => {
     }, <CompetitionDetailPage />);
     expect(await screen.findByText('示範盃')).toBeTruthy();
     expect(guest.calls().filter((name) => name === 'getStaffAssignment')).toHaveLength(0);
+    expect(guest.calls().filter((name) => name === 'getStaffWithAssignment')).toHaveLength(0);
     expect(guest.calls().filter((name) => name === 'getStaff')).toHaveLength(0);
   });
 
