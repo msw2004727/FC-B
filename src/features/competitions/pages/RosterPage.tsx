@@ -157,6 +157,7 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   // 代表（隊長、領隊）也能自己登錄：後端 joinRoster 認成員或代表（與 JoinRosterPage 的 isMember || isRep 一致）。
   // 只能代填自己的話那筆 uid 是 null，不受一人一隊限制、退出鍵也認不出自己（CP-PO-08）。
   // 成員改用雙鍵換算（顧問 §3.846）：換算中先不出「登錄名單」，換算完再出（不閃錯誤）；代表不必等換算。
+  // !pending 目前是保險：換算中 hook 只回 [teamId] 且成員清單不含它，結果本來就是 false；防日後 hook 改成換算中回部分鍵（Opus 審）。
   const isMember = !clubKeys.pending && isClubMemberByKeys(env.actor.memberClubIds, entry.teamId, clubKeys.keys);
   const canSelfJoin = isRep || isMember;
   const min = division.rosterMin;

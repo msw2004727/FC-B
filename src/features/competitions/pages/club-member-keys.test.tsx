@@ -1,7 +1,7 @@
 // 俱樂部成員雙鍵（顧問 §3.846）：報隊 entry.teamId 是 teams 文件 id，users.teamIds 可能只有自訂 id。
 // 名單頁「登錄名單」與自己登錄頁都要認任一把鍵；teams 讀取用假 reader，不連 Firestore。
 
-import { cleanup, render, screen, waitFor } from '@testing-library/preact';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/preact';
 import type { ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -58,6 +58,7 @@ beforeAll(async () => {
 beforeEach(() => {
   resetClubMemberKeysForTest();
   resetViewerTeamScanForTest();
+  portCalls.length = 0;
 });
 
 afterEach(() => {
@@ -65,8 +66,17 @@ afterEach(() => {
 });
 
 const JOIN_BTN = '登錄名單';
-/** 換算結果寫回畫面（reader 已呼叫後再等一輪），避免「還在換算所以沒按鈕」的假綠。 */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+/**
+ * 換算結果寫回畫面後才做否定斷言，避免「還在換算所以沒按鈕」的假綠。
+ * 等的是頁面 hook 實際拿到的那個 promise（hook 的 then 先註冊、先跑），再由 act 把畫面更新清乾淨；不用固定毫秒（整合 cp-batch-0930，Opus 審 P2-2）。
+ */
+const portCalls: Array<Promise<readonly string[]>> = [];
+async function settle(): Promise<void> {
+  await waitFor(() => expect(portCalls.length).toBeGreaterThan(0));
+  await act(async () => {
+    await Promise.allSettled(portCalls);
+  });
+}
 const BLOCKED = '只有俱樂部成員可以做這個操作';
 
 /** 名單頁 fixture 的報隊 en_a 屬 club_a（teams 文件 id）。reader 回 teams/club_a 的 id 欄位（undefined＝文件不存在）。 */
@@ -75,7 +85,11 @@ function envWith(memberClubIds: string[], idField: unknown, screenName: 'roster'
   const env: CpInjectedEnv = {
     ...screenEnv(screenName),
     actor: { ...memberActor, memberClubIds },
-    clubKeys: (uid, teamId) => loadClubMemberKeys(uid, teamId, reader),
+    clubKeys: (uid, teamId) => {
+      const call = loadClubMemberKeys(uid, teamId, reader);
+      portCalls.push(call);
+      return call;
+    },
   };
   return { env, reader };
 }
@@ -229,9 +243,8 @@ describe('整合版名單頁（cp-batch-0930）：canSelfJoin＝代表或雙鍵�
     const { env, reader } = envWith(['legacy_a'], 'legacy_a', 'roster-member');
     env.bundle = { ...env.bundle!, competition: { ...env.bundle!.competition!, status: 'postponed' } };
     mount(RosterPage, env);
-    await waitFor(() => expect(reader).toHaveBeenCalled());
-    await reader.mock.results[0]!.value;
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await settle();
+    expect(reader).toHaveBeenCalledWith('club_a');
     expect(screen.queryByRole('button', { name: JOIN_BTN })).toBeNull();
   });
 
@@ -239,7 +252,31 @@ describe('整合版名單頁（cp-batch-0930）：canSelfJoin＝代表或雙鍵�
     const { env } = envWith(['legacy_a'], 'legacy_a', 'roster-member');
     env.bundle = { ...env.bundle!, myPlIds: ['pl_2'] };
     mount(RosterPage, env);
-    expect(await screen.findByRole('button', { name: '退出名單' })).toBeTruthy();
+    // 退出鍵不看換算，一 render 就有；登錄鍵要等換算完成才能下「不顯示」的結論（Opus 審 P2-1）。
+    await settle();
+    expect(screen.getByRole('button', { name: '退出名單' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: JOIN_BTN })).toBeNull();
+  });
+
+  it('登錄頁：代表不必等換算，換算中也直接出表單（Opus 審 P3-2）', () => {
+    const env: CpInjectedEnv = {
+      ...screenEnv('form-rep'),
+      actor: { ...repActor, memberClubIds: ['legacy_a'] },
+      clubKeys: never,
+    };
+    const view = mount(JoinRosterPage, env);
+    expect(view.container.querySelector('input[type="number"]')).toBeTruthy();
+    expect(view.container.textContent ?? '').not.toContain(BLOCKED);
+  });
+
+  it('對照：登錄頁一般成員換算中轉圈、不出表單也不擋', () => {
+    const env: CpInjectedEnv = {
+      ...screenEnv('form-self-adult'),
+      actor: { ...memberActor, memberClubIds: ['legacy_a'] },
+      clubKeys: never,
+    };
+    const view = mount(JoinRosterPage, env);
+    expect(view.container.querySelector('input[type="number"]')).toBeNull();
+    expect(view.container.textContent ?? '').not.toContain(BLOCKED);
   });
 });
