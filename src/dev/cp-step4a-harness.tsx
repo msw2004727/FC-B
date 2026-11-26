@@ -9,7 +9,7 @@ import '@/features/competitions/live/live.css';
 import './cp-step4a-harness.css';
 import { setLocale } from '@/i18n/i18n';
 import { LiveMatchView } from '@/features/competitions/live/LiveMatchView';
-import { ScorePad } from '@/features/competitions/live/ScorePad';
+import { ScorePad, type ScoreFeedRow } from '@/features/competitions/live/ScorePad';
 import { ScorersTable } from '@/features/competitions/live/ScorersTable';
 import { derivePublicTable } from '@/features/competitions/live/stats';
 import type { EntryDoc } from '@/features/competitions/data/types';
@@ -57,6 +57,7 @@ const ANCHORS: Record<string, string> = {
   'score-timeout': '雷霆隊暫停 0:47',
   'score-timeout-collapsed': '雷霆隊暫停 0:47',
   'score-pk-start': 'PK 大戰',
+  'score-sub-logged': '陳守一 換下',
   'score-pk': 'PK3:2', // 卡 2-2：PK 比分搬到板子下排、小標與數字分開節點
   'live-match': '比賽紀錄',
   'live-scorers': '劉冠廷',
@@ -77,6 +78,16 @@ function Screen() {
         }}
       />
     );
+  }
+  if (screenName === 'score-sub-logged') {
+    // CP-PO-07 預覽：換人寫進紀錄列後的樣子（正式頁的 feed 形狀；換人列不能點開）。
+    const feed: ScoreFeedRow[] = [
+      { key: 'sub1', seq: 9, pending: false, text: "36' 雷霆隊 1 陳守一 換下、4 林志遠 換上", label: "36' 換人 雷霆隊 1 陳守一 換下、4 林志遠 換上", kind: 'sub', secondYellow: false, voided: false, side: 'home' },
+      { key: 'red1', seq: 8, pending: false, text: "31' 海風隊 4 周子維", label: "31' 紅牌 海風隊 4 周子維", kind: 'red', secondYellow: false, voided: false, side: 'away' },
+      { key: 'goal2', seq: 3, pending: false, text: "18' 海風隊 10 謝東霖", label: "18' 進球 海風隊 10 謝東霖", kind: 'goal', secondYellow: false, voided: false, side: 'away' },
+      { key: 'goal1', seq: 1, pending: false, text: "5' 雷霆隊 9 劉冠廷", label: "5' 進球 雷霆隊 9 劉冠廷", kind: 'goal', secondYellow: false, voided: false, side: 'home' },
+    ];
+    return <ScorePad {...S4_SCENE_LIVE} crests={shotCrests(S4_SCENE_LIVE.crests)} feed={feed} onSub={() => true} />;
   }
   if (screenName in S4_SCORE_SCENES) {
     const scene = S4_SCORE_SCENES[screenName as keyof typeof S4_SCORE_SCENES];
@@ -191,7 +202,7 @@ async function start(): Promise<void> {
   win.__CPS_COPY = [];
   if (!root) return;
   try {
-    if (!(S4A_SCREENS as readonly string[]).includes(screenName)) {
+    if (!(S4A_SCREENS as readonly string[]).includes(screenName) && screenName !== 'score-sub-logged') {
       throw new Error(`沒有這個 screen：${screenName}`);
     }
     // ?frame=shell：外面包正式 App 的內容容器（1280 截圖用，沿用 cp-p3-public 包法）。
