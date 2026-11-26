@@ -23,6 +23,7 @@ import type {
   SummaryEntry,
 } from './data/types';
 import type { DivisionDraft, VenueDraft } from './payload';
+import type { ClubKeysPort } from './club-member-keys';
 
 export interface CpActor {
   uid: string | null;
@@ -135,6 +136,11 @@ export interface CpInjectedEnv {
   coverUpload?: (dataUrl: string) => Promise<UploadedCover>;
   /** 站內清單本機快照（data/list-snapshot.ts）。省略＝注入環境不讀不寫快照；正式頁一律開。 */
   listSnapshot?: CpListSnapshotPorts;
+  /**
+   * 俱樂部成員雙鍵換算（顧問 §3.846，club-member-keys.ts）：文件 id → [文件 id, 自訂 id]。
+   * 省略＝只用文件 id 一把、不讀網路（測試與 harness）；正式頁一律帶 loadClubMemberKeys。
+   */
+  clubKeys?: ClubKeysPort;
 }
 
 /** 站內清單快照的守門來源。confirmedUid：登入模組確認的帳號（未定 undefined、沒登入 null）。 */

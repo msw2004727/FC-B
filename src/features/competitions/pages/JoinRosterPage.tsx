@@ -18,6 +18,7 @@ import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { isMinorAt } from '../format';
 import { LiveBoundary } from '../live';
+import { isClubMemberByKeys, loadClubMemberKeys, useClubMemberKeys } from '../club-member-keys';
 import { loadMyBirthday } from '../rep-clubs';
 import { buildJoinInput, type PositionChoice } from '../payload';
 import { CpError, CpLoadFailed, errorOf, loadFailOf, RosterBlocked } from '../ui/feedback';
@@ -60,6 +61,8 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   const [birthdayReady, setBirthdayReady] = useState(!waitBirthday);
   const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
+  // 成員雙鍵（顧問 §3.846）：hook 要在提早 return 之前叫。
+  const clubKeys = useClubMemberKeys(env.actor, bundle?.entries.find((row) => row.id === enId)?.teamId ?? '', env.clubKeys);
 
   useEffect(() => {
     if (env.bundle) return;
@@ -168,8 +171,10 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   // 代表清單還沒回來時，空陣列不代表「不是成員」。
   if (env.actor.repClubsPending === true) return <div class="cps-root"><PageSpinner /></div>;
 
-  const isMember = env.actor.memberClubIds.includes(entry?.teamId ?? '');
   const isRep = env.actor.repClubs.some((club) => club.id === entry?.teamId);
+  // 雙鍵還在換算時，「不是成員」還不能下結論（代表不必等）。
+  if (!isRep && clubKeys.pending) return <div class="cps-root"><PageSpinner /></div>;
+  const isMember = isClubMemberByKeys(env.actor.memberClubIds, entry?.teamId ?? '', clubKeys.keys);
   const block = rosterFormBlock({
     kind: 'self',
     // 後端 joinRoster 接受成員或代表。代表也可以自己登錄。
@@ -237,7 +242,7 @@ export default function JoinRosterPage(): JSX.Element {
   if (injected) return <JoinView env={injected} cid={cid} enId={enId} />;
   return (
     <LiveBoundary>
-      {(actor, repo) => <JoinView env={{ actor, repo, actions: liveCpActions }} cid={cid} enId={enId} />}
+      {(actor, repo) => <JoinView env={{ actor, repo, actions: liveCpActions, clubKeys: loadClubMemberKeys }} cid={cid} enId={enId} />}
     </LiveBoundary>
   );
 }

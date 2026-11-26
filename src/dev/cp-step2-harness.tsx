@@ -53,6 +53,7 @@ const PAGES: Record<string, ComponentType> = {
   'roster-ready': RosterPage,
   'roster-locked': RosterPage,
   'form-self-adult': JoinRosterPage,
+  'form-self-legacy': JoinRosterPage,
   'form-self-minor': JoinRosterPage,
   'form-rep': AddRosterPage,
   'form-rep-adult': AddRosterPage,
@@ -76,6 +77,7 @@ const PAGES: Record<string, ComponentType> = {
   'gate-error': NewCompetitionPage,
   // 第 3 批留下的：名單隊員視角、移除確認框（點正式的垃圾桶）、表單錯誤／自訂位置展開／資格不符。
   'roster-member': RosterPage,
+  'roster-member-legacy': RosterPage,
   'roster-remove': RosterPage,
   // CP-PO-08 球員本人退出名單
   'roster-self': RosterPage,
@@ -111,7 +113,23 @@ const PAGES: Record<string, ComponentType> = {
 };
 
 /** 沿用既有資料的畫面：畫面名稱 → screenEnv 的狀態名。 */
-const ENV_OF: Record<string, string> = { 'form-long-name': 'form-rep', 'edit-entry-manage': 'host-approved', 'edit-entry-detail': 'real-draft-host' };
+const ENV_OF: Record<string, string> = { 'form-long-name': 'form-rep', 'roster-member-legacy': 'roster-member', 'form-self-legacy': 'form-self-adult', 'edit-entry-manage': 'host-approved', 'edit-entry-detail': 'real-draft-host' };
+
+/**
+ * 俱樂部雙鍵（顧問 §3.846）預覽：成員清單只有自訂 id（legacy_demo），報隊是文件 id（club_a）；
+ * 假的 clubKeys 晚 120ms 才回兩把鍵，畫面要先不出錯、換算完才出登錄入口。
+ */
+const LEGACY_SCREENS = new Set(['roster-member-legacy', 'form-self-legacy']);
+function envOf(name: string) {
+  const env = screenEnv(ENV_OF[name] ?? name, actions);
+  if (!LEGACY_SCREENS.has(name)) return env;
+  return {
+    ...env,
+    actor: { ...env.actor, memberClubIds: ['legacy_demo'] },
+    clubKeys: (_uid: string | null, teamId: string) =>
+      new Promise<string[]>((resolve) => setTimeout(() => resolve([teamId, 'legacy_demo']), 120)),
+  };
+}
 
 function buttonsNamed(name: string): HTMLButtonElement[] {
   return [...document.querySelectorAll('button')].filter((node) => (node.textContent ?? '').replace(/\s+/g, ' ').trim() === name);
@@ -189,6 +207,8 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('自訂位置輸入框', () => [...document.querySelectorAll('label')].some((node) => (node.textContent ?? '').trim().startsWith('自訂')));
   },
   'form-ineligible': () => until('資格不符', () => hasText('只有俱樂部成員可以做這個操作')),
+  'roster-member-legacy': () => until('登錄名單鈕（雙鍵）', () => buttonsNamed('登錄名單').length > 0),
+  'form-self-legacy': () => until('登錄表單（雙鍵）', () => buttonsNamed('送出').length > 0),
   'form-long-name': async () => {
     await until('真實姓名欄', () => !!document.querySelector('.ui-input input'));
     const input = document.querySelector<HTMLInputElement>('.ui-input input');
@@ -215,13 +235,13 @@ async function start(): Promise<void> {
       {framed ? (
         <div class="app-shell ui-app-shell">
           <main class="app-main">
-            <CpEnvProvider value={screenEnv(ENV_OF[screenName] ?? screenName, actions)}>
+            <CpEnvProvider value={envOf(screenName)}>
               <Page />
             </CpEnvProvider>
           </main>
         </div>
       ) : (
-        <CpEnvProvider value={screenEnv(ENV_OF[screenName] ?? screenName, actions)}>
+        <CpEnvProvider value={envOf(screenName)}>
           <Page />
         </CpEnvProvider>
       )}

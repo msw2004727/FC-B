@@ -14,6 +14,7 @@ import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { positionLabel } from '../format';
 import { LiveBoundary } from '../live';
+import { isClubMemberByKeys, loadClubMemberKeys, useClubMemberKeys } from '../club-member-keys';
 import type { EntryStatus, RosterPublicDoc } from '../data/types';
 import { CpError, CpLoadFailed, errorOf, loadFailOf, type CpLoadFail } from '../ui/feedback';
 import { dangerConfirm } from '../ui/danger-confirm';
@@ -118,6 +119,9 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const [phase, setPhase] = useState<'loading' | 'ready' | CpLoadFail>(env.bundle ? 'ready' : 'loading');
   const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
+  // 成員雙鍵（顧問 §3.846）：hook 要在提早 return 之前叫。
+  const entryTeamId = bundle?.entries.find((row) => row.id === enId)?.teamId ?? '';
+  const clubKeys = useClubMemberKeys(env.actor, entryTeamId, env.clubKeys);
 
   useEffect(() => {
     if (env.bundle) return;
@@ -152,7 +156,9 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const isRep = env.actor.repClubs.some((club) => club.id === entry.teamId);
   // 代表（隊長、領隊）也能自己登錄：後端 joinRoster 認成員或代表（與 JoinRosterPage 的 isMember || isRep 一致）。
   // 只能代填自己的話那筆 uid 是 null，不受一人一隊限制、退出鍵也認不出自己（CP-PO-08）。
-  const canSelfJoin = isRep || env.actor.memberClubIds.includes(entry.teamId);
+  // 成員改用雙鍵換算（顧問 §3.846）：換算中先不出「登錄名單」，換算完再出（不閃錯誤）；代表不必等換算。
+  const isMember = !clubKeys.pending && isClubMemberByKeys(env.actor.memberClubIds, entry.teamId, clubKeys.keys);
+  const canSelfJoin = isRep || isMember;
   const min = division.rosterMin;
   const max = division.rosterMax;
   const short = players.length < min;
@@ -320,7 +326,7 @@ export default function RosterPage(): JSX.Element {
   return (
     <LiveBoundary>
       {(actor, repo) => (
-        <RosterView env={{ actor, repo, actions: liveCpActions, route: { cid, enId } }} cid={cid} enId={enId} />
+        <RosterView env={{ actor, repo, actions: liveCpActions, route: { cid, enId }, clubKeys: loadClubMemberKeys }} cid={cid} enId={enId} />
       )}
     </LiveBoundary>
   );

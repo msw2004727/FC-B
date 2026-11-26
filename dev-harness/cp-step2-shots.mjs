@@ -25,7 +25,7 @@ const ANCHORS = {
   'host-lock-all': '鎖定後各隊不能再改名單', 'roster-confirmed': '確認名單', 'detail-oneday': '比賽期間',
   'edit-started': '首場已開始，時間不能再改', 'edit-locked': '名單已鎖定，組別只能改名稱', 'edit-denied': '這場賽事目前不能編輯',
   'edit-1-personal': '主辦名稱', 'edit-scheduled': '已排賽程，既有場地不能更改', 'edit-3': '儲存變更', 'edit-entry-manage': '編輯賽事', 'edit-entry-detail': '編輯賽事',
-  'roster-member': '登錄名單', 'roster-remove': '確定要移除',
+  'roster-member': '登錄名單', 'roster-member-legacy': '登錄名單', 'form-self-legacy': '送出', 'roster-remove': '確定要移除',
   'roster-self': '退出名單', 'roster-self-confirm': '確定要退出', 'roster-self-locked': '名單已鎖定', 'roster-self-started': '林示範', 'roster-self-long': '退出名單', 'roster-rep-self': '退出名單', 'form-already': '你已在本賽事其他隊伍名單', 'form-error': '送出', 'form-custom-pos': '自訂', 'form-ineligible': '只有俱樂部成員可以做這個操作',
 };
 const THEMES_ALL = ['light', 'dark'];
@@ -66,6 +66,9 @@ const SCREENS = [
   ['gate-error', NEW, THEMES_ALL, true],
   // 第 3 批留下的
   ['roster-member', NEW, THEMES_ALL, true],
+  // 俱樂部雙鍵（顧問 §3.846）：成員清單只有自訂 id
+  ['roster-member-legacy', ONE, THEMES_ALL, true],
+  ['form-self-legacy', ONE, THEMES_ALL, true],
   ['roster-remove', NEW, THEMES_ALL, false],
   ['form-error', NEW, THEMES_ALL, true],
   ['form-custom-pos', NEW, THEMES_ALL, true],
