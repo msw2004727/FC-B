@@ -102,6 +102,9 @@ export function UserCard({
   const tagRoleKey = tagRole(user);
   const restrictBtn = canToggleRestrictionOf(actor, user);
   const lateCancelText = lateCancelStatusText(user);
+  // 名字標籤照 R-UI-021：紅標紅底、黑標黑底（黑標條件與臨取狀態那一行相同：未過期或無到期；用戶管理不讀出席數，「最晚」字樣涵蓋提早恢復）。
+  // 取代原本只傳 red（d475ae10 當時用戶卡不顯示黑標；11-26 起顯示黑標，標籤一併套，顧問 §3.822）。
+  const lateCancelTag = user.lateCancelLevel === 'red' ? 'red' : user.lateCancelLevel === 'black' && lateCancelText ? 'black' : null;
   const clearLateBtn = !!onClearLateCancelRed && canClearLateCancelOf(actor, user, undefined, lateCancelBlackEnabled);
 
   return (
@@ -115,7 +118,7 @@ export function UserCard({
               name={user.name}
               role={(TAG_ROLES.has(tagRoleKey) ? tagRoleKey : 'user') as UserRole}
               level={level}
-              lateCancel={user.lateCancelLevel === 'red' ? 'red' : null}
+              lateCancel={lateCancelTag}
               onOpenProfile={onOpenProfile}
             />
           </div>

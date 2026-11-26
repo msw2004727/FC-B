@@ -580,6 +580,8 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
     expect(cardOf('Blackie').textContent).toContain('臨取狀態：黑標，最晚');
     expect(within(cardOf('Blackie')).getByRole('button', { name: '解除臨取狀態' }).closest('.au-lc-row')).not.toBeNull();
+    // 名字標籤黑底（R-UI-021）
+    expect(cardOf('Blackie').querySelector('.ui-user-tag.uc-lc-black')).not.toBeNull();
   });
 
   it('臨取黑標：新版後端未部署（旗標 false）時只顯示狀態、沒有解除鈕', async () => {
@@ -606,6 +608,7 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
     expect(cardOf('Blackie').textContent).not.toContain('臨取狀態');
     expect(within(cardOf('Blackie')).queryByRole('button', { name: '解除臨取狀態' })).toBeNull();
+    expect(cardOf('Blackie').querySelector('.uc-lc-black')).toBeNull();
   });
 
   it('「查看」與膠囊都導向該用戶名片（以 UID 為準）', async () => {
