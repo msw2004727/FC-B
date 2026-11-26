@@ -16,6 +16,7 @@ import {
   UNAVAILABLE_FEATURE_MSG,
 } from '@/core/unavailable';
 import type { AuthUser } from '@/data/auth';
+import { readAvatarHint, writeAvatarHint } from '@/data/auth-hint';
 import { eventSportTag } from '@/features/events/data/sports';
 import { useInboxBadgeCounts } from '@/features/inbox/data/inbox-badge';
 import { lt } from '@/i18n/i18n';
@@ -117,6 +118,7 @@ export function TopBar({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [loadedAvatarUrl, setLoadedAvatarUrl] = useState<string | null>(null);
+  const [avatarHint, setAvatarHint] = useState(readAvatarHint);
 
   const pickerWrapperRef = useRef<HTMLDivElement>(null);
   const pickerBtnRef = useRef<HTMLButtonElement>(null);
@@ -152,14 +154,21 @@ export function TopBar({
     setLoadedAvatarUrl(null);
     if (!user) return undefined;
     const candidates = getRenderableCandidates(user.pictureUrl);
-    if (candidates.length === 0) return undefined;
+    if (candidates.length === 0) {
+      writeAvatarHint(null);
+      return undefined;
+    }
 
     let done = false;
     let idx = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const tryNext = (): void => {
-      if (done || idx >= candidates.length) return;
+      if (done) return;
+      if (idx >= candidates.length) {
+        writeAvatarHint(null);
+        return;
+      }
       const url = candidates[idx++]!;
       if (typeof Image === 'undefined') return;
       const probe = new Image();
@@ -175,6 +184,7 @@ export function TopBar({
         done = true;
         if (timer !== undefined) clearTimeout(timer);
         setLoadedAvatarUrl(url);
+        writeAvatarHint(url);
       };
       probe.onerror = () => {
         if (done) return;
@@ -619,7 +629,15 @@ export function TopBar({
                   title="同步中"
                 >
                   {/* T-050：取代 M-168 的「人形＋轉圈圈」並排（32px 圓放不下 22＋14，圈圈溢出圓外）；照 A 只放轉圈圈，與 syncingFallback 外觀一致 */}
-                  <span class="line-avatar-spinner" aria-hidden="true" />
+                  {/* LOGIN-SPEED ⑥（站長 11-26 選乙案）：有上次頭像紀錄時畫頭像＋外圈細轉動，確認完成前不能點 */}
+                  {avatarHint ? (
+                    <>
+                      <img src={avatarHint} alt="" referrerPolicy="no-referrer" onError={() => { writeAvatarHint(null); setAvatarHint(null); }} />
+                      <span class="line-avatar-ring" aria-hidden="true" />
+                    </>
+                  ) : (
+                    <span class="line-avatar-spinner" aria-hidden="true" />
+                  )}
                 </div>
               </div>
             ) : onLogin ? (

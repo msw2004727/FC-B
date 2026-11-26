@@ -920,6 +920,19 @@
   to { transform: rotate(360deg); }
 }
 
+/* LOGIN-SPEED ⑥：上次頭像＋外圈細轉動（authPending） */
+.line-avatar-loading { position: relative; }
+.line-avatar-loading > img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.line-avatar-ring {
+  position: absolute; inset: -2px; border-radius: 50%;
+  /* 照站長選定的預覽（乙案）：淡色底圈＋主色弧線轉動；不支援 color-mix 的瀏覽器退回卡片底色。 */
+  border: 2px solid var(--bg-card);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--bg-card));
+  border-top-color: var(--accent);
+  animation: line-avatar-spin .9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .line-avatar-ring { animation: none; } }
+
 /* ─── Profile Avatar (LINE image override) ─── */
 .profile-avatar-img {
   background: none !important; box-shadow: none !important; border: none !important;

@@ -465,6 +465,20 @@
               wrap.innerHTML = signedIn
                 ? '<div id="line-user-topbar" class="line-user-topbar" aria-hidden="true"><div id="line-avatar-topbar" class="line-avatar-topbar line-avatar-fallback line-avatar-loading"><span class="line-avatar-spinner" aria-hidden="true"></span></div></div>'
                 : '<button id="line-login-btn" type="button" class="line-login-btn" tabindex="-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 2C6.48 2 2 5.83 2 10.5c0 4.18 3.66 7.68 8.58 8.38.33.07.78.22.9.5.1.26.07.66.03.92l-.15.86c-.04.26-.2 1.01.88.55s5.88-3.47 8.03-5.93C22.08 13.79 22 12.18 22 10.5 22 5.83 17.52 2 12 2z"></path></svg>LINE 登入</button>';
+              /* 有上次頭像（src/data/auth-hint.ts 的 fcb:avatar，只收 https）就把轉圈圈換成頭像＋外圈（LOGIN-SPEED ⑥）。 */
+              var av = null;
+              try { av = localStorage.getItem('fcb:avatar'); } catch (_) {}
+              if (signedIn && av && av.indexOf('https://') === 0) {
+                var box = document.getElementById('line-avatar-topbar');
+                var im = document.createElement('img');
+                im.alt = '';
+                im.referrerPolicy = 'no-referrer';
+                im.src = av;
+                var rg = document.createElement('span');
+                rg.className = 'line-avatar-ring';
+                rg.setAttribute('aria-hidden', 'true');
+                if (box) { box.innerHTML = ''; box.appendChild(im); box.appendChild(rg); }
+              }
             })();
           </script>
         </div>
