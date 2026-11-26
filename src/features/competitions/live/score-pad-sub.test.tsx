@@ -85,6 +85,24 @@ describe('換人入口', () => {
     expect(screen.queryByText('換人送出後不能復原')).toBeNull();
   });
 
+  it('確認框開著時被接手（記分停用）：流程收掉，恢復後不會重開', () => {
+    const onSub = vi.fn(() => true);
+    const view = pad(S4_SCENE_LIVE, { onSub });
+    const [out, into] = [...S4_SCENE_LIVE.homeRoster].sort((a, b) => a.number - b.number);
+    if (!out || !into) throw new Error('fixture 名單至少要兩人');
+    openMenu();
+    fireEvent.click(button('換人'));
+    fireEvent.click(button(S4_SCENE_LIVE.match.home.name));
+    fireEvent.click(button(`${out.number} ${out.displayName}`));
+    fireEvent.click(button(`${into.number} ${into.displayName}`));
+    expect(screen.getByText('換人送出後不能復原')).toBeTruthy();
+    view.rerender(<ScorePad {...S4_SCENE_LIVE} onSub={onSub} takeoverOffered />);
+    expect(screen.queryByText('換人送出後不能復原')).toBeNull();
+    view.rerender(<ScorePad {...S4_SCENE_LIVE} onSub={onSub} takeoverOffered={false} />);
+    expect(screen.queryByText('換人送出後不能復原')).toBeNull();
+    expect(onSub).not.toHaveBeenCalled();
+  });
+
   it('確認框按「先不要」不送出', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const onSub = vi.fn(() => true);

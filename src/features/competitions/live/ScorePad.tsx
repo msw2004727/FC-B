@@ -375,6 +375,10 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const [timeoutOpen, setTimeoutOpen] = useState(false);
   const [subFlow, setSubFlow] = useState<SubFlow | null>(null);
   const subArmed = useConfirmArmed(subFlow?.step === 'confirm');
+  // 換人流程中被接手、改成讀分頁、進 PK 或離開進行中／中場：整個收掉，恢復後不會直接重開確認框（DeepSeek 初審 P2-2／P3-3）。
+  useEffect(() => {
+    if (cardOff || pk) setSubFlow(null);
+  }, [cardOff, pk]);
   const [teamTimeout, setTeamTimeout] = useState<TeamTimeoutState | null>(() => previewTimeout(props.timeoutView));
   const [hiddenStart, setHiddenStart] = useState<number | null>(null);
   const [timeoutUses, setTimeoutUses] = useState<TimeoutUses>({

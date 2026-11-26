@@ -856,6 +856,26 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
     expect(logged.some((row) => row.kind === 'goal' || row.kind === 'void')).toBe(false);
   });
 
+  it('20. 換人（CP-PO-07）：進行中與中場都寫入、比分不變；換人不能作廢', async () => {
+    const live = await startLive('s20');
+    const before = await readDoc(`competitions/${CID}/matches/${MT}`);
+    expect((await live.session.getState().actions.sub({ side: 'home', outPlId: 'pl_h1', inPlId: 'pl_h2' })).status).toBe('applied');
+    let events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    const sub = events.find((event) => event.type === 'sub');
+    expect(sub).toMatchObject({ side: 'home', outPlId: 'pl_h1', inPlId: 'pl_h2' });
+    const after = await readDoc(`competitions/${CID}/matches/${MT}`);
+    expect(after?.score).toEqual(before?.score);
+    expect((await live.session.getState().actions.halftime()).status).toBe('applied');
+    expect((await live.session.getState().actions.sub({ side: 'away', outPlId: 'pl_a1', inPlId: 'pl_a2' })).status).toBe('applied');
+    events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.filter((event) => event.type === 'sub')).toHaveLength(2);
+    // Rules 只允許作廢進球或牌：作廢換人會被伺服器拒絕，沒有任何寫入（畫面上換人列本來就不能點開）。
+    const timelineBefore = (await listCollection(`competitions/${CID}/matches/${MT}/timeline`)).length;
+    expect((await live.session.getState().actions.voidEvent({ seq: sub?.seq as number })).status).toBe('rejected');
+    expect(await listCollection(`competitions/${CID}/matches/${MT}/timeline`)).toHaveLength(timelineBefore);
+    expect(await listCollection(`competitions/${CID}/matches/${MT}/voids`)).toHaveLength(0);
+  });
+
   it('19. 正規比分不平手時 pkStart 不產生', async () => {
     await patchDoc(`competitions/${CID}/matches/${MT}`, {
       status: 'live',
