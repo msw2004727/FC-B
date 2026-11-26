@@ -241,12 +241,12 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   pageCid.current = cid;
   const now = env.now ?? Date.now();
   const clubs = representativeClubs(env.actor);
-  const mineClubKey = env.actor.repClubs.map((club) => club.id).join('\0');
+  const mineClubKey = clubs.map((club) => club.id).join('\0');
   // 只有招募中畫組別卡隊伍清單；其他階段不多讀。
   const recruitNow = bundle?.competition ? competitionPhase(bundle.competition, now) === 'recruit' : false;
 
   async function reloadMine(shouldApply: () => boolean = () => true): Promise<void> {
-    const ids = env.actor.repClubs.map((club) => club.id);
+    const ids = clubs.map((club) => club.id);
     if (env.bundle || !env.actor.uid || ids.length === 0 || !recruitNow) {
       if (shouldApply()) setMyEntries([]);
       return;
@@ -755,7 +755,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       toast.show({ message: ct('registerDone'), tone: 'success' });
       const next = await loadDetail(env, cid, mineCache.current);
       applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
-      void reloadMine();
+      void reloadMine(() => mounted.current);
     } catch (err) {
       const info = errorOf(err);
       // 後端鏡像未建好時先判代表會回 NOT_CLUB_REP（第二輪模擬 C-04），前端已知是代表就顯示同步中。

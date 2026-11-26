@@ -435,7 +435,8 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     nowMs,
     takeoverOffered: view.control.needsTakeover,
     takeoverSelf: view.control.takeoverSelf,
-    // 控制文件不存在＝沒有別的裝置在記；場次還沒讀到時不算。
+    // 控制文件不存在＝沒有別的裝置在記；場次還沒讀到時不算。session 進場時 match 與 control 取自同一筆 open 回應（session.ts start），
+    // 所以 match 已到而 control 是 null 就代表真的沒有控制文件（第一輪審查 P2-3 核實）。
     takeoverFree: view.control.needsTakeover && view.control.uid == null && view.match != null,
     timeoutView: timeoutViewFrom(view, nowMs),
     onRecord: (pick) => {

@@ -26,7 +26,8 @@ export function TakeoverDialog({
           armed={armed}
           confirmLabel={free ? LIVE_COPY.takeoverFreeAction : LIVE_COPY.takeoverAction}
           cancelLabel={LIVE_COPY.takeoverLater}
-          confirmVariant="danger"
+          // 沒有別的裝置在記時「開始記分」不是危險動作，用一般主要按鈕；搶走別人記分（接手）才用紅框（Opus 截圖終審 P3）。
+          confirmVariant={free ? 'primary' : 'danger'}
           onConfirm={onTakeover}
           onCancel={onClose}
         />
