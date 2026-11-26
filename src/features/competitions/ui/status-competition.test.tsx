@@ -185,3 +185,23 @@ describe('StatusCompetitionDialog 焦點', () => {
     expect(document.activeElement?.textContent).toBe('back');
   });
 });
+
+describe('StatusCompetitionDialog 原因清理（對齊後端 cleanLine）', () => {
+  it('零寬字元不算字數；連續空白壓成一格後送出（換行由 Textarea 自己去掉）', async () => {
+    const actions = makeActions();
+    const onDone = vi.fn();
+    render(<StatusCompetitionEntry ct={ct} cid="cup" status="published" actions={actions} onDone={onDone} />);
+    fireEvent.click(screen.getByText('statusEntry'));
+    fireEvent.click(screen.getByText('statusPostpone'));
+    fireEvent.input(screen.getByRole('textbox'), { target: { value: 'a\u200b' } });
+    fireEvent.click(screen.getByText('statusPostponeOk').closest('button')!);
+    await flush();
+    expect(screen.getByRole('alert').textContent).toContain('FIELD_LENGTH');
+    expect(actions.setCompetitionStatus).not.toHaveBeenCalled();
+    fireEvent.input(screen.getByRole('textbox'), { target: { value: '  場地   整修  ' } });
+    fireEvent.click(screen.getByText('statusPostponeOk').closest('button')!);
+    await flush();
+    expect(actions.setCompetitionStatus).toHaveBeenCalledWith({ cid: 'cup', status: 'postponed', reason: '場地 整修' });
+    expect(onDone).toHaveBeenCalledWith({ status: 'postponed', statusReason: '場地 整修' });
+  });
+});

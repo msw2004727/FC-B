@@ -128,6 +128,8 @@ describe('狀態變更入口顯示', () => {
     ['前代表（俱樂部賽事上仍有 staff host）', { actor: formerRepActor, staff: ['host'] }],
   ];
   const hidden: Array<[string, Opts]> = [
+    // Opus 審 P3-4：前代表沒有 staff 角色時後端 hostAccess 回 NOT_HOST（不可改成 isPrimaryHostView 這類只看代表的判斷）。
+    ['前代表（沒有 staff 角色）', { actor: formerRepActor }],
     ['一般用戶', { actor: memberActor }],
     ['未登入', { actor: guestActor }],
   ];

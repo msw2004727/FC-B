@@ -20,6 +20,7 @@ import {
   type StatusTarget,
 } from '../status-access';
 import { boundedReason } from '../data/host-write';
+import { cleanLine } from '../data/names';
 import { DELETE_ARM_MS, useArmed } from './delete-competition';
 import { errorOf, reasonText } from './feedback';
 import { AlertIcon, NextIcon } from './shell';
@@ -117,8 +118,10 @@ export function StatusCompetitionDialog(props: StatusCompetitionProps & { onClos
       if (!ack || !armed) return;
       if (Date.now() - ackAt.current < DELETE_ARM_MS) return;
     }
+    // 與後端 statusReasonOf（requireLine→cleanLine）同一套清理：NFKC、去不可見字元、壓空白（Opus 審 P3-1）。
+    const cleaned = cleanLine(reason) ?? '';
     if (choice === 'postponed' || choice === 'cancelled') {
-      const problem = boundedReason(reason, STATUS_REASON_MIN, STATUS_REASON_MAX);
+      const problem = boundedReason(cleaned, STATUS_REASON_MIN, STATUS_REASON_MAX);
       if (problem) {
         setError(reasonText(
           ct,
@@ -135,9 +138,9 @@ export function StatusCompetitionDialog(props: StatusCompetitionProps & { onClos
       if (choice === 'published') {
         await actions.setCompetitionStatus({ cid, status: 'published' });
       } else {
-        await actions.setCompetitionStatus({ cid, status: choice, reason: reason.trim() });
+        await actions.setCompetitionStatus({ cid, status: choice, reason: cleaned });
       }
-      if (alive.current) onDone({ status: choice, statusReason: choice === 'published' ? null : reason.trim() });
+      if (alive.current) onDone({ status: choice, statusReason: choice === 'published' ? null : cleaned });
     } catch (err) {
       const info = errorOf(err);
       if (alive.current) setError(reasonText(ct, info.reason, info.params));
