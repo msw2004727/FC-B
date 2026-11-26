@@ -97,7 +97,7 @@ describe('B3 已有賽程時產生賽程先確認', () => {
   });
 });
 
-describe('A 組審查 P3：排賽程頁結束後收起、清除賽程後不再問取代', () => {
+describe('A 組審查 P3-2：排賽程頁結束後收起', () => {
   it('主辦手動結束：排賽程頁顯示賽事已結束與回賽事頁，沒有表單', () => {
     const env = screenEnv('real-host-schedule');
     const bundle = env.bundle!;
