@@ -730,12 +730,19 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
         />
       ) : board ? <section class="d2-hero d2-hero--bare">{board}</section> : null}
       {matches.length === 0 ? (
-        <CpCard>
-          <p class="cps-note">{ct('reason.SCHEDULE_REQUIRED')}</p>
-          <div class="cph-start">
-            <Button variant="secondary" size="sm" onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
-          </div>
-        </CpCard>
+        competitionPhase(comp, now) === 'done' ? (
+          <CpCard>
+            {/* 顧問 §3.791：已取消與已結束分兩句，都不放排賽程鈕。 */}
+            <p class="cps-note">{ct(comp.status === 'cancelled' ? 'hostCancelledNoMatches' : 'hostEndedNoMatches')}</p>
+          </CpCard>
+        ) : (
+          <CpCard>
+            <p class="cps-note">{ct('reason.SCHEDULE_REQUIRED')}</p>
+            <div class="cph-start">
+              <Button variant="secondary" size="sm" onClick={() => route(`/competitions/${cid}/schedule`)}>{ct('hostSchedTitle')}</Button>
+            </div>
+          </CpCard>
+        )
       ) : null}
       {groups.map((group) => (
         <div key={group.divisionId}>
@@ -965,6 +972,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
         >
           <div class="cps-sheet-body">
             <p class="cpm-hint">{ct('endHint')}</p>
+            {!isCpAdmin(env.actor.role) ? <p class="cpm-hint cps-pre">{ct('endNoRestore')}</p> : null}
             {endTie ? <p class="cpm-hint">{ct('endTieHint')}</p> : null}
             <p class="cpm-preview">{ct('unconfirmed', { n: unconfirmedCount(matches) })}</p>
             <Textarea

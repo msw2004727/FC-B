@@ -227,7 +227,9 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
         </div>
         <div class="cps-badges cp3-roster-tags">
           <StatusTag kind="neutral" label={entryStatusLabel(ct, entry.status)} />
-          <StatusTag kind="neutral" label={entry.rosterConfirmed || locked ? ct('rosterConfirmed') : ct('rosterUnconfirmed')} />
+          {locked
+            ? <StatusTag kind="neutral" label={ct('rosterLockedTag')} />
+            : <StatusTag kind="neutral" label={entry.rosterConfirmed ? ct('rosterConfirmed') : ct('rosterUnconfirmed')} />}
         </div>
         <div class="cps-kv cp3-roster-count">
           <span>{ct('currentCount')}</span>

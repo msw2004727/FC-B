@@ -305,6 +305,18 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
       return pending;
     },
 
+    async listEntriesByTeams(cid, teamIds) {
+      if (!isSafeId(cid)) return [];
+      const ids = teamIds.filter(isSafeId).slice(0, 10);
+      if (ids.length === 0) return [];
+      const rows = take(
+        (entries[cid] ?? []).filter((row) => ids.includes(row.teamId)),
+        10,
+      );
+      noteQuery('listEntriesByTeams', rows.length);
+      return rows;
+    },
+
     invalidateCrests(cid) {
       crestCache.delete(cid);
     },

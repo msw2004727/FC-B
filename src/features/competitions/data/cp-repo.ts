@@ -100,6 +100,8 @@ export interface CompetitionsRepo {
    * 失敗不記住，下次可以重試。不得改成即時監聽。
    */
   listEntriesForCrest(cid: string): Promise<EntryDoc[]>;
+  /** 指定俱樂部的報隊（teamId in，最多 10 個 id、limit 10）。詳情頁給代表看自己待審的隊。不快取、不監聽。 */
+  listEntriesByTeams(cid: string, teamIds: readonly string[]): Promise<EntryDoc[]>;
   /** 清掉這個賽事的隊徽快取。下次 listEntriesForCrest 會再查。 */
   invalidateCrests(cid: string): void;
   /** 尚未使用的邀請（status == open），最多 CP_INVITE_LIST_LIMIT。只給主辦／共同主辦呼叫。 */
@@ -1037,6 +1039,21 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
         crestCache.delete(cid);
         throw err;
       }
+    },
+
+    async listEntriesByTeams(cid, teamIds) {
+      if (!isSafeId(cid)) return [];
+      const ids = teamIds.filter(isSafeId).slice(0, 10);
+      if (ids.length === 0) return [];
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDocs(sdk.query(
+        sdk.collection(db, `competitions/${cid}/entries`),
+        sdk.where('teamId', 'in', ids),
+        sdk.limit(10),
+      ));
+      return snap.docs
+        .map((doc) => entryFromDoc(doc.id, doc.data() ?? {}))
+        .filter((doc): doc is EntryDoc => doc != null);
     },
 
     invalidateCrests(cid) {

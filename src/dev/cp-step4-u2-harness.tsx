@@ -56,6 +56,7 @@ export const U2_SCREENS = [
   'a1-pk-confirm-armed',
   'a1-kickoff-confirm',
   'a1-takeover-confirm',
+  'a1-takeover-free',
   'a1-showcard',
   'a1-undo-confirm',
   'a1-blocked-ht-before',
@@ -135,6 +136,7 @@ const ANCHORS: Record<string, string> = {
   'a1-pk-confirm-armed': '開始 PK 大戰？',
   'a1-kickoff-confirm': '開始比賽？',
   'a1-takeover-confirm': '接手後，另一支裝置記的動作會送不出去',
+  'a1-takeover-free': '這支裝置會成為這場的記分裝置',
   'a1-showcard': '點一下關閉',
   'a1-undo-confirm': '會一併復原第二張黃牌',
   'a1-blocked-ht-before': '前一筆沒送出，點這裡處理',
@@ -322,6 +324,8 @@ interface Seed {
   pending?: LogEntry[];
   /** 控制權在別的裝置（同帳號另一個 sid）。 */
   otherDevice?: boolean;
+  /** 沒有控制文件、本機也沒有 sid（第一次進記分頁，CP-PO-15a）。 */
+  noControl?: boolean;
   /** 組別 rules.timeout 原始值（backend.open 的 timeoutRaw）。沒給就照舊不帶（預設：不限次數）。 */
   timeoutRaw?: unknown;
   /** 進場（backend.open）丟錯：network＝{ code: 'unavailable' }、error＝一般錯誤（G-06 讀取失敗畫面）。 */
@@ -551,6 +555,7 @@ function seedOf(name: string): Seed {
   }
   if (name === 'a1-pk-confirm-wait' || name === 'a1-pk-confirm-armed') return seedOf('u2-pk-confirm');
   if (name === 'a1-kickoff-confirm') return seedOf('u2-pre');
+  if (name === 'a1-takeover-free') return { ...seedOf('u2-pre'), noControl: true };
   if (name === 'a1-takeover-confirm') {
     return {
       match: match({ status: 'live', rev: 1, score: { home: 1, away: 0 }, clockBase: clock(20 * 60, 'h1', true) }),
@@ -681,7 +686,7 @@ function seedOf(name: string): Seed {
 
 function makeBackend(seed: Seed, failCommit: boolean): ScoringBackend {
   const state = { match: { ...seed.match, score: { ...seed.match.score }, clockBase: { ...seed.match.clockBase } } };
-  const control = { uid: UID, sid: seed.otherDevice ? 'u2-other-sid-0000000002' : SID, takenAt: 1 };
+  const control = seed.noControl ? null : { uid: UID, sid: seed.otherDevice ? 'u2-other-sid-0000000002' : SID, takenAt: 1 };
   const events = [...(seed.events ?? [])];
   let listener: Parameters<ScoringBackend['open']>[0] | null = null;
   const port: ScoringPort = {
@@ -702,7 +707,7 @@ function makeBackend(seed: Seed, failCommit: boolean): ScoringBackend {
           score: { ...state.match.score },
           clockBase: { ...state.match.clockBase },
         },
-        control: { ...control },
+        control: control ? { ...control } : null,
       };
     },
     async loadTimelineFrom(minSeq: number) {
@@ -719,7 +724,7 @@ function makeBackend(seed: Seed, failCommit: boolean): ScoringBackend {
       listener = live;
       return {
         match: state.match,
-        control: { ...control },
+        control: control ? { ...control } : null,
         events: [...events],
         home: HOME,
         away: AWAY,
@@ -741,7 +746,7 @@ async function makeDeps(name: string): Promise<ScoringDeps> {
     for (const row of seed.pending) await log.put(row);
   }
   const sids = memorySidStore();
-  await sids.set(CID, MT, UID, SID);
+  if (!seed.noControl) await sids.set(CID, MT, UID, SID);
   return {
     uid: UID,
     backend: makeBackend(seed, name === 'u2-pending'),
@@ -846,6 +851,10 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('開賽', () => document.querySelector('.s4-kickoff') != null);
     document.querySelector<HTMLButtonElement>('.s4-kickoff')?.click();
     await until('開始比賽？', () => hasText('開始比賽？'));
+  },
+  'a1-takeover-free': async () => {
+    await until('開始記分', () => buttonsNamed('開始記分').length > 0);
+    clickButton('開始記分');
   },
   'a1-takeover-confirm': async () => {
     await until('其他裝置記分中', () => buttonsNamed('其他裝置記分中').length > 0);

@@ -1435,9 +1435,9 @@ button.s4-ev__main:active { opacity: 0.7; }
 .cp-lv--nolog { padding-bottom: 6px; }
 .cp-lv__sb { --sb-pad: 20px 14px 0; --sb-radius: 11px; }
 .cp-lv__top { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; column-gap: 8px; max-width: 440px; margin: 0 auto; padding-bottom: 18px; }
-.cp-lv__team { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+.cp-lv__team { display: flex; flex-direction: column; align-items: center; align-self: start; gap: 8px; min-width: 0; }
 .cp-lv__team img.cp3-crest { box-shadow: 0 0 0 1px var(--d2-sb-line); }
-.cp-lv__name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 15px; line-height: 24px; font-weight: 700; color: var(--d2-sb-fg); }
+.cp-lv__name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; text-align: center; font-size: 15px; line-height: 24px; font-weight: 700; color: var(--d2-sb-fg); }
 .cp-lv__mid { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .cp-lv__score { display: flex; align-items: center; gap: 10px; }
 .cp-lv__score .d2-num { font-size: 56px; line-height: 1; color: var(--d2-sb-fg); }

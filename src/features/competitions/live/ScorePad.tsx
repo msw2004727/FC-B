@@ -106,6 +106,8 @@ export interface ScorePadProps {
   takeoverOffered: boolean;
   /** 沒有本機 sid、控制權不是別人時，按鈕寫「接手記分」。沒傳沿用「其他裝置記分中」。 */
   takeoverSelf?: boolean;
+  /** 控制文件不存在＝沒有別的裝置在記；場次還沒讀到時不算。 */
+  takeoverFree?: boolean;
   onRecord?: (pick: ScorePick) => void | boolean;
   onUndo?: (seq: number) => void | boolean;
   /** 停錶／繼續只改 clockBase，不改狀態與比分。 */
@@ -923,7 +925,8 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       {reserved ? <p class="s4-banner s4-banner--block" role="status">{LIVE_COPY.atCap}</p> : null}
       {takeoverOffered ? (
         <Button disabled={readerOff} onClick={() => setTakeoverOpen(true)}>
-          {props.takeoverSelf ? LIVE_COPY.takeoverAction : LIVE_COPY.takeoverEntry}
+          {/* 沒有任何裝置在記：入口鈕與框內確認鈕同一句「開始記分」（顧問 §3.791 第 7a 題）。 */}
+          {props.takeoverFree ? LIVE_COPY.takeoverFreeAction : props.takeoverSelf ? LIVE_COPY.takeoverAction : LIVE_COPY.takeoverEntry}
         </Button>
       ) : null}
     </div>
@@ -1228,6 +1231,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       />
       <TakeoverDialog
         open={takeoverOpen}
+        free={props.takeoverFree === true}
         onTakeover={() => {
           setTakeoverOpen(false);
           props.onTakeover?.();

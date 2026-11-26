@@ -183,6 +183,7 @@ export function InAppCardList({
   onCreate,
   onOpen,
   onDelete,
+  filtered,
   statusSlot,
 }: {
   cards: readonly InAppListCard[];
@@ -195,6 +196,8 @@ export function InAppCardList({
   onCreate: () => void;
   onOpen: (cid: string, event: JSX.TargetedMouseEvent<HTMLAnchorElement>) => void;
   onDelete?: (cid: string, name: string) => void;
+  /** 有套分類、狀態或只看我的。 */
+  filtered?: boolean;
   /** 賽事頁分類分段右邊那一格；有就把狀態選單畫進去。 */
   statusSlot?: HTMLElement | null;
 }): JSX.Element {
@@ -279,7 +282,7 @@ export function InAppCardList({
         <InCard key={card.cid} card={card} ct={ct} imgRank={card.cover ? rank++ : -1} lean={lean} onOpen={onOpen} onDelete={onDelete} />
       ))}
       {/* 站長 11-21 預設站內後，站內 0 場時訪客第一眼不能是空白（顧問 11-21）：一行空狀態，沿用外部清單的 cpl-xmsg。 */}
-      {cards.length === 0 ? <p class="cpl-xmsg">{ct('listEmpty')}</p> : null}
+      {cards.length === 0 ? <p class="cpl-xmsg">{filtered ? ct('listEmptyFiltered') : ct('listEmpty')}</p> : null}
     </div>
   );
 }

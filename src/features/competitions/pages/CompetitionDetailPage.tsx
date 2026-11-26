@@ -194,7 +194,7 @@ function applyDetail(
   setSummary(next.summary);
   setStandings(next.standings);
   setMine(next.myAssignment);
-  setLoadState(next.bundle.competition ? 'ready' : 'error');
+  setLoadState(next.bundle.competition ? 'ready' : 'missing');
 }
 
 function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Element {
@@ -204,6 +204,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [bundle, setBundle] = useState<CpBundle | null>(env.bundle ?? null);
   const [summary, setSummary] = useState<SummaryEntry[]>(env.schedule?.summary ?? []);
   const [standings, setStandings] = useState<StandingDoc[]>(env.schedule?.standings ?? []);
+  // 代表自己俱樂部的報隊（CP-PO-14）：詳情頁組別卡要看得到自己待審的隊。
+  const [myEntries, setMyEntries] = useState<EntryDoc[]>([]);
   const [myAssignment, setMyAssignment] = useState<StaffAssignment | null>(null);
   const [loadState, setLoadState] = useState<LoadState>(env.bundle ? 'ready' : 'loading');
   const [menuOpen, setMenuOpen] = useState(env.preview?.menuOpen === true);
@@ -239,6 +241,23 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   pageCid.current = cid;
   const now = env.now ?? Date.now();
   const clubs = representativeClubs(env.actor);
+  const mineClubKey = env.actor.repClubs.map((club) => club.id).join('\0');
+  // 只有招募中畫組別卡隊伍清單；其他階段不多讀。
+  const recruitNow = bundle?.competition ? competitionPhase(bundle.competition, now) === 'recruit' : false;
+
+  async function reloadMine(shouldApply: () => boolean = () => true): Promise<void> {
+    const ids = env.actor.repClubs.map((club) => club.id);
+    if (env.bundle || !env.actor.uid || ids.length === 0 || !recruitNow) {
+      if (shouldApply()) setMyEntries([]);
+      return;
+    }
+    try {
+      const rows = await env.repo.listEntriesByTeams(cid, ids);
+      if (shouldApply()) setMyEntries(rows);
+    } catch {
+      if (shouldApply()) setMyEntries([]);
+    }
+  }
 
   useEffect(() => {
     if (teamId) return;
@@ -254,6 +273,15 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   useEffect(() => {
     if (env.actor.uid) setReportError(null);
   }, [env.actor.uid]);
+
+  useEffect(() => {
+    let alive = true;
+    void reloadMine(() => alive);
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cid, env.actor.uid, env.bundle, mineClubKey, recruitNow]);
 
   // 只在換賽事時清全部賽程快取。首次掛載不清：effect 晚於第一次繪製，
   // 使用者若在那之前就按展開，剛讀到的全集會被清掉、展開後一片空白（截圖驗收抓到）。
@@ -429,12 +457,12 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   if (loadState === 'loading' || (loadState === 'hidden' && env.actor.authPending)) {
     return <div class="cps-root"><PageSpinner /></div>;
   }
-  if (!competition || loadState === 'error' || loadState === 'hidden') {
+  if (!competition || loadState === 'error' || loadState === 'hidden' || loadState === 'missing') {
     // 權限被拒＝不公開：不放重試，也不說是下架、草稿還是內部期。網路或其他錯誤才給重試。
     return (
       <CpLoadFailed
         title={ct('detailTitle')}
-        fail={loadState === 'hidden' ? 'hidden' : 'error'}
+        fail={loadState === 'hidden' || loadState === 'missing' ? loadState : 'error'}
         onRetry={() => {
           setLoadState('loading');
           void loadDetail(env, cid, mineCache.current).then((next) => {
@@ -727,8 +755,13 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       toast.show({ message: ct('registerDone'), tone: 'success' });
       const next = await loadDetail(env, cid, mineCache.current);
       applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
+      void reloadMine();
     } catch (err) {
-      setRegisterError(errorOf(err));
+      const info = errorOf(err);
+      // 後端鏡像未建好時先判代表會回 NOT_CLUB_REP（第二輪模擬 C-04），前端已知是代表就顯示同步中。
+      setRegisterError(info.reason === 'NOT_CLUB_REP' && clubs.some((club) => club.id === chosenTeam)
+        ? { ...info, reason: 'CLUB_SYNC_PENDING' }
+        : info);
     } finally {
       setBusy(false);
     }
@@ -965,7 +998,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       </CpCard>
 
       {divisions.map((division) => (
-        <DivisionBlock key={division.dvId} division={division} entries={entries} cid={cid} competition={competition} now={now} />
+        <DivisionBlock key={division.dvId} division={division} entries={entries} pendingMine={myEntries.filter((entry) => entry.status === 'pending')} cid={cid} competition={competition} now={now} />
       ))}
       </>
       ) : (
@@ -1114,12 +1147,14 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 function DivisionBlock({
   division,
   entries,
+  pendingMine,
   cid,
   competition,
   now,
 }: {
   division: DivisionDoc;
   entries: EntryDoc[];
+  pendingMine: EntryDoc[];
   cid: string;
   competition: CompetitionDoc;
   now: number;
@@ -1129,6 +1164,7 @@ function DivisionBlock({
   const { route } = useLocation();
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const approved = entries.filter((entry) => entry.dvId === division.dvId && entry.status === 'approved');
+  const pendingRows = pendingMine.filter((entry) => entry.dvId === division.dvId && !approved.some((row) => row.id === entry.id));
   const meta = [
     ct('rosterLine', {
       format: ct('formatN', { n: division.playersOnField }),
@@ -1140,6 +1176,21 @@ function DivisionBlock({
       : '',
   ].filter(Boolean).join('　');
   const width = division.maxTeams > 0 ? Math.min(100, (division.approvedCount / division.maxTeams) * 100) : 0;
+  const rowOf = (entry: EntryDoc, pending: boolean): JSX.Element => (
+    <li class="cps-li" key={entry.id}>
+      <a class="d2-div__team" href={`/competitions/${cid}/entries/${entry.id}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); route(`/competitions/${cid}/entries/${entry.id}`); }}>
+        <span class="cps-li__main">
+          <span class="cp3-tn">
+            <TeamCrest teamId={entry.teamId} name={entry.name} teamLogo={entry.teamLogo} size={28} />
+            <em>{entry.name}</em>
+          </span>
+        </span>
+        {/* 顧問 §3.463：長隊名時「已核准」被擠成兩行。只在這一列讓標籤不縮、不換行，隊名讓位省略；不動共用 Badge。 */}
+        <StatusTag kind="neutral" label={pending ? ct('pending') : ct('approved')} class="cps-li__tag" />
+        <NextIcon />
+      </a>
+    </li>
+  );
   return (
     // 組別卡（新外觀卡 1b-5）：隊伍列整列是連結（最小高 48），不靠外擴點擊區（原本只有名字那一條 232×26 可點）
     <CpCard class="d2-div">
@@ -1153,21 +1204,8 @@ function DivisionBlock({
       <div class="cps-bar" aria-hidden="true"><i style={`width:${width}%`} /></div>
       <p class="cps-cap">{ct('approvedTeams', { teams: division.approvedCount, max: division.maxTeams })}</p>
       <ul class="cps-list">
-        {approved.map((entry) => (
-          <li class="cps-li" key={entry.id}>
-            <a class="d2-div__team" href={`/competitions/${cid}/entries/${entry.id}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); route(`/competitions/${cid}/entries/${entry.id}`); }}>
-              <span class="cps-li__main">
-                <span class="cp3-tn">
-                  <TeamCrest teamId={entry.teamId} name={entry.name} teamLogo={entry.teamLogo} size={28} />
-                  <em>{entry.name}</em>
-                </span>
-              </span>
-              {/* 顧問 §3.463：長隊名時「已核准」被擠成兩行。只在這一列讓標籤不縮、不換行，隊名讓位省略；不動共用 Badge。 */}
-              <StatusTag kind="neutral" label={ct('approved')} class="cps-li__tag" />
-              <NextIcon />
-            </a>
-          </li>
-        ))}
+        {approved.map((entry) => rowOf(entry, false))}
+        {pendingRows.map((entry) => rowOf(entry, true))}
       </ul>
     </CpCard>
   );

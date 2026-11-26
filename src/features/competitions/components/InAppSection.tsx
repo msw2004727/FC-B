@@ -399,6 +399,7 @@ function SectionBody({
         route(`/competitions/${cid}`);
       }}
       onDelete={canDelete ? (cid, name) => void onDelete(cid, name) : undefined}
+      filtered={tab !== 'all' || status !== 'all' || onlyMine}
       statusSlot={statusSlot}
     />
     {/* 換帳號或權限變了不再顯示（審查 P2-2） */}

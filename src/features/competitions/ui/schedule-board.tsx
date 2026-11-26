@@ -561,7 +561,7 @@ export function DetailPhaseBody({
             label: ct('tabStandings'),
             panel: (
               <div class="cp3-panel">
-                {standingsNode}
+                {standings.length > 0 ? standingsNode : <p class="cps-note">{ct('standingsEmpty')}</p>}
               </div>
             ),
           },

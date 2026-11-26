@@ -484,12 +484,16 @@ function WizardView({ env, edit }: { env: CpInjectedEnv; edit?: EditSource }): J
       setDone(true);
     } catch (err) {
       const info = errorOf(err);
+      // 後端鏡像未建好時先判代表會回 NOT_CLUB_REP（第二輪模擬 C-04），前端已知是代表就顯示同步中。
+      const reason = info.reason === 'NOT_CLUB_REP' && form.hostType === 'club' && clubs.some((club) => club.id === form.hostTeamId)
+        ? 'CLUB_SYNC_PENDING'
+        : info.reason;
       const raw = typeof info.params.field === 'string' ? info.params.field : undefined;
       // 重複組別名稱後端只標 divisions：找出是哪一組，落在那一組的名稱欄。封面三種 field 都落在封面欄。
-      const field = info.reason === 'DIVISION_NAME_DUPLICATE'
+      const field = reason === 'DIVISION_NAME_DUPLICATE'
         ? (duplicateDivisionField(form.divisions) ?? raw)
         : isCoverField(raw) ? 'cover' : raw;
-      showProblem({ reason: info.reason, params: info.params, field });
+      showProblem({ reason, params: info.params, field });
     } finally {
       inFlight.current = false;
       setBusy(false);

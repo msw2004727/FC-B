@@ -673,6 +673,25 @@ describe('站內 0 場的空狀態', () => {
     expect(document.querySelector('[data-cid]')).toBeNull();
   });
 
+  it('CP-PO-10：有賽事但只看我的後 0 筆時顯示沒有符合條件的賽事', async () => {
+    const repo = createFakeCpRepo({
+      launch: { isPublic: true, bannedWords: [] },
+      competitions: [competition({ id: 'pub', name: '公開招募', category: 'league', hostType: 'personal', hostTeamId: null })],
+    });
+    const env = { actor: memberActor, repo, actions: idleActions(), now: NOW };
+    render(
+      <LocationProvider>
+        <CpEnvProvider value={env}>
+          <InAppSection />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    expect(await screen.findByText('公開招募')).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: '只看我的' }));
+    expect(await screen.findByText('沒有符合條件的賽事')).toBeTruthy();
+    expect(screen.queryByText('目前沒有站內賽事')).toBeNull();
+  });
+
   it('有卡時不畫空狀態', async () => {
     const ct = makeCompetitionsT(await loadCompetitionsDict('zh-TW'));
     render(

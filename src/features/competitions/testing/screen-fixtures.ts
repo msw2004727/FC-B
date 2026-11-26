@@ -1401,6 +1401,8 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return listInEnv(actions);
     case 'real-recruit':
       return detailEnv(memberActor, NOW, {}, { summary: [], standings: [] });
+    // CP-PO-10：預熱中切到積分分頁（harness 點分頁）。
+    case 'real-warm-stand':
     case 'real-warm':
       return detailEnv(memberActor, WARM_NOW, {}, { summary: warmSchedule(), standings: [] });
     case 'real-live':
@@ -1705,6 +1707,29 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return hostEnv(freshPendingMatches(), actions);
     case 'real-host-matches-empty':
       return hostEnv([], actions);
+    // ── 賽事開放後第一批（CP-PO）──
+    case 'real-host-matches-ended': {
+      // HOSTMATCH-ENDED：已結束、0 場，不再叫人排賽程。
+      const env = hostEnv([], actions);
+      const comp = env.bundle?.competition;
+      if (!env.bundle || !comp) return env;
+      return { ...env, bundle: { ...env.bundle, competition: { ...comp, endedAt: LIVE_NOW - 3_600_000, endedBy: 'host', endReason: '示範' } } };
+    }
+    case 'real-pending-mine':
+      // CP-PO-14：代表剛報的隊（待審）在詳情頁組別卡看得到。走 repo 讀取（不帶 bundle）。
+      return repoDetailEnv(
+        actor({ uid: 'uid_rep_p', repClubs: [{ id: 'club_p', name: '晨星足球俱樂部' }], memberClubIds: ['club_p'] }),
+        NOW,
+        createFakeCpRepo({
+          competitions: [competition()],
+          divisions: { cup: [adultDivision, youthDivision] },
+          entries: { cup: [...detailBundle().entries, entry({ id: 'en_p', name: '晨星足球俱樂部', status: 'pending', dvId: 'dv_adult', teamId: 'club_p' })] },
+        }),
+        actions,
+      );
+    case 'real-detail-missing':
+      // CP-PO-15d：管理員開已刪除賽事（讀取成功、文件不存在）。
+      return repoDetailEnv(adminActor, NOW, createFakeCpRepo(), actions);
     case 'real-host-matches-denied':
       return { ...base(actions, memberActor, manageBundle(null)), now: LIVE_NOW, matches: [] };
     case 'real-schedule-preview':

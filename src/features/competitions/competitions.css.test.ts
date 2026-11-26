@@ -34,7 +34,8 @@ describe('使用者取的賽事名稱標題（顧問 §3.460）', () => {
   it('名稱標題最多兩行、超過才省略；共用 .cps-title 仍不換行', () => {
     const css = readFileSync(resolve(__dirname, 'competitions.css'), 'utf8');
     expect(css).toMatch(/\.cps-title \{[^}]*white-space: nowrap;/);
-    expect(css).toMatch(/\.cps-title\.cps-title--user \{[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;[^}]*-webkit-line-clamp: 2;[^}]*overflow: hidden;/);
+    // CP-PO-13：完成頁名稱、賽程管理對戰列隊名、觀眾即時頁記分板隊名併進同一條（賽事 CSS 預算只剩個位數位元組）。
+    expect(css).toMatch(/\.cps-title\.cps-title--user,[^{]*\.cps-success__name,[^{]*\.cph-day \.cp3-tn em,[^{]*\.cp-lv__team \.cp-lv__name \{[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;[^}]*-webkit-line-clamp: 2;[^}]*overflow: hidden;/);
     expect(css).toMatch(/\.d2-board__name \{[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;[^}]*-webkit-line-clamp: 2;[^}]*overflow: hidden;/);
   });
 });

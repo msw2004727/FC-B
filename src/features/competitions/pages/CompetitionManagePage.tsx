@@ -481,9 +481,11 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                   <NextIcon />
                 </a>
               </h3>
-              {entry.rosterConfirmed || locked
-                ? <StatusTag kind="neutral" label={ct('rosterConfirmed')} />
-                : <StatusTag kind="neutral" label={ct('rosterUnconfirmed')} />}
+              {locked
+                ? <StatusTag kind="neutral" label={ct('rosterLockedTag')} />
+                : entry.rosterConfirmed
+                  ? <StatusTag kind="neutral" label={ct('rosterConfirmed')} />
+                  : <StatusTag kind="neutral" label={ct('rosterUnconfirmed')} />}
             </div>
             <p class="cps-sub">{divisionName(entry.dvId)}</p>
             <div class="d2-lines">

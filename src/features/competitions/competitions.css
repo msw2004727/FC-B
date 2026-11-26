@@ -556,8 +556,13 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 .cps-h { margin: 0 0 var(--space-3); font-size: 17px; line-height: 24px; font-weight: 700; color: var(--d2-text); white-space: nowrap; }
 .cps-title { margin: 0; font-size: var(--font-size-title); line-height: var(--line-height-title); font-weight: 700; white-space: nowrap; }
 /* 顧問 §3.460：使用者取的賽事名稱（詳情、建立確認）。長名稱在 360 寬撐出橫向捲動；只在名稱標題加修飾 class，
-   最多兩行、超過才省略，不動共用的 .cps-title（固定文字標題仍不換行）。 */
-.cps-title.cps-title--user {
+   最多兩行、超過才省略，不動共用的 .cps-title（固定文字標題仍不換行）。
+   同一組宣告也給：完成頁賽事名稱、賽程管理對戰列隊名、觀眾即時頁記分板隊名（CP-PO-13 長隊名 360 只剩 4 字；
+   併成一條是因為賽事 CSS 預算只剩個位數位元組，取代原本各自一條的 .cps-success__name）。 */
+.cps-title.cps-title--user,
+.cps-success__name,
+.cph-day .cp3-tn em,
+.cp-lv__team .cp-lv__name {
   white-space: normal;
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -659,8 +664,6 @@ html.cp-score-full .cps-root { padding-top: var(--qa-topbar-safe, env(safe-area-
 }
 .cps-success { text-align: center; padding: var(--space-6) var(--space-4); }
 .cps-success svg { width: 44px; height: 44px; fill: none; stroke: var(--d2-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-/* 完成頁的賽事名稱（使用者取的）：最多兩行、超過才省略 */
-.cps-success__name { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .cps-pre { white-space: pre-line; }
 .cps-link { color: var(--d2-text); font-weight: 600; white-space: nowrap; }
 .cps-head-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }

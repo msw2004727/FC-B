@@ -559,6 +559,27 @@ describe('單場頁', () => {
     expect(screen.queryByText('上半場')).toBeNull();
   });
 
+  it('CP-PO-09：觀眾即時頁的棄權場顯示棄權，不顯示上半場', async () => {
+    drawMatch({
+      ...liveEnv(),
+      audience: quietPorts({
+        watchMatch: (_input, onMatch) => {
+          onMatch({ kind: 'ok', match: audienceMatch({
+            status: 'walkover',
+            score: { home: 0, away: 2 },
+            clockBase: { startedAt: null, pausedSec: 0, running: false, period: 'pre' },
+          }) });
+          return () => {};
+        },
+      }),
+    });
+    expect(await screen.findByText('雷霆隊')).toBeTruthy();
+    expect(screen.getByText('棄權')).toBeTruthy();
+    expect(screen.queryByText('上半場')).toBeNull();
+    // 棄權不亮進行中的燈。畫面上的「棄權」由 stageText 蓋過節次標籤（toLiveClock 認 walkover 是第二層保護）
+    expect(document.querySelector('.d2-sb--lit')).toBeNull();
+  });
+
   it('新外觀卡 3-5：正常狀態有頁首返回鈕、小字「賽事」與視覺隱藏的第 1 級標題；起點按返回＝取代成賽事頁，不是起點＝上一頁', async () => {
     const watch = quietPorts({
       watchMatch: (_input, onMatch) => {

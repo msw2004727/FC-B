@@ -435,6 +435,8 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     nowMs,
     takeoverOffered: view.control.needsTakeover,
     takeoverSelf: view.control.takeoverSelf,
+    // 控制文件不存在＝沒有別的裝置在記；場次還沒讀到時不算。
+    takeoverFree: view.control.needsTakeover && view.control.uid == null && view.match != null,
     timeoutView: timeoutViewFrom(view, nowMs),
     onRecord: (pick) => {
       sendRecord(view, pick);

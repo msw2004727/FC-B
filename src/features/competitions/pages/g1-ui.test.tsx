@@ -322,6 +322,46 @@ describe('取消單場與結束賽事', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: '結束賽事' })).toBeNull());
   });
 
+  it('CP-PO-06：主辦看得到不能自行恢復的提示，管理員看不到', () => {
+    draw(hostEnv([], idleActions(), hostActor), HostMatchesPage);
+    fireEvent.click(screen.getByRole('button', { name: '結束賽事' }));
+    expect(screen.getByText(/主辦不能自行恢復/)).toBeTruthy();
+    expect(screen.getByText(/聯繫站長/)).toBeTruthy();
+    cleanup();
+
+    draw(hostEnv([], idleActions(), adminActor), HostMatchesPage);
+    fireEvent.click(screen.getByRole('button', { name: '結束賽事' }));
+    expect(screen.queryByText(/主辦不能自行恢復/)).toBeNull();
+  });
+
+  it('CP-PO-HOSTMATCH-ENDED：已結束且沒有場次時不提示排賽程；未結束仍提示', () => {
+    const ended = hostEnv([]);
+    if (ended.bundle) {
+      ended.bundle = {
+        ...ended.bundle,
+        competition: competition({ endedAt: taipeiMs(2027, 1, 9, 10, 0), endedBy: 'host' }),
+      };
+    }
+    draw(ended, HostMatchesPage);
+    expect(screen.getByText('賽事已結束，沒有賽程')).toBeTruthy();
+    expect(screen.queryByText('請先排賽程')).toBeNull();
+    expect(screen.queryByRole('button', { name: '排賽程' })).toBeNull();
+    cleanup();
+
+    // 顧問 §3.791：已取消另一句，同樣不放排賽程鈕。
+    const cancelled = hostEnv([]);
+    if (cancelled.bundle) {
+      cancelled.bundle = { ...cancelled.bundle, competition: competition({ status: 'cancelled' }) };
+    }
+    draw(cancelled, HostMatchesPage);
+    expect(screen.getByText('賽事已取消，沒有賽程')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '排賽程' })).toBeNull();
+    cleanup();
+
+    draw(hostEnv([]), HostMatchesPage);
+    expect(screen.getByText('請先排賽程')).toBeTruthy();
+  });
+
   it('延期或草稿不顯示結束賽事', () => {
 
     const postponed = hostEnv([match({ id: 'mt_1', status: 'scheduled' })]);

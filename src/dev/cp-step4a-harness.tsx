@@ -46,7 +46,7 @@ const ANCHORS: Record<string, string> = {
   'score-card-red-auto': '第二張黃牌 → 紅牌',
   'score-halftime': '下半場開始',
   'score-fulltime-undo': '2:41',
-  'score-unapplied': '另一支裝置可能也在記這場',
+  'score-unapplied': '可能另一支裝置在記，或賽事狀態、權限已變更',
   'score-takeover': '接手記分',
   'score-offline': '重整後會消失',
   'score-paused': '繼續計時',
@@ -173,7 +173,7 @@ const OPEN: Record<string, () => Promise<void>> = {
   },
   'score-unapplied': async () => {
     clickButton('未套用的動作');
-    await until('未套用', () => hasText('另一支裝置可能也在記這場') && hasText('重新套用') && hasText('捨棄'));
+    await until('未套用', () => hasText('可能另一支裝置在記，或賽事狀態、權限已變更') && hasText('重新套用') && hasText('捨棄'));
   },
   'score-takeover': async () => {
     clickButton('其他裝置記分中');

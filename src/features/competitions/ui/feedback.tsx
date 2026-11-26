@@ -37,8 +37,8 @@ export function errorOf(err: unknown): { reason: string; params: Record<string, 
   return { reason: cp.reason, params: cp.params };
 }
 
-/** 讀賽事失敗的兩種畫面：hidden＝Rules 拒絕（下架、草稿、內部期都一樣，不分辨）；error＝網路或其他錯誤。 */
-export type CpLoadFail = 'hidden' | 'error';
+/** 讀賽事失敗的三種畫面：hidden＝Rules 拒絕（下架、草稿、內部期都一樣，不分辨）；missing＝讀取成功但文件不存在（例如已刪除）；error＝網路或其他錯誤。 */
+export type CpLoadFail = 'hidden' | 'missing' | 'error';
 
 /** 讀取錯誤碼只在這裡判斷。Firestore 讀取被 Rules 拒絕時 code 是 permission-denied。 */
 export function loadFailOf(err: unknown): CpLoadFail {
@@ -64,6 +64,15 @@ export function CpLoadFailed({
     return (
       <CpFrame title={title}>
         <CpGate icon={<LockIcon />} text={ct('reason.COMPETITION_HIDDEN')} load="private">
+          <Button variant="primary" onClick={() => route('/tournaments', true)}>{ct('backToTournaments')}</Button>
+        </CpGate>
+      </CpFrame>
+    );
+  }
+  if (fail === 'missing') {
+    return (
+      <CpFrame title={title}>
+        <CpGate icon={<InfoIcon />} text={ct('compMissing')}>
           <Button variant="primary" onClick={() => route('/tournaments', true)}>{ct('backToTournaments')}</Button>
         </CpGate>
       </CpFrame>
