@@ -14,6 +14,10 @@ describe('cleanLine（照後端 text.ts）', () => {
     expect(cleanLine('王\u200b小\ufeff明')).toBe('王小明');
     expect(cleanLine('\u0000林\u2800')).toBe('林');
     expect(cleanLine('王\u2066小\u2069明')).toBe('王小明');
+    expect(cleanLine('官\u00ad方\u061c協\u180e會')).toBe('官方協會');
+    for (const cp of [0x206a, 0x206b, 0x206c, 0x206d, 0x206e, 0x206f]) {
+      expect(cleanLine(`甲${String.fromCodePoint(cp)}乙`), cp.toString(16)).toBe('甲乙');
+    }
   });
 });
 
