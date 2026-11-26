@@ -576,10 +576,23 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     const perms = [...FULL_ADMIN_PERMS, 'admin.repair.no_show_adjust'];
     mockUseViewer.mockReturnValue(viewerOf('admin', perms));
     mockLoadUsers.mockResolvedValue(loadOf([black]));
-    render(<AdminUsersPage lateCancelClearEnabled />);
+    render(<AdminUsersPage lateCancelClearEnabled lateCancelClearBlackEnabled />);
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
     expect(cardOf('Blackie').textContent).toContain('臨取狀態：黑標，最晚');
     expect(within(cardOf('Blackie')).getByRole('button', { name: '解除臨取狀態' }).closest('.au-lc-row')).not.toBeNull();
+  });
+
+  it('臨取黑標：新版後端未部署（旗標 false）時只顯示狀態、沒有解除鈕', async () => {
+    const black = makeUser('b1', {
+      name: 'Blackie', lateCancelLevel: 'black', lateCancelUntilMs: Date.now() + 7 * 86_400_000,
+    });
+    const perms = [...FULL_ADMIN_PERMS, 'admin.repair.no_show_adjust'];
+    mockUseViewer.mockReturnValue(viewerOf('admin', perms));
+    mockLoadUsers.mockResolvedValue(loadOf([black]));
+    render(<AdminUsersPage lateCancelClearEnabled lateCancelClearBlackEnabled={false} />);
+    await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
+    expect(cardOf('Blackie').textContent).toContain('臨取狀態：黑標，最晚');
+    expect(within(cardOf('Blackie')).queryByRole('button', { name: '解除臨取狀態' })).toBeNull();
   });
 
   it('臨取黑標已過期：不顯示臨取狀態一行、沒有解除鈕', async () => {

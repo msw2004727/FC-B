@@ -61,7 +61,7 @@ import {
   type AdminUsersLoad,
 } from '../data/admin-users';
 import { isViewerPermissionsLoaded } from '../data/viewer-ready';
-import { LATE_CANCEL_CLEAR_CALLABLE_DEPLOYED } from '../data/late-cancel-deployed';
+import { LATE_CANCEL_CLEAR_BLACK_DEPLOYED, LATE_CANCEL_CLEAR_CALLABLE_DEPLOYED } from '../data/late-cancel-deployed';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 
@@ -81,6 +81,8 @@ export interface AdminUsersPageProps {
   extraUiEnabled?: boolean;
   /** 測試注入；未傳用 LATE_CANCEL_CLEAR_CALLABLE_DEPLOYED（解除臨取紅標 Callable 是否已部署）。 */
   lateCancelClearEnabled?: boolean;
+  /** 測試注入；未傳用 LATE_CANCEL_CLEAR_BLACK_DEPLOYED（黑標解除需要新版後端）。 */
+  lateCancelClearBlackEnabled?: boolean;
 }
 
 const CENTER_NOTE = 'text-align:center;padding:2rem;color:var(--text-muted)';
@@ -95,6 +97,7 @@ const CENTER_NOTE = 'text-align:center;padding:2rem;color:var(--text-muted)';
 export default function AdminUsersPage({
   extraUiEnabled = ADMIN_USERS_EXTRA_UI_ENABLED,
   lateCancelClearEnabled = LATE_CANCEL_CLEAR_CALLABLE_DEPLOYED,
+  lateCancelClearBlackEnabled = LATE_CANCEL_CLEAR_BLACK_DEPLOYED,
 }: AdminUsersPageProps = {}): JSX.Element {
   const t = useT();
   const viewer = useViewer();
@@ -444,7 +447,7 @@ export default function AdminUsersPage({
   const handleClearLateCancelRed = async (user: AdminUser): Promise<void> => {
     if (busyRef.current) return;
     const target = findUser(user._docId);
-    if (!target || !canClearLateCancelOf(actor, target)) {
+    if (!target || !canClearLateCancelOf(actor, target, undefined, lateCancelClearBlackEnabled)) {
       toast.show({ message: t('admin-users.toast.noPermission'), tone: 'error' });
       return;
     }
@@ -453,7 +456,7 @@ export default function AdminUsersPage({
     try {
       if (!await appConfirm(t('admin-users.lateCancel.confirm', { name: target.name }))) return;
       const latest = usersRef.current.find((item) => item._docId === target._docId) ?? null;
-      if (!latest || !canClearLateCancelOf(actorRef.current, latest)) return;
+      if (!latest || !canClearLateCancelOf(actorRef.current, latest, undefined, lateCancelClearBlackEnabled)) return;
       try {
         await clearLateCancelRed(latest.uid);
       } catch (err: unknown) {
@@ -621,6 +624,7 @@ export default function AdminUsersPage({
               onClearLateCancelRed={lateCancelClearEnabled
                 ? (target) => { handleClearLateCancelRed(target).catch(() => undefined); }
                 : undefined}
+              lateCancelBlackEnabled={lateCancelClearBlackEnabled}
               onOpenProfile={openProfile}
               onCpRemoval={viewer.role === 'super_admin' ? openCpRemoval : undefined}
             />

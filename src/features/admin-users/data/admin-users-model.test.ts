@@ -90,21 +90,28 @@ describe('canClearLateCancelOf', () => {
     expect(canClearLateCancelOf(withPermission, user({
       lateCancelLevel: 'black',
       lateCancelUntilMs: NOW + DAY,
-    }), NOW)).toBe(true);
+    }), NOW, true)).toBe(true);
+  });
+
+  it('黑標未過期，但新版後端尚未部署（旗標 false）→ false', () => {
+    expect(canClearLateCancelOf(withPermission, user({
+      lateCancelLevel: 'black',
+      lateCancelUntilMs: NOW + DAY,
+    }), NOW, false)).toBe(false);
   });
 
   it('黑標無到期回 true', () => {
     expect(canClearLateCancelOf(withPermission, user({
       lateCancelLevel: 'black',
       lateCancelUntilMs: null,
-    }), NOW)).toBe(true);
+    }), NOW, true)).toBe(true);
   });
 
   it('黑標已過期回 false', () => {
     expect(canClearLateCancelOf(withPermission, user({
       lateCancelLevel: 'black',
       lateCancelUntilMs: NOW - DAY,
-    }), NOW)).toBe(false);
+    }), NOW, true)).toBe(false);
   });
 
   it('正常回 false', () => {

@@ -18,7 +18,7 @@ describe('auditActionLabel', () => {
     expect(auditActionLabel('login_success')).toBe('登入成功');
     expect(auditActionLabel('event_signup')).toBe('活動報名');
     expect(auditActionLabel('admin_user_edit')).toBe('管理員編輯用戶資料');
-    expect(auditActionLabel('late_cancel_red_clear')).toBe('解除臨取紅標');
+    expect(auditActionLabel('late_cancel_red_clear')).toBe('解除臨取狀態');
   });
 
   it('未知動作原樣回傳', () => {

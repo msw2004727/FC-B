@@ -425,7 +425,7 @@ export interface CancelRegistrationResponse {
   lateCancelMarked?: boolean;
 }
 
-/** 解除臨取紅標（契約 §6）；權限 admin.repair.no_show_adjust，非紅標也回 ok（冪等）。 */
+/** 解除臨取狀態（紅／黑，契約 §6；名稱沿用 clearLateCancelRed）；權限 admin.repair.no_show_adjust；其他狀態也回 ok（冪等）。 */
 export interface ClearLateCancelRedRequest {
   targetUid: string;
 }

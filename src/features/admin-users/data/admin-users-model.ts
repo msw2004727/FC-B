@@ -13,6 +13,7 @@ import {
   getRuntimeRoleSequence,
   type CustomRoleInput,
 } from '@/ui/drawer-menu';
+import { LATE_CANCEL_CLEAR_BLACK_DEPLOYED } from './late-cancel-deployed';
 
 export const ADMIN_USER_PAGE_SIZE = 30;
 const DAY_MS = 86_400_000;
@@ -185,10 +186,12 @@ export function canClearLateCancelOf(
   actor: AdminUserActor,
   target: AdminUser,
   nowMs: number = Date.now(),
+  blackEnabled: boolean = LATE_CANCEL_CLEAR_BLACK_DEPLOYED,
 ): boolean {
   if (!actor.hasPermission(PERM_LATE_CANCEL_CLEAR)) return false;
   if (target.lateCancelLevel === 'red') return true;
-  if (target.lateCancelLevel !== 'black') return false;
+  // 黑標解除要等新版後端部署（late-cancel-deployed.ts 說明）
+  if (target.lateCancelLevel !== 'black' || !blackEnabled) return false;
   return target.lateCancelUntilMs === null || target.lateCancelUntilMs > nowMs;
 }
 

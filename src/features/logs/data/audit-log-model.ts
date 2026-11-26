@@ -28,8 +28,8 @@ export const AUDIT_ACTIONS: ReadonlyArray<readonly [string, string]> = [
   ['team_join_reject', '拒絕入隊'],
   ['role_change', '角色變更'],
   ['admin_user_edit', '管理員編輯用戶資料'],
-  // 臨時取消時限（FC 契約 late-cancel §6）：Functions clearLateCancelRed 寫的 action。
-  ['late_cancel_red_clear', '解除臨取紅標'],
+  // 臨時取消時限（FC 契約 late-cancel §6）：Functions clearLateCancelRed 寫的 action（2026-11-26 起紅／黑都用這個碼，meta.statusFrom 區分）。
+  ['late_cancel_red_clear', '解除臨取狀態'],
 ];
 
 export function auditActionLabel(action: string): string {
@@ -101,7 +101,7 @@ export function auditSearchText(e: AuditEntry, displayName: string): string {
   ].map((v) => String(v || '').trim().toLowerCase()).filter(Boolean).join(' ');
 }
 
-/** Firestore 文件 → AuditEntry。Functions 寫 `actorId`，A 讀 `actorUid`，兩者都收。 */
+/** Firestore 文件 → AuditEntry。Functions 寫 `actorUid`（2026-11-26 修正前經 writeAuditEntryInternal 的紀錄為空），舊資料可能有 `actorId`，兩者都收。 */
 export function toAuditEntry(id: string, d: Record<string, unknown>): AuditEntry {
   const ts = d['createdAt'] as { toMillis?: () => number; seconds?: number } | undefined;
   const ms = typeof ts?.toMillis === 'function' ? ts.toMillis() : typeof ts?.seconds === 'number' ? ts.seconds * 1000 : 0;

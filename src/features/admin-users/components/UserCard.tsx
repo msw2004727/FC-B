@@ -36,6 +36,8 @@ export interface UserCardProps {
   onToggleRestriction: (user: AdminUser) => void;
   /** 「解除臨取紅標」；未傳（Callable 未部署）不顯示按鈕。 */
   onClearLateCancelRed?: (user: AdminUser) => void;
+  /** 黑標也能解除（新版後端部署後才 true；預設照 LATE_CANCEL_CLEAR_BLACK_DEPLOYED）。 */
+  lateCancelBlackEnabled?: boolean;
   onOpenProfile: (uid: string) => void;
   /** 「賽事個資移除」；未傳（非 super_admin）不顯示按鈕。 */
   onCpRemoval?: (user: AdminUser) => void;
@@ -83,6 +85,7 @@ export function UserCard({
   onEdit,
   onToggleRestriction,
   onClearLateCancelRed,
+  lateCancelBlackEnabled,
   onOpenProfile,
   onCpRemoval,
 }: UserCardProps): JSX.Element {
@@ -99,7 +102,7 @@ export function UserCard({
   const tagRoleKey = tagRole(user);
   const restrictBtn = canToggleRestrictionOf(actor, user);
   const lateCancelText = lateCancelStatusText(user);
-  const clearLateBtn = !!onClearLateCancelRed && canClearLateCancelOf(actor, user);
+  const clearLateBtn = !!onClearLateCancelRed && canClearLateCancelOf(actor, user, undefined, lateCancelBlackEnabled);
 
   return (
     <div class="admin-user-card">
