@@ -55,6 +55,26 @@ async function shoot(page, tag) {
       lcRows, centerDiff, clipped, cpGap, toast: (document.querySelector('.ui-toast')?.textContent || '').trim(),
     };
   });
+  // 「解除」小鈕：字級、平常（字色對卡片底色）與 hover（字色對按鈕底色）的對比（WCAG 相對亮度）
+  if (!tag.includes('flow') && await page.locator('.au-btn-lc-clear').count()) {
+    const measure = () => page.evaluate(() => {
+      const rgb = (s) => (s.match(/[\d.]+/g) || []).slice(0, 4).map(Number);
+      const lum = ([r, g, b]) => [r, g, b].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; })
+        .reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+      const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return Math.round(((x + 0.05) / (y + 0.05)) * 100) / 100; };
+      const btn = document.querySelector('.au-btn-lc-clear');
+      const cs = getComputedStyle(btn);
+      let bg = rgb(cs.backgroundColor);
+      if (bg.length === 4 && bg[3] === 0) bg = rgb(getComputedStyle(document.querySelector('.admin-user-card')).backgroundColor);
+      return { fontSize: cs.fontSize, color: cs.color, bg: `rgb(${bg.slice(0, 3).join(',')})`, contrast: ratio(rgb(cs.color), bg) };
+    });
+    state.clearNormal = await measure();
+    await page.locator('.au-btn-lc-clear').hover();
+    await page.waitForTimeout(250);
+    state.clearHover = await measure();
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(250);
+  }
   report.states.push({ tag, ...state });
   // 只拍卡片那一塊（頁首到卡片底下一點），比整頁清楚
   const box = await page.evaluate(() => {
