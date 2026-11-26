@@ -1,12 +1,38 @@
 import { render, type JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { pushOverlay } from '@/core/overlay-back';
+// 樣式原本在 activity.css；搬來跟著本元件載入，賽事頁（沒載 activity.css）重用同一份選單也有樣式。
+import './share-action-sheet.css';
 
 export type ShareChoice = 'line' | 'line-share' | 'copy' | 'cancel';
+
+/** 選單文字。活動分享不傳，維持原本中文；賽事分享傳七語系文案。 */
+export interface ShareSheetLabels {
+  friends: string;
+  friendsSub: string;
+  community: string;
+  communitySub: string;
+  toLine: string;
+  copy: string;
+  copySub: string;
+  cancel: string;
+}
+
+const DEFAULT_LABELS: ShareSheetLabels = {
+  friends: 'LINE 好友',
+  friendsSub: '精美卡片・好友 / 群組',
+  community: 'LINE 社群',
+  communitySub: '純文字・支援 OpenChat',
+  toLine: '分享到 LINE',
+  copy: '複製連結',
+  copySub: 'toosterx 原域名',
+  cancel: '取消',
+};
 
 interface Props {
   canPicker: boolean;
   title?: string;
+  labels?: ShareSheetLabels;
   onChoice: (choice: ShareChoice) => void;
 }
 
@@ -14,6 +40,7 @@ interface Props {
 export function ShareActionSheet({
   canPicker,
   title = '分享活動',
+  labels: text = DEFAULT_LABELS,
   onChoice,
 }: Props): JSX.Element {
   const [active, setActive] = useState(false);
@@ -66,8 +93,8 @@ export function ShareActionSheet({
               >
                 <span class="share-action-sheet-btn-icon">💚</span>
                 <span class="share-action-sheet-btn-label">
-                  LINE 好友
-                  <span class="share-action-sheet-btn-sub">精美卡片・好友 / 群組</span>
+                  {text.friends}
+                  <span class="share-action-sheet-btn-sub">{text.friendsSub}</span>
                 </span>
               </button>
               <button
@@ -78,8 +105,8 @@ export function ShareActionSheet({
               >
                 <span class="share-action-sheet-btn-icon">💬</span>
                 <span class="share-action-sheet-btn-label">
-                  LINE 社群
-                  <span class="share-action-sheet-btn-sub">純文字・支援 OpenChat</span>
+                  {text.community}
+                  <span class="share-action-sheet-btn-sub">{text.communitySub}</span>
                 </span>
               </button>
             </>
@@ -91,7 +118,7 @@ export function ShareActionSheet({
               onClick={() => close('line-share')}
             >
               <span class="share-action-sheet-btn-icon">💬</span>
-              <span class="share-action-sheet-btn-label">分享到 LINE</span>
+              <span class="share-action-sheet-btn-label">{text.toLine}</span>
             </button>
           )}
           <button
@@ -102,8 +129,8 @@ export function ShareActionSheet({
           >
             <span class="share-action-sheet-btn-icon">📋</span>
             <span class="share-action-sheet-btn-label">
-              複製連結
-              <span class="share-action-sheet-btn-sub">toosterx 原域名</span>
+              {text.copy}
+              <span class="share-action-sheet-btn-sub">{text.copySub}</span>
             </span>
           </button>
         </div>
@@ -113,7 +140,7 @@ export function ShareActionSheet({
           data-choice="cancel"
           onClick={() => close('cancel')}
         >
-          取消
+          {text.cancel}
         </button>
       </div>
     </div>
@@ -124,6 +151,7 @@ export function showShareActionSheet(
   canPicker: boolean,
   signal: AbortSignal,
   title?: string,
+  labels?: ShareSheetLabels,
 ): Promise<ShareChoice> {
   if (signal.aborted) return Promise.resolve('cancel');
 
@@ -153,7 +181,7 @@ export function showShareActionSheet(
     try {
       document.body.appendChild(host);
       render(
-        <ShareActionSheet canPicker={canPicker} title={title} onChoice={finish} />,
+        <ShareActionSheet canPicker={canPicker} title={title} labels={labels} onChoice={finish} />,
         host,
       );
     } catch (error) {

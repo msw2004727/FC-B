@@ -666,5 +666,22 @@
   "removeMineBusy": "處理中…",
   "removeMineDone": "已移除你的賽事資料",
   "removeMineLater": "已移除大部分資料，\n其餘 {n} 場會在賽事結束或指派到期後自動處理",
-  "removeMineLaterNoCount": "已移除大部分資料，\n其餘會在賽事結束或指派到期後自動處理"
+  "removeMineLaterNoCount": "已移除大部分資料，\n其餘會在賽事結束或指派到期後自動處理",
+  "shareBtn": "分享賽事",
+  "shareFriends": "LINE 好友",
+  "shareFriendsSub": "精美卡片・好友 / 群組",
+  "shareCommunity": "LINE 社群",
+  "shareCommunitySub": "純文字・支援 OpenChat",
+  "shareToLine": "分享到 LINE",
+  "shareCopy": "複製連結",
+  "shareCopySub": "toosterx 原域名",
+  "shareView": "查看賽事",
+  "shareDone": "賽事已分享到 LINE",
+  "shareFinished": "分享已完成",
+  "shareFailed": "分享失敗，請稍後再試",
+  "shareNeedLine": "請在 LINE 中開啟以使用此功能",
+  "shareCopied": "連結已複製",
+  "shareCopyFailed": "複製失敗",
+  "shareClipboard": "分享內容已複製到剪貼簿",
+  "shareClipboardFailed": "複製失敗，請手動複製"
 }

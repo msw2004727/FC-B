@@ -154,6 +154,12 @@ describe('fcb-liff-state 改寫', () => {
       url: '/teams/ab_CD-12?utm=1&liff.hback=2#h=1',
     },
     {
+      shape: 'competition',
+      search: '?liff.state=%3Fcompetition%3Dcp_TESTabcdefghij012345&code=c',
+      hash: '#c=1',
+      url: '/competitions/cp_TESTabcdefghij012345?code=c#c=1',
+    },
+    {
       shape: 'profile',
       search: '?code=abc&liff.state=%3Fprofile%3Duid_1',
       hash: '#t=1',
@@ -194,6 +200,9 @@ describe('fcb-liff-state 改寫', () => {
     ['外層 event 為空仍算有', '?event=&liff.state=%3Fevent%3DX'],
     ['外層已有 team', '?liff.state=%3Fteam%3Dab&team=other'],
     ['外層已有 profile', '?profile=p&liff.state=%3Fevent%3DX'],
+    ['外層已有 competition', '?competition=cp_TESTabcdefghij012345&liff.state=%3Fevent%3DX'],
+    ['competition 不是 cp_＋20 碼', '?liff.state=%3Fcompetition%3Dcup'],
+    ['competition 長度 21', '?liff.state=%3Fcompetition%3Dcp_TESTabcdefghij0123456'],
     ['雙重編碼', '?liff.state=%253Fevent%253DX'],
     ['壞編碼 %', '?liff.state=%'],
     ['壞編碼截斷', '?liff.state=%3Fevent%3D%'],

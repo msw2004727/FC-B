@@ -49,14 +49,14 @@
           }
           var PUBLIC_ID = /^[A-Za-z0-9_-]{1,120}$/;
           var target = '';
-          if (path === '/' && params.getAll('liff.state').length === 1 && params.getAll('event').length === 0 && params.getAll('team').length === 0 && params.getAll('profile').length === 0) {
+          if (path === '/' && params.getAll('liff.state').length === 1 && params.getAll('event').length === 0 && params.getAll('team').length === 0 && params.getAll('competition').length === 0 && params.getAll('profile').length === 0) {
             var state = params.get('liff.state');
             if (typeof state === 'string' && state.charAt(0) === '?') {
               var eq = state.indexOf('=');
               var kind = eq > 1 ? state.slice(1, eq) : '';
               var id = eq > 1 ? state.slice(eq + 1) : '';
-              var dest = kind === 'event' ? '/events/' : kind === 'team' ? '/teams/' : kind === 'profile' ? '/profile/' : '';
-              if (dest && PUBLIC_ID.test(id) && !(kind === 'profile' && id === 'qr')) {
+              var dest = kind === 'event' ? '/events/' : kind === 'team' ? '/teams/' : kind === 'competition' ? '/competitions/' : kind === 'profile' ? '/profile/' : '';
+              if (dest && PUBLIC_ID.test(id) && !(kind === 'profile' && id === 'qr') && (kind !== 'competition' || /^cp_[A-Za-z0-9]{20}$/.test(id))) {
                 var raw = search.charAt(0) === '?' ? search.slice(1) : search;
                 var parts = raw ? raw.split('&') : [];
                 var kept = [];
@@ -89,7 +89,7 @@
               }
               var last = prev.length ? prev[prev.length - 1] : null;
               var n = last && typeof last.n === 'number' && last.n === last.n ? last.n + 1 : prev.length + 1;
-              var shownPath = path.replace(/^\/(events|teams|profile)\/[^/?#]+/, '/$1/:id');
+              var shownPath = path.replace(/^\/(events|teams|competitions|profile)\/[^/?#]+/, '/$1/:id');
               prev.push({ n: n, path: shownPath, q: q, h: h, rewrote: target !== '', auto: auto });
               if (prev.length > 10) prev = prev.slice(prev.length - 10);
               sessionStorage.setItem(KEY, JSON.stringify(prev));

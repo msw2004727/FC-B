@@ -47,6 +47,7 @@ import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, type CpLoadFail
 import { FeeLine } from '../ui/fields';
 import { categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
 import { DetailHero } from '../ui/detail-hero';
+import { ShareCompetitionButton } from '../ui/share-button';
 import { shownCover } from '../data/cover';
 import { TieWorkspace } from '../ui/tie-panel';
 import { AdminPanel, HiddenNotice } from '../ui/admin-moderation';
@@ -915,6 +916,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           />
         ) : undefined}
       />
+      {/* 分享（CP-SHARE）：位置比照活動詳情，緊接在主資訊下面；只給收到連結的人讀得到的賽事（已發布、未下架、公開）。 */}
+      {frozen ? null : <ShareCompetitionButton ct={ct} competition={competition} loggedIn={Boolean(env.actor.uid)} />}
       {hostCards}
       {showHostEnd ? (
         // 主辦結束賽事的說明卡（新外觀卡 1b-5）：第一行結論跨兩欄，第二行左原因、右「恢復賽事」小鈕
