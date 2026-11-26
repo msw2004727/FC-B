@@ -157,6 +157,63 @@ describe('scheduleIdleRoutePrefetch：等本頁第一批內容畫出（有上限
     cancel();
   });
 
+  // CP-DETAIL-SPEED e1：整頁轉圈（PageSpinner 的 .ui-page-spinner，只有 role=status、沒有 aria-busy）也算本頁內容還在載入。
+  /** 在主內容區（或區外）放一個與 PageSpinner 同 class 的整頁轉圈。 */
+  function spinner(inMain = true): HTMLElement {
+    const el = document.createElement('div');
+    el.className = 'ui-page-spinner';
+    el.setAttribute('role', 'status');
+    (inMain ? appMain() : document.body).appendChild(el);
+    return el;
+  }
+
+  it('整頁轉圈中（.ui-page-spinner、沒有 aria-busy）不預載；轉圈拿掉後下一次檢查才預載', async () => {
+    const el = spinner();
+    expect(el.hasAttribute('aria-busy')).toBe(false);
+    const cancel = scheduleIdleRoutePrefetch();
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(teamsLoad).not.toHaveBeenCalled();
+    el.remove();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(teamsLoad).toHaveBeenCalledTimes(1);
+    cancel();
+  });
+
+  it('轉圈超過上限時間：照常預載，不會永不預載', async () => {
+    spinner();
+    const cancel = scheduleIdleRoutePrefetch();
+    await vi.advanceTimersByTimeAsync(CONTENT_WAIT_CAP_MS - 600);
+    expect(teamsLoad).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(teamsLoad).toHaveBeenCalledTimes(1);
+    cancel();
+  });
+
+  it('轉圈中使用者按下分頁：即時預載照舊立刻開始，不等轉圈', async () => {
+    spinner();
+    const cancel = scheduleIdleRoutePrefetch();
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(teamsLoad).not.toHaveBeenCalled();
+    prefetchRouteByPath('/teams');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(teamsLoad).toHaveBeenCalledTimes(1);
+    cancel();
+  });
+
+  it('主內容區外的轉圈不算本頁內容', async () => {
+    spinner(false);
+    appMain();
+    const cancel = scheduleIdleRoutePrefetch();
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(teamsLoad).toHaveBeenCalledTimes(1);
+    cancel();
+  });
+
+  it('PageSpinner 仍掛 ui-page-spinner class（改名會讓等待失效，這裡先鎖住）', () => {
+    const src = readFileSync(resolve(__dirname, '../ui/PageSpinner.tsx'), 'utf8');
+    expect(src).toContain('class="ui-page-spinner" role="status"');
+  });
+
   it('App 的主內容區仍是 main.app-main（改名會讓等待失效，這裡先鎖住）', () => {
     const app = readFileSync(resolve(__dirname, '../app/App.tsx'), 'utf8');
     expect(app).toContain('<main class="app-main">');
