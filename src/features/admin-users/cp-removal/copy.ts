@@ -58,9 +58,9 @@ export const NOW_LABELS: Readonly<Record<string, string>> = {
   controlDelete: '記分權刪除',
   hostDisplayReset: '主辦名稱改「主辦」',
   publicByClear: '公告署名清除',
-  auditPseudonymize: '操作紀錄改假名',
-  scorerAuditRekey: '記分接手紀錄改假名',
-  invitePseudonymize: '邀請紀錄改假名',
+  auditPseudonymize: '操作紀錄上的代碼換成假名',
+  scorerAuditRekey: '記分接手紀錄上的代碼換成假名',
+  invitePseudonymize: '邀請紀錄上的發出人代碼換成假名',
   cpMineDelete: '「我的賽事」索引刪除',
 };
 

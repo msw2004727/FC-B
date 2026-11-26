@@ -62,7 +62,7 @@ const SUMMARY: CpAdminRemovalDryRun = {
     },
   ],
   totals: { competitions: 3, writesNow: 16, writesLater: 2 },
-  irreversible: ['真名', '報隊聯絡資料', '記分員顯示名', '稽核雜湊改假名', '邀請建立者雜湊改假名'],
+  irreversible: ['真名', '報隊聯絡資料', '記分員顯示名', '操作紀錄上的代碼換成無法對回本人的假名', '邀請紀錄上的發出人代碼換成無法對回本人的假名'],
   warnings: [],
   limitations: [
     '只代填過球員、自己在賽事系統沒有任何紀錄的人，那幾場不會列在這裡，請由隊伍代表從名單移除。',
