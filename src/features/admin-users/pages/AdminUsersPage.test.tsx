@@ -544,14 +544,14 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
     expect(cardOf('Kai').textContent).toContain('臨取狀態：紅標（3 次，最近 11/20）');
     expect(cardOf('Kai').querySelector('.uc-lc-red')).not.toBeNull();
-    expect(within(cardOf('Kai')).queryByText('解除臨取紅標')).toBeNull();
+    expect(within(cardOf('Kai')).queryByRole('button', { name: '解除臨取紅標' })).toBeNull();
     cleanup();
     // 已部署但沒有權限：沒有按鈕。
     mockUseViewer.mockReturnValue(viewerOf('admin', FULL_ADMIN_PERMS));
     mockLoadUsers.mockResolvedValue(loadOf([red]));
     render(<AdminUsersPage lateCancelClearEnabled />);
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
-    expect(within(cardOf('Kai')).queryByText('解除臨取紅標')).toBeNull();
+    expect(within(cardOf('Kai')).queryByRole('button', { name: '解除臨取紅標' })).toBeNull();
     cleanup();
     // 已部署且有權限：按下 → 確認 → 呼叫 → 狀態列消失。
     mockUseViewer.mockReturnValue(viewerOf('admin', perms));
@@ -560,8 +560,9 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     mockCallFn.mockResolvedValue({ ok: true });
     render(<AdminUsersPage lateCancelClearEnabled />);
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(2));
-    expect(within(cardOf('Normal')).queryByText('解除臨取紅標')).toBeNull();
-    fireEvent.click(within(cardOf('Kai')).getByText('解除臨取紅標'));
+    expect(within(cardOf('Normal')).queryByRole('button', { name: '解除臨取紅標' })).toBeNull();
+    expect(within(cardOf('Kai')).getByRole('button', { name: '解除臨取紅標' }).closest('.au-lc-row')).not.toBeNull();
+    fireEvent.click(within(cardOf('Kai')).getByRole('button', { name: '解除臨取紅標' }));
     await waitFor(() => expect(mockCallFn).toHaveBeenCalledWith('clearLateCancelRed', { targetUid: 'r1' }));
     expect(mockConfirm).toHaveBeenCalledWith('確定要解除 Kai 的臨取紅標？');
     await waitFor(() => expect(cardOf('Kai').textContent).not.toContain('臨取狀態'));

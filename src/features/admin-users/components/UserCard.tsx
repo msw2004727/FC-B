@@ -125,7 +125,20 @@ export function UserCard({
             {`${t('admin-users.card.restrictState')}${user.isRestricted ? t('admin-users.card.restricted') : t('admin-users.card.normal')}`}
           </div>
           {lateCancelText && (
-            <div class="admin-user-meta">{`${t('admin-users.card.lateCancelState')}${lateCancelText}`}</div>
+            <div class="admin-user-meta au-lc-row">
+              <span>{`${t('admin-users.card.lateCancelState')}${lateCancelText}`}</span>
+              {clearLateBtn && (
+                <button
+                  type="button"
+                  class="au-btn au-btn-lc-clear"
+                  aria-label={t('admin-users.card.clearLateCancelRed')}
+                  disabled={busy}
+                  onClick={() => onClearLateCancelRed?.(user)}
+                >
+                  {t('admin-users.card.clearLateCancelRedShort')}
+                </button>
+              )}
+            </div>
           )}
           <div class="admin-user-meta" style="word-break:break-all">
             {`${t('admin-users.card.lastLogin')}${formatLastLogin(user, t('admin-users.card.noRecord'))}`}
@@ -156,18 +169,8 @@ export function UserCard({
               {user.isRestricted ? t('admin-users.card.unrestrict') : t('admin-users.card.restrict')}
             </button>
           )}
-          {clearLateBtn && (
-            <button
-              type="button"
-              class="au-btn au-btn-lc"
-              disabled={busy}
-              onClick={() => onClearLateCancelRed?.(user)}
-            >
-              {t('admin-users.card.clearLateCancelRed')}
-            </button>
-          )}
           {onCpRemoval && (
-            <button type="button" class="au-btn au-btn-lc" disabled={busy} onClick={() => onCpRemoval(user)}>
+            <button type="button" class="au-btn au-btn-lc au-btn-cp-remove" disabled={busy} onClick={() => onCpRemoval(user)}>
               {CP_REMOVAL_COPY.entry}
             </button>
           )}

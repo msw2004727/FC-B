@@ -47,7 +47,8 @@
     "restrict": "Hạn chế",
     "unrestrict": "Bỏ hạn chế",
     "lateCancelState": "臨取狀態：",
-    "clearLateCancelRed": "解除臨取紅標"
+    "clearLateCancelRed": "解除臨取紅標",
+    "clearLateCancelRedShort": "解除"
   },
   "modal": {
     "title": "Sửa người dùng — {name}",

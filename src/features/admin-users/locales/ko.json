@@ -47,7 +47,8 @@
     "restrict": "제한",
     "unrestrict": "제한 해제",
     "lateCancelState": "臨取狀態：",
-    "clearLateCancelRed": "解除臨取紅標"
+    "clearLateCancelRed": "解除臨取紅標",
+    "clearLateCancelRedShort": "解除"
   },
   "modal": {
     "title": "사용자 편집 — {name}",

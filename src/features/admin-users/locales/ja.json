@@ -47,7 +47,8 @@
     "restrict": "制限",
     "unrestrict": "制限を解除",
     "lateCancelState": "臨取狀態：",
-    "clearLateCancelRed": "解除臨取紅標"
+    "clearLateCancelRed": "解除臨取紅標",
+    "clearLateCancelRedShort": "解除"
   },
   "modal": {
     "title": "ユーザーを編集 — {name}",
