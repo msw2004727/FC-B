@@ -1024,4 +1024,73 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
     expect(second).toMatchObject({ plId: 'pl_h1', refSeq: Number(yellow?.seq), matchSecond: 40 });
     expect(await listCollection(`competitions/${CID}/matches/${MT}/voids`)).toHaveLength(1);
   });
+
+  // S2 審查 P3（顧問 §3.863）：審查只有推論、沒有測試的三種改判情境。
+  async function redThenYellow(name: string): Promise<Live> {
+    const live = await startLive(name);
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h2', cardType: 'red' });
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    await waitUntil('兩張牌已載入', () => live.session.getState().events.length >= 2, 200);
+    return live;
+  }
+  const yellowPick = (plId: string, matchSecond: number) => ({
+    side: 'home' as const, action: 'yellow' as const, plId, goalKind: null, minute: 0, refSeq: null, matchSecond,
+  });
+  async function openRows(live: Live): Promise<LogEntry[]> {
+    return (await rows(live.log)).filter((row) => row.state !== 'applied' && row.state !== 'discarded');
+  }
+  async function allApplied(live: Live): Promise<void> {
+    await waitUntil('都送完', async () => (await openRows(live)).length === 0, 200);
+  }
+
+  it('23. 黃牌的作廢還在待送，把別的牌改判成同一人黃牌：寫成普通黃牌，不被拒', async () => {
+    const live = await redThenYellow('s23');
+    await goOffline(live);
+    expect(scorePadPropsFrom(live.session.getState(), Date.now()).onUndo?.(2)).toBe(true);
+    await waitUntil('作廢已排入', async () => (await openRows(live)).length === 1, 200);
+    expect(scorePadPropsFrom(live.session.getState(), Date.now()).onAmend?.(1, yellowPick('pl_h1', 50))).toBe(true);
+    await waitUntil('改判已排入', async () => (await openRows(live)).length === 3, 200);
+    const queued = (await rows(live.log)).find((row) => row.group && row.intent.kind === 'card');
+    expect(queued?.intent).toMatchObject({ kind: 'card', cardType: 'yellow', plId: 'pl_h1' });
+    expect(queued?.intent).not.toHaveProperty('refSeq');
+    await goOnline(live);
+    await allApplied(live);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.find((event) => Number(event.seq) === 5)).toMatchObject({ type: 'card', cardType: 'yellow', plId: 'pl_h1' });
+    expect(await listCollection(`competitions/${CID}/matches/${MT}/voids`)).toHaveLength(2);
+  });
+
+  it('24. 已有待送第二黃指向那張黃牌，把別的牌改判成同一人黃牌：寫成普通黃牌，不被拒', async () => {
+    const live = await redThenYellow('s24');
+    await goOffline(live);
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    await waitUntil('第二黃已排入', async () => (await openRows(live)).length === 1, 200);
+    const pendingSecond = (await openRows(live))[0];
+    expect(pendingSecond?.intent).toMatchObject({ cardType: 'second_yellow', refSeq: 2 });
+    expect(scorePadPropsFrom(live.session.getState(), Date.now()).onAmend?.(1, yellowPick('pl_h1', 50))).toBe(true);
+    await waitUntil('改判已排入', async () => (await openRows(live)).length === 3, 200);
+    const queued = (await rows(live.log)).find((row) => row.group && row.intent.kind === 'card');
+    expect(queued?.intent).toMatchObject({ kind: 'card', cardType: 'yellow', plId: 'pl_h1' });
+    await goOnline(live);
+    await allApplied(live);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.filter((event) => event.cardType === 'second_yellow')).toHaveLength(1);
+    expect(events.find((event) => Number(event.seq) === 5)).toMatchObject({ type: 'card', cardType: 'yellow', plId: 'pl_h1' });
+  });
+
+  it('25. 改判第二黃本身（同一人仍判黃）：寫成第二黃指向第一黃，連結改指新的這張', async () => {
+    const live = await startLive('s25');
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    await waitUntil('兩張黃牌已載入', () => live.session.getState().events.length >= 2, 200);
+    expect(scorePadPropsFrom(live.session.getState(), Date.now()).onAmend?.(2, yellowPick('pl_h1', 70))).toBe(true);
+    await waitUntil('改判已送完', async () => {
+      const logged = (await rows(live.log)).filter((row) => row.group);
+      return logged.length === 2 && logged.every((row) => row.state === 'applied' || row.state === 'rejected');
+    }, 200);
+    expect((await rows(live.log)).filter((row) => row.group).map((row) => row.state)).toEqual(['applied', 'applied']);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.find((event) => Number(event.seq) === 4)).toMatchObject({ type: 'card', cardType: 'second_yellow', refSeq: 1, matchSecond: 70 });
+    expect(await readDoc(`competitions/${CID}/matches/${MT}/cardLinks/1`)).toMatchObject({ seq: 4 });
+  });
 });

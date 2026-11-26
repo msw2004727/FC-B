@@ -115,6 +115,8 @@ export interface ScorePadProps {
   onUndoPair?: (firstSeq: number) => void | boolean;
   /** 改判：作廢原事件（被引用的第一黃連第二黃）與新紀錄走同一個原子群組。沒傳時沿用 onUndo＋onRecord。 */
   onAmend?: (seq: number, pick: ScorePick) => void | boolean;
+  /** 待送（還沒落地、也沒排作廢）的第二黃所指的第一黃 seq。復原、改判這些第一黃時照樣先確認（S2 審查 P3）。 */
+  pendingSecondRefs?: readonly number[];
   /** 停錶／繼續只改 clockBase，不改狀態與比分。 */
   onClock?: (clockBase: MatchClock) => void;
   onKickoff?: () => void;
@@ -595,9 +597,16 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     : lineOpen;
   const openEventDoc = events.find((item) => item.seq === eventSeq) ?? null;
 
+  /** 已套用的第二黃回它的 seq；只有待送的回 -1（只用來跳確認框，送出交給 onUndoPair／onAmend）。 */
+  function secondOf(seq: number, grouped: boolean): number | null {
+    const applied = linkedSecondSeq(cards, seq);
+    if (applied != null) return applied;
+    return grouped && (props.pendingSecondRefs ?? []).includes(seq) ? -1 : null;
+  }
+
   function undoSeq(seq: number): void {
     if (blocked) return;
-    const second = linkedSecondSeq(cards, seq);
+    const second = secondOf(seq, props.onUndoPair != null);
     if (second != null) {
       setConfirmPair({ mode: 'undo', first: seq, second });
       return;
@@ -685,7 +694,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       };
     }
     const second = openEventDoc.type === 'card' && openEventDoc.cardType === 'yellow'
-      ? linkedSecondSeq(cards, openEventDoc.seq)
+      ? secondOf(openEventDoc.seq, props.onAmend != null)
       : null;
     if (second != null) {
       setConfirmPair({ mode: 'amend', first: openEventDoc.seq, second, pick });

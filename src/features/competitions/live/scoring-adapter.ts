@@ -291,6 +291,17 @@ function feedOf(view: ScoringView, timeline: readonly TimelineEvent[], voids: re
   return [...pendingRows, ...serverRows];
 }
 
+/** 待送第二黃指向的第一黃 seq；第二黃自己已排了作廢的不算。 */
+function pendingSecondRefsOf(view: ScoringView): number[] {
+  const open = view.unapplied.filter((row) => row.state === 'pending' || row.state === 'sending');
+  const voidedOps = new Set(open.flatMap((row) => (row.intent.kind === 'void' && row.intent.targetOp ? [row.intent.targetOp] : [])));
+  return open.flatMap((row) => {
+    const intent = row.intent;
+    if (intent.kind !== 'card' || intent.cardType !== 'second_yellow' || intent.refSeq == null) return [];
+    return voidedOps.has(row.op) ? [] : [intent.refSeq];
+  });
+}
+
 function rejectedLog(view: ScoringView): ActionLogEntry[] {
   return view.unapplied
     .filter((row) => row.state === 'rejected')
@@ -489,6 +500,7 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     events: timeline,
     voids: view.voids,
     actionLog: rejectedLog(view),
+    pendingSecondRefs: pendingSecondRefsOf(view),
     eventCount: view.budget.used,
     pauseUses: view.budget.pauseUses,
     crests: [],
