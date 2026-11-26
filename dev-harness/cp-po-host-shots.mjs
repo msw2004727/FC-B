@@ -75,7 +75,7 @@ for (const name of SCREENS) {
       } else {
         // 入口：捲到按鈕所在處，另拍整頁。
         await page.evaluate(() => {
-          const btn = [...document.querySelectorAll('button')].find((b) => /延期或取消|恢復或取消|撤回報名|^退出$/.test((b.textContent || '').trim()));
+          const btn = [...document.querySelectorAll('button')].find((b) => /延期或取消|恢復或取消|撤回報名|^退出名單$/.test((b.textContent || '').trim()));
           btn?.scrollIntoView({ block: 'center' });
         });
         await page.waitForTimeout(150);
