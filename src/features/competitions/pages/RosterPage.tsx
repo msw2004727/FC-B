@@ -62,6 +62,7 @@ function PlayerRow({
   player,
   canEdit,
   canLeave,
+  busy,
   onRemove,
   onLeave,
 }: {
@@ -69,6 +70,7 @@ function PlayerRow({
   canEdit: boolean;
   /** 這一列是我自己，而且還能退出（名單未鎖定、尚未開賽；與後端 leaveRoster 一致）。 */
   canLeave: boolean;
+  busy: boolean;
   onRemove: () => void;
   onLeave: () => void;
 }): JSX.Element {
@@ -90,10 +92,11 @@ function PlayerRow({
       <span class="cps-player__name cps-player__name--fit">{player.displayName}</span>
       <span class="cps-player__pos">{pos}</span>
       {player.isMinor ? <StatusTag kind="neutral" label={ct('minor')} /> : null}
-      {/* 自己那一列給「退出名單」，不再給垃圾桶（同一個動作，字比圖示清楚）。
-          紅字靠右、右緣對齊垃圾桶；用行內樣式是因為賽事樣式已到 check:cp-css 上限，不為一行版面調上限。 */}
+      {/* 自己那一列給「退出名單」（本人退出），代表移除別人仍是垃圾桶：兩者是不同動作，退出用字說清楚。
+          紅字靠右、右緣對齊垃圾桶，不縮（flex:none，長暱稱由名字省略讓位）；
+          用行內樣式是因為賽事樣式已到 check:cp-css 上限，不為一行版面調上限。 */}
       {canLeave ? (
-        <Button variant="danger" size="sm" style="min-inline-size:0;padding-inline:12px;margin:0 -12px 0 auto" onClick={onLeave}>{ct('leaveRoster')}</Button>
+        <Button variant="danger" size="sm" loading={busy} style="flex:none;min-inline-size:0;padding-inline:12px;margin:0 -12px 0 auto" onClick={onLeave}>{ct('leaveRoster')}</Button>
       ) : canEdit ? (
         <button type="button" class="cps-iconbtn cps-iconbtn--flat" aria-label={ct('removePlayer', { name: player.displayName })} onClick={onRemove}>
           <TrashIcon />
@@ -117,6 +120,8 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   useEffect(() => {
     if (env.bundle) return;
     let alive = true;
+    // 換帳號：新資料回來前先清掉上一個帳號的「我的名單列」，不讓退出鍵掛在別人的列上（L-43）
+    setBundle((prev) => (prev?.myPlIds?.length ? { ...prev, myPlIds: [] } : prev));
     void loadRoster(env, cid, enId).then((next) => {
       if (!alive) return;
       setBundle(next);
@@ -152,7 +157,8 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const canAdd = isRep && !locked && !started;
   const myPlIds = bundle?.myPlIds ?? [];
   const isMine = (player: RosterPublicDoc): boolean => myPlIds.includes(player.id);
-  // 與後端 leaveRoster 的 assertRosterPhase 對齊：名單未鎖定、第一場還沒開打。
+  // 對齊後端 leaveRoster 的 assertRosterPhase 裡名單相關的兩條：名單未鎖定、第一場還沒開打（nowMs >= firstMatchAt 就擋）。
+  // 後端另擋未發布／下架／已結束；這些狀態本頁讀不到或必在開賽後，前端不另判。
   const canLeave = !locked && !started;
   const inThisRoster = players.some(isMine);
   const teamName = entry.name;
@@ -246,6 +252,7 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
               player={player}
               canEdit={canEdit}
               canLeave={canLeave && isMine(player)}
+              busy={busy}
               onRemove={() => { void remove(player); }}
               onLeave={() => { void remove(player, true); }}
             />

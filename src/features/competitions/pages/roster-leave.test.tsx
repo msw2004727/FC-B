@@ -233,6 +233,27 @@ describe('名單頁正式讀取：用 cpMine 認出自己', () => {
     expect(getMine).toHaveBeenCalledWith('uid_member', 'cup');
   });
 
+  it('換帳號：新帳號的 mine 回來前，先拿掉上一個帳號的退出鍵（審查 P3-4）', async () => {
+    const env = liveEnv({ uid_member: [MINE] });
+    const view = mount(RosterPage, env);
+    expect(await screen.findByRole('button', { name: LEAVE })).toBeTruthy();
+    const never = new Promise<never>(() => {});
+    const other: CpInjectedEnv = {
+      ...env,
+      actor: { ...memberActor, uid: 'uid_other' },
+      repo: { ...env.repo, getMine: () => never },
+    };
+    view.rerender(
+      <LocationProvider>
+        <CpEnvProvider value={other}>
+          <RosterPage />
+          <AppConfirmHost />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    await waitFor(() => expect(screen.queryByRole('button', { name: LEAVE })).toBeNull());
+  });
+
   it('代表帳號也照 mine 認自己', async () => {
     const env = liveEnv({ uid_rep: [{ ...MINE, plIds: ['pl_1'] }] });
     env.actor = repActor;
