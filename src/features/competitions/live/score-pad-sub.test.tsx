@@ -69,9 +69,9 @@ describe('換人入口', () => {
     openMenu();
     fireEvent.click(button('換人'));
     fireEvent.click(button(S4_SCENE_LIVE.match.home.name));
-    expect(screen.getByText(`${S4_SCENE_LIVE.match.home.name} 換人 換下`)).toBeTruthy();
+    expect(screen.getByText(`${S4_SCENE_LIVE.match.home.name}・換下`)).toBeTruthy();
     fireEvent.click(button(`${out.number} ${out.displayName}`));
-    expect(screen.getByText(`${S4_SCENE_LIVE.match.home.name} 換人 換上`)).toBeTruthy();
+    expect(screen.getByText(`${S4_SCENE_LIVE.match.home.name}・換上`)).toBeTruthy();
     expect(screen.queryByRole('button', { name: `${out.number} ${out.displayName}` })).toBeNull();
     fireEvent.click(button(`${into.number} ${into.displayName}`));
     expect(screen.getByText(`${out.number} ${out.displayName} 換下、${into.number} ${into.displayName} 換上`)).toBeTruthy();

@@ -1151,7 +1151,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
         <BottomSheet
           open
           class={`s4-sheet${list.length > 8 ? ' s4-sheet--long' : ''} d2-panel s4-sheet--${flow.side}`}
-          title={`${team} ${LIVE_COPY.sub} ${word}`}
+          title={`${team}・${word}`}
           onClose={close}
         >
           {list.length === 0 ? <p class="s4-note">{LIVE_COPY.subNoRoster}</p> : null}
