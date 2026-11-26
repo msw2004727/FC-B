@@ -46,13 +46,9 @@
     "view": "表示",
     "restrict": "制限",
     "unrestrict": "制限を解除",
-    "lateCancelState": "直前キャンセル状態：",
-    "clearLateCancelRed": "直前キャンセルの赤旗を解除",
-    "clearLateCancelRedShort": "解除",
-    "lateCancelRed": "赤旗（{total} 回、最近 {month}/{day}）",
-    "lateCancelRedNoDate": "赤旗（{total} 回）",
-    "lateCancelBlackUntil": "黒旗、最遅 {month}/{day} に復帰",
-    "lateCancelBlack": "黒旗"
+    "lateCancelState": "臨取狀態：",
+    "clearLateCancelRed": "解除臨取紅標",
+    "clearLateCancelRedShort": "解除"
   },
   "modal": {
     "title": "ユーザーを編集 — {name}",
@@ -100,8 +96,8 @@
     "notFound": "ユーザーが見つかりません"
   },
   "lateCancel": {
-    "confirm": "{name} の直前キャンセルの赤旗を解除しますか？",
-    "cleared": "赤旗を解除しました",
-    "failed": "赤旗の解除に失敗しました。しばらくしてからもう一度お試しください"
+    "confirm": "確定要解除 {name} 的臨取紅標？",
+    "cleared": "已解除臨取紅標",
+    "failed": "解除臨取紅標失敗，請稍後再試"
   }
 }

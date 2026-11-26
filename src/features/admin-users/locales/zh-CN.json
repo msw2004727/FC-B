@@ -46,13 +46,9 @@
     "view": "查看",
     "restrict": "限制",
     "unrestrict": "解除限制",
-    "lateCancelState": "临取状态：",
-    "clearLateCancelRed": "解除临取红标",
-    "clearLateCancelRedShort": "解除",
-    "lateCancelRed": "红标（{total} 次，最近 {month}/{day}）",
-    "lateCancelRedNoDate": "红标（{total} 次）",
-    "lateCancelBlackUntil": "黑标，最晚 {month}/{day} 恢复",
-    "lateCancelBlack": "黑标"
+    "lateCancelState": "臨取狀態：",
+    "clearLateCancelRed": "解除臨取紅標",
+    "clearLateCancelRedShort": "解除"
   },
   "modal": {
     "title": "编辑用户 — {name}",
@@ -100,8 +96,8 @@
     "notFound": "找不到该用户"
   },
   "lateCancel": {
-    "confirm": "确定要解除 {name} 的临取红标？",
-    "cleared": "已解除临取红标",
-    "failed": "解除临取红标失败，请稍后再试"
+    "confirm": "確定要解除 {name} 的臨取紅標？",
+    "cleared": "已解除臨取紅標",
+    "failed": "解除臨取紅標失敗，請稍後再試"
   }
 }

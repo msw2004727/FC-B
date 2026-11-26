@@ -46,13 +46,9 @@
     "view": "ดู",
     "restrict": "จำกัด",
     "unrestrict": "ยกเลิกการจำกัด",
-    "lateCancelState": "สถานะการยกเลิกช้า: ",
-    "clearLateCancelRed": "ล้างธงแดงการยกเลิกช้า",
-    "clearLateCancelRedShort": "ล้าง",
-    "lateCancelRed": "ธงแดง ({total} ครั้ง, ล่าสุด {month}/{day})",
-    "lateCancelRedNoDate": "ธงแดง ({total} ครั้ง)",
-    "lateCancelBlackUntil": "ธงดำ, ฟื้นฟูอย่างช้าที่สุด {month}/{day}",
-    "lateCancelBlack": "ธงดำ"
+    "lateCancelState": "臨取狀態：",
+    "clearLateCancelRed": "解除臨取紅標",
+    "clearLateCancelRedShort": "解除"
   },
   "modal": {
     "title": "แก้ไขผู้ใช้ — {name}",
@@ -100,8 +96,8 @@
     "notFound": "ไม่พบผู้ใช้"
   },
   "lateCancel": {
-    "confirm": "ต้องการล้างธงแดงการยกเลิกช้าของ {name} ใช่หรือไม่?",
-    "cleared": "ล้างธงแดงแล้ว",
-    "failed": "ล้างธงแดงไม่สำเร็จ โปรดลองใหม่ภายหลัง"
+    "confirm": "確定要解除 {name} 的臨取紅標？",
+    "cleared": "已解除臨取紅標",
+    "failed": "解除臨取紅標失敗，請稍後再試"
   }
 }

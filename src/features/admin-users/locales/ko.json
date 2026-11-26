@@ -46,13 +46,9 @@
     "view": "보기",
     "restrict": "제한",
     "unrestrict": "제한 해제",
-    "lateCancelState": "지연 취소 상태: ",
-    "clearLateCancelRed": "지연 취소 빨간 깃발 해제",
-    "clearLateCancelRedShort": "해제",
-    "lateCancelRed": "빨간 깃발 ({total}회, 최근 {month}/{day})",
-    "lateCancelRedNoDate": "빨간 깃발 ({total}회)",
-    "lateCancelBlackUntil": "검은 깃발, 늦어도 {month}/{day}에 복구",
-    "lateCancelBlack": "검은 깃발"
+    "lateCancelState": "臨取狀態：",
+    "clearLateCancelRed": "解除臨取紅標",
+    "clearLateCancelRedShort": "解除"
   },
   "modal": {
     "title": "사용자 편집 — {name}",
@@ -100,8 +96,8 @@
     "notFound": "사용자를 찾을 수 없습니다"
   },
   "lateCancel": {
-    "confirm": "{name}의 지연 취소 빨간 깃발을 해제하시겠습니까?",
-    "cleared": "빨간 깃발을 해제했습니다",
-    "failed": "빨간 깃발 해제에 실패했습니다. 잠시 후 다시 시도해 주세요"
+    "confirm": "確定要解除 {name} 的臨取紅標？",
+    "cleared": "已解除臨取紅標",
+    "failed": "解除臨取紅標失敗，請稍後再試"
   }
 }

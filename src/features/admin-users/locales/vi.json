@@ -46,13 +46,9 @@
     "view": "Xem",
     "restrict": "Hạn chế",
     "unrestrict": "Bỏ hạn chế",
-    "lateCancelState": "Trạng thái hủy muộn: ",
-    "clearLateCancelRed": "Xóa cờ đỏ hủy muộn",
-    "clearLateCancelRedShort": "Xóa",
-    "lateCancelRed": "Cờ đỏ ({total} lần, gần nhất {month}/{day})",
-    "lateCancelRedNoDate": "Cờ đỏ ({total} lần)",
-    "lateCancelBlackUntil": "Cờ đen, phục hồi muộn nhất {month}/{day}",
-    "lateCancelBlack": "Cờ đen"
+    "lateCancelState": "臨取狀態：",
+    "clearLateCancelRed": "解除臨取紅標",
+    "clearLateCancelRedShort": "解除"
   },
   "modal": {
     "title": "Sửa người dùng — {name}",
@@ -100,8 +96,8 @@
     "notFound": "Không tìm thấy người dùng"
   },
   "lateCancel": {
-    "confirm": "Xóa cờ đỏ hủy muộn của {name}?",
-    "cleared": "Đã xóa cờ đỏ",
-    "failed": "Không xóa được cờ đỏ. Vui lòng thử lại sau."
+    "confirm": "確定要解除 {name} 的臨取紅標？",
+    "cleared": "已解除臨取紅標",
+    "failed": "解除臨取紅標失敗，請稍後再試"
   }
 }

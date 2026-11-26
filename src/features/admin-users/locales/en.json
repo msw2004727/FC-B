@@ -46,13 +46,9 @@
     "view": "View",
     "restrict": "Restrict",
     "unrestrict": "Unrestrict",
-    "lateCancelState": "Late cancel: ",
-    "clearLateCancelRed": "Clear red flag",
-    "clearLateCancelRedShort": "Clear",
-    "lateCancelRed": "Red flag ({total} times, last {month}/{day})",
-    "lateCancelRedNoDate": "Red flag ({total} times)",
-    "lateCancelBlackUntil": "Black flag, restored by {month}/{day} at the latest",
-    "lateCancelBlack": "Black flag"
+    "lateCancelState": "臨取狀態：",
+    "clearLateCancelRed": "解除臨取紅標",
+    "clearLateCancelRedShort": "解除"
   },
   "modal": {
     "title": "Edit user — {name}",
@@ -100,8 +96,8 @@
     "notFound": "User not found"
   },
   "lateCancel": {
-    "confirm": "Clear the late-cancel red flag for {name}?",
-    "cleared": "Red flag cleared",
-    "failed": "Couldn't clear the red flag. Please try again later."
+    "confirm": "確定要解除 {name} 的臨取紅標？",
+    "cleared": "已解除臨取紅標",
+    "failed": "解除臨取紅標失敗，請稍後再試"
   }
 }

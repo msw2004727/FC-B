@@ -24,7 +24,7 @@ import {
   formatLastLogin,
   getAssignableRoleKeys,
   hasActiveFilters,
-  lateCancelStatus,
+  lateCancelStatusText,
   mapUserDoc,
   matchesDayRange,
   normalizeBirthdayForInput,
@@ -311,27 +311,27 @@ describe('顯示 helper', () => {
   });
 });
 
-describe('lateCancelStatus 黑標', () => {
+describe('lateCancelStatusText 黑標', () => {
   const NOW_MS = Date.parse('2026-11-26T12:00:00+08:00');
 
   it('黑標、到期在未來 → 顯示「黑標，最晚 M/D 恢復」', () => {
     const u = user({ lateCancelLevel: 'black', lateCancelUntilMs: Date.parse('2026-12-03T09:00:00+08:00') });
-    expect(lateCancelStatus(u, NOW_MS)).toEqual({ key: 'admin-users.card.lateCancelBlackUntil', params: { month: 12, day: 3 } });
+    expect(lateCancelStatusText(u, NOW_MS)).toBe('黑標，最晚 12/3 恢復');
   });
 
   it('黑標、沒有到期 → 只顯示「黑標」', () => {
     const u = user({ lateCancelLevel: 'black', lateCancelUntilMs: null });
-    expect(lateCancelStatus(u, NOW_MS)).toEqual({ key: 'admin-users.card.lateCancelBlack' });
+    expect(lateCancelStatusText(u, NOW_MS)).toBe('黑標');
   });
 
   it('黑標、已過期 → null（不顯示）', () => {
     const u = user({ lateCancelLevel: 'black', lateCancelUntilMs: NOW_MS - 1000 });
-    expect(lateCancelStatus(u, NOW_MS)).toBeNull();
+    expect(lateCancelStatusText(u, NOW_MS)).toBeNull();
   });
 
   it('紅標輸出不變', () => {
     const u = user({ lateCancelLevel: 'red', lateCancelTotal: 3, lateCancelLastMs: Date.parse('2026-11-20T10:00:00+08:00') });
-    expect(lateCancelStatus(u, NOW_MS)).toEqual({ key: 'admin-users.card.lateCancelRed', params: { total: 3, month: 11, day: 20 } });
+    expect(lateCancelStatusText(u, NOW_MS)).toBe('紅標（3 次，最近 11/20）');
   });
 });
 
