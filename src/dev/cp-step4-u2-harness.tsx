@@ -145,7 +145,7 @@ const ANCHORS: Record<string, string> = {
   'u2-fulltime-undo': '撤回終場',
   'u2-fulltime-undo-blocked': '先處理沒送出的紀錄，才能撤回終場',
   'a1-held-offline': '離線中，已存',
-  'a1-held-pause-reserved': '為保留記分額度，停錶已停用',
+  'a1-held-pause-reserved': '目前不開放停錶',
   'a1-held-timeout': '結束暫停',
   'a1-held-timeout-collapsed': '前一筆沒送出',
   'u2-timeout-collapsed': '雷霆隊',
@@ -903,7 +903,7 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('紅色列＋離線', () => heldRow() != null && hasText('離線中，已存'));
   },
   'a1-held-pause-reserved': async () => {
-    await until('紅色列＋停錶已停用', () => heldRow() != null && hasText('為保留記分額度，停錶已停用'));
+    await until('紅色列＋停錶已停用', () => heldRow() != null && hasText('目前不開放停錶'));
   },
   'a1-held-timeout': async () => {
     await until('紅色列＋暫停條', () => heldRow() != null && hasText('結束暫停'));

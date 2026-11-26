@@ -638,13 +638,13 @@ describe('登錄比分、確認、棄權、重置、改期', () => {
     fireEvent.click(buttonOf('加一分'));
     fireEvent.click(buttonOf('登錄並確認'));
     await waitFor(() => expect(toastShow).toHaveBeenCalledWith(expect.objectContaining({
-      message: '這場比賽目前的狀態不能這樣操作',
+      message: '這場比賽的狀態已改變，請重新整理',
     })));
     expect(screen.queryByRole('button', { name: '重新送出' })).toBeNull();
     expect(scoreText()).toEqual(['1', '0']);
     fireEvent.click(buttonOf('登錄並確認'));
     await waitFor(() => expect(toastShow).toHaveBeenCalledWith(expect.objectContaining({
-      message: '賽事已結束，不能再改比分',
+      message: '賽事已結束，不能再修改',
     })));
     expect(screen.queryByRole('button', { name: '重新送出' })).toBeNull();
   });

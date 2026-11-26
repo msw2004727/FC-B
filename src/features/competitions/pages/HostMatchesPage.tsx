@@ -931,7 +931,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
           busy={busy}
           footer={(
             <div class="cps-footer">
-              <Button variant="secondary" disabled={busy} onClick={closePanel}>{ct('cancel')}</Button>
+              <Button variant="secondary" disabled={busy} onClick={closePanel}>{ct('keepMatch')}</Button>
               <Button variant="danger" disabled={busy || staleHold} onClick={() => { void submitCancel(); }}>{ct('cancelOk')}</Button>
             </div>
           )}
@@ -971,7 +971,7 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
           )}
         >
           <div class="cps-sheet-body">
-            <p class="cpm-hint">{ct('endHint')}</p>
+            <p class="cpm-hint cps-pre">{ct('endHint')}</p>
             {!isCpAdmin(env.actor.role) ? <p class="cpm-hint cps-pre">{ct('endNoRestore')}</p> : null}
             {endTie ? <p class="cpm-hint">{ct('endTieHint')}</p> : null}
             <p class="cpm-preview">{ct('unconfirmed', { n: unconfirmedCount(matches) })}</p>

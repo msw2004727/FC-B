@@ -130,6 +130,25 @@ export const CP_REASON_CODES = [
   'COMPETITION_NOT_OPEN',
   // 本人移除賽事資料（cpParticipant requestMyDataRemoval，設計 §4.11）。
   'REMOVAL_RATE_LIMITED',
+  // 一致性盤點 #7／文案盤點 A9：後端會回、使用者看得到但原本走通用失敗的代碼。
+  'ENTRY_NOT_APPROVED',
+  'NOT_DRAFT',
+  'DIVISION_REQUIRED',
+  'PENALTY_MISMATCH',
+  'ENTRY_NOT_FOUND',
+  'COMPETITION_NOT_FOUND',
+  'ALREADY_HOST',
+  'ALREADY_COHOST',
+  'COHOST_LIMIT',
+  'INVITE_ISSUER_GONE',
+  'REASON_REQUIRED',
+  'SIGN_IN_REQUIRED',
+  'HOST_PERMISSION_UNAVAILABLE',
+  'SCHEDULE_SPAN',
+  'SCHEDULE_TOO_FAR',
+  'DIVISION_NAME_DUPLICATE',
+  'LIVE_LINK_NOT_ALLOWED',
+  'FIELD_DUPLICATE',
 ] as const;
 
 export type CpReasonCode = (typeof CP_REASON_CODES)[number];

@@ -423,7 +423,7 @@ describe('接受邀請（K11，代碼放 #）', () => {
   it('顧問 11-20：已登入看到告知句（接受後成為記分人員、主辦會看到顯示名稱）', async () => {
     openWithHash();
     draw(acceptEnv(), <InviteAcceptPage />);
-    expect(await screen.findByText('接受後你會成為這場賽事的記分人員，主辦會看到你的顯示名稱。')).toBeTruthy();
+    expect(await screen.findByText('接受後你會依邀請成為這場賽事的記分員或裁判，主辦會看到你的顯示名稱。')).toBeTruthy();
   });
 
   it('顧問 11-20：沒有 # 也沒有暫存（換瀏覽器、LINE 登入回來暫存不見）顯示找不到邀請資料', async () => {
@@ -448,7 +448,7 @@ describe('接受邀請（K11，代碼放 #）', () => {
     expect(location.hash).toBe('');
     history.replaceState(null, '', `/competitions/cup/invite#i=${IV}&c=${CODE}`);
     window.dispatchEvent(new HashChangeEvent('hashchange'));
-    expect(await screen.findByText('接受後你會成為這場賽事的記分人員，主辦會看到你的顯示名稱。')).toBeTruthy();
+    expect(await screen.findByText('接受後你會依邀請成為這場賽事的記分員或裁判，主辦會看到你的顯示名稱。')).toBeTruthy();
     expect(location.hash).toBe('');
     noCodeLeak();
     fireEvent.click(button('接受邀請'));

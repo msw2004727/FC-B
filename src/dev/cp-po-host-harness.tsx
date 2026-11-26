@@ -126,7 +126,7 @@ const OPEN: Record<string, () => Promise<void>> = {
   'status-cancel': () => until('確認框', () => hasText('我了解取消後不能恢復')),
   'status-cancel-ready': () => until('確認框', () => hasText('我了解取消後不能恢復')),
   'status-resume': () => until('確認框', () => hasText('確定恢復')),
-  'status-error': () => until('錯誤', () => hasText('賽事目前的狀態不能這樣改')),
+  'status-error': () => until('錯誤', () => hasText('賽事目前的狀態不能這樣改，請重新整理')),
   'roster-member': () => until('退出鈕', () => hasText('退出名單')),
   'roster-rep': () => until('撤回報名', () => hasText('撤回報名')),
   'roster-rep-pending': () => until('撤回報名', () => hasText('撤回報名')),

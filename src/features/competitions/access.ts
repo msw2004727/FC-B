@@ -133,7 +133,7 @@ export function canRegisterClubEntry(input: RegisterInput): boolean {
  * 登錄表單能不能出現。
  * 自己登錄要是該隊成員；代填要是代表。
  * 報隊須為 pending 或 approved、名單未鎖、首場前。
- * ENTRY_STATUS 不是伺服器代碼，畫面改顯示「這份報隊目前不能登錄名單」。
+ * ENTRY_STATUS 不是伺服器代碼，畫面改顯示「這份報隊已被拒絕或已退出，不能登錄名單」。
  */
 export function rosterFormBlock(input: {
   kind: 'self' | 'rep';

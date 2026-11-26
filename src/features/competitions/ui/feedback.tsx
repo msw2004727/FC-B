@@ -21,8 +21,11 @@ export function reasonText(
   reason: string,
   params?: Record<string, unknown>,
 ): string {
-  const key = cpReasonKey(reason);
-  const text = t(key, reasonParams(params));
+  // 文案盤點 A10：年齡不符時後端帶組別的 minAge／maxAge；兩個都有才寫出範圍，缺一個沿用原句。
+  const p = reasonParams(params);
+  const ranged = reason === 'AGE_NOT_ELIGIBLE' && typeof p.minAge === 'number' && typeof p.maxAge === 'number';
+  const key = ranged ? 'competitions.ageNotEligibleRange' : cpReasonKey(reason);
+  const text = t(key, p);
   // 翻譯缺漏時 useT 會回鍵名。未知 reason 一定是通用失敗文案，不露出代碼。
   if (!text || text === key || (reason !== '' && text === reason)) {
     const fallback = t(CP_REASON_FALLBACK_KEY);

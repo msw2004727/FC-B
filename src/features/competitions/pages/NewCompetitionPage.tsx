@@ -673,7 +673,7 @@ function WizardView({ env, edit }: { env: CpInjectedEnv; edit?: EditSource }): J
                   { value: 'club', label: ct('club') },
                 ] : [
                   { value: 'personal', label: ct('hostPersonalShort') },
-                  ...(clubs.length > 0 ? [{ value: 'club', label: ct('hostClubOption') }] : []),
+                  ...(clubs.length > 0 ? [{ value: 'club', label: ct('club') }] : []),
                 ]}
               />
               {form.hostType === 'club' && (edit || clubs.length > 0) ? (

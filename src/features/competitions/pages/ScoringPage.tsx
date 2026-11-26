@@ -185,7 +185,7 @@ export function ScoringScreen({
         <CpCard class="cps-gate">
           <LockIcon />
           <p class="cps-gate__text">{LIVE_COPY.noScorePermission}</p>
-          {access.hint ? <p class="cps-note">{LIVE_COPY.assignScorerHint}</p> : null}
+          <p class="cps-note">{access.hint ? LIVE_COPY.assignScorerHint : LIVE_COPY.askHostToAssign}</p>
           <div class="cps-gate__btns">
             <Button onClick={back}>{backLabel}</Button>
           </div>

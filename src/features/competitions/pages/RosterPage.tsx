@@ -267,7 +267,8 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
         </div>
         <div class="cps-kv cp3-roster-count">
           <span>{ct('currentCount')}</span>
-          <span>{ct('rosterCount', { n: players.length, max, min })}</span>
+          {/* 顧問巡視：下面「還需 N 人」那句已寫最少人數時，這一行不重複 */}
+          <span>{!locked && short ? ct('rosterCountShort', { n: players.length, max }) : ct('rosterCount', { n: players.length, max, min })}</span>
         </div>
         <div class="cps-bar cp3-roster-bar" aria-hidden="true">
           <i class={short ? 'low' : ''} style={`width:${Math.min(100, (players.length / max) * 100)}%`} />

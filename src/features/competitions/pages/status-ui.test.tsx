@@ -271,7 +271,7 @@ describe('狀態確認框', () => {
     fillTextarea('原因', '場地整修');
     fireEvent.click(footerButton('確定延期'));
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('賽事目前的狀態不能這樣改');
+    expect(alert.textContent).toContain('賽事目前的狀態不能這樣改，請重新整理');
     expect(findButton('延期或取消賽事')).toBeTruthy();
     expect(findButton('恢復或取消賽事')).toBeUndefined();
   });

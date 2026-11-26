@@ -345,7 +345,7 @@ describe('指派頁與我的場次', () => {
     if (!button) throw new Error('記分員應有移除鈕');
     fireEvent.click(button);
     expect(await screen.findByText('移除記分角色？')).toBeTruthy();
-    expect(screen.getByText('這位成員將不能再記分。')).toBeTruthy();
+    expect(screen.getByText('這位成員會從記分員與裁判移除，不能再記分。')).toBeTruthy();
     const dialog = document.body.querySelector('[role="dialog"]');
     const confirm = [...(dialog?.querySelectorAll('button') ?? [])].find((el) => (el.textContent ?? '').trim() === '移除');
     if (!confirm) throw new Error('確認框應有移除');
@@ -398,7 +398,7 @@ describe('指派頁與我的場次', () => {
     if (!button) throw new Error('共同主辦兼記分員應有移除鈕');
     fireEvent.click(button);
     expect(await screen.findByText('移除記分角色？')).toBeTruthy();
-    expect(screen.getByText('這位成員將不能再記分。')).toBeTruthy();
+    expect(screen.getByText('這位成員會從記分員與裁判移除，不能再記分。')).toBeTruthy();
     const dialog = document.body.querySelector('[role="dialog"]');
     const confirm = [...(dialog?.querySelectorAll('button') ?? [])].find((el) => (el.textContent ?? '').trim() === '移除');
     if (!confirm) throw new Error('確認框應有移除');

@@ -101,7 +101,7 @@ function screenOf(name: string) {
         rows={U3_HOST_ROWS}
         confirm={{
           title: '移除記分角色？',
-          body: '這位成員將不能再記分。',
+          body: '這位成員會從記分員與裁判移除，不能再記分。',
           confirmLabel: '移除',
           cancelLabel: '取消',
         }}

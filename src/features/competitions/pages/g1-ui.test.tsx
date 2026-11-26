@@ -250,7 +250,8 @@ describe('取消單場與結束賽事', () => {
       match({ id: 'mt_4', status: 'cancelled', matchNo: 4 }),
     ], { ...idleActions(), endCompetition }), HostMatchesPage);
     fireEvent.click(screen.getByRole('button', { name: '結束賽事' }));
-    expect(screen.getByText('結束後不能再改比分；還沒確認的場次不計分')).toBeTruthy();
+    // 顧問 §3.863：補一句有進行中的場次時先不要結束
+    expect(screen.getByText(/結束後不能再改比分；還沒確認的場次不計分。\s*還有比賽進行中時，請先不要結束/)).toBeTruthy();
     expect(screen.getByText('未確認 2 場')).toBeTruthy();
     const dialog = screen.getByRole('dialog', { name: '結束賽事' });
     fireEvent.click(within(dialog).getByRole('button', { name: '確認結束' }));

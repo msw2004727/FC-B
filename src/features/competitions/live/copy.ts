@@ -25,7 +25,7 @@ export const LIVE_COPY = {
   correctClock: '修正時鐘',
   pauseClock: '停錶',
   resumeClock: '繼續計時',
-  pauseReserved: '為保留記分額度，停錶已停用',
+  pauseReserved: '目前不開放停錶',
   matchMenu: '選單',
   amend: '改判',
   amendNote: '會先復原原紀錄，再記新的',
@@ -45,7 +45,7 @@ export const LIVE_COPY = {
   pending: '待送',
   rejected: '被拒',
   rejectedTakenOver: '被拒：已被接手',
-  rejectedConflict: '被拒：比分版本衝突',
+  rejectedConflict: '被拒：比分剛被更新',
   rejectedLocked: '被拒：場次已鎖',
   reapply: '重新套用',
   discard: '捨棄',
@@ -113,6 +113,8 @@ export const LIVE_COPY = {
   subNote: '換人送出後不能作廢',
   subNoRoster: '這隊名單沒有球員，無法記換人',
   assignScorerHint: '請先在指派頁把自己指派為記分員',
+  /** 不是主辦的人沒有本場指派時的第二句（顧問巡視）：只有主辦才講指派頁。 */
+  askHostToAssign: '請主辦把你指派為記分員',
 } as const;
 
 export function offlineChip(pending: number): string {

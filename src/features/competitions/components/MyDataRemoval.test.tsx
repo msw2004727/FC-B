@@ -181,8 +181,8 @@ describe('移除我的賽事資料：流程', () => {
     expect(screen.getByRole('button', { name: LINK })).toBeTruthy();
   });
 
-  it('其他錯誤（SIGN_IN_REQUIRED、CONFIRM_REQUIRED）不露代碼，用通用失敗句', async () => {
-    draw(async () => { throw new CpCallError('SIGN_IN_REQUIRED', {}); });
+  it('其他錯誤（CONFIRM_REQUIRED）不露代碼，用通用失敗句', async () => {
+    draw(async () => { throw new CpCallError('CONFIRM_REQUIRED', {}); });
     await onlyMine();
     fireEvent.click(within(await openAndConfirm()).getAllByRole('button').at(-1)!);
     await waitFor(() => expect(lastToast()).toBe('操作失敗，請稍後再試'));

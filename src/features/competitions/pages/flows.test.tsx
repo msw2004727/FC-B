@@ -420,6 +420,8 @@ describe('賽事第 2 步畫面', () => {
   it('人數不足不能確認；鎖定後唯讀', () => {
     const short = mount(RosterPage, screenEnv('roster'));
     expect(short.container.textContent ?? '').toContain('還需 2 人');
+    // 顧問巡視第 3 條：同一張卡的「最少 N 人」只出現一次（人數那行不重複）
+    expect((short.container.textContent ?? '').split('最少').length - 1).toBe(1);
     expect(screen.getByRole('button', { name: '確認名單' })).toHaveProperty('disabled', true);
     short.unmount();
 
@@ -498,16 +500,16 @@ describe('賽事第 2 步畫面', () => {
   });
 
   it('只有一個俱樂部、從空白開始會帶入那個俱樂部；沒有俱樂部不顯示選項；晚到也會補', async () => {
-    // 建賽的俱樂部欄是必填，標籤後面多「* 必填」：用開頭比對（不會對到「我管理的俱樂部」選項）
+    // 建賽的俱樂部欄是必填，標籤後面多「* 必填」：用開頭比對（不會對到「俱樂部」選項）
     const only = mount(NewCompetitionPage, {
       ...screenEnv('wizard-1'),
       actor: { ...wizardActor, repClubs: [{ id: 'only_club', name: '唯一隊' }] },
       preview: { wizardStep: 1 },
       wizardSeed: { ...wizardSeed(), hostType: 'personal', hostTeamId: '' },
     });
-    expect(screen.queryByLabelText(/^俱樂部/)).toBeNull();
-    fireEvent.click(screen.getByRole('radio', { name: '我管理的俱樂部' }));
-    await waitFor(() => expect((screen.getByLabelText(/^俱樂部/) as HTMLSelectElement).value).toBe('only_club'));
+    expect(screen.queryByRole('combobox', { name: /^俱樂部/ })).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: '俱樂部' }));
+    await waitFor(() => expect((screen.getByRole('combobox', { name: /^俱樂部/ }) as HTMLSelectElement).value).toBe('only_club'));
     only.unmount();
 
     const none = mount(NewCompetitionPage, {
@@ -516,7 +518,7 @@ describe('賽事第 2 步畫面', () => {
       preview: { wizardStep: 1 },
       wizardSeed: { ...wizardSeed(), hostType: 'personal', hostTeamId: '' },
     });
-    expect(screen.queryByRole('radio', { name: '我管理的俱樂部' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '俱樂部' })).toBeNull();
     none.unmount();
 
     let clubs: { id: string; name: string }[] = [];
@@ -527,7 +529,7 @@ describe('賽事第 2 步畫面', () => {
       wizardSeed: { ...wizardSeed(), hostType: 'club' as const, hostTeamId: '' },
     });
     const late = mount(NewCompetitionPage, lateEnv());
-    expect(screen.queryByRole('radio', { name: '我管理的俱樂部' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '俱樂部' })).toBeNull();
     clubs = [{ id: 'late_club', name: '晚到隊' }];
     late.rerender(
       <LocationProvider>
@@ -537,7 +539,7 @@ describe('賽事第 2 步畫面', () => {
         </CpEnvProvider>
       </LocationProvider>,
     );
-    await waitFor(() => expect((screen.getByLabelText(/^俱樂部/) as HTMLSelectElement).value).toBe('late_club'));
+    await waitFor(() => expect((screen.getByRole('combobox', { name: /^俱樂部/ }) as HTMLSelectElement).value).toBe('late_club'));
   });
 
   it('建賽選了俱樂部但沒有可用俱樂部時改回個人', async () => {
@@ -550,7 +552,7 @@ describe('賽事第 2 步畫面', () => {
     await waitFor(() => {
       expect((screen.getByRole('radio', { name: '個人' }) as HTMLInputElement).checked).toBe(true);
     });
-    expect(screen.queryByRole('radio', { name: '我管理的俱樂部' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '俱樂部' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '下一步' }));
     expect(await screen.findByText('組別')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
@@ -1131,7 +1133,7 @@ describe('賽事第 2 步畫面', () => {
       };
     }
     const rejected = mount(JoinRosterPage, closed);
-    expect(rejected.container.textContent ?? '').toContain('這份報隊目前不能登錄名單');
+    expect(rejected.container.textContent ?? '').toContain('這份報隊已被拒絕或已退出，不能登錄名單');
     expect(screen.queryByLabelText('暱稱')).toBeNull();
     rejected.unmount();
 

@@ -27,7 +27,7 @@ describe('賽事連結只推一筆歷史', () => {
     const before = history.length;
     const back = screen.getByRole('button', { name: '返回名單' });
     expect(back.className).toContain('ui-button--secondary');
-    expect(screen.getByRole('alert').textContent).toBe('這份報隊目前不能登錄名單');
+    expect(screen.getByRole('alert').textContent).toBe('這份報隊已被拒絕或已退出，不能登錄名單');
     fireEvent.click(back);
     expect(location.pathname).toBe('/competitions/cp_1/entries/en_1');
     expect(history.length).toBe(before + 1);

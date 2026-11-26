@@ -529,14 +529,14 @@ describe('第 4 步預覽元件', () => {
     expect(pauseHeldForScoring(131)).toBe(true);
 
     pad(S4_SCENE_LIVE, { eventCount: 129 });
-    expect(screen.queryByText('為保留記分額度，停錶已停用')).toBeNull();
+    expect(screen.queryByText('目前不開放停錶')).toBeNull();
     expect(screen.queryByText('本場紀錄接近上限')).toBeNull();
     expectOff('停錶・剩20', false);
     expectOff('雷霆隊 進球', false);
     cleanup();
 
     pad(S4_SCENE_LIVE, { eventCount: 131 });
-    expect(screen.getByText('為保留記分額度，停錶已停用')).toBeTruthy();
+    expect(screen.getByText('目前不開放停錶')).toBeTruthy();
     expect(screen.queryByText('本場紀錄接近上限')).toBeNull();
     expect(screen.queryByText('紀錄已達上限，請由主辦在賽後登錄比分')).toBeNull();
     expectOff('停錶・剩20', true);
@@ -559,7 +559,7 @@ describe('第 4 步預覽元件', () => {
 
     pad(S4_SCENE_LIVE, { eventCount: 180 });
     expect(screen.getByText('本場紀錄接近上限')).toBeTruthy();
-    expect(screen.getByText('為保留記分額度，停錶已停用')).toBeTruthy();
+    expect(screen.getByText('目前不開放停錶')).toBeTruthy();
     expect(screen.queryByText('紀錄已達上限，請由主辦在賽後登錄比分')).toBeNull();
     expectOff('雷霆隊 進球', false);
     expectOff('雷霆隊 黃牌', false);
@@ -575,7 +575,7 @@ describe('第 4 步預覽元件', () => {
     pad(S4_SCENE_LIVE, { eventCount: 190 });
     expect(screen.queryByText('本場紀錄接近上限')).toBeNull();
     expect(screen.getByText('紀錄已達上限，請由主辦在賽後登錄比分')).toBeTruthy();
-    expect(screen.getByText('為保留記分額度，停錶已停用')).toBeTruthy();
+    expect(screen.getByText('目前不開放停錶')).toBeTruthy();
     expectOff('雷霆隊 進球', true);
     expectOff('雷霆隊 黃牌', true);
     expectOff('雷霆隊 紅牌', true);
@@ -620,7 +620,7 @@ describe('第 4 步預覽元件', () => {
     expect(screen.getByText('本場紀錄接近上限')).toBeTruthy();
     cleanup();
     pad(S4_SCENE_LIVE, { match: s4Match({ rev: 200, resetRev: 69 }) });
-    expect(screen.getByText('為保留記分額度，停錶已停用')).toBeTruthy();
+    expect(screen.getByText('目前不開放停錶')).toBeTruthy();
     expectOff('停錶・剩20', true);
   });
 

@@ -175,6 +175,8 @@ describe('正式記分頁權限', () => {
     draw(made.deps);
     expect(await screen.findByText(LIVE_COPY.noScorePermission)).toBeTruthy();
     expect(screen.queryByText(LIVE_COPY.assignScorerHint)).toBeNull();
+    // 顧問巡視第 1 條：一般人看到「請主辦把你指派為記分員」，不講指派頁
+    expect(screen.getByText(LIVE_COPY.askHostToAssign)).toBeTruthy();
     expect(screen.queryByRole('button', { name: '開賽' })).toBeNull();
     // §3.508：陌生人（已登入、沒有任何角色）的回去鈕去自己的場次，鈕字跟著是「回我的場次」。
     expect(screen.getByRole('button', { name: LIVE_COPY.backToMyMatches })).toBeTruthy();
@@ -193,6 +195,7 @@ describe('正式記分頁權限', () => {
     draw(made.deps);
     expect(await screen.findByText(LIVE_COPY.noScorePermission)).toBeTruthy();
     expect(screen.getByText(LIVE_COPY.assignScorerHint)).toBeTruthy();
+    expect(screen.queryByText(LIVE_COPY.askHostToAssign)).toBeNull();
   });
 
   it('俱樂部目前代表沒有主辦 staff 文件，也看得到說明；前代表與陌生人看不到', async () => {

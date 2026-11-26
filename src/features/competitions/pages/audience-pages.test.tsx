@@ -591,7 +591,7 @@ describe('單場頁', () => {
     markHistoryRoot();
     const before = window.history.length;
     drawMatch(liveEnv({ audience: watch }));
-    expect(await screen.findByRole('heading', { level: 1, name: '單場' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: '比賽' })).toBeTruthy();
     expect(document.querySelector('.cps-top__crumb')?.textContent).toBe('賽事');
     expect(document.querySelector('.d2-sb--lit')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '返回' }));
@@ -603,7 +603,7 @@ describe('單場頁', () => {
     markHistoryRoot();
     window.history.pushState(null, '', '/competitions/cup/matches/mt1/live');
     drawMatch(liveEnv({ audience: watch }));
-    expect(await screen.findByRole('heading', { level: 1, name: '單場' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: '比賽' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '返回' }));
     await waitFor(() => expect(window.location.pathname).toBe('/competitions/cup'));
   });

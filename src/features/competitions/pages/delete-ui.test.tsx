@@ -285,7 +285,7 @@ describe('刪除成功', () => {
 
 describe('錯誤文字', () => {
   const cases: Array<[string, string]> = [
-    ['DELETE_AFTER_START', '比賽已開始，無法刪除；\n要刪除請到首頁右下角按信封聯繫站長'],
+    ['DELETE_AFTER_START', '比賽已開始或賽事已結束，無法刪除；\n要刪除請到首頁右下角按信封聯繫站長'],
     ['COMPETITION_HIDDEN', '這場賽事目前不公開'],
     ['NOT_PRIMARY_HOST', '只有主要主辦可以做這個操作'],
     ['DELETE_FAILED', '刪除沒有完成，請再試一次'],
