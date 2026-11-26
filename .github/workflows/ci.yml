@@ -203,6 +203,7 @@ jobs:
   # 專案必須是 demo-cp-u1（測試寫死；規則只對啟動時的專案生效）。測試會暫換 emulator/firestore.rules 成
   # asia-main.rules 快照並在 afterAll 還原，只在 runner 的工作副本內，不 commit。
   # 模擬器沒連上時 vitest 仍回 0，所以另用 check-emu-report.mjs 核對「通過 ≥32、略過 0、失敗 0」。
+  # 根治 afterAll 等待（比對整份規則）屬記分測試檔，另開卡，不在本 job 動。
   emu:
     name: 記分模擬器測試（emulator）
     runs-on: ubuntu-latest
@@ -227,8 +228,20 @@ jobs:
       - name: 安裝依賴（npm ci）
         run: npm ci --no-audit --no-fund
 
+      # 不用 emulators:exec：測試 afterAll 還原規則後的等待只比對前 60 字（兩份規則開頭相同，等待形同沒有），
+      # exec 關模擬器時常撞上規則重載，32 條全過仍回 1（本機 10 輪 1 次）。改成背景開模擬器、步驟結果只看 vitest；
+      # job 結束時 runner 會收掉背景行程。
       - name: 記分模擬器測試
-        run: npx firebase emulators:exec --only firestore --project demo-cp-u1 --config emulator/firebase.json "npx vitest run --config vitest.u1-emu.config.ts --reporter=default --reporter=json --outputFile.json=emu-report.json"
+        run: |
+          npx firebase emulators:start --only firestore --project demo-cp-u1 --config emulator/firebase.json > emu-server.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -sf -o /dev/null "http://127.0.0.1:${FCB_EMU_PORT}/"; then break; fi
+            sleep 1
+          done
+          if ! curl -sf -o /dev/null "http://127.0.0.1:${FCB_EMU_PORT}/"; then
+            echo '模擬器 90 秒內沒起來'; cat emu-server.log; exit 1
+          fi
+          npx vitest run --config vitest.u1-emu.config.ts --reporter=default --reporter=json --outputFile.json=emu-report.json
 
       - name: 核對沒有整檔略過（通過 ≥32、略過 0）
         run: node scripts/check-emu-report.mjs emu-report.json 32
