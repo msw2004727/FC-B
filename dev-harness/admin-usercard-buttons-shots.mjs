@@ -105,7 +105,7 @@ for (const which of ['five', 'four', 'three', 'black', 'black-none']) {
 try {
   const { ctx, page } = await open('case=flow', 390, 844, 'light', 'uc-flow');
   await shoot(page, 'uc-flow-1-before');
-  await page.getByRole('button', { name: '解除臨取紅標' }).click();
+  await page.getByRole('button', { name: '解除臨取狀態' }).click();
   await page.waitForSelector('[role="alertdialog"]');
   await page.waitForTimeout(400);
   await shoot(page, 'uc-flow-2-confirm');

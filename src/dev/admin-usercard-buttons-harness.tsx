@@ -53,7 +53,7 @@ function Screen() {
     setBusy(true);
     try {
       if (!await appConfirm(t('admin-users.lateCancel.confirm', { name: target.name }))) return;
-      setUser((prev) => ({ ...prev, lateCancelLevel: null }));
+      setUser((prev) => ({ ...prev, lateCancelLevel: null, lateCancelUntilMs: null }));
       toast.show({ message: t('admin-users.lateCancel.cleared'), tone: 'success' });
     } finally {
       setBusy(false);
@@ -77,6 +77,8 @@ function Screen() {
             onEdit={() => {}}
             onToggleRestriction={() => {}}
             onClearLateCancelRed={(target) => { void clearRed(target); }}
+            // 預覽「新版後端部署後」的樣子：黑標也出解除鈕（正式由 LATE_CANCEL_CLEAR_BLACK_DEPLOYED 控制，目前 false）
+            lateCancelBlackEnabled
             onOpenProfile={() => {}}
             onCpRemoval={superAdmin ? () => {} : undefined}
           />
