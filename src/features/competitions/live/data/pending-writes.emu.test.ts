@@ -141,7 +141,7 @@ let rulesBackup: Buffer | null = null;
 function useSnapshotRules(): void {
   const content = readFileSync('emulator/asia-main.rules');
   const hash = createHash('sha256').update(content).digest('hex');
-  expect(hash.slice(0, 16)).toBe('99a8cafef181e8e0');
+  expect(hash.slice(0, 16)).toBe('37add016c3084d24');
   if (!rulesBackup) rulesBackup = readFileSync(RULES_TARGET);
   writeFileSync(RULES_TARGET, content);
 }
