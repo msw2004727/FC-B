@@ -13,7 +13,7 @@ import {
   canClearLateCancelRedOf,
   canToggleRestrictionOf,
   formatLastLogin,
-  lateCancelStatusText,
+  lateCancelStatus,
   genderIcon,
   roleLabel,
   showsEditButton,
@@ -98,7 +98,7 @@ export function UserCard({
   const secondMeta = `${user.sports || '—'}${SHOW_EXP ? ` ・EXP ${user.exp.toLocaleString()}` : ''}`;
   const tagRoleKey = tagRole(user);
   const restrictBtn = canToggleRestrictionOf(actor, user);
-  const lateCancelText = lateCancelStatusText(user);
+  const lateCancel = lateCancelStatus(user);
   const clearLateBtn = !!onClearLateCancelRed && canClearLateCancelRedOf(actor, user);
 
   return (
@@ -124,9 +124,9 @@ export function UserCard({
           <div class="admin-user-meta">
             {`${t('admin-users.card.restrictState')}${user.isRestricted ? t('admin-users.card.restricted') : t('admin-users.card.normal')}`}
           </div>
-          {lateCancelText && (
+          {lateCancel && (
             <div class="admin-user-meta au-lc-row">
-              <span>{`${t('admin-users.card.lateCancelState')}${lateCancelText}`}</span>
+              <span>{`${t('admin-users.card.lateCancelState')}${t(lateCancel.key, lateCancel.params)}`}</span>
               {clearLateBtn && (
                 <button
                   type="button"

@@ -48,7 +48,11 @@
     "unrestrict": "解除限制",
     "lateCancelState": "臨取狀態：",
     "clearLateCancelRed": "解除臨取紅標",
-    "clearLateCancelRedShort": "解除"
+    "clearLateCancelRedShort": "解除",
+    "lateCancelRed": "紅標（{total} 次，最近 {month}/{day}）",
+    "lateCancelRedNoDate": "紅標（{total} 次）",
+    "lateCancelBlackUntil": "黑標，最晚 {month}/{day} 恢復",
+    "lateCancelBlack": "黑標"
   },
   "modal": {
     "title": "編輯用戶 — {name}",
