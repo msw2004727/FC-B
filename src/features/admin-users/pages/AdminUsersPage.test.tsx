@@ -1225,3 +1225,27 @@ describe('退修 1：目標文件不一致、序號保護、可指派角色、�
     expect(screen.getByLabelText('性別')).toBe(document.getElementById('admin-user-gender-filter'));
   });
 });
+
+// 移除面板連賽事的 Functions 接點：這裡只驗入口，換成不連線的替身（本檔已把 firebase 換掉，真模組載不起來）。
+vi.mock('@/features/competitions/data/cp-callables', () => ({
+  cpHostAdminRemovalDryRun: vi.fn(),
+  cpHostAdminRemovalRun: vi.fn(),
+  toCpCallError: (err: unknown) => err,
+}));
+
+describe('賽事個資移除入口（顧問 §3.816②）', () => {
+  it('super_admin：每張用戶卡有「賽事個資移除」，按了帶入該會員開面板（顯示會員名、不打 uid）', async () => {
+    await renderReady([makeUser('a', { name: 'Alice' })], viewerOf('super_admin', 'all'));
+    const btn = Array.from(cardOf('Alice').querySelectorAll('button')).find((el) => el.textContent === '賽事個資移除');
+    expect(btn).toBeTruthy();
+    fireEvent.click(btn!);
+    const dialog = await screen.findByRole('dialog', { name: '賽事個資移除' });
+    expect(dialog.querySelector('[data-cp-member]')?.textContent).toBe('Alice');
+    expect(dialog.querySelector('input')).toBeNull();
+  });
+
+  it('admin（有全部用戶管理權限碼）看不到入口', async () => {
+    await renderReady([makeUser('a', { name: 'Alice' })]);
+    expect(Array.from(cardOf('Alice').querySelectorAll('button')).some((el) => el.textContent === '賽事個資移除')).toBe(false);
+  });
+});

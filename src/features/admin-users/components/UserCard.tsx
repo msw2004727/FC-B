@@ -21,6 +21,7 @@ import {
   type AdminUser,
   type AdminUserActor,
 } from '../data/admin-users-model';
+import { CP_REMOVAL_COPY } from '../cp-removal/copy';
 
 export interface UserCardProps {
   user: AdminUser;
@@ -36,6 +37,8 @@ export interface UserCardProps {
   /** 「解除臨取紅標」；未傳（Callable 未部署）不顯示按鈕。 */
   onClearLateCancelRed?: (user: AdminUser) => void;
   onOpenProfile: (uid: string) => void;
+  /** 「賽事個資移除」；未傳（非 super_admin）不顯示按鈕。 */
+  onCpRemoval?: (user: AdminUser) => void;
 }
 
 const TAG_ROLES: ReadonlySet<string> = new Set<UserRole>([
@@ -81,6 +84,7 @@ export function UserCard({
   onToggleRestriction,
   onClearLateCancelRed,
   onOpenProfile,
+  onCpRemoval,
 }: UserCardProps): JSX.Element {
   const t = useT();
   const level = userLevelFromExp(user.exp);
@@ -160,6 +164,11 @@ export function UserCard({
               onClick={() => onClearLateCancelRed?.(user)}
             >
               {t('admin-users.card.clearLateCancelRed')}
+            </button>
+          )}
+          {onCpRemoval && (
+            <button type="button" class="au-btn au-btn-lc" disabled={busy} onClick={() => onCpRemoval(user)}>
+              {CP_REMOVAL_COPY.entry}
             </button>
           )}
         </div>

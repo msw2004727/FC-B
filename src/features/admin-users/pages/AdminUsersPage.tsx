@@ -17,6 +17,7 @@ import { getRuntimeRoleSequence, type CustomRoleInput } from '@/ui/drawer-menu';
 import { toast } from '@/ui/Toast';
 
 import { UserCard } from '../components/UserCard';
+import type { CpRemovalModal as CpRemovalModalType } from '../cp-removal/CpRemovalModal';
 import { UserEditModal } from '../components/UserEditModal';
 import { UserFilterPanel, type RoleFilterOption } from '../components/UserFilterPanel';
 import {
@@ -116,6 +117,8 @@ export default function AdminUsersPage({
   const [inputs, setInputs] = useState<AdminUserFilterInputs>(EMPTY_FILTER_INPUTS);
   const [visibleCount, setVisibleCount] = useState(ADMIN_USER_PAGE_SIZE);
   const [editTarget, setEditTarget] = useState<AdminUser | null>(null);
+  // 賽事個資移除面板：按了才延遲載入（不進用戶管理頁本身的分塊）。
+  const [cpRemoval, setCpRemoval] = useState<{ user: AdminUser; Modal: typeof CpRemovalModalType } | null>(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -216,6 +219,12 @@ export default function AdminUsersPage({
     });
     return keys.map((key) => ({ value: key, label: roleLabel(key, customRoles) }));
   }, [customRoles, users]);
+
+  const openCpRemoval = useCallback((user: AdminUser): void => {
+    void import('../cp-removal/CpRemovalModal')
+      .then((mod) => setCpRemoval({ user, Modal: mod.CpRemovalModal }))
+      .catch(() => toast.show({ message: t('admin-users.list.loadFailed'), tone: 'error' }));
+  }, [t]);
 
   const openProfile = useCallback((uid: string): void => {
     if (uid) location.route(`/profile/${encodeURIComponent(uid)}`);
@@ -613,6 +622,7 @@ export default function AdminUsersPage({
                 ? (target) => { handleClearLateCancelRed(target).catch(() => undefined); }
                 : undefined}
               onOpenProfile={openProfile}
+              onCpRemoval={viewer.role === 'super_admin' ? openCpRemoval : undefined}
             />
           ))}
           {status === 'ready' && page.hasMore && (
@@ -629,6 +639,14 @@ export default function AdminUsersPage({
           )}
         </div>
       </section>
+      {cpRemoval && (
+        <cpRemoval.Modal
+          uid={cpRemoval.user.uid}
+          name={cpRemoval.user.name}
+          canRun={viewer.role === 'super_admin'}
+          onClose={() => setCpRemoval(null)}
+        />
+      )}
       {editTarget && (
         <UserEditModal
           user={editTarget}
