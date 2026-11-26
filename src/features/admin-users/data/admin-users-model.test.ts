@@ -93,6 +93,13 @@ describe('canClearLateCancelOf', () => {
     }), NOW, true)).toBe(true);
   });
 
+  it('不傳旗標時用預設 LATE_CANCEL_CLEAR_BLACK_DEPLOYED（後端已部署＝true）：黑標未過期 → true', () => {
+    expect(canClearLateCancelOf(withPermission, user({
+      lateCancelLevel: 'black',
+      lateCancelUntilMs: NOW + DAY,
+    }), NOW)).toBe(true);
+  });
+
   it('黑標未過期，但新版後端尚未部署（旗標 false）→ false', () => {
     expect(canClearLateCancelOf(withPermission, user({
       lateCancelLevel: 'black',
