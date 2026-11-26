@@ -207,6 +207,8 @@ export interface CpMineItem {
   name?: string;
   /** 缺值視為 league。讀取時已用 categoryOf 補上。 */
   category: CompetitionCategory;
+  /** 我在這場賽事登錄的名單列 id（後端 prepareMine 的 plIds）。公開名單沒有 uid，靠這個認出自己那一列。只收非空字串；沒有就省略。 */
+  plIds?: string[];
 }
 
 export interface LaunchDoc {

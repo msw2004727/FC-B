@@ -283,6 +283,23 @@ describe('createCompetitionsRepo（查詢條件與上限）', () => {
     expect(queries.at(-1)?.clauses[0]).toEqual({ kind: 'where', field: 'uid', op: '==', value: 'uid_me' });
   });
 
+  it('單筆 mine（CP-PO-08）：讀 cpMine/{uid}/items/{cid}，plIds 只收非空字串，沒文件回 null', async () => {
+    const { repo, docs, gets } = harness();
+    docs.set('cpMine/uid_me/items/cid_1', { cid: 'cid_1', roles: ['player'], plIds: ['pl_a', '', 3, null, 'pl_b'] });
+    await expect(repo.getMine('uid_me', 'cid_1')).resolves.toEqual({
+      id: 'cid_1', cid: 'cid_1', roles: ['player'], host: false, category: 'league', plIds: ['pl_a', 'pl_b'],
+    });
+    expect(gets.at(-1)).toBe('cpMine/uid_me/items/cid_1');
+    docs.set('cpMine/uid_me/items/cid_2', { roles: ['rep'], plIds: 'pl_a' });
+    const noPl = await repo.getMine('uid_me', 'cid_2');
+    expect(noPl && 'plIds' in noPl).toBe(false);
+    await expect(repo.getMine('uid_me', 'cid_none')).resolves.toBeNull();
+    const before = gets.length;
+    await expect(repo.getMine('uid_me', 'a/b')).resolves.toBeNull();
+    await expect(repo.getMine('', 'cid_1')).resolves.toBeNull();
+    expect(gets.length).toBe(before);
+  });
+
   it('我的賽事、開賽設定、測試員、staff', async () => {
     const { repo, docs, cols, queries, gets } = harness();
     cols.set('cpMine/uid_me/items', [

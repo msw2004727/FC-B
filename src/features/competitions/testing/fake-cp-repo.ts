@@ -159,6 +159,12 @@ export function createFakeCpRepo(seed: FakeCpSeed = {}): FakeCpRepo {
       return rows;
     },
 
+    async getMine(uid, cid) {
+      if (!isSafeId(uid) || !isSafeId(cid)) return null;
+      note('getMine', 1);
+      return (mine[uid] ?? []).find((item) => item.cid === cid) ?? null;
+    },
+
     async listPublic(includeInternal = false) {
       const rows = competitions.filter((doc) =>
         (includeInternal || doc.visibility === 'public') && doc.hidden === false

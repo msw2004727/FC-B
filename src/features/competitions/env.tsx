@@ -56,6 +56,8 @@ export interface CpBundle {
   roster: RosterPublicDoc[];
   privates: EntryPrivateDoc[];
   staff: StaffDoc | null;
+  /** 名單頁：我在這場賽事的名單列 id（cpMine 的 plIds）。省略當空。 */
+  myPlIds?: readonly string[];
 }
 
 /** harness 要首屏就有內容（截圖不等非同步）。正式頁不帶。 */

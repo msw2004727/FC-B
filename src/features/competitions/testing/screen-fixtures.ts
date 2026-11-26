@@ -1756,6 +1756,18 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return base(actions, memberActor, rosterBundle(SHORT_PLAYERS, false));
     case 'roster-remove':
       return base(actions, repActor, rosterBundle(SHORT_PLAYERS, false));
+    // ── CP-PO-08 球員本人退出：隊員視角，pl_2（林示範）是自己那一列；確認框由 harness 點正式按鈕打開 ──
+    case 'roster-self':
+    case 'roster-self-confirm':
+      return base(actions, memberActor, { ...rosterBundle(SHORT_PLAYERS, false), myPlIds: ['pl_2'] });
+    case 'roster-self-locked':
+      return base(actions, memberActor, { ...rosterBundle(SHORT_PLAYERS, true), myPlIds: ['pl_2'] });
+    // 已在本賽事其他隊伍名單：送出登錄時後端回 ALREADY_IN_ROSTER
+    case 'form-already':
+      return base({
+        ...actions,
+        joinRoster: async () => { throw new CpCallError('ALREADY_IN_ROSTER', {}); },
+      }, memberActor, rosterBundle(SHORT_PLAYERS, false), { prefillForm: true });
     case 'form-error':
     case 'form-custom-pos':
       return base(actions, memberActor, rosterBundle(SHORT_PLAYERS, false), { prefillForm: true });

@@ -77,6 +77,11 @@ const PAGES: Record<string, ComponentType> = {
   // 第 3 批留下的：名單隊員視角、移除確認框（點正式的垃圾桶）、表單錯誤／自訂位置展開／資格不符。
   'roster-member': RosterPage,
   'roster-remove': RosterPage,
+  // CP-PO-08 球員本人退出名單
+  'roster-self': RosterPage,
+  'roster-self-confirm': RosterPage,
+  'roster-self-locked': RosterPage,
+  'form-already': JoinRosterPage,
   'form-error': JoinRosterPage,
   'form-custom-pos': JoinRosterPage,
   'form-ineligible': JoinRosterPage,
@@ -153,6 +158,22 @@ const OPEN: Record<string, () => Promise<void>> = {
     await until('垃圾桶', () => !!document.querySelector('[data-roster-row] .cps-iconbtn'));
     document.querySelector<HTMLButtonElement>('[data-roster-row] .cps-iconbtn')?.click();
     await until('移除確認框', () => hasText('確定要移除') && buttonsNamed('移除').length > 0);
+  },
+  'roster-self': () => until('退出名單鈕', () => buttonsNamed('退出名單').length > 0),
+  'roster-self-confirm': async () => {
+    await until('退出名單鈕', () => buttonsNamed('退出名單').length > 0);
+    clickButton('退出名單');
+    await until('退出確認框', () => hasText('確定要退出') && buttonsNamed('退出').length > 0);
+  },
+  'form-already': async () => {
+    await until('送出鈕', () => buttonsNamed('送出').length > 0);
+    const ack = document.querySelector<HTMLInputElement>('.cps-root input[type="checkbox"]');
+    ack?.click();
+    // 等勾選畫完再送出（送出讀的是重繪後的狀態）
+    await until('已勾選', () => ack?.checked === true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    clickButton('送出');
+    await until('已在其他隊伍', () => hasText('你已在本賽事其他隊伍名單'));
   },
   'form-error': async () => {
     await until('送出鈕', () => buttonsNamed('送出').length > 0);

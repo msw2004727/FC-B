@@ -66,6 +66,8 @@ export interface CompetitionsRepo {
   getLaunch(): Promise<LaunchDoc | null>;
   getLaunchTester(uid: string): Promise<boolean>;
   listMine(uid: string): Promise<CpMineItem[]>;
+  /** 單筆 cpMine/{uid}/items/{cid}（Rules 允許本人 get）。沒有文件回 null。 */
+  getMine(uid: string, cid: string): Promise<CpMineItem | null>;
   /** includeInternal：測試者／管理員不帶 visibility，才能看到內部賽。一般會員維持只查公開。 */
   listPublic(includeInternal?: boolean): Promise<CompetitionDoc[]>;
   listByHostTeam(teamId: string, publicOnly: boolean): Promise<CompetitionDoc[]>;
@@ -383,6 +385,9 @@ function mineFromDoc(id: string, raw: Record<string, unknown>): CpMineItem | nul
     ? raw.roles.filter((role): role is MineRole => oneOf(role, MINE_ROLES) != null)
     : [];
   const name = str(raw.name)?.trim();
+  const plIds = Array.isArray(raw.plIds)
+    ? raw.plIds.filter((plId): plId is string => typeof plId === 'string' && plId !== '')
+    : [];
   return {
     id,
     cid: str(raw.cid) ?? id,
@@ -390,6 +395,7 @@ function mineFromDoc(id: string, raw: Record<string, unknown>): CpMineItem | nul
     host: bool(raw.host) ?? false,
     ...(name ? { name } : {}),
     category: categoryOf(raw),
+    ...(plIds.length ? { plIds } : {}),
   };
 }
 
@@ -807,6 +813,14 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
       return snap.docs
         .map((doc) => mineFromDoc(doc.id, doc.data() ?? {}))
         .filter((item): item is CpMineItem => item != null);
+    },
+
+    async getMine(uid, cid) {
+      if (!isSafeId(uid) || !isSafeId(cid)) return null;
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDoc(sdk.doc(db, `cpMine/${uid}/items/${cid}`));
+      if (!snap.exists()) return null;
+      return mineFromDoc(snap.id, snap.data() ?? {});
     },
 
     async listPublic(includeInternal = false) {

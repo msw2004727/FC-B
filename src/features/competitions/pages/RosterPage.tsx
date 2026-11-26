@@ -1,4 +1,5 @@
 // 代表看的名單。背號、顯示名、位置同一行。人數不足不能確認。鎖定後唯讀。
+// 球員本人：自己那一列有「退出名單」（CP-PO-08）。公開名單沒有 uid，靠 cpMine 的 plIds 認出自己。
 
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
@@ -19,16 +20,29 @@ import { CpCard, CpFrame, CpI18nPending, TrashIcon } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
 import { TeamCrest } from '../ui/TeamCrest';
 
+/** 我在這場賽事的名單列 id。讀不到（沒登入、沒文件、讀取失敗）就當空：只是不顯示退出鍵，名單照常顯示。 */
+async function loadMyPlIds(env: CpInjectedEnv, cid: string): Promise<string[]> {
+  const uid = env.actor.uid;
+  if (!uid) return [];
+  try {
+    const mine = await env.repo.getMine(uid, cid);
+    return mine?.plIds ?? [];
+  } catch {
+    return [];
+  }
+}
+
 async function loadRoster(env: CpInjectedEnv, cid: string, enId: string): Promise<CpBundle> {
   const uid = env.actor.uid;
-  const [competition, divisions, entries, roster, staff] = await Promise.all([
+  const [competition, divisions, entries, roster, staff, myPlIds] = await Promise.all([
     env.repo.getCompetition(cid),
     env.repo.listDivisions(cid),
     env.repo.listEntries(cid),
     env.repo.listRoster(cid, enId),
     uid ? env.repo.getStaff(cid, uid) : Promise.resolve(null),
+    loadMyPlIds(env, cid),
   ]);
-  return { competition, divisions, entries, roster, privates: [], staff };
+  return { competition, divisions, entries, roster, privates: [], staff, myPlIds };
 }
 
 /** 照背號排，同號再比 id（與記分頁選人同一套；live/ 不能動，這裡另寫一份）。 */
@@ -47,11 +61,16 @@ function entryStatusLabel(ct: CompetitionsT, status: EntryStatus): string {
 function PlayerRow({
   player,
   canEdit,
+  canLeave,
   onRemove,
+  onLeave,
 }: {
   player: RosterPublicDoc;
   canEdit: boolean;
+  /** 這一列是我自己，而且還能退出（名單未鎖定、尚未開賽；與後端 leaveRoster 一致）。 */
+  canLeave: boolean;
   onRemove: () => void;
+  onLeave: () => void;
 }): JSX.Element {
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
@@ -71,7 +90,11 @@ function PlayerRow({
       <span class="cps-player__name cps-player__name--fit">{player.displayName}</span>
       <span class="cps-player__pos">{pos}</span>
       {player.isMinor ? <StatusTag kind="neutral" label={ct('minor')} /> : null}
-      {canEdit ? (
+      {/* 自己那一列給「退出名單」，不再給垃圾桶（同一個動作，字比圖示清楚）。
+          紅字靠右、右緣對齊垃圾桶；用行內樣式是因為賽事樣式已到 check:cp-css 上限，不為一行版面調上限。 */}
+      {canLeave ? (
+        <Button variant="danger" size="sm" style="min-inline-size:0;padding-inline:12px;margin:0 -12px 0 auto" onClick={onLeave}>{ct('leaveRoster')}</Button>
+      ) : canEdit ? (
         <button type="button" class="cps-iconbtn cps-iconbtn--flat" aria-label={ct('removePlayer', { name: player.displayName })} onClick={onRemove}>
           <TrashIcon />
         </button>
@@ -127,14 +150,19 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const short = players.length < min;
   const canEdit = isRep && !locked && !started && entry.status === 'approved';
   const canAdd = isRep && !locked && !started;
-  const canJoin = isMember && !locked && !started && (entry.status === 'pending' || entry.status === 'approved');
+  const myPlIds = bundle?.myPlIds ?? [];
+  const isMine = (player: RosterPublicDoc): boolean => myPlIds.includes(player.id);
+  // 與後端 leaveRoster 的 assertRosterPhase 對齊：名單未鎖定、第一場還沒開打。
+  const canLeave = !locked && !started;
+  const inThisRoster = players.some(isMine);
+  const teamName = entry.name;
+  const canJoin = isMember && !inThisRoster && !locked && !started && (entry.status === 'pending' || entry.status === 'approved');
 
-  async function remove(player: RosterPublicDoc): Promise<void> {
+  async function remove(player: RosterPublicDoc, self = false): Promise<void> {
     if (busy) return;
-    const ok = await dangerConfirm(ct('removePlayerConfirm', { name: player.displayName }), {
-      okText: ct('remove'),
-      danger: true,
-    });
+    const ok = self
+      ? await dangerConfirm(ct('leaveRosterConfirm', { team: teamName }), { okText: ct('leave'), danger: true })
+      : await dangerConfirm(ct('removePlayerConfirm', { name: player.displayName }), { okText: ct('remove'), danger: true });
     if (!ok) return;
     setBusy(true);
     setError(null);
@@ -145,6 +173,7 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
         return {
           ...prev,
           roster: prev.roster.filter((row) => row.id !== player.id),
+          myPlIds: (prev.myPlIds ?? []).filter((plId) => plId !== player.id),
           entries: prev.entries.map((row) => (
             row.id === enId
               ? { ...row, rosterConfirmed: false, rosterCount: Math.max(0, row.rosterCount - 1) }
@@ -212,7 +241,14 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
         </div>
         <ul class="cps-list">
           {players.map((player) => (
-            <PlayerRow key={player.id} player={player} canEdit={canEdit} onRemove={() => { void remove(player); }} />
+            <PlayerRow
+              key={player.id}
+              player={player}
+              canEdit={canEdit}
+              canLeave={canLeave && isMine(player)}
+              onRemove={() => { void remove(player); }}
+              onLeave={() => { void remove(player, true); }}
+            />
           ))}
         </ul>
       </CpCard>
