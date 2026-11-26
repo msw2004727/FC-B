@@ -149,7 +149,9 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const locked = competition.rostersLockedAt != null;
   const started = now >= competition.firstMatchAt;
   const isRep = env.actor.repClubs.some((club) => club.id === entry.teamId);
-  const isMember = !isRep && env.actor.memberClubIds.includes(entry.teamId);
+  // 代表（隊長、領隊）也能自己登錄：後端 joinRoster 認成員或代表（與 JoinRosterPage 的 isMember || isRep 一致）。
+  // 只能代填自己的話那筆 uid 是 null，不受一人一隊限制、退出鍵也認不出自己（CP-PO-08）。
+  const canSelfJoin = isRep || env.actor.memberClubIds.includes(entry.teamId);
   const min = division.rosterMin;
   const max = division.rosterMax;
   const short = players.length < min;
@@ -162,7 +164,7 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const canLeave = !locked && !started;
   const inThisRoster = players.some(isMine);
   const teamName = entry.name;
-  const canJoin = isMember && !inThisRoster && !locked && !started && (entry.status === 'pending' || entry.status === 'approved');
+  const canJoin = canSelfJoin && !inThisRoster && !locked && !started && (entry.status === 'pending' || entry.status === 'approved');
 
   async function remove(player: RosterPublicDoc, self = false): Promise<void> {
     if (busy) return;
@@ -266,7 +268,8 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
       ) : null}
       {canJoin ? (
         <div class="cps-actions cp3-roster-act">
-          <Button variant="primary" onClick={() => route(`/competitions/${cid}/entries/${enId}/join`)}>{ct('joinAction')}</Button>
+          {/* 代表這頁的主要動作是確認名單；自己登錄放次要鈕，不讓兩顆主要鈕疊在一起。一般成員仍是主要鈕。 */}
+          <Button variant={canAdd ? 'secondary' : 'primary'} onClick={() => route(`/competitions/${cid}/entries/${enId}/join`)}>{ct('joinAction')}</Button>
         </div>
       ) : null}
     </CpFrame>

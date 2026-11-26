@@ -169,6 +169,81 @@ describe('名單頁：球員本人退出（CP-PO-08）', () => {
   });
 });
 
+describe('名單頁：代表也能自己登錄（CP-PO-08 追加）', () => {
+  const JOIN = '登錄名單';
+
+  it('代表在自己隊的名單頁：同時有「代為新增球員」、確認名單與「登錄名單」，按下去到登錄表單', () => {
+    mount(RosterPage, screenEnv('roster'));
+    expect(screen.getByRole('button', { name: '代為新增球員' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '確認名單' })).toBeTruthy();
+    const join = screen.getByRole('button', { name: JOIN });
+    // 代表的主要鈕是確認名單，登錄是次要鈕
+    expect(join.className).toContain('ui-button--secondary');
+    fireEvent.click(join);
+    expect(window.location.pathname).toBe('/competitions/cup/entries/en_a/join');
+  });
+
+  it('代表已在本隊名單：不顯示「登錄名單」，代為新增與確認名單照舊', () => {
+    const env = screenEnv('roster');
+    env.bundle = { ...env.bundle!, myPlIds: ['pl_1'] };
+    mount(RosterPage, env);
+    expect(screen.queryByRole('button', { name: JOIN })).toBeNull();
+    expect(screen.getByRole('button', { name: '代為新增球員' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '確認名單' })).toBeTruthy();
+  });
+
+  it('代表：名單已鎖定或已開賽、報隊被拒時不顯示「登錄名單」', () => {
+    const locked = screenEnv('roster-locked');
+    const lockedView = mount(RosterPage, locked);
+    expect(screen.queryByRole('button', { name: JOIN })).toBeNull();
+    lockedView.unmount();
+
+    const started = screenEnv('roster');
+    started.now = FIRST_MATCH;
+    const startedView = mount(RosterPage, started);
+    expect(screen.queryByRole('button', { name: JOIN })).toBeNull();
+    startedView.unmount();
+
+    const rejected = screenEnv('roster');
+    rejected.bundle = { ...rejected.bundle!, entries: rejected.bundle!.entries.map((row) => ({ ...row, status: 'rejected' as const })) };
+    mount(RosterPage, rejected);
+    expect(screen.queryByRole('button', { name: JOIN })).toBeNull();
+  });
+
+  it('代表報隊待審時也能登錄（與一般成員同條件）', () => {
+    const env = screenEnv('roster');
+    env.bundle = { ...env.bundle!, entries: env.bundle!.entries.map((row) => ({ ...row, status: 'pending' as const })) };
+    mount(RosterPage, env);
+    expect(screen.getByRole('button', { name: JOIN })).toBeTruthy();
+  });
+
+  it('只當代表、不在成員清單也能登錄；別隊代表不能', () => {
+    const repOnly = screenEnv('roster');
+    repOnly.actor = { ...repActor, memberClubIds: [] };
+    const view = mount(RosterPage, repOnly);
+    expect(screen.getByRole('button', { name: JOIN })).toBeTruthy();
+    view.unmount();
+
+    const otherRep = screenEnv('roster');
+    otherRep.actor = { ...repActor, repClubs: [{ id: 'club_b', name: '示範隊B' }], memberClubIds: ['club_b'] };
+    mount(RosterPage, otherRep);
+    expect(screen.queryByRole('button', { name: JOIN })).toBeNull();
+    expect(screen.queryByRole('button', { name: '代為新增球員' })).toBeNull();
+  });
+
+  it('一般成員維持原行為；非成員沒有登錄鍵', () => {
+    const member = mount(RosterPage, screenEnv('roster-member'));
+    expect(screen.getByRole('button', { name: JOIN }).className).toContain('ui-button--primary');
+    expect(screen.queryByRole('button', { name: '代為新增球員' })).toBeNull();
+    member.unmount();
+
+    const stranger = screenEnv('roster-member');
+    stranger.actor = { ...memberActor, memberClubIds: [] };
+    mount(RosterPage, stranger);
+    expect(screen.queryByRole('button', { name: JOIN })).toBeNull();
+  });
+});
+
 describe('名單頁正式讀取：用 cpMine 認出自己', () => {
   function liveEnv(mine: Record<string, CpMineItem[]>, override: Partial<ReturnType<typeof createFakeCpRepo>> = {}): CpInjectedEnv {
     const seed = screenEnv('roster-member').bundle!;
