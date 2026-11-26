@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// 用戶卡按鈕配置截圖（顧問 §3.817）：五顆／四顆／三顆 × 現況 A／建議 B × 390、1280 × 淺深色；
-// 解除臨取紅標流程（按前、確認框、成功後）390 淺色。非 localhost 請求一律攔截；記 console 錯誤、橫向溢出、按鈕列行數。
+// 用戶卡按鈕截圖（顧問 §3.817；§3.818 起只拍正式元件＝建議版 B）：五顆／四顆／三顆／黑標（有到期）／黑標（無到期）× 390、1280 × 淺深色；
+// 解除臨取紅標流程（按前、確認框、成功後）390 淺色。非 localhost 請求一律攔截；
+// 記 console 錯誤、橫向溢出、按鈕列行數、臨取狀態列行數與「解除」鈕垂直置中差、賽事個資移除左側間隔。
 // 用法：先 node node_modules/vite/bin/vite.js --config dev-harness/vite.harness.config.ts --port <空埠>
 //       再 node dev-harness/admin-usercard-buttons-shots.mjs <輸出資料夾> http://localhost:<埠>
 import { chromium } from '@playwright/test';
@@ -39,7 +40,20 @@ async function shoot(page, tag) {
   const state = await page.evaluate(() => {
     const btns = [...document.querySelectorAll('.admin-user-card button')];
     const rowTops = new Set([...document.querySelectorAll('.admin-user-actions button')].map((b) => Math.round(b.getBoundingClientRect().top)));
-    return { buttons: btns.map((b) => b.textContent), actionRows: rowTops.size, toast: (document.querySelector('.ui-toast')?.textContent || '').trim() };
+    const lc = document.querySelector('.au-lc-row');
+    const clear = document.querySelector('.au-btn-lc-clear');
+    const lcText = lc?.querySelector('span');
+    const lcRows = lc ? new Set([...lc.children].map((el) => Math.round(el.getBoundingClientRect().top / 6))).size : null;
+    const mid = (el) => { const r = el.getBoundingClientRect(); return (r.top + r.bottom) / 2; };
+    const centerDiff = clear && lcText ? Math.round(Math.abs(mid(clear) - mid(lcText)) * 10) / 10 : null;
+    const clipped = clear && lc ? (() => { const r = clear.getBoundingClientRect(); const p = lc.getBoundingClientRect(); return r.right > p.right + 0.5 || r.top < p.top - 0.5 || r.bottom > p.bottom + 0.5; })() : null;
+    const cp = document.querySelector('.au-btn-cp-remove');
+    const prev = cp?.previousElementSibling;
+    const cpGap = cp && prev ? Math.round(cp.getBoundingClientRect().left - prev.getBoundingClientRect().right) : null;
+    return {
+      buttons: btns.map((b) => b.textContent), actionRows: rowTops.size, lcText: lc?.textContent ?? (document.querySelector('.admin-user-card')?.textContent?.match(/臨取狀態：[^最]*/)?.[0] ?? null),
+      lcRows, centerDiff, clipped, cpGap, toast: (document.querySelector('.ui-toast')?.textContent || '').trim(),
+    };
   });
   report.states.push({ tag, ...state });
   // 只拍卡片那一塊（頁首到卡片底下一點），比整頁清楚
@@ -52,28 +66,26 @@ async function shoot(page, tag) {
   report.shots.push(`${tag}.png`);
 }
 
-for (const which of ['five', 'four', 'three']) {
-  for (const layout of ['a', 'b']) {
-    for (const [w, h] of [[390, 844], [1280, 800]]) {
-      for (const theme of ['light', 'dark']) {
-        const tag = `uc-${which}-${layout}-${w}-${theme}`;
-        try {
-          const { ctx, page } = await open(`case=${which}&layout=${layout}`, w, h, theme, tag);
-          await shoot(page, tag);
-          await ctx.close();
-        } catch (err) {
-          report.consoleErrors.push(`${tag}: ${err.message.split('\n')[0]}`);
-        }
+for (const which of ['five', 'four', 'three', 'black', 'black-none']) {
+  for (const [w, h] of [[390, 844], [1280, 800]]) {
+    for (const theme of ['light', 'dark']) {
+      const tag = `uc-${which}-${w}-${theme}`;
+      try {
+        const { ctx, page } = await open(`case=${which}`, w, h, theme, tag);
+        await shoot(page, tag);
+        await ctx.close();
+      } catch (err) {
+        report.consoleErrors.push(`${tag}: ${err.message.split('\n')[0]}`);
       }
     }
   }
 }
 
-// 解除臨取紅標流程（現況 A）
+// 解除臨取紅標流程（正式版：臨取狀態那一行的「解除」小鈕）
 try {
-  const { ctx, page } = await open('case=flow&layout=a', 390, 844, 'light', 'uc-flow');
+  const { ctx, page } = await open('case=flow', 390, 844, 'light', 'uc-flow');
   await shoot(page, 'uc-flow-1-before');
-  await page.locator('.admin-user-actions button', { hasText: '解除臨取紅標' }).click();
+  await page.getByRole('button', { name: '解除臨取紅標' }).click();
   await page.waitForSelector('[role="alertdialog"]');
   await page.waitForTimeout(400);
   await shoot(page, 'uc-flow-2-confirm');
