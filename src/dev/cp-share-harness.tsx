@@ -145,13 +145,13 @@ function FlexBoard({ dict }: { dict: Record<string, string> }): JSX.Element {
   const comp = envOf('detail').bundle!.competition!;
   const url = buildCompetitionLiffUrl(CID);
   const recruiting = buildCompetitionFlexMessage(comp, url, ct, NOW);
-  const withCover = buildCompetitionFlexMessage({ ...comp, category: 'cup', name: '2027 新北五人制盃賽', cover: { url: FAKE_COVER, thumb: FAKE_COVER } }, url, ct, comp.regCloseAt + 1);
+  const withCover = buildCompetitionFlexMessage({ ...comp, category: 'cup', status: 'postponed', name: '2027 新北五人制盃賽', cover: { url: FAKE_COVER, thumb: FAKE_COVER } }, url, ct, NOW);
   const event = buildEventFlexMessage({ id: 'demo', title: '週六早場足球', date: '2027/01/09 08:00', location: '示範球場', type: 'play', sportTag: 'football', max: 20, current: 12 }, buildEventLiffUrl('demo'), { sharedAt: NOW });
   return (
     <div style={{ minHeight: '100vh', background: theme === 'dark' ? '#1f2937' : '#8cabd9', padding: '24px 16px', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', justifyContent: 'center', alignItems: 'flex-start' }}>
         <Bubble bubble={recruiting as unknown as Record<string, unknown>} caption="賽事卡：招募中、沒封面（足球預設圖）" />
-        <Bubble bubble={withCover as unknown as Record<string, unknown>} caption="賽事卡：盃賽、有封面、報名已截止" />
+        <Bubble bubble={withCover as unknown as Record<string, unknown>} caption="賽事卡：盃賽、有封面、已延期（列狀態、不列報名截止）" />
         <Bubble bubble={event as unknown as Record<string, unknown>} caption="對照：現行活動卡" />
       </div>
     </div>

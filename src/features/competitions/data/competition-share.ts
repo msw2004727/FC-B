@@ -26,7 +26,7 @@ const CID_RE = /^cp_[A-Za-z0-9]{20}$/;
 export type ShareCompetition = Pick<
   CompetitionDoc,
   | 'id' | 'name' | 'sport' | 'category' | 'status' | 'visibility' | 'hidden' | 'deletingAt'
-  | 'regOpenAt' | 'regCloseAt' | 'firstMatchAt' | 'lastMatchAt' | 'venues' | 'cover'
+  | 'regOpenAt' | 'regCloseAt' | 'firstMatchAt' | 'lastMatchAt' | 'endedAt' | 'venues' | 'cover'
 >;
 
 export function isShareableCid(cid: string): boolean {
@@ -45,9 +45,9 @@ export function isCompetitionShareable(doc: ShareCompetition): boolean {
     && isShareableCid(doc.id);
 }
 
-/** 還在招募（同詳情頁 statusBadge 的「招募中」）才列報名截止。 */
+/** 還在招募（同詳情頁 statusBadge 的「招募中」；主辦提前結束也不算）才列報名截止。 */
 export function isRecruiting(doc: ShareCompetition, now: number): boolean {
-  return doc.status === 'published' && now >= doc.regOpenAt && now <= doc.regCloseAt;
+  return doc.status === 'published' && doc.endedAt == null && now >= doc.regOpenAt && now <= doc.regCloseAt;
 }
 
 export function buildCompetitionLiffUrl(cid: string): string {
@@ -74,9 +74,19 @@ function venueText(doc: ShareCompetition): string {
   return doc.venues.map((venue) => venue.name.trim()).filter(Boolean).join('、');
 }
 
-/** 照活動 _buildEventShareAltText：UTF-16 長度超過 400 以碼點截到 397＋「...」。 */
-function truncateAltText(text: string): string {
-  return text.length > 400 ? Array.from(text).slice(0, 397).join('') + '...' : text;
+/**
+ * 照活動 _buildEventShareAltText 的 400 字上限（UTF-16 長度、碼點截斷、「...」收尾），
+ * 但網址一律完整留在最後一行：只截網址前的內文（場地最多 10 個，串起來可能很長）。
+ */
+function truncateAltText(body: string, url: string): string {
+  const max = 400 - url.length - 1;
+  if (body.length <= max) return body + '\n' + url;
+  let cut = '';
+  for (const ch of Array.from(body)) {
+    if (cut.length + ch.length > max - 3) break;
+    cut += ch;
+  }
+  return cut + '...\n' + url;
 }
 
 interface InfoRow {
@@ -85,7 +95,11 @@ interface InfoRow {
 }
 
 function infoRows(doc: ShareCompetition, ct: CompetitionsT, now: number): InfoRow[] {
-  const rows: InfoRow[] = [{ label: ct('matchPeriod'), value: formatInAppDates(doc) }];
+  const rows: InfoRow[] = [];
+  // 取消、延期也分享得出去（收到的人讀得到），卡片與文字要看得出狀態。
+  if (doc.status === 'cancelled') rows.push({ label: ct('statusLabel'), value: ct('cancelled') });
+  if (doc.status === 'postponed') rows.push({ label: ct('statusLabel'), value: ct('compPostponed') });
+  rows.push({ label: ct('matchPeriod'), value: formatInAppDates(doc) });
   const venue = venueText(doc);
   if (venue) rows.push({ label: ct('venue'), value: venue });
   if (isRecruiting(doc, now)) rows.push({ label: ct('boardDeadline'), value: formatTaipeiShort(doc.regCloseAt) });
@@ -102,9 +116,8 @@ export function buildCompetitionShareAltText(
     '＜' + doc.name + '＞',
     ct('category') + '：' + categoryLabel(ct, doc.category),
     ...infoRows(doc, ct, now).map((row) => row.label + '：' + row.value),
-    url,
   ];
-  return truncateAltText(lines.join('\n'));
+  return truncateAltText(lines.join('\n'), url);
 }
 
 /** 封面：主辦上傳的 1200×450；沒有就用運動預設圖（同活動分享的 og 圖）。 */

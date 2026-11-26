@@ -101,10 +101,25 @@ describe('替代文字與卡片', () => {
     expect(closed).not.toContain('報名截止');
   });
 
-  it('替代文字超過 400 字截到 397＋...（碼點截斷）', () => {
+  it('替代文字超過 400 字：只截內文、網址完整留在最後（碼點截斷，不切半個字）', () => {
     const text = buildCompetitionShareAltText(doc({ name: '😀'.repeat(300) }), url, ct, NOW);
-    expect(text.endsWith('...')).toBe(true);
-    expect(Array.from(text).length).toBe(400);
+    expect(text.length).toBeLessThanOrEqual(400);
+    expect(text.endsWith('...\n' + url)).toBe(true);
+    expect(text).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+    const venues = Array.from({ length: 10 }, (_, i) => ({ name: `${i}`.repeat(40) }));
+    const many = buildCompetitionShareAltText(doc({ venues }), url, ct, NOW);
+    expect(many.length).toBeLessThanOrEqual(400);
+    expect(many.endsWith('...\n' + url)).toBe(true);
+    const copyUrl = buildCompetitionCopyUrl(CID);
+    expect(buildCompetitionShareAltText(doc({ venues }), copyUrl, ct, NOW).endsWith('\n' + copyUrl)).toBe(true);
+    expect(buildCompetitionShareAltText(doc(), url, ct, NOW).endsWith('\n' + url)).toBe(true);
+  });
+
+  it('取消、延期列狀態；主辦提前結束不列報名截止', () => {
+    expect(buildCompetitionShareAltText(doc({ status: 'cancelled' }), url, ct, NOW)).toContain('狀態：已取消');
+    expect(JSON.stringify(buildCompetitionFlexMessage(doc({ status: 'postponed' }), url, ct, NOW))).toContain('已延期');
+    expect(buildCompetitionShareAltText(doc(), url, ct, NOW)).not.toContain('狀態');
+    expect(isRecruiting(doc({ endedAt: NOW - 1 }), NOW)).toBe(false);
   });
 
   it('Flex：分類、名稱、期間、場地、截止、查看賽事；不放主辦、聯絡、隊伍', () => {
