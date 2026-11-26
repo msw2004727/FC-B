@@ -97,6 +97,17 @@ describe('B3 已有賽程時產生賽程先確認', () => {
   });
 });
 
+describe('A 組審查 P3：排賽程頁結束後收起、清除賽程後不再問取代', () => {
+  it('主辦手動結束：排賽程頁顯示賽事已結束與回賽事頁，沒有表單', () => {
+    const env = screenEnv('real-host-schedule');
+    const bundle = env.bundle!;
+    draw({ ...env, bundle: { ...bundle, competition: { ...bundle.competition!, endedAt: NOW - 1000, endedBy: 'host' } } }, HostSchedulePage);
+    expect(screen.getByText('賽事已結束，不能再修改')).toBeTruthy();
+    expect(hasButton('回賽事頁')).toBe(true);
+    expect(hasButton('預覽')).toBe(false);
+  });
+});
+
 describe('B10 公開清單讀取失敗', () => {
   it('不說「目前沒有賽事」，顯示讀取失敗與重試；重試成功後恢復', async () => {
     const repo = createFakeCpRepo({ launch: { isPublic: true, bannedWords: [] }, competitions: [] });

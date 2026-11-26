@@ -489,6 +489,29 @@ describe('同分查詢、裁定與恢復', () => {
     });
   });
 
+  it('A 組審查 P2-1：主辦手動結束後仍看得到同分比較（explainTie 不看結束），但沒有裁定表單；下架時連同分入口都收', async () => {
+    const explainTie = vi.fn(async () => ({ ...explained, pending: true, steps: explained.steps.map((step) => ({ ...step, split: false })) }));
+    const ended = taipeiMs(2027, 1, 11, 10, 0);
+    draw(detailEnv({
+      actor: hostActor,
+      staff: { uid: 'uid_host', roles: ['host'] },
+      actions: { ...idleActions(), explainTie },
+      competitionPatch: { endedAt: ended, endedBy: 'host' },
+    }), CompetitionDetailPage);
+    fireEvent.click(screen.getAllByRole('button', { name: '同分' })[0]!);
+    expect(await screen.findByText('全部相同，待主辦裁定')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '儲存' })).toBeNull();
+    expect(screen.queryByLabelText(/裁定原因/)).toBeNull();
+    cleanup();
+    draw(detailEnv({
+      actor: hostActor,
+      staff: { uid: 'uid_host', roles: ['host'] },
+      actions: { ...idleActions(), explainTie },
+      competitionPatch: { hidden: true },
+    }), CompetitionDetailPage);
+    expect(screen.queryByRole('button', { name: '同分' })).toBeNull();
+  });
+
   it('換查另一群時裁定方式回到主辦裁定', async () => {
     const explainTie = vi.fn(async () => ({
       ...explained,

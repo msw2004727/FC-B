@@ -123,13 +123,14 @@ export function ScoringScreen({
   useEffect(() => {
     if (!endedCheck) return undefined;
     let alive = true;
+    setEnded(null);
     void endedCheck().then((value) => { if (alive) setEnded(value); }, () => { if (alive) setEnded(false); });
     return () => {
       alive = false;
     };
-    // 進頁問一次。
+    // 換場次重問一次。結束後本機未送的紀錄也送不出去：後端結束後本來就確認不了。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cid, mtId]);
   const staffAccess = view.loading || view.loadError ? null : scoreAccess({
     roles: view.staff.roles,
     matchIds: view.staff.matchIds,

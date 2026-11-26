@@ -11,7 +11,7 @@ import { PageSpinner } from '@/ui/PageSpinner';
 import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { toast } from '@/ui/Toast';
-import { canHostOrCo, isCpAdmin } from '../access';
+import { canHostOrCo, hostEditsOpen, isCpAdmin } from '../access';
 import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import type { CpGenerateScheduleInput } from '../data/cp-callables';
@@ -281,6 +281,16 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
     return (
       <CpFrame title={ct('hostSchedTitle')}>
         <CpGate icon={<LockIcon />} text={ct('reason.NOT_HOST')}>
+          <Button variant="primary" onClick={() => route(`/competitions/${cid}`)}>{ct('backToCompetition')}</Button>
+        </CpGate>
+      </CpFrame>
+    );
+  }
+  // 已結束：產生與清除賽程都先過後端 assertNotEnded（末場確認 3 天寬限、管理員不受限，#4 同一條）。
+  if (!hostEditsOpen(competition, isCpAdmin(env.actor.role), env.now ?? Date.now())) {
+    return (
+      <CpFrame title={ct('hostSchedTitle')}>
+        <CpGate icon={<LockIcon />} text={ct('reason.COMPETITION_ENDED')}>
           <Button variant="primary" onClick={() => route(`/competitions/${cid}`)}>{ct('backToCompetition')}</Button>
         </CpGate>
       </CpFrame>

@@ -420,7 +420,7 @@ function SectionBody({
       onDelete={canDelete ? (cid, name) => void onDelete(cid, name) : undefined}
       filtered={tab !== 'all' || status !== 'all' || onlyMine}
       statusSlot={statusSlot}
-      onRetry={publicFailed && phase === 'ready' ? () => { setPublicFailed(false); setReloadTick((n) => n + 1); } : undefined}
+      onRetry={publicFailed && phase === 'ready' ? () => setReloadTick((n) => n + 1) : undefined}
     />
     {showRemoval ? <MyDataRemoval ct={ct} actions={actions} onRemoved={() => void reloadMine()} /> : null}
     {/* 換帳號或權限變了不再顯示（審查 P2-2） */}

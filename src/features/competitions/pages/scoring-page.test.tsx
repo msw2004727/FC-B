@@ -242,6 +242,15 @@ describe('正式記分頁權限', () => {
       </LocationProvider>,
     );
     expect(await screen.findByRole('button', { name: '開賽' })).toBeTruthy();
+    cleanup();
+    // 讀不到賽事（例如網路失敗）：當作沒結束，照常給記分板
+    const failed = await deps({ staffRoles: ['scorer'], matchIds: [MT] });
+    render(
+      <LocationProvider>
+        <ScoringScreen cid={CID} mtId={MT} deps={failed.deps} nowMs={NOW} endedCheck={async () => { throw new Error('offline'); }} />
+      </LocationProvider>,
+    );
+    expect(await screen.findByRole('button', { name: '開賽' })).toBeTruthy();
   });
 
   it('指派過期不開記分板', async () => {

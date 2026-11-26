@@ -1102,7 +1102,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                 docs={docs}
                 crests={entries}
                 divisions={divisions}
-                canHost={tieHost}
+                canHost={noticeHost}
+                canRule={tieHost}
                 cid={cid}
                 actions={env.actions}
                 summary={fullSchedule ?? summary}
