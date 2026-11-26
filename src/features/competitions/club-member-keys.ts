@@ -51,7 +51,8 @@ async function readTeamIdField(teamId: string): Promise<unknown> {
 }
 
 /**
- * 正式頁的換算（CpInjectedEnv.clubKeys）。讀取失敗只回文件 id 一把、不寫快取，下次重讀。
+ * 正式頁的換算（CpInjectedEnv.clubKeys）。讀取失敗丟出錯誤、不寫快取，下次重讀；
+ * 頁面要分得出「讀不到」與「不是成員」（TEAMID 審查 P3-2：讀不到不能說成只有成員可以操作）。
  * reader 只給測試換掉 Firestore。
  */
 export async function loadClubMemberKeys(
@@ -80,38 +81,44 @@ export async function loadClubMemberKeys(
       },
     );
   }
-  return request.then((keys) => [...keys], () => [teamId]);
+  return request.then((keys) => [...keys]);
 }
 
 export type ClubKeysPort = (uid: string | null, teamId: string) => Promise<readonly string[]>;
 
 /**
- * 頁面用：回傳這支報隊的成員鍵與是否還在換算。
+ * 頁面用：回傳這支報隊的成員鍵、是否還在換算、換算是否讀取失敗與重試。
  * 不需換算（成員清單已含文件 id、清單是空的、沒注入 clubKeys）時同步回 [teamId]，不讀網路。
+ * 讀取失敗時 keys 只有文件 id 一把、failed 為 true；retry 重讀一次。
  */
 export function useClubMemberKeys(
   actor: { uid: string | null; memberClubIds: readonly string[] },
   teamId: string,
   port: ClubKeysPort | undefined,
-): { keys: readonly string[]; pending: boolean } {
+): { keys: readonly string[]; pending: boolean; failed: boolean; retry: () => void } {
   const needLookup = !!port && !!teamId && actor.memberClubIds.length > 0 && !actor.memberClubIds.includes(teamId);
-  const [loaded, setLoaded] = useState<{ uid: string | null; teamId: string; keys: readonly string[] } | null>(null);
+  const [loaded, setLoaded] = useState<{ uid: string | null; teamId: string; keys: readonly string[]; failed: boolean } | null>(null);
+  const [tick, setTick] = useState(0);
+  const retry = (): void => {
+    setLoaded(null);
+    setTick((n) => n + 1);
+  };
 
   useEffect(() => {
     if (!needLookup || !port) return undefined;
     let alive = true;
     const uid = actor.uid;
     void port(uid, teamId).then(
-      (keys) => { if (alive) setLoaded({ uid, teamId, keys }); },
-      () => { if (alive) setLoaded({ uid, teamId, keys: [teamId] }); },
+      (keys) => { if (alive) setLoaded({ uid, teamId, keys, failed: false }); },
+      () => { if (alive) setLoaded({ uid, teamId, keys: [teamId], failed: true }); },
     );
     return () => {
       alive = false;
     };
-  }, [needLookup, port, actor.uid, teamId]);
+  }, [needLookup, port, actor.uid, teamId, tick]);
 
-  if (!teamId) return { keys: [], pending: false };
-  if (!needLookup) return { keys: [teamId], pending: false };
-  if (loaded && loaded.uid === actor.uid && loaded.teamId === teamId) return { keys: loaded.keys, pending: false };
-  return { keys: [teamId], pending: true };
+  if (!teamId) return { keys: [], pending: false, failed: false, retry };
+  if (!needLookup) return { keys: [teamId], pending: false, failed: false, retry };
+  if (loaded && loaded.uid === actor.uid && loaded.teamId === teamId) return { keys: loaded.keys, pending: false, failed: loaded.failed, retry };
+  return { keys: [teamId], pending: true, failed: false, retry };
 }

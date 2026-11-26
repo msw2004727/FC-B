@@ -513,12 +513,18 @@ export function ScorerMatchesScreen(props: {
   enterLabel?: string;
   onEnter?: (id: string) => void;
   onBack?: () => void;
+  /** 讀取失敗：用 CpGate 的讀取失敗（圓圈 i＋重試），不畫成「沒有場次」（文案盤點 B12）。 */
+  failed?: { message: string; retryLabel: string; onRetry: () => void } | null;
 } = {}): JSX.Element {
   const days = props.days ?? fixtureScorerDays();
   const enterLabel = props.enterLabel ?? copy.enterScore;
   return (
     <S4bFrame title={props.title ?? copy.scorerTitle} screen="scorer-my-matches" onBack={props.onBack}>
-      {days.length === 0 ? (
+      {props.failed ? (
+        <CpGate icon={<InfoIcon />} text={props.failed.message}>
+          <Button variant="primary" onClick={props.failed.onRetry}>{props.failed.retryLabel}</Button>
+        </CpGate>
+      ) : days.length === 0 ? (
         <S4bCard><p class="s4b-mempty">{props.empty ?? ''}</p></S4bCard>
       ) : null}
       {days.map((group) => {

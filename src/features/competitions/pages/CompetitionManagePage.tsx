@@ -27,7 +27,7 @@ import { splitCount } from '../data/host-board';
 import { dangerConfirm } from '../ui/danger-confirm';
 import { CpError, CpLoadFailed, errorOf, loadFailOf } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
-import { CpCard, CpFrame, CpI18nPending, DownIcon, NextIcon } from '../ui/shell';
+import { AlertIcon, CpCard, CpFrame, CpI18nPending, DownIcon, NextIcon } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
 import { CoverField, type CoverShown } from '../ui/cover-field';
 import { coverInput, shownCover } from '../data/cover';
@@ -714,6 +714,10 @@ function ManageView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         >
           <div class="cps-sheet-body">
             <p class="cps-note">{rejectEntry.name}　{divisionName(rejectEntry.dvId)}</p>
+            {/* 文案盤點 B2：後端拒絕時清空該隊名單（entry.ts reviewEntry prepareClearRoster），先講清楚；沒有球員不畫 */}
+            {rejectEntry.rosterCount > 0 ? (
+              <p class="cps-note cps-del-warn"><AlertIcon /><span>{ct('rejectClearsRoster', { n: rejectEntry.rosterCount })}</span></p>
+            ) : null}
             <Textarea
               label={ct('rejectReason')}
               required

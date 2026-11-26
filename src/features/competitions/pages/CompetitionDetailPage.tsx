@@ -491,7 +491,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       if (!mounted.current || scorerToken.current !== token) return;
       setScorerState({
         dvId,
-        tables: { scorers: [], cards: [], empty: true, capped: false, stalled: false },
+        tables: { scorers: [], cards: [], empty: true, capped: false, stalled: false, failed: true },
       });
     });
   }

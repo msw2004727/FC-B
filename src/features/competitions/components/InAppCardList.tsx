@@ -9,6 +9,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
+import { Button } from '@/ui/Button';
 import { MenuSelect } from '../ui/menu-select';
 import type { CompetitionsT } from '../i18n';
 import type { InAppListCard, InAppStatusFilter, InAppStatusLine } from '../data/list-cards';
@@ -185,6 +186,7 @@ export function InAppCardList({
   onDelete,
   filtered,
   statusSlot,
+  onRetry,
 }: {
   cards: readonly InAppListCard[];
   ct: CompetitionsT;
@@ -200,6 +202,8 @@ export function InAppCardList({
   filtered?: boolean;
   /** 賽事頁分類分段右邊那一格；有就把狀態選單畫進去。 */
   statusSlot?: HTMLElement | null;
+  /** 公開清單讀取失敗：清單是空的時不說「目前沒有賽事」，改顯示讀取失敗與重試（文案盤點 B10）。 */
+  onRetry?: () => void;
 }): JSX.Element {
   const onlyMineId = useId();
   const listRef = useRef<HTMLDivElement>(null);
@@ -282,7 +286,12 @@ export function InAppCardList({
         <InCard key={card.cid} card={card} ct={ct} imgRank={card.cover ? rank++ : -1} lean={lean} onOpen={onOpen} onDelete={onDelete} />
       ))}
       {/* 站長 11-21 預設站內後，站內 0 場時訪客第一眼不能是空白（顧問 11-21）：一行空狀態，沿用外部清單的 cpl-xmsg。 */}
-      {cards.length === 0 ? <p class="cpl-xmsg">{filtered ? ct('listEmptyFiltered') : ct('listEmpty')}</p> : null}
+      {cards.length === 0 && onRetry ? (
+        <div class="cpl-xmsg" role="alert">
+          <p>{ct('loadFailed')}</p>
+          <Button variant="secondary" size="sm" onClick={onRetry}>{ct('retry')}</Button>
+        </div>
+      ) : cards.length === 0 ? <p class="cpl-xmsg">{filtered ? ct('listEmptyFiltered') : ct('listEmpty')}</p> : null}
     </div>
   );
 }

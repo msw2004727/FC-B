@@ -703,5 +703,8 @@
   "shareClipboardFailed": "複製失敗，請手動複製",
   "ageNotEligibleRange": "年齡不符合這個組別（限 {minAge}–{maxAge} 歲）",
   "keepMatch": "不取消",
-  "rosterCountShort": "{n}／{max} 人"
+  "rosterCountShort": "{n}／{max} 人",
+  "rejectClearsRoster": "這隊已登錄的 {n} 位球員會一併移除，無法復原",
+  "schedReplaceAsk": "這個組別已有 {n} 場賽程，\n產生後會全部取代；\n改期與記分員指派要重做。確定產生？",
+  "flexReasonPublic": "原因會自動發成公告"
 }

@@ -153,6 +153,11 @@ export interface DivisionDoc {
    * 進行中與已結束首屏不讀組別時，這個欄位不在手上。
    */
   ranking: StandingRanking | null;
+  /**
+   * divisions.schedule.matchCount：上次產生的場次數（clearSchedule 會刪掉 schedule，回 0）。
+   * 只給「產生賽程會取代 N 場」用；沒讀到組別或舊資料是 undefined。
+   */
+  scheduledMatches?: number;
 }
 
 export interface EntryDoc {

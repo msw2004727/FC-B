@@ -217,7 +217,9 @@ function HostMatchesView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX
   if (!allowedOf(env, competition, bundle?.staff ?? null)) {
     return (
       <CpFrame title={ct('hostListTitle')}>
-        <CpGate icon={<LockIcon />} text={ct('reason.NOT_HOST')} />
+        <CpGate icon={<LockIcon />} text={ct('reason.NOT_HOST')}>
+          <Button variant="primary" onClick={() => route(`/competitions/${cid}`)}>{ct('backToCompetition')}</Button>
+        </CpGate>
       </CpFrame>
     );
   }

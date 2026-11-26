@@ -28,9 +28,10 @@ import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { ctOrKey, useCompetitionsT } from '../i18n';
 import { LiveBoundary } from '../live';
-import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText } from '../ui/feedback';
+import { CpError, CpGate, CpLoadFailed, errorOf, loadFailOf, reasonText } from '../ui/feedback';
 import { DateField } from '../ui/fields';
-import { CpCard, CpFrame, CpI18nPending, PlusIcon, TrashIcon } from '../ui/shell';
+import { CpCard, CpFrame, CpI18nPending, LockIcon, PlusIcon, TrashIcon } from '../ui/shell';
+import { dangerConfirm } from '../ui/danger-confirm';
 import { rememberCompName } from '../data/comp-name-hint';
 
 interface HeldPreview {
@@ -199,6 +200,14 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
 
   async function generate(): Promise<void> {
     if (lock.current || !held) return;
+    // 文案盤點 B3：這組已有賽程時，產生會整組取代、場次 ID 全換（後端 generateSchedule 先刪舊場次），先跳危險確認。
+    const replacing = divisions.find((division) => division.dvId === held.value.dvId)?.scheduledMatches ?? 0;
+    if (replacing > 0) {
+      lock.current = true;
+      const ok = await dangerConfirm(ct('schedReplaceAsk', { n: replacing }), { okText: ct('schedGenerate'), danger: true });
+      lock.current = false;
+      if (!ok) return;
+    }
     lock.current = true;
     setBusy(true);
     setFormError(null);
@@ -241,6 +250,11 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
     setBusy(true);
     try {
       await env.actions.clearSchedule({ cid, dvId });
+      // 清掉之後這組沒有賽程，產生時不必再問要不要取代。
+      setBundle((current) => (current ? {
+        ...current,
+        divisions: current.divisions.map((division) => (division.dvId === dvId ? { ...division, scheduledMatches: 0 } : division)),
+      } : current));
       setFormError(null);
       setClearOpen(false);
       clearHeld();
@@ -266,7 +280,9 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
   if (!allowed) {
     return (
       <CpFrame title={ct('hostSchedTitle')}>
-        <p class="cps-note" role="alert">{ct('reason.NOT_HOST')}</p>
+        <CpGate icon={<LockIcon />} text={ct('reason.NOT_HOST')}>
+          <Button variant="primary" onClick={() => route(`/competitions/${cid}`)}>{ct('backToCompetition')}</Button>
+        </CpGate>
       </CpFrame>
     );
   }
@@ -274,7 +290,9 @@ function HostScheduleView({ env, cid }: { env: CpInjectedEnv; cid: string }): JS
   if (competition.hidden && !isCpAdmin(env.actor.role)) {
     return (
       <CpFrame title={ct('hostSchedTitle')}>
-        <p class="cps-note" role="alert">{ct('reason.COMPETITION_HIDDEN')}</p>
+        <CpGate icon={<LockIcon />} text={ct('reason.COMPETITION_HIDDEN')}>
+          <Button variant="primary" onClick={() => route(`/competitions/${cid}`)}>{ct('backToCompetition')}</Button>
+        </CpGate>
       </CpFrame>
     );
   }

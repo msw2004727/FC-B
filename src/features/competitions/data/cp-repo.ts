@@ -296,7 +296,7 @@ function noticesOf(value: unknown): CompetitionNotice[] {
   return out;
 }
 
-function divisionFromDoc(id: string, raw: Record<string, unknown>): DivisionDoc | null {
+export function divisionFromDoc(id: string, raw: Record<string, unknown>): DivisionDoc | null {
   const name = str(raw.name);
   const playersOnField = oneOf<`${PlayersOnField}`>(String(raw.playersOnField), PLAYERS.map(String) as `${PlayersOnField}`[]);
   const onField = playersOnField == null ? null : Number(playersOnField) as PlayersOnField;
@@ -322,6 +322,7 @@ function divisionFromDoc(id: string, raw: Record<string, unknown>): DivisionDoc 
     approvedCount: num(raw.approvedCount) ?? 0,
     order: num(raw.order) ?? 0,
     ranking: rankingOf(raw.schedule),
+    scheduledMatches: isRecord(raw.schedule) ? (num(raw.schedule.matchCount) ?? 0) : 0,
   };
 }
 

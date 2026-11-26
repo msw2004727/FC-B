@@ -415,7 +415,10 @@ describe('射手榜分頁', () => {
       }),
     }), CompetitionDetailPage);
     fireEvent.click(await screen.findByRole('tab', { name: '射手榜' }));
-    expect(await screen.findByText('還沒有已確認的比賽紀錄')).toBeTruthy();
+    // 文案盤點 B11：讀取失敗不說「還沒有紀錄」，顯示讀取失敗與重試
+    expect(await screen.findByText('讀取失敗')).toBeTruthy();
+    expect(screen.queryByText('還沒有已確認的比賽紀錄')).toBeNull();
+    expect(screen.getByRole('button', { name: '重試' })).toBeTruthy();
     cleanup();
 
     draw(liveEnv({

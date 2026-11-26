@@ -141,6 +141,9 @@ function SectionBody({
   const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   const [phase, setPhase] = useState<'loading' | 'hidden' | 'ready'>('loading');
+  // 公開清單讀取失敗（不是 0 場）。重試時把 reloadTick 加一，重跑同一個讀取 effect。
+  const [publicFailed, setPublicFailed] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
   const [baseMine, setBaseMine] = useState<MineListRow[]>([]);
   const [hosted, setHosted] = useState<CompetitionDoc[]>([]);
   const [publicDocs, setPublicDocs] = useState<CompetitionDoc[]>([]);
@@ -245,6 +248,7 @@ function SectionBody({
       // 公開清單讀取失敗而畫面上是快照：保留快照（不把清單換成空的），也不寫。
       if (!publicOk && snapShown.current) return;
       fresh.current = { uid: actor.uid, scope, publicOk, mineOk };
+      setPublicFailed(!publicOk);
       snapShown.current = false;
       setSnap(null);
       setBaseMine(dedupeMine(namedMine));
@@ -265,7 +269,7 @@ function SectionBody({
     };
     // onGate 走 ref。repKey 不在這裡，避免俱樂部到了就重讀。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actor.authPending, actor.rolePending, actor.role, actor.uid, repo]);
+  }, [actor.authPending, actor.rolePending, actor.role, actor.uid, repo, reloadTick]);
 
   useEffect(() => {
     if (!hostQuery) return;
@@ -416,6 +420,7 @@ function SectionBody({
       onDelete={canDelete ? (cid, name) => void onDelete(cid, name) : undefined}
       filtered={tab !== 'all' || status !== 'all' || onlyMine}
       statusSlot={statusSlot}
+      onRetry={publicFailed && phase === 'ready' ? () => { setPublicFailed(false); setReloadTick((n) => n + 1); } : undefined}
     />
     {showRemoval ? <MyDataRemoval ct={ct} actions={actions} onRemoved={() => void reloadMine()} /> : null}
     {/* 換帳號或權限變了不再顯示（審查 P2-2） */}

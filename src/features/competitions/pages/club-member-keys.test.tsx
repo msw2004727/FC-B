@@ -130,14 +130,14 @@ describe('loadClubMemberKeys', () => {
     expect(await loadClubMemberKeys(memberActor.uid, 'club_a', reader)).toEqual(['club_a', 'legacy_a']);
     expect(reader).not.toHaveBeenCalled();
   });
-  it('補讀一次後記住；讀失敗只回文件 id 且不記住', async () => {
+  it('補讀一次後記住；讀失敗丟出錯誤且不記住（TEAMID 審查 P3-2）', async () => {
     const reader = vi.fn(async () => 'legacy_a');
     expect(await loadClubMemberKeys('u1', 'club_a', reader)).toEqual(['club_a', 'legacy_a']);
     expect(await loadClubMemberKeys('u1', 'club_a', reader)).toEqual(['club_a', 'legacy_a']);
     expect(reader).toHaveBeenCalledTimes(1);
     const failing = vi.fn(async () => { throw new Error('offline'); });
-    expect(await loadClubMemberKeys('u1', 'club_b', failing)).toEqual(['club_b']);
-    expect(await loadClubMemberKeys('u1', 'club_b', failing)).toEqual(['club_b']);
+    await expect(loadClubMemberKeys('u1', 'club_b', failing)).rejects.toThrow('offline');
+    await expect(loadClubMemberKeys('u1', 'club_b', failing)).rejects.toThrow('offline');
     expect(failing).toHaveBeenCalledTimes(2);
   });
 });

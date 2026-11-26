@@ -379,7 +379,8 @@ describe('賽事第 2 步畫面', () => {
     expect(view.container.textContent ?? '').toContain('真實姓名僅供主辦核對資格，不會公開。');
     expect(view.container.textContent ?? '').not.toContain('公開顯示：');
     fireEvent.click(screen.getByRole('button', { name: '送出' }));
-    expect((await screen.findByRole('alert')).textContent).toBe('請填寫真實姓名');
+    // 文案盤點 B14：錯誤標在真實姓名那一欄
+    await waitFor(() => expect(view.container.querySelector('[data-field-error]')?.textContent).toBe('請填寫真實姓名'));
     expect(required.joinRoster).not.toHaveBeenCalled();
     fireEvent.input(screen.getByRole('textbox', { name: /真實姓名/ }), { target: { value: '王小範' } });
     fireEvent.click(screen.getByRole('checkbox', { name: '我了解名單會公開顯示暱稱與背號' }));

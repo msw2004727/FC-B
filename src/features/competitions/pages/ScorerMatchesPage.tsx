@@ -93,6 +93,7 @@ function ScorerView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [venues, setVenues] = useState<CompetitionDoc['venues']>([]);
   // 賽事已結束：不給進入記分（記分盤點 S1；記完主辦也確認不了）。
   const [ended, setEnded] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     if (env.actor.authPending) return undefined;
@@ -132,14 +133,19 @@ function ScorerView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     return () => {
       alive = false;
     };
-  }, [cid, env.actor.authPending, env.actor.uid, env.repo]);
+  }, [cid, env.actor.authPending, env.actor.uid, env.repo, reloadTick]);
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const back = () => route(`/competitions/${cid}`);
   if (env.actor.authPending || phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
   if (phase === 'error') {
     return (
-      <ScorerMatchesScreen title={ct('myMatches')} days={[]} empty={ct('loadFailed')} onBack={back} />
+      <ScorerMatchesScreen
+        title={ct('myMatches')}
+        days={[]}
+        onBack={back}
+        failed={{ message: ct('loadFailed'), retryLabel: ct('retry'), onRetry: () => setReloadTick((n) => n + 1) }}
+      />
     );
   }
   const now = env.now ?? Date.now();
