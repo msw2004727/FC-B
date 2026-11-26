@@ -6,21 +6,26 @@ const dataMocks = vi.hoisted(() => ({
   isSeenLocal: vi.fn(),
   isSportPrefsEnabled: vi.fn(),
   markSeenLocal: vi.fn(),
+  SPORT_PREFS_OFF_KEY: 'fcb:spOff',
 }));
+const modalLoads = vi.hoisted(() => ({ n: 0 }));
 const callableMocks = vi.hoisted(() => ({
   saveSportPrefs: vi.fn(),
 }));
 
 vi.mock('./data', () => dataMocks);
 vi.mock('./callables', () => callableMocks);
-vi.mock('./SportPrefsModal', () => ({
-  default: () => createElement('div', { 'data-testid': 'spf-modal' }),
-}));
+vi.mock('./SportPrefsModal', () => {
+  modalLoads.n += 1;
+  const M = () => createElement('div', { 'data-testid': 'spf-modal' });
+  return { default: M, SportPrefsModal: M };
+});
 
 import { SportPrefsGate } from './SportPrefsGate';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sessionStorage.clear();
   window.history.replaceState({}, '', '/');
   document.body.innerHTML = '';
   dataMocks.isSeenLocal.mockReturnValue(false);
@@ -51,6 +56,20 @@ describe('SportPrefsGate', () => {
     await waitFor(() => expect(dataMocks.isSportPrefsEnabled).toHaveBeenCalled());
     expect(screen.queryByTestId('spf-modal')).toBeNull();
     expect(dataMocks.markSeenLocal).not.toHaveBeenCalled();
+  });
+
+  it('開關關時記 sessionStorage、不下載彈窗本體（顧問 §3.809）', async () => {
+    dataMocks.isSportPrefsEnabled.mockResolvedValue(false);
+    render(<SportPrefsGate uid="u1" home />);
+    await waitFor(() => expect(sessionStorage.getItem('fcb:spOff')).toBe('1'));
+    expect(modalLoads.n).toBe(0);
+  });
+
+  it('開關開時清掉 sessionStorage 記號', async () => {
+    sessionStorage.setItem('fcb:spOff', '1');
+    render(<SportPrefsGate uid="u1" home />);
+    await waitFor(() => expect(screen.getByTestId('spf-modal')).toBeTruthy());
+    expect(sessionStorage.getItem('fcb:spOff')).toBeNull();
   });
 
   it('home 且路徑不是 / 不顯示且不 markSeenLocal', async () => {

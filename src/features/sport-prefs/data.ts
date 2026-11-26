@@ -3,6 +3,8 @@ import { SPORTS, type SportOption } from '@/features/events/data/sports';
 import type { Firestore } from 'firebase/firestore';
 
 export const SPORT_PREFS_MAX = 20;
+/** 開關關時記在 sessionStorage 的鍵；首頁 SportPrefsLoader（入口）寫死同字串，data.test 鎖一致。 */
+export const SPORT_PREFS_OFF_KEY = 'fcb:spOff';
 
 export function favPool(): SportOption[] {
   return SPORTS.filter((s) => s.key !== 'other');

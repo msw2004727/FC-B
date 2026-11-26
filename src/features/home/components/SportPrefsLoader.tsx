@@ -8,6 +8,8 @@ export function SportPrefsLoader({ uid, due }: { uid: string | null; due?: boole
   const [Comp, setComp] = useState<Gate | null>(null);
   useEffect(() => {
     if (!uid || !due) return;
+    // 開關關時 Gate 會記 'fcb:spOff'（同 sport-prefs/data.ts 的 SPORT_PREFS_OFF_KEY，測試鎖一致）：同分頁之後不再下載
+    try { if (sessionStorage.getItem('fcb:spOff')) return; } catch { /* 照常 */ }
     let off = false;
     const id = setTimeout(() => {
       import('@/features/sport-prefs/SportPrefsGate').then((m) => { if (!off) setComp(() => m.SportPrefsGate); }, () => {});

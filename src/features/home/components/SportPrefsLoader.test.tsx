@@ -11,6 +11,7 @@ import { SportPrefsLoader } from './SportPrefsLoader';
 
 beforeEach(() => {
   vi.useFakeTimers();
+  sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -37,5 +38,13 @@ describe('SportPrefsLoader', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(screen.getByTestId('gate').textContent).toBe('u1:home');
+  });
+
+  it('同分頁已記開關關（fcb:spOff）就不下載 Gate', async () => {
+    sessionStorage.setItem('fcb:spOff', '1');
+    render(<SportPrefsLoader uid="u1" due />);
+    await vi.advanceTimersByTimeAsync(1300);
+    await Promise.resolve();
+    expect(screen.queryByTestId('gate')).toBeNull();
   });
 });

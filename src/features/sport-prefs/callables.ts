@@ -1,4 +1,5 @@
-import type { Functions } from 'firebase/functions';
+import { callFn, registerMock, clearMocks } from '@/data/callables';
+import type { SaveSportPrefsRequest as ContractRequest } from '@/data/contract/callables';
 
 const SPORT_PREFS_CALL_TIMEOUT_MS = 10_000;
 
@@ -53,34 +54,18 @@ export function toSportPrefsCallError(err: unknown): SportPrefsCallError {
 
 export type SaveSportPrefsMockHandler = (data: Record<string, unknown>) => unknown | Promise<unknown>;
 
-let mockHandler: SaveSportPrefsMockHandler | null = null;
-
+/** 截圖台與測試用：VITE_CALLABLE_MODE=mock 時由 callFn 呼叫（走共用 mock 登錄）。 */
 export function registerSportPrefsMock(handler: SaveSportPrefsMockHandler): void {
-  mockHandler = handler;
+  registerMock('saveSportPrefs', async (req) => handler(req as unknown as Record<string, unknown>) as never);
 }
 
 export function clearSportPrefsMocks(): void {
-  mockHandler = null;
+  clearMocks();
 }
 
-function isMockMode(): boolean {
-  return import.meta.env.VITE_CALLABLE_MODE === 'mock';
-}
-
-async function liveTransport(data: Record<string, unknown>): Promise<unknown> {
-  const [{ httpsCallable }, { getFirebase }] = await Promise.all([
-    import('firebase/functions'),
-    import('@/data/firebase'),
-  ]);
-  const ctx = await getFirebase();
-  const callable = httpsCallable(ctx.functions as Functions, 'saveSportPrefs', { timeout: SPORT_PREFS_CALL_TIMEOUT_MS });
-  const result = await callable(data);
-  return result.data;
-}
-
-async function mockTransport(data: Record<string, unknown>): Promise<unknown> {
-  if (!mockHandler) throw new SportPrefsCallError('internal');
-  return mockHandler(data);
+/** 走共用 callFn（契約登錄、emulator 模式禁打正式 Functions、mock 模式），取代原本直接 httpsCallable（顧問 §3.809）。 */
+async function transport(data: Record<string, unknown>): Promise<unknown> {
+  return callFn('saveSportPrefs', data as unknown as ContractRequest, { timeout: SPORT_PREFS_CALL_TIMEOUT_MS });
 }
 
 function whitelist(req: SaveSportPrefsRequest): Record<string, unknown> {
@@ -104,7 +89,6 @@ function validateResult(data: unknown): SaveSportPrefsResult {
 
 export async function saveSportPrefs(req: SaveSportPrefsRequest): Promise<SaveSportPrefsResult> {
   const data = whitelist(req);
-  const transport = isMockMode() ? mockTransport : liveTransport;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new SportPrefsCallError('timeout')), SPORT_PREFS_CALL_TIMEOUT_MS);

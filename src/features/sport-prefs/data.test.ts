@@ -154,3 +154,13 @@ describe('運動清單與伺服器一致（FC functions/sport-catalog.js 鎖同�
     ]);
   });
 });
+
+describe('開關關閉記號鍵名', () => {
+  it('首頁 SportPrefsLoader 寫死的鍵與 SPORT_PREFS_OFF_KEY 相同', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const text = readFileSync(join(process.cwd(), 'src/features/home/components/SportPrefsLoader.tsx'), 'utf8');
+    const data = await import('./data');
+    expect(text).toContain(`sessionStorage.getItem('${data.SPORT_PREFS_OFF_KEY}')`);
+  });
+});
