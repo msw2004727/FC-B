@@ -10,6 +10,6 @@
     "fcCommit": "79296d983",
     "source": "FC claude/cp-s1-rules 79296d983:firestore.asia-main.rules（S1 賽事結束後禁止記分；基底 origin/main accb4ed40）",
     "copiedAt": "2026-11-27T00:00:00.000Z",
-    "note": "規則本文與整合版快照逐位元組相同。來源記在這裡；寫進規則檔頭會改變 sha256。"
+    "note": "規則本文與 source 所記 FC commit 的檔案逐位元組相同。來源記在這裡；寫進規則檔頭會改變 sha256。"
   }
 }
