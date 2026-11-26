@@ -10,7 +10,7 @@ import { UserTag } from '@/ui/UserTag';
 import { getAvatarInitial, sanitizeHttpAvatarUrl } from '@/features/profile/components/legacy/profile-legacy-helpers';
 
 import {
-  canClearLateCancelRedOf,
+  canClearLateCancelOf,
   canToggleRestrictionOf,
   formatLastLogin,
   lateCancelStatusText,
@@ -99,7 +99,7 @@ export function UserCard({
   const tagRoleKey = tagRole(user);
   const restrictBtn = canToggleRestrictionOf(actor, user);
   const lateCancelText = lateCancelStatusText(user);
-  const clearLateBtn = !!onClearLateCancelRed && canClearLateCancelRedOf(actor, user);
+  const clearLateBtn = !!onClearLateCancelRed && canClearLateCancelOf(actor, user);
 
   return (
     <div class="admin-user-card">

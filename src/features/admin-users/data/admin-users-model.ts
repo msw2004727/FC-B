@@ -180,9 +180,16 @@ export function lateCancelStatusText(user: AdminUser, nowMs: number = Date.now()
   return null;
 }
 
-/** 「解除臨取紅標」：該用戶是紅標且操作者有 admin.repair.no_show_adjust。 */
-export function canClearLateCancelRedOf(actor: AdminUserActor, target: AdminUser): boolean {
-  return target.lateCancelLevel === 'red' && actor.hasPermission(PERM_LATE_CANCEL_CLEAR);
+/** 解除臨取狀態（紅標或未過期黑標）：操作者有 admin.repair.no_show_adjust。 */
+export function canClearLateCancelOf(
+  actor: AdminUserActor,
+  target: AdminUser,
+  nowMs: number = Date.now(),
+): boolean {
+  if (!actor.hasPermission(PERM_LATE_CANCEL_CLEAR)) return false;
+  if (target.lateCancelLevel === 'red') return true;
+  if (target.lateCancelLevel !== 'black') return false;
+  return target.lateCancelUntilMs === null || target.lateCancelUntilMs > nowMs;
 }
 
 // ─── 篩選（A _getAdminUserFilters／_applyAdminUserFilters） ───

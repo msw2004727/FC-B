@@ -532,7 +532,7 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     expect(within(cardOf('Plain')).getByText('解除限制')).toBeTruthy();
   });
 
-  it('臨取紅標：顯示臨取狀態一行；有 no_show_adjust 且 Callable 已部署才有「解除臨取紅標」，確認後呼叫 clearLateCancelRed', async () => {
+  it('臨取紅標：顯示臨取狀態一行；有 no_show_adjust 且 Callable 已部署才有「解除臨取狀態」，確認後呼叫 clearLateCancelRed', async () => {
     const red = makeUser('r1', {
       name: 'Kai', lateCancelLevel: 'red', lateCancelTotal: 3, lateCancelLastMs: Date.parse('2026-11-20T10:00:00+08:00'),
     });
@@ -544,14 +544,14 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
     expect(cardOf('Kai').textContent).toContain('臨取狀態：紅標（3 次，最近 11/20）');
     expect(cardOf('Kai').querySelector('.uc-lc-red')).not.toBeNull();
-    expect(within(cardOf('Kai')).queryByRole('button', { name: '解除臨取紅標' })).toBeNull();
+    expect(within(cardOf('Kai')).queryByRole('button', { name: '解除臨取狀態' })).toBeNull();
     cleanup();
     // 已部署但沒有權限：沒有按鈕。
     mockUseViewer.mockReturnValue(viewerOf('admin', FULL_ADMIN_PERMS));
     mockLoadUsers.mockResolvedValue(loadOf([red]));
     render(<AdminUsersPage lateCancelClearEnabled />);
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
-    expect(within(cardOf('Kai')).queryByRole('button', { name: '解除臨取紅標' })).toBeNull();
+    expect(within(cardOf('Kai')).queryByRole('button', { name: '解除臨取狀態' })).toBeNull();
     cleanup();
     // 已部署且有權限：按下 → 確認 → 呼叫 → 狀態列消失。
     mockUseViewer.mockReturnValue(viewerOf('admin', perms));
@@ -560,16 +560,16 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     mockCallFn.mockResolvedValue({ ok: true });
     render(<AdminUsersPage lateCancelClearEnabled />);
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(2));
-    expect(within(cardOf('Normal')).queryByRole('button', { name: '解除臨取紅標' })).toBeNull();
-    expect(within(cardOf('Kai')).getByRole('button', { name: '解除臨取紅標' }).closest('.au-lc-row')).not.toBeNull();
-    fireEvent.click(within(cardOf('Kai')).getByRole('button', { name: '解除臨取紅標' }));
+    expect(within(cardOf('Normal')).queryByRole('button', { name: '解除臨取狀態' })).toBeNull();
+    expect(within(cardOf('Kai')).getByRole('button', { name: '解除臨取狀態' }).closest('.au-lc-row')).not.toBeNull();
+    fireEvent.click(within(cardOf('Kai')).getByRole('button', { name: '解除臨取狀態' }));
     await waitFor(() => expect(mockCallFn).toHaveBeenCalledWith('clearLateCancelRed', { targetUid: 'r1' }));
-    expect(mockConfirm).toHaveBeenCalledWith('確定要解除 Kai 的臨取紅標？');
+    expect(mockConfirm).toHaveBeenCalledWith('確定要解除 Kai 的臨取狀態？');
     await waitFor(() => expect(cardOf('Kai').textContent).not.toContain('臨取狀態'));
-    expect(toastMessages()).toContain('已解除臨取紅標');
+    expect(toastMessages()).toContain('已解除臨取狀態');
   });
 
-  it('臨取黑標：顯示臨取狀態一行（黑標），沒有「解除臨取紅標」按鈕', async () => {
+  it('臨取黑標：未過期顯示臨取狀態一行與「解除」鈕', async () => {
     const black = makeUser('b1', {
       name: 'Blackie', lateCancelLevel: 'black', lateCancelUntilMs: Date.now() + 7 * 86_400_000,
     });
@@ -579,7 +579,20 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     render(<AdminUsersPage lateCancelClearEnabled />);
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
     expect(cardOf('Blackie').textContent).toContain('臨取狀態：黑標，最晚');
-    expect(within(cardOf('Blackie')).queryByRole('button', { name: '解除臨取紅標' })).toBeNull();
+    expect(within(cardOf('Blackie')).getByRole('button', { name: '解除臨取狀態' }).closest('.au-lc-row')).not.toBeNull();
+  });
+
+  it('臨取黑標已過期：不顯示臨取狀態一行、沒有解除鈕', async () => {
+    const black = makeUser('b1', {
+      name: 'Blackie', lateCancelLevel: 'black', lateCancelUntilMs: Date.now() - 86_400_000,
+    });
+    const perms = [...FULL_ADMIN_PERMS, 'admin.repair.no_show_adjust'];
+    mockUseViewer.mockReturnValue(viewerOf('admin', perms));
+    mockLoadUsers.mockResolvedValue(loadOf([black]));
+    render(<AdminUsersPage lateCancelClearEnabled />);
+    await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
+    expect(cardOf('Blackie').textContent).not.toContain('臨取狀態');
+    expect(within(cardOf('Blackie')).queryByRole('button', { name: '解除臨取狀態' })).toBeNull();
   });
 
   it('「查看」與膠囊都導向該用戶名片（以 UID 為準）', async () => {

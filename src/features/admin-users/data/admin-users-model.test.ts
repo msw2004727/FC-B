@@ -14,6 +14,7 @@ import {
   buildRoleChangeOpLog,
   canAssignRole,
   canChangeRoleOf,
+  canClearLateCancelOf,
   canEditProfileOf,
   canManageTarget,
   canOpenEditor,
@@ -77,6 +78,43 @@ function user(patch: Partial<AdminUser> = {}): AdminUser {
 function actor(role: string, perms: readonly string[] | 'all', uid = 'u-actor'): AdminUserActor {
   return { uid, role, hasPermission: (code) => perms === 'all' || perms.includes(code) };
 }
+
+describe('canClearLateCancelOf', () => {
+  const withPermission = actor('admin', ['admin.repair.no_show_adjust']);
+
+  it('紅標有權限回 true', () => {
+    expect(canClearLateCancelOf(withPermission, user({ lateCancelLevel: 'red' }), NOW)).toBe(true);
+  });
+
+  it('黑標未過期回 true', () => {
+    expect(canClearLateCancelOf(withPermission, user({
+      lateCancelLevel: 'black',
+      lateCancelUntilMs: NOW + DAY,
+    }), NOW)).toBe(true);
+  });
+
+  it('黑標無到期回 true', () => {
+    expect(canClearLateCancelOf(withPermission, user({
+      lateCancelLevel: 'black',
+      lateCancelUntilMs: null,
+    }), NOW)).toBe(true);
+  });
+
+  it('黑標已過期回 false', () => {
+    expect(canClearLateCancelOf(withPermission, user({
+      lateCancelLevel: 'black',
+      lateCancelUntilMs: NOW - DAY,
+    }), NOW)).toBe(false);
+  });
+
+  it('正常回 false', () => {
+    expect(canClearLateCancelOf(withPermission, user(), NOW)).toBe(false);
+  });
+
+  it('沒權限回 false', () => {
+    expect(canClearLateCancelOf(actor('admin', []), user({ lateCancelLevel: 'red' }), NOW)).toBe(false);
+  });
+});
 
 function inputs(patch: Partial<AdminUserFilterInputs>): AdminUserFilterInputs {
   return { ...EMPTY_FILTER_INPUTS, ...patch };

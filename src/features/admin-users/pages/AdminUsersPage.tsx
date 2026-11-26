@@ -32,7 +32,7 @@ import {
   buildProfileEditOpLog,
   buildRestrictionOpLog,
   buildRoleChangeOpLog,
-  canClearLateCancelRedOf,
+  canClearLateCancelOf,
   canManageTarget,
   canToggleRestrictionOf,
   hasActiveFilters,
@@ -444,7 +444,7 @@ export default function AdminUsersPage({
   const handleClearLateCancelRed = async (user: AdminUser): Promise<void> => {
     if (busyRef.current) return;
     const target = findUser(user._docId);
-    if (!target || !canClearLateCancelRedOf(actor, target)) {
+    if (!target || !canClearLateCancelOf(actor, target)) {
       toast.show({ message: t('admin-users.toast.noPermission'), tone: 'error' });
       return;
     }
@@ -453,7 +453,7 @@ export default function AdminUsersPage({
     try {
       if (!await appConfirm(t('admin-users.lateCancel.confirm', { name: target.name }))) return;
       const latest = usersRef.current.find((item) => item._docId === target._docId) ?? null;
-      if (!latest || !canClearLateCancelRedOf(actorRef.current, latest)) return;
+      if (!latest || !canClearLateCancelOf(actorRef.current, latest)) return;
       try {
         await clearLateCancelRed(latest.uid);
       } catch (err: unknown) {
@@ -463,7 +463,7 @@ export default function AdminUsersPage({
         return;
       }
       setUsers((prev) => prev.map((item) =>
-        item._docId === target._docId ? { ...item, lateCancelLevel: null } : item));
+        item._docId === target._docId ? { ...item, lateCancelLevel: null, lateCancelUntilMs: null } : item));
       toast.show({ message: t('admin-users.lateCancel.cleared'), tone: 'success' });
     } finally {
       busyRef.current = false;
