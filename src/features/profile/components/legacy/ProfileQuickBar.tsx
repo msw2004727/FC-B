@@ -26,6 +26,8 @@ export interface QuickItem {
   dot?: boolean;
   /** 筆數還在讀取：徽章位置畫小旋轉圈（讀完才換成筆數或不畫）。 */
   loading?: boolean;
+  /** 伺服器資料還沒到：按了先記住，不展開；變 false 時自動展開按過的那一個。 */
+  deferred?: boolean;
   /** active：目前是否為展開中的區塊（切走後仍掛載但隱藏時為 false）。 */
   render: (active: boolean) => ComponentChildren;
 }
@@ -108,6 +110,10 @@ export function ProfileQuickBar({
 
   const active = items.find((item) => item.key === openKey) ?? null;
   const itemKeys = items.map((item) => item.key).join('|');
+  // PROFILE-SPEED：pendingKey 的解除依賴以 key:deferred 字串判斷，避免 items 陣列每次 render 都是新的造成重跑。
+  const itemKeyDeferrals = items.map((item) => `${item.key}:${item.deferred ? '1' : '0'}`).join('|');
+  // PROFILE-SPEED：deferred 項目被按下先記住，fresh 後自動展開按過的那一個。
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   // 同一頁再次帶 ?open=（例如九宮格存檔後「開啟通知」）時展開該項；不存在的 key 忽略。
   useEffect(() => {
@@ -126,7 +132,25 @@ export function ProfileQuickBar({
     });
   }, [itemKeys, openKey]);
 
+  // PROFILE-SPEED：deferred 項目按了不展開（不改 openKey／mountedKeys），先記在 pendingKey 等 fresh 後再開。
+  useEffect(() => {
+    if (pendingKey === null) return;
+    const item = items.find((it) => it.key === pendingKey);
+    if (!item || item.deferred) return;
+    setOpenKey((prev) => (prev === pendingKey ? null : pendingKey));
+    setMountedKeys((prev) => (prev.includes(pendingKey) ? prev : [...prev, pendingKey]));
+    setPendingKey(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemKeyDeferrals]);
+
   function toggle(key: string): void {
+    const item = items.find((it) => it.key === key);
+    if (item?.deferred) {
+      setPendingKey(key);
+      return;
+    }
+    // PROFILE-SPEED：改按其他項目就取消先前記住的那一個，fresh 後不再跳過去。
+    setPendingKey(null);
     setOpenKey((prev) => (prev === key ? null : key));
     setMountedKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
   }

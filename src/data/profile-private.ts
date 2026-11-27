@@ -1,7 +1,7 @@
 // 會員資料讀取強化：私密子文件。過渡期根文件為準、私密文件為鏡像；讀取逐欄合併，失敗靜默退回根。
 
 import type { DocumentReference, Firestore, WriteBatch } from 'firebase/firestore';
-import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, getDocFromCache, serverTimestamp } from 'firebase/firestore';
 
 import { getFirebase } from '@/data/firebase';
 import { users } from '@/data/paths';
@@ -35,6 +35,16 @@ export function profilePrivateDocRef(
   );
 }
 
+function pickPrivateFields(data: Record<string, unknown>): ProfilePrivateData {
+  const out: ProfilePrivateData = {};
+  for (const field of PROFILE_PRIVATE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(data, field)) {
+      out[field] = data[field];
+    }
+  }
+  return out;
+}
+
 /**
  * 嚴格版：文件不存在回 null；其他錯誤（斷線、逾時、權限）一律拋出。
  * 本人頁用它，讓畫面走既有的載入失敗＋重試，不拿根文件的過期值當編輯底稿（同行者是整份覆寫，頂替會蓋掉資料）。
@@ -44,14 +54,26 @@ export async function loadPrivateProfileStrict(uid: string): Promise<ProfilePriv
   const db = firebase.db as unknown as Firestore;
   const snap = await getDoc(profilePrivateDocRef(db, uid));
   if (!snap.exists()) return null;
-  const data = snap.data() as Record<string, unknown>;
-  const out: ProfilePrivateData = {};
-  for (const field of PROFILE_PRIVATE_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(data, field)) {
-      out[field] = data[field];
-    }
+  return pickPrivateFields(snap.data() as Record<string, unknown>);
+}
+
+/** 只讀本機持久化快取（不連伺服器）。hit=false：快取沒有這份文件的紀錄（或任何錯誤）；hit=true 且 data=null：快取記得文件不存在。 */
+export async function loadPrivateProfileFromCache(
+  uid: string,
+): Promise<{ hit: boolean; data: ProfilePrivateData | null }> {
+  try {
+    const firebase = await getFirebase();
+    const db = firebase.db as unknown as Firestore;
+    const snap = await getDocFromCache(profilePrivateDocRef(db, uid));
+    if (!snap.exists()) return { hit: true, data: null };
+    return { hit: true, data: pickPrivateFields(snap.data() as Record<string, unknown>) };
+  } catch (err) {
+    const code = (err as { code?: string } | null | undefined)?.code ?? 'unknown';
+    // PROFILE-SPEED：快取沒有是常態，除錯用一行且不印 uid。
+    // eslint-disable-next-line no-console
+    console.debug('[profile-private] cache read skipped', code);
+    return { hit: false, data: null };
   }
-  return out;
 }
 
 /** 靜默版：任何錯誤回 null。只給唯讀、不得擋流程的地方用（他人名片、報名同行者清單）。 */

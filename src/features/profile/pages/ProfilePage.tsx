@@ -1,6 +1,6 @@
 import type { JSX } from 'preact';
 import { lazy, Suspense } from 'preact/compat';
-import { useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 
 import { emit, on } from '@/core/events';
 import { useGoBack } from '@/core/back-guard';
@@ -8,7 +8,11 @@ import { SHOW_FAVORITES } from '@/core/hidden-features';
 import { lt, useT } from '@/i18n/i18n';
 import { GuestAvatarIcon } from '@/ui/GuestAvatarIcon';
 import { useViewer, type ViewerView } from '../data/viewer';
-import { loadOwnUserProfile, type UserProfile } from '../data/profile-model';
+import {
+  loadOwnUserProfile,
+  loadOwnUserProfileFromCache,
+  type UserProfile,
+} from '../data/profile-model';
 import {
   loadUserAttendanceSummary,
   type UserAttendanceSummary,
@@ -18,7 +22,6 @@ import {
   Failure,
   Loading,
   Missing,
-  useRemote,
   type Platform,
 } from '../ui/shared';
 import {
@@ -99,38 +102,133 @@ function GuestLoginPrompt(): JSX.Element {
   );
 }
 
+type OwnProfileState =
+  | { status: 'loading' }
+  | { status: 'cached'; data: UserProfile }
+  | { status: 'cached-error'; data: UserProfile }
+  | { status: 'ready'; data: UserProfile | null }
+  | { status: 'error' };
+
+/**
+ * PROFILE-SPEED F2：「我的」頁的個人資料快取先畫、伺服器後到換新。
+ * - 掛載（及每次 retry）都會發伺服器；只有 attempt 0 同時讀快取。
+ * - 快取只在「這個 effect 仍有效、伺服器還沒有結果、快取回非 null」時套用。
+ * - 伺服器成功 → ready（data 可能為 null）；失敗 → 目前有資料就 cached-error 保留同一份，否則 error。
+ */
+function useOwnProfileCacheFirst(uid: string): { state: OwnProfileState; retry: () => void } {
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<OwnProfileState>({ status: 'loading' });
+
+  useEffect(() => {
+    if (!uid) return undefined;
+    let active = true;
+    // 伺服器是否已有結果（成功或失敗）：晚到的快取一律丟棄。
+    let serverDone = false;
+
+    Promise.resolve()
+      .then(() => loadOwnUserProfile(uid))
+      .then((data) => {
+        if (!active) return;
+        serverDone = true;
+        setState({ status: 'ready', data });
+      })
+      .catch(() => {
+        if (!active) return;
+        serverDone = true;
+        setState((current) => {
+          if (current.status === 'cached' || current.status === 'cached-error') {
+            return { status: 'cached-error', data: current.data };
+          }
+          if (current.status === 'ready' && current.data) {
+            return { status: 'cached-error', data: current.data };
+          }
+          return { status: 'error' };
+        });
+      });
+
+    if (attempt === 0) {
+      // PROFILE-SPEED：既有測試以 vi.mock 工廠 mock 這個模組而未提供快取函式；存取不存在的 export 會丟錯，包成「丟錯＝快取沒有」。
+      Promise.resolve()
+        .then(() => loadOwnUserProfileFromCache(uid))
+        .catch(() => null)
+        .then((cached) => {
+          if (!active || serverDone || cached === null) return;
+          setState((current) => (current.status === 'loading' ? { status: 'cached', data: cached } : current));
+        });
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [uid, attempt]);
+
+  const retry = useCallback(() => {
+    // PROFILE-SPEED：cached-error 先設回 cached（畫面不閃），再重讀伺服器；error／ready(null) 設回 loading 維持轉圈重試。
+    setState((current) => {
+      if (current.status === 'cached-error') return { status: 'cached', data: current.data };
+      if (current.status === 'error') return { status: 'loading' };
+      if (current.status === 'ready' && !current.data) return { status: 'loading' };
+      return current;
+    });
+    setAttempt((n) => n + 1);
+  }, []);
+
+  return { state, retry };
+}
+
 function ProfileContent({
   uid,
   initial,
   viewer,
   related,
   summaryTask,
+  fresh,
+  serverProfile,
 }: {
   uid: string;
   initial: UserProfile;
   viewer: ViewerView;
   related: RelatedActivitiesData;
   summaryTask: Promise<UserAttendanceSummary | null>;
+  fresh: boolean;
+  serverProfile: UserProfile | null;
 }): JSX.Element {
   const [profile, setProfile] = useState(initial);
   const [dismissed, setDismissed] = useState(false);
   const [afterFirst, setAfterFirst] = useState(false);
   const [editor, setEditor] = useState<Editor>(null);
+  const [pendingEditor, setPendingEditor] = useState<Editor>(null);
   const [summary, setSummary] = useState<UserAttendanceSummary | null>(null);
 
   const t = useT();
-  const firstOpen = !dismissed && needsFirstLogin(profile);
+  // PROFILE-SPEED：首次登入提示要用伺服器值決定，不得用快取資料決定要不要跳。
+  const firstOpen = fresh && !dismissed && needsFirstLogin(profile);
   const canEditIdentity = viewer.hasPermission('profile.secondary_identity');
+
+  // PROFILE-SPEED：伺服器值到了才換新；下面閘門讓伺服器值到之前不可能有本地編輯，不會覆蓋使用者改的內容。
+  useEffect(() => {
+    if (serverProfile) setProfile(serverProfile);
+  }, [serverProfile]);
+
+  // PROFILE-SPEED：伺服器值到之前按下的編輯先記著，fresh 後才真的打開（失敗一直不 fresh 就一直不開）。
+  useEffect(() => {
+    if (fresh && pendingEditor) {
+      setEditor(pendingEditor);
+      setPendingEditor(null);
+    }
+  }, [fresh, pendingEditor]);
 
   // 11-06 改版：徽章與「申請」是否顯示要在收合時就知道，資料由頁面讀一次、展開區共用（讀取次數同改版前）。
   // related 由外層與個人資料同時開始讀（顧問 §3.233 ③甲）。
-  const applications = useMyTeamApplications(uid, profile);
+  // PROFILE-SPEED：伺服器值到才讀申請，避免 profile 換新造成重讀一次收件匣。
+  const applications = useMyTeamApplications(uid, profile, fresh);
   const relatedLoading = related.state.status === 'loading';
   const relatedCounts = related.state.status === 'ready' ? related.state.data : null;
   const lineBound = readLineNotify(profile).bound;
   // 九宮格「開啟通知」帶 focus=push：捲到「手機／電腦通知」列（2026-11-27）。
   const pushFocus = hasPushFocus(location.search);
-  useEffect(() => (pushFocus ? focusPushRow() : undefined), [pushFocus]);
+  // PROFILE-SPEED：伺服器值到才捲動；快取階段先不動作。
+  useEffect(() => (pushFocus && fresh ? focusPushRow() : undefined), [pushFocus, fresh]);
 
   // 頁首 summary 有兩個來源：掛載時的讀取、卡片刷新後交來的較新值。兩者共用卡片同一套發出序號保護，
   // 掛載讀取比刷新慢完成時，舊值不得蓋掉較新的頁首數字。
@@ -194,6 +292,8 @@ function ProfileContent({
       icon: 'info',
       label: t('profile.quick.info'),
       ariaLabel: t('profile.quick.infoName'),
+      // PROFILE-SPEED：伺服器值到之前按了先記住，不展開；fresh 後自動展開。
+      deferred: !fresh,
       render: () => <LegacyProfileInfoCard embedded uid={uid} profile={profile} onSaved={saved} />,
     },
     ...(canEditIdentity
@@ -202,6 +302,7 @@ function ProfileContent({
           icon: 'id2',
           label: t('profile.quick.id2'),
           ariaLabel: t('profile.quick.id2Name'),
+          deferred: !fresh,
           render: () => <LegacyIdentityCard embedded uid={uid} profile={profile} viewer={viewer} />,
         } satisfies QuickItem]
       : []),
@@ -213,6 +314,7 @@ function ProfileContent({
         name: t('profile.quick.lineName'),
       }),
       dot: lineBound,
+      deferred: !fresh,
       render: () => (
         <LegacyLineNotifyCard
           embedded
@@ -240,6 +342,7 @@ function ProfileContent({
       icon: 'mate',
       label: t('profile.quick.mate'),
       ariaLabel: t('profile.quick.mateName'),
+      deferred: !fresh,
       render: () => <LegacyCompanionsCard embedded uid={uid} profile={profile} onSaved={saved} />,
     },
     // 照 A `_showApplicationsCard`：有申請才留。讀取中（null）不畫鈕：多數使用者沒有申請，
@@ -268,19 +371,26 @@ function ProfileContent({
 
       <LegacySocialGrid
         profile={profile}
-        onEdit={(platform) => setEditor({ kind: 'social', platform })}
+        onEdit={(platform) => {
+          // PROFILE-SPEED：伺服器值到之前先記住，fresh 後才真的打開。
+          if (fresh) {
+            setEditor({ kind: 'social', platform });
+          } else {
+            setPendingEditor({ kind: 'social', platform });
+          }
+        }}
       />
 
       <ProfileQuickBar
         items={quickItems}
         groupLabel={t('profile.quick.group')}
-        initialOpenKey={new URLSearchParams(location.search).get('open')}
+        initialOpenKey={fresh ? new URLSearchParams(location.search).get('open') : null}
       />
 
       {SHOW_FAVORITES && (
         <LegacyFavoritesCard uid={uid} profile={profile} />
       )}
-      <LegacyActivityRecordsCard uid={uid} onSummaryRefreshed={summaryRefreshed} />
+      <LegacyActivityRecordsCard uid={uid} summaryTask={summaryTask} onSummaryRefreshed={summaryRefreshed} />
 
       {(firstOpen || editor?.kind === 'first') && (
         <FirstLoginEditor
@@ -323,28 +433,41 @@ function AuthenticatedProfile({
   uid: string;
   viewer: ViewerView;
 }): JSX.Element {
-  const { state, retry } = useRemote(uid, loadOwnUserProfile);
-  // 顧問 §3.233 ③甲：出席統計與相關活動只需要 uid，和個人資料同時開始讀，不顯示舊資料。
-  // 兩者失敗只影響各自的數字（統計回 null 顯示 --），不影響個人資料；個人資料（含私密四欄）失敗仍是整頁失敗＋重試。
-  const related = useRelatedActivitiesData(uid);
+  const { state, retry } = useOwnProfileCacheFirst(uid);
+  // PROFILE-SPEED：個人資料曾進入 cached 才允許相關活動讀快取（私密文件開過本頁才會有快取，第一次開避免先顯示錯的 0）。
+  const cacheHitRef = useRef(false);
+  if (state.status === 'cached') cacheHitRef.current = true;
+  // 顧問 §3.233 ③甲：出席統計與相關活動只需要 uid，和個人資料同時開始讀。
+  // 顧問 §3.930（站長選「先顯示上次資料」）取代 §3.233「不顯示舊資料」：個人資料與相關活動先畫本機快取再換伺服器值。
+  // 統計失敗只影響數字（回 null 顯示 --）；個人資料沒有快取時失敗仍是整頁失敗＋重試，有快取時保留畫面＋既有重試提示、不可編輯。
+  const related = useRelatedActivitiesData(uid, cacheHitRef.current);
   const [summaryTask] = useState(() => loadUserAttendanceSummary(uid).catch(() => null));
   // 剛登入時會員文件可能還在建立（data/user-doc-sync.ts 完成後發 viewer:refresh）：查無資料時收到就重讀一次。
   const missing = state.status === 'ready' && !state.data;
   useEffect(() => (missing ? on('viewer:refresh', () => retry()) : undefined), [missing]);
+
   if (state.status === 'loading') return <Loading />;
   if (state.status === 'error') return <Failure retry={retry} />;
   // 查無個人資料：單一區塊＝「找不到資料」＋重試。loadUserProfile 會吞掉 I/O 錯誤回 null，
   // null 也可能是網路暫時失敗，所以必須有重試；不同時顯示「目前無法載入」那塊（退修 1 #6、退修 2 P2-1）。
-  if (!state.data) return <Missing retry={retry} />;
+  if (state.status === 'ready' && !state.data) return <Missing retry={retry} />;
 
+  const fresh = state.status === 'ready';
+  // PROFILE-SPEED：cached／cached-error／ready 共用同一棵樹（ProfileContent 固定在第二個位置），狀態切換時不重掛、不重讀。
+  // cached-error 沿用既有 Failure 重試提示（不加新樣式／文字）。
   return (
-    <ProfileContent
-      uid={uid}
-      initial={state.data}
-      viewer={viewer}
-      related={related}
-      summaryTask={summaryTask}
-    />
+    <>
+      {state.status === 'cached-error' && <Failure retry={retry} />}
+      <ProfileContent
+        uid={uid}
+        initial={state.data as UserProfile}
+        viewer={viewer}
+        related={related}
+        summaryTask={summaryTask}
+        fresh={fresh}
+        serverProfile={fresh ? state.data : null}
+      />
+    </>
   );
 }
 

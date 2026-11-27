@@ -739,7 +739,7 @@ describe('我的個人頁（A 版結構）', () => {
       const apply = quickBtn('apply');
       expect(apply.getAttribute('aria-label')).toBe('我的俱樂部申請');
       expect(apply.querySelector('.profile-quick-lb')?.textContent).toBe('申請');
-      expect(useMyTeamApplicationsMock).toHaveBeenCalledWith('U-me', expect.objectContaining({ uid: 'U-me' }));
+      expect(useMyTeamApplicationsMock).toHaveBeenCalledWith('U-me', expect.objectContaining({ uid: 'U-me' }), true);
     });
 
     it('一次只開一個：點另一個直接換、再點同一個收合', async () => {

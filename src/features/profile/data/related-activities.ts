@@ -19,7 +19,9 @@ import {
   doc,
   documentId,
   getDoc,
+  getDocFromCache,
   getDocs,
+  getDocsFromCache,
   query,
   where,
 } from 'firebase/firestore';
@@ -277,19 +279,24 @@ export function buildHostedActivities(
 
 // ── I/O：Firestore 讀取（僅以 UID） ────────────────────
 
+type ActivitySource = 'server' | 'cache';
+
 interface SnapLike {
   exists: () => boolean;
   id: string;
   data: () => unknown;
 }
 
-async function loadUserRegistrations(uid: string): Promise<RegistrationRecord[]> {
+async function loadUserRegistrations(
+  uid: string,
+  source: ActivitySource = 'server',
+): Promise<RegistrationRecord[]> {
   const firebase = await getFirebase();
   const db = firebase.db as unknown as Firestore;
 
   // A `getRegistrationsByUser(uid)` 對應：collectionGroup('registrations') where userId == uid。
   const q = query(collectionGroup(db, 'registrations'), where('userId', '==', uid));
-  const snap = await getDocs(q);
+  const snap = source === 'cache' ? await getDocsFromCache(q) : await getDocs(q);
   const subDocs = filterSubcollectionDocs(snap.docs);
 
   const out: RegistrationRecord[] = [];
@@ -328,15 +335,21 @@ function isQueryableDocId(id: string): boolean {
 async function loadEventById(
   db: Firestore,
   id: string,
+  source: ActivitySource = 'server',
 ): Promise<{ id: string; data: EventRecord } | null> {
   try {
-    const snap = (await getDoc(doc(db, eventsCollection, id))) as unknown as SnapLike;
+    const ref = doc(db, eventsCollection, id);
+    const snap = (source === 'cache'
+      ? await getDocFromCache(ref)
+      : await getDoc(ref)) as unknown as SnapLike;
     if (!snap.exists()) return null;
     const data = snap.data() as Record<string, unknown>;
     return { id, data: { ...data, id } as EventRecord };
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('[related-activities] load event failed', id, err);
+    if (source !== 'cache') {
+      // eslint-disable-next-line no-console
+      console.warn('[related-activities] load event failed', id, err);
+    }
     return null;
   }
 }
@@ -346,7 +359,10 @@ async function loadEventById(
  * 合法文件 id 以 `documentId() in` 每 30 個一批並行讀；某批查詢失敗時該批退回逐筆 getDoc，
  * 讓失敗範圍與舊版一致（只缺讀不到的那幾筆）。不能放進 `in` 的 id 直接走逐筆 getDoc。
  */
-async function loadEventsByIds(ids: readonly string[]): Promise<Map<string, EventRecord>> {
+async function loadEventsByIds(
+  ids: readonly string[],
+  source: ActivitySource = 'server',
+): Promise<Map<string, EventRecord>> {
   const unique = Array.from(new Set(ids.filter((id) => !!id)));
   const map = new Map<string, EventRecord>();
   if (unique.length === 0) return map;
@@ -365,23 +381,26 @@ async function loadEventsByIds(ids: readonly string[]): Promise<Map<string, Even
     chunk: string[],
   ): Promise<Array<{ id: string; data: EventRecord } | null>> => {
     try {
-      const snap = await getDocs(
-        query(collection(db, eventsCollection), where(documentId(), 'in', chunk)),
-      );
+      const chunkQuery = query(collection(db, eventsCollection), where(documentId(), 'in', chunk));
+      const snap = source === 'cache'
+        ? await getDocsFromCache(chunkQuery)
+        : await getDocs(chunkQuery);
       return snap.docs.map((d) => {
         const data = d.data() as Record<string, unknown>;
         return { id: d.id, data: { ...data, id: d.id } as EventRecord };
       });
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[related-activities] batch event load failed, fallback to per-id', chunk.length, err);
-      return Promise.all(chunk.map((id) => loadEventById(db, id)));
+      if (source !== 'cache') {
+        // eslint-disable-next-line no-console
+        console.warn('[related-activities] batch event load failed, fallback to per-id', chunk.length, err);
+      }
+      return Promise.all(chunk.map((id) => loadEventById(db, id, source)));
     }
   };
 
   const results = await Promise.all([
     ...chunks.map(loadChunk),
-    Promise.all(singles.map((id) => loadEventById(db, id))),
+    Promise.all(singles.map((id) => loadEventById(db, id, source))),
   ]);
 
   for (const batch of results) for (const r of batch) if (r) map.set(r.id, r.data);
@@ -407,15 +426,19 @@ function compareDocId(a: string, b: string): number {
  * 文件 id 升冪，排序同分（同日同標題）時才與舊版同序。任一條查詢失敗整體失敗，同舊版全集合讀取失敗。
  * 最後仍由 buildHostedActivities 以同一組判斷過濾，查詢只負責縮小讀取範圍。
  */
-async function loadHostedCandidateEvents(uid: string): Promise<EventRecord[]> {
+async function loadHostedCandidateEvents(
+  uid: string,
+  source: ActivitySource = 'server',
+): Promise<EventRecord[]> {
   const firebase = await getFirebase();
   const db = firebase.db as unknown as Firestore;
   const eventsRef = collection(db, eventsCollection);
+  const readDocs = source === 'cache' ? getDocsFromCache : getDocs;
 
   const snaps = await Promise.all([
-    ...HOSTED_SINGLE_FIELDS.map((field) => getDocs(query(eventsRef, where(field, '==', uid)))),
+    ...HOSTED_SINGLE_FIELDS.map((field) => readDocs(query(eventsRef, where(field, '==', uid)))),
     ...HOSTED_LIST_FIELDS.map((field) =>
-      getDocs(query(eventsRef, where(field, 'array-contains', uid))),
+      readDocs(query(eventsRef, where(field, 'array-contains', uid))),
     ),
   ]);
 
@@ -428,13 +451,10 @@ async function loadHostedCandidateEvents(uid: string): Promise<EventRecord[]> {
     .map((docId) => mapEventDoc(byDocId.get(docId) as QueryDocumentSnapshot<DocumentData>));
 }
 
-/**
- * 載入個人頁的相關活動（報名 + 主辦）。
- * 只以 UID 查詢（used by viewer.uid）。
- */
-export async function loadRelatedActivities(
+async function computeRelatedActivities(
   uid: string,
-  now: number = Date.now(),
+  now: number,
+  source: ActivitySource,
 ): Promise<RelatedActivities> {
   const safeUid = String(uid || '').trim();
   if (!safeUid) {
@@ -443,8 +463,8 @@ export async function loadRelatedActivities(
   const allowedUids: ReadonlySet<string> = new Set([safeUid]);
 
   const [registrations, hostedCandidates] = await Promise.all([
-    loadUserRegistrations(safeUid),
-    loadHostedCandidateEvents(safeUid),
+    loadUserRegistrations(safeUid, source),
+    loadHostedCandidateEvents(safeUid, source),
   ]);
 
   // 舊版讀「所有報名的 eventId」。只有被有效報名查到的 key 會影響結果，所以只讀兩者交集：
@@ -458,7 +478,7 @@ export async function loadRelatedActivities(
   const regEventIds = registrations
     .map((r) => (typeof r.eventId === 'string' ? r.eventId : ''))
     .filter((v) => !!v && lookupKeys.has(v));
-  const eventsById = await loadEventsByIds(regEventIds);
+  const eventsById = await loadEventsByIds(regEventIds, source);
 
   const registered = buildRegisteredActivities(registrations, eventsById, allowedUids, now);
   const hosted = buildHostedActivities(hostedCandidates, allowedUids, now);
@@ -468,6 +488,33 @@ export async function loadRelatedActivities(
     hosted,
     counts: { registered: registered.length, hosted: hosted.length },
   };
+}
+
+/**
+ * 載入個人頁的相關活動（報名 + 主辦）。
+ * 只以 UID 查詢（used by viewer.uid）。
+ */
+export async function loadRelatedActivities(
+  uid: string,
+  now: number = Date.now(),
+): Promise<RelatedActivities> {
+  return computeRelatedActivities(uid, now, 'server');
+}
+
+/** 只讀本機持久化快取，算出與 loadRelatedActivities 同形狀的結果；任何錯誤回 null。不連伺服器。 */
+export async function loadRelatedActivitiesFromCache(
+  uid: string,
+  now: number = Date.now(),
+): Promise<RelatedActivities | null> {
+  try {
+    return await computeRelatedActivities(uid, now, 'cache');
+  } catch (err) {
+    const code = (err as { code?: string } | null | undefined)?.code ?? 'unknown';
+    // PROFILE-SPEED：快取沒有是常態，除錯用一行且不印 uid。
+    // eslint-disable-next-line no-console
+    console.debug('[related-activities] cache load skipped', code);
+    return null;
+  }
 }
 
 // `users` 保留 import 以便未來主辦/報名複合查詢擴充；目前不直接使用。
