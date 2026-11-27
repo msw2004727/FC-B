@@ -73,6 +73,9 @@ describe('顯示條件與 id', () => {
     expect(isRecruiting(doc(), NOW)).toBe(true);
     expect(isRecruiting(doc(), REG_OPEN - 1)).toBe(false);
     expect(isRecruiting(doc(), REG_CLOSE + 1)).toBe(false);
+    // 與後端 REG_CLOSED（now >= regCloseAt）同一條邊界：截止那一毫秒就不算招募中。
+    expect(isRecruiting(doc(), REG_CLOSE - 1)).toBe(true);
+    expect(isRecruiting(doc(), REG_CLOSE)).toBe(false);
     expect(isRecruiting(doc({ status: 'postponed' }), NOW)).toBe(false);
   });
 });

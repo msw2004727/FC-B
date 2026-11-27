@@ -47,7 +47,7 @@ export function isCompetitionShareable(doc: ShareCompetition): boolean {
 
 /** 還在招募（同詳情頁 statusBadge 的「招募中」；主辦提前結束也不算）才列報名截止。 */
 export function isRecruiting(doc: ShareCompetition, now: number): boolean {
-  return doc.status === 'published' && doc.endedAt == null && now >= doc.regOpenAt && now <= doc.regCloseAt;
+  return doc.status === 'published' && doc.endedAt == null && now >= doc.regOpenAt && now < doc.regCloseAt;
 }
 
 export function buildCompetitionLiffUrl(cid: string): string {
