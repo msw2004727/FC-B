@@ -113,6 +113,13 @@ describe('force-update', () => {
     expect(() => assertRuntimeConfigShape({ swEnabled: 'true', minBuild: 0 })).toThrow(/布林/);
   });
 
+  it('sportPrefs 選填；有給就必須是布林', () => {
+    expect(() => assertRuntimeConfigShape({ swEnabled: true, minBuild: 0 })).not.toThrow();
+    expect(() => assertRuntimeConfigShape({ swEnabled: true, minBuild: 0, sportPrefs: false })).not.toThrow();
+    expect(() => assertRuntimeConfigShape({ swEnabled: true, minBuild: 0, sportPrefs: 'true' })).toThrow(/sportPrefs 必須是布林/);
+    expect(() => assertRuntimeConfigShape({ swEnabled: true, minBuild: 0, sportPrefs: 1 })).toThrow(/sportPrefs 必須是布林/);
+  });
+
   it('沒有 --online-url 時仍用正式站 version.json', () => {
     expect(ONLINE_VERSION_URL).toBe('https://toosterx.com/version.json');
     expect(onlineUrlFromArgv([])).toBe(ONLINE_VERSION_URL);
