@@ -73,11 +73,11 @@ describe('SportPrefsModal', () => {
     document.body.classList.remove('sport-prefs-open');
   });
 
-  it('未勾時確認 disabled', async () => {
+  it('未勾時確認也可以按', async () => {
     renderModal();
     await screen.findAllByRole('checkbox');
     const confirm = screen.getByRole('button', { name: '確認' });
-    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+    expect((confirm as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('勾 1 個後可按、saveSportPrefs 收到 { addSports: [...] }', async () => {
@@ -124,8 +124,9 @@ describe('SportPrefsModal', () => {
     expect(football).toBeTruthy();
     expect(football!.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(football!);
-    const confirm = screen.getByRole('button', { name: '確認' });
-    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+    // 確認鈕 0 個也能按（站長 11-27），改用「按確認不存檔」證明 owned 沒被勾進去
+    fireEvent.click(screen.getByRole('button', { name: '確認' }));
+    expect(mocks.saveSportPrefs).not.toHaveBeenCalled();
   });
 
   it('儲存成功：出現 pushBtn，按下呼叫 route 與 onClose', async () => {

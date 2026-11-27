@@ -17,6 +17,7 @@ function rememberOff(off: boolean): void {
 /**
  * 九宮格自動跳出的閘門（延後程式塊）。條件全部通過才下載彈窗本體（顧問 §3.809：開關關時不白下載）；
  * 開關關時在 sessionStorage 記一筆，首頁的 SportPrefsLoader 同分頁之後就不再下載本程式塊、也不再讀 runtime-config。
+ * 顯示當下不記；按 X 或按確認（含 0 個）才記本機記號與 promptSeen，點背景或返回鍵不記，下次回首頁再跳。
  */
 export function SportPrefsGate({ uid, home, owned, onSaved }: { uid: string; home?: boolean; owned?: readonly string[]; onSaved?: (r: { favSports: string[]; newEventNotify: boolean }) => void }): JSX.Element | null {
   const [Comp, setComp] = useState<Modal | null>(null);
@@ -33,13 +34,11 @@ export function SportPrefsGate({ uid, home, owned, onSaved }: { uid: string; hom
       }
       const mod = await import('./SportPrefsModal');
       if (!alive) return;
-      markSeenLocal(uid);
-      void saveSportPrefs({ promptSeen: true }).catch(() => {});
       setComp(() => mod.SportPrefsModal);
     })().catch(() => {});
     return () => {
       alive = false;
     };
   }, [uid, home]);
-  return Comp ? <Comp uid={uid} owned={owned ?? []} onClose={() => setComp(null)} onSaved={(r) => onSaved?.(r)} /> : null;
+  return Comp ? <Comp uid={uid} owned={owned ?? []} onClose={() => setComp(null)} onSaved={(r) => onSaved?.(r)} onSeen={(saved) => { markSeenLocal(uid); if (!saved) void saveSportPrefs({ promptSeen: true }).catch(() => {}); }} /> : null;
 }

@@ -31,9 +31,11 @@ export interface SportPrefsModalProps {
   owned: readonly string[];
   onClose: () => void;
   onSaved: (r: SaveSportPrefsResult) => void;
+  /** 按 X 或按確認時呼叫一次；點背景、返回鍵不呼叫 */
+  onSeen?: (saved: boolean) => void;
 }
 
-export function SportPrefsModal({ owned, onClose, onSaved }: SportPrefsModalProps): JSX.Element {
+export function SportPrefsModal({ owned, onClose, onSaved, onSeen }: SportPrefsModalProps): JSX.Element {
   const t = useSportPrefsT();
   const { route } = useLocation();
   const [rank, setRank] = useState<string[]>([]);
@@ -46,6 +48,14 @@ export function SportPrefsModal({ owned, onClose, onSaved }: SportPrefsModalProp
   const mountedRef = useRef(true);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const onSeenRef = useRef(onSeen);
+  onSeenRef.current = onSeen;
+  const seenRef = useRef(false);
+  const seen = (saved: boolean): void => {
+    if (seenRef.current) return;
+    seenRef.current = true;
+    onSeenRef.current?.(saved);
+  };
 
   const list = useMemo(() => orderedSports(rank), [rank]);
   const pages = batchCount(list.length);
@@ -95,10 +105,17 @@ export function SportPrefsModal({ owned, onClose, onSaved }: SportPrefsModalProp
   };
 
   const onConfirm = async (): Promise<void> => {
-    if (picked.length === 0 || saving) return;
+    if (saving) return;
+    if (picked.length === 0) {
+      seen(false);
+      close();
+      return;
+    }
     setSaving(true);
     try {
       const result = await saveSportPrefs({ addSports: picked });
+      // 存檔成功就算看過；存檔途中彈窗被關掉也照記（伺服器已記下）
+      seen(true);
       if (!mountedRef.current) return;
       setSavedTags(result.favSports);
       setStep('saved');
@@ -129,7 +146,7 @@ export function SportPrefsModal({ owned, onClose, onSaved }: SportPrefsModalProp
       <div class="modal open" id="sport-prefs-modal" role="dialog" aria-modal="true" aria-labelledby="spf-title">
         <div class="modal-header">
           <h3 id="spf-title">{step === 'pick' ? t('title') : t('saved')}</h3>
-          <button type="button" class="modal-close" aria-label={t('close')} onClick={close}>✕</button>
+          <button type="button" class="modal-close" aria-label={t('close')} onClick={() => { seen(false); close(); }}>✕</button>
         </div>
         {step === 'pick' ? (
           <>
@@ -181,7 +198,7 @@ export function SportPrefsModal({ owned, onClose, onSaved }: SportPrefsModalProp
               <button
                 type="button"
                 class="primary-btn spf-ok"
-                disabled={picked.length === 0 || saving}
+                disabled={saving}
                 onClick={() => {
                   void onConfirm();
                 }}

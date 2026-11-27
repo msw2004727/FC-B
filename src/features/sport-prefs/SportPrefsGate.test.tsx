@@ -1,6 +1,6 @@
 import { createElement } from 'preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 
 const dataMocks = vi.hoisted(() => ({
   isSeenLocal: vi.fn(),
@@ -17,7 +17,13 @@ vi.mock('./data', () => dataMocks);
 vi.mock('./callables', () => callableMocks);
 vi.mock('./SportPrefsModal', () => {
   modalLoads.n += 1;
-  const M = () => createElement('div', { 'data-testid': 'spf-modal' });
+  const M = (props: { onClose: () => void; onSeen?: (saved: boolean) => void }) => createElement(
+    'div',
+    { 'data-testid': 'spf-modal' },
+    createElement('button', { 'data-testid': 'm-x', onClick: () => { props.onSeen?.(false); props.onClose(); } }),
+    createElement('button', { 'data-testid': 'm-bg', onClick: () => { props.onClose(); } }),
+    createElement('button', { 'data-testid': 'm-saved', onClick: () => { props.onSeen?.(true); } }),
+  );
   return { default: M, SportPrefsModal: M };
 });
 
@@ -91,19 +97,48 @@ describe('SportPrefsGate', () => {
     expect(dataMocks.markSeenLocal).not.toHaveBeenCalled();
   });
 
-  it('通過顯示、markSeenLocal 被呼叫、saveSportPrefs 帶 promptSeen', async () => {
+  it('顯示當下不記本機記號、不送 promptSeen', async () => {
     render(<SportPrefsGate uid="u1" />);
     await waitFor(() => expect(screen.getByTestId('spf-modal')).toBeTruthy());
-    expect(dataMocks.markSeenLocal).toHaveBeenCalledWith('u1');
-    expect(callableMocks.saveSportPrefs).toHaveBeenCalledWith({ promptSeen: true });
+    expect(dataMocks.markSeenLocal).not.toHaveBeenCalled();
+    expect(callableMocks.saveSportPrefs).not.toHaveBeenCalled();
   });
 
-  it('saveSportPrefs reject 不丟未處理例外', async () => {
+  it('按 X：記本機記號並送 promptSeen', async () => {
+    render(<SportPrefsGate uid="u1" />);
+    await waitFor(() => expect(screen.getByTestId('spf-modal')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('m-x'));
+    expect(dataMocks.markSeenLocal).toHaveBeenCalledWith('u1');
+    expect(callableMocks.saveSportPrefs).toHaveBeenCalledWith({ promptSeen: true });
+    await waitFor(() => expect(screen.queryByTestId('spf-modal')).toBeNull());
+  });
+
+  it('點背景關閉不記，回首頁重新掛載會再跳', async () => {
+    render(<SportPrefsGate uid="u1" home />);
+    await waitFor(() => expect(screen.getByTestId('spf-modal')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('m-bg'));
+    await waitFor(() => expect(screen.queryByTestId('spf-modal')).toBeNull());
+    expect(dataMocks.markSeenLocal).not.toHaveBeenCalled();
+    expect(callableMocks.saveSportPrefs).not.toHaveBeenCalled();
+    cleanup();
+    render(<SportPrefsGate uid="u1" home />);
+    await waitFor(() => expect(screen.getByTestId('spf-modal')).toBeTruthy());
+  });
+
+  it('選 1 個以上存檔成功：只記本機記號，不另送 promptSeen', async () => {
+    render(<SportPrefsGate uid="u1" />);
+    await waitFor(() => expect(screen.getByTestId('spf-modal')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('m-saved'));
+    expect(dataMocks.markSeenLocal).toHaveBeenCalledWith('u1');
+    expect(callableMocks.saveSportPrefs).not.toHaveBeenCalled();
+  });
+
+  it('promptSeen 失敗不丟未處理例外、不重試', async () => {
     callableMocks.saveSportPrefs.mockRejectedValue(new Error('boom'));
     render(<SportPrefsGate uid="u1" />);
     await waitFor(() => expect(screen.getByTestId('spf-modal')).toBeTruthy());
-    await waitFor(() => expect(callableMocks.saveSportPrefs).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('m-x'));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.getByTestId('spf-modal')).toBeTruthy();
+    expect(callableMocks.saveSportPrefs).toHaveBeenCalledTimes(1);
   });
 });
