@@ -18,6 +18,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { blockedStep, LIVE_COPY } from '../copy';
 import { scorePadPropsFrom } from '../scoring-adapter';
 import { MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
+import { emuFetch } from './emu-test-utils';
 import { createFirestoreBackend } from './live-repo';
 import { createScoringSession, type ScoringSession } from './session';
 import { memorySidStore, type SidStore } from './sid';
@@ -124,7 +125,7 @@ function root(path: string): string {
 }
 
 async function rest(method: string, url: string, body?: unknown): Promise<{ status: number; text: string }> {
-  const res = await fetch(url, {
+  const res = await emuFetch(url, {
     method,
     headers: {
       Authorization: 'Bearer owner',
@@ -164,7 +165,7 @@ async function waitForStartupRules(restored: string): Promise<void> {
   let last = '';
   for (let i = 0; i < 25; i += 1) {
     try {
-      const res = await fetch(`http://${HOST}:${PORT}/emulator/v1/projects/${PROJECT}:securityRules`);
+      const res = await emuFetch(`http://${HOST}:${PORT}/emulator/v1/projects/${PROJECT}:securityRules`);
       const text = await res.text();
       if (res.ok && text.includes(marker)) return;
       last = `${res.status}`;
@@ -180,7 +181,7 @@ async function waitForRules(): Promise<void> {
   const path = root(`competitions/${CID}/matches/${MT}`);
   let last = '';
   for (let i = 0; i < 30; i += 1) {
-    const res = await fetch(path);
+    const res = await emuFetch(path);
     last = `${res.status} ${(await res.text()).slice(0, 160)}`;
     if (res.status === 200) return;
     await new Promise((resolve) => { setTimeout(resolve, 200); });
