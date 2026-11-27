@@ -18,6 +18,7 @@ import { positionLabel } from '../format';
 import { LiveBoundary } from '../live';
 import { isClubMemberByKeys, loadClubMemberKeys, useClubMemberKeys } from '../club-member-keys';
 import { nicknameShapeOk, rosterNameParts, rosterRoleOf } from '../data/names';
+import { runFirstLoad } from '../data/first-load';
 import type { EntryStatus, RosterPublicDoc } from '../data/types';
 import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, type CpLoadFail } from '../ui/feedback';
 import { dangerConfirm } from '../ui/danger-confirm';
@@ -141,24 +142,27 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renameBusy, setRenameBusy] = useState(false);
   const syncTried = useRef(false);
+  const loadSeq = useRef(0);
   // 成員雙鍵（顧問 §3.846）：hook 要在提早 return 之前叫。
   const entryTeamId = bundle?.entries.find((row) => row.id === enId)?.teamId ?? '';
   const clubKeys = useClubMemberKeys(env.actor, entryTeamId, env.clubKeys);
 
   useEffect(() => {
     if (env.bundle) return;
-    let alive = true;
     // 換帳號：新資料回來前先清掉上一個帳號的「我的名單列」，不讓退出鍵掛在別人的列上（L-43）
     setBundle((prev) => (prev?.myPlIds?.length ? { ...prev, myPlIds: [] } : prev));
-    void loadRoster(env, cid, enId).then((next) => {
-      if (!alive) return;
+    const seq = ++loadSeq.current;
+    const run = runFirstLoad('roster', () => loadRoster(env, cid, enId));
+    void run.promise.then((next) => {
+      if (seq !== loadSeq.current) return;
       setBundle(next);
       setPhase(next.competition ? 'ready' : 'error');
     }).catch((err: unknown) => {
-      if (alive) setPhase(loadFailOf(err));
+      if (seq === loadSeq.current) setPhase(loadFailOf(err));
     });
     return () => {
-      alive = false;
+      run.cancel();
+      loadSeq.current += 1;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, enId, env.actor.uid, env.bundle]);

@@ -42,6 +42,7 @@ import {
 import { createAudiencePorts } from '../data/audience-watch';
 import { matchDayOf } from '../data/match-day';
 import { loadFullSchedule, loadScheduleDetail } from '../data/schedule-load';
+import { runFirstLoad } from '../data/first-load';
 import type { CompetitionDoc, DivisionDoc, EntryDoc, ReportReason, StaffAssignment, StandingDoc, SummaryEntry } from '../data/types';
 import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, type CpLoadFail } from '../ui/feedback';
 import { FeeLine } from '../ui/fields';
@@ -262,6 +263,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const fullCache = useRef<SummaryEntry[] | null>(null);
   const fullInflight = useRef<Promise<boolean> | null>(null);
   const mineCache = useRef<MineReadCache>({ readyKey: '', value: null, flight: null, token: 0 });
+  const loadSeq = useRef(0);
   const mounted = useRef(true);
   // 公告發送與刪除共用這把鎖。busy 要等重繪才擋得住，連點會在那之前重入。
   const noticeLock = useRef(false);
@@ -374,20 +376,30 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     // CP-DETAIL-SPEED d3：登入狀態還沒確定先不讀（畫面維持轉圈）。uid 到了或確定是訪客才讀一輪，
     // 不會先用訪客身分整組讀一次、uid 到了再整組重讀並閃回轉圈。authPending 一定會解除（viewer 的 Auth 等待有 10 秒上限、失敗也發訪客快照）。
     if (env.actor.authPending) return;
-    // ASSUMPTION: 審核在管理頁，詳情頁沒有審核成功處可呼叫 invalidateCrests。
-    // 進入詳情頁先讓這個 cid 的隊徽快取失效，這次讀到新的。同頁回前景不走這裡。
-    // 主辦在別頁核准後，要再進一次詳情才看得到新隊徽。
-    env.repo.invalidateCrests(cid);
-    let alive = true;
+    const seq = ++loadSeq.current;
     setLoadState('loading');
-    void loadDetail(env, cid, mineCache.current).then((next) => {
-      if (!alive) return;
+    const resetForRetry = (): void => {
+      // 第 1 輪若卡在職員指派讀取，第 2 輪不得沿用那個卡住的 flight。
+      mineCache.current.token += 1;
+      mineCache.current.flight = null;
+    };
+    const run = runFirstLoad('detail', (round) => {
+      if (round === 2) resetForRetry();
+      // ASSUMPTION: 審核在管理頁，詳情頁沒有審核成功處可呼叫 invalidateCrests。
+      // 進入詳情頁先讓這個 cid 的隊徽快取失效，這次讀到新的。同頁回前景不走這裡。
+      // 主辦在別頁核准後，要再進一次詳情才看得到新隊徽。
+      env.repo.invalidateCrests(cid);
+      return loadDetail(env, cid, mineCache.current);
+    });
+    void run.promise.then((next) => {
+      if (seq !== loadSeq.current) return;
       applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
     }).catch((err: unknown) => {
-      if (alive) setLoadState(loadFailOf(err));
+      if (seq === loadSeq.current) setLoadState(loadFailOf(err));
     });
     return () => {
-      alive = false;
+      run.cancel();
+      loadSeq.current += 1;
     };
     // 注入的 bundle 是首屏快照。正式頁只在賽事 id、帳號或登入判定變了才重讀。
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -510,10 +522,13 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         title={ct('detailTitle')}
         fail={loadState === 'hidden' || loadState === 'missing' ? loadState : 'error'}
         onRetry={() => {
+          const seq = ++loadSeq.current;
           setLoadState('loading');
           void loadDetail(env, cid, mineCache.current).then((next) => {
-            applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
-          }).catch((err: unknown) => setLoadState(loadFailOf(err)));
+            if (seq === loadSeq.current) applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
+          }).catch((err: unknown) => {
+            if (seq === loadSeq.current) setLoadState(loadFailOf(err));
+          });
         }}
       />
     );
