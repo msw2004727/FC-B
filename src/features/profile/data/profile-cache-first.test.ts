@@ -39,7 +39,11 @@ vi.mock('firebase/firestore', () => ({
 import { getFirebase } from '@/data/firebase';
 import { loadPrivateProfileFromCache } from '@/data/profile-private';
 import { loadOwnUserProfileFromCache } from './profile-model';
-import { loadRelatedActivities, loadRelatedActivitiesFromCache } from './related-activities';
+import {
+  _resetConfirmMissingForTest,
+  loadRelatedActivities,
+  loadRelatedActivitiesFromCache,
+} from './related-activities';
 
 interface FakeDoc {
   docId: string;
@@ -285,6 +289,7 @@ describe('孤兒報名：快取確知不存在才放行（§3.935）', () => {
   beforeEach(() => {
     // 報名 r1 指向 e2，但 e2 已不存在（伺服器與快取的活動查詢都查不到）
     store.events = store.events.filter((e) => e.docId !== 'e2');
+    _resetConfirmMissingForTest();
   });
 
   it('快取確知 e2 不存在：快取結果可用，且與伺服器結果相同', async () => {
@@ -344,6 +349,46 @@ describe('孤兒報名：快取確知不存在才放行（§3.935）', () => {
     await loadRelatedActivities('U1', NOW);
     await flush();
     expect(getDocMock).toHaveBeenCalledTimes(20);
+  });
+
+  it('超過 20 筆：補讀過且快取已記得的不再讀，下一次開頁補剩下的（MiMo F2）', async () => {
+    store.regs = Array.from({ length: 25 }, (_, i) => ({
+      docId: `r${i}`,
+      parentDocId: `gone${i}`,
+      data: { userId: 'U1', status: 'confirmed', eventId: `gone${i}` },
+    }));
+    // 模擬 SDK：伺服器單筆讀過的 id，之後 getDocFromCache 回「不存在」
+    const known = new Set<string>();
+    getDocFromCacheMock.mockImplementation(async (ref: { id: string }) => {
+      if (known.has(ref.id)) return docSnap(ref.id, null);
+      throw new Error('not-in-cache');
+    });
+    getDocMock.mockImplementation(async (ref: { id: string }) => {
+      known.add(ref.id);
+      return docSnap(ref.id, null);
+    });
+    await loadRelatedActivities('U1', NOW);
+    await flush();
+    expect(getDocMock).toHaveBeenCalledTimes(20);
+    _resetConfirmMissingForTest(); // 下一次開頁（新的工作階段）
+    await loadRelatedActivities('U1', NOW);
+    await flush();
+    expect(getDocMock).toHaveBeenCalledTimes(25);
+    // 全部確知後：快取路徑可用，伺服器路徑不再補讀
+    expect(await loadRelatedActivitiesFromCache('U1', NOW)).not.toBeNull();
+    await loadRelatedActivities('U1', NOW);
+    await flush();
+    expect(getDocMock).toHaveBeenCalledTimes(25);
+  });
+
+  it('補讀一直失敗：同一工作階段不再重讀（MiMo F2）', async () => {
+    getDocFromCacheMock.mockRejectedValue(new Error('not-in-cache'));
+    getDocMock.mockRejectedValue(new Error('offline'));
+    await loadRelatedActivities('U1', NOW);
+    await flush();
+    await loadRelatedActivities('U1', NOW);
+    await flush();
+    expect(getDocMock).toHaveBeenCalledTimes(1);
   });
 
   it('伺服器路徑沒有缺件：不碰快取、不補讀', async () => {

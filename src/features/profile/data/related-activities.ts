@@ -453,6 +453,13 @@ async function loadHostedCandidateEvents(
 
 /** 每次伺服器讀取最多替幾場「查不到的活動」補一次單筆讀取（只有本機快取還不知道它不存在時才讀；之後快取記得就不再讀）。 */
 const CONFIRM_MISSING_MAX = 20;
+/** 這個分頁已補讀過的 id（成功或失敗都記）：同一工作階段不重複補讀，補讀一直失敗也不會每次開頁再讀（MiMo F2）。只在記憶體。 */
+const confirmAttempted = new Set<string>();
+
+/** 測試用：清掉本工作階段的補讀記號。 */
+export function _resetConfirmMissingForTest(): void {
+  confirmAttempted.clear();
+}
 
 /** 本機快取是否「確知」這場活動不存在（伺服器單筆讀過且回不存在）。快取沒有紀錄、id 不合法或任何錯誤都回 false。 */
 async function isKnownMissingInCache(db: Firestore, id: string): Promise<boolean> {
@@ -484,9 +491,10 @@ async function confirmMissingEventsInCache(ids: readonly string[]): Promise<void
     const unknown: string[] = [];
     for (const id of ids) {
       if (unknown.length >= CONFIRM_MISSING_MAX) break;
-      if (!isQueryableDocId(id)) continue;
+      if (!isQueryableDocId(id) || confirmAttempted.has(id)) continue;
       if (!(await isKnownMissingInCache(db, id))) unknown.push(id);
     }
+    for (const id of unknown) confirmAttempted.add(id);
     await Promise.all(unknown.map((id) => getDoc(doc(db, eventsCollection, id)).catch(() => null)));
   } catch {
     /* 只是替下次開頁鋪快取，失敗不處理 */
@@ -529,8 +537,8 @@ async function computeRelatedActivities(
     throw new Error('related-activities: cache incomplete');
   }
   if (source === 'server' && missingEventIds.length > 0) {
-    // 不 await：畫面不等它。讓快取記下「伺服器也查不到」，下次開頁快取才能先畫。
-    void confirmMissingEventsInCache(missingEventIds);
+    // 不 await：畫面不等它。讓快取記下「伺服器也查不到」，下次開頁快取才能先畫。函式內已吞掉所有錯誤，這裡仍明確 catch（L-07）。
+    confirmMissingEventsInCache(missingEventIds).catch(() => undefined);
   }
 
   const registered = buildRegisteredActivities(registrations, eventsById, allowedUids, now);
