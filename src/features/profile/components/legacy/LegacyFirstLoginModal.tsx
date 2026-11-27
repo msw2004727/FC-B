@@ -142,6 +142,9 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
     const el = scrollRef.current;
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
     if (!el || !vv) return undefined;
+    // 2026-11-27 站長 SE 實測：鍵盤開著時底部同意欄＋按鈕（sticky）佔掉大半可見區，地區欄被蓋住。
+    // 可見高明顯小於開過的最大高（iOS 鍵盤疊上去、Android 整頁縮小都適用）視為鍵盤開著，加 data-kb 讓底部改跟著表單捲。
+    let tallest = 0;
     const sync = (): void => {
       // 使用者雙指放大時可見區會跟著縮，不跟著縮彈窗。
       if (vv.scale > 1.01) return;
@@ -149,6 +152,23 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
       el.style.setProperty('--fl-vv-h', `${Math.round(vv.height)}px`);
       el.style.setProperty('--fl-vv-bottom', `${hidden}px`);
       el.setAttribute('data-vv', '1');
+      tallest = Math.max(tallest, vv.height, window.innerHeight);
+      const keyboard = vv.height < tallest * 0.75;
+      if (keyboard === el.hasAttribute('data-kb')) return;
+      if (!keyboard) {
+        el.removeAttribute('data-kb');
+        return;
+      }
+      el.setAttribute('data-kb', '1');
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && el.contains(active)) {
+        // 整個欄位捲到上緣，下面留給地區建議清單。
+        try {
+          (active.closest('.fl-field') ?? active).scrollIntoView({ block: 'start' });
+        } catch {
+          // noop
+        }
+      }
     };
     sync();
     vv.addEventListener('resize', sync);

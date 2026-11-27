@@ -11,3 +11,8 @@
 @media (max-width: 679px) {
   #first-login-modal.modal.profile-complete-modal[data-vv] { bottom: var(--fl-vv-bottom, 0px); }
 }
+/* 2026-11-27 鍵盤開著（元件加 data-kb）：底部同意欄＋按鈕不再貼底，改接在表單後面跟著捲，讓出可見區給正在輸入的欄位；
+ * 「還有欄位」提示也先收起。收鍵盤後 data-kb 拿掉，恢復貼底。 */
+#first-login-modal.modal.profile-complete-modal[data-kb] .fl-actions { position: static; box-shadow: none; }
+#first-login-modal.modal.profile-complete-modal[data-kb] .fl-scroll-hint { display: none; }
+#first-login-modal.modal.profile-complete-modal[data-kb] .fl-field { scroll-margin: .5rem; }
