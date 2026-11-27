@@ -15,30 +15,24 @@ export const TW_REGIONS: readonly string[] = [
   '澎湖縣', '金門縣', '連江縣',
 ];
 
-export const TW_REGIONS_WITH_OTHER: readonly string[] = [...TW_REGIONS, '其他'];
+/**
+ * 地區清單顯示順序（2026-11-27 站長）：六都在前、台中第一，其餘照人口（內政部 2026 年 10 月底）。
+ * 只影響個人頁地區下拉的排列；驗證仍用上面 TW_REGIONS（照 A 原順序）。打字篩選的 filterTwRegions 已隨地區改下拉移除（俱樂部表單用自己的 clubs/data/taiwan-regions）。
+ */
+export const TW_REGIONS_PICK_ORDER: readonly string[] = [
+  '台中市', '新北市', '高雄市', '台北市', '桃園市', '台南市',
+  '彰化縣', '屏東縣', '雲林縣', '新竹縣', '苗栗縣', '嘉義縣', '南投縣', '新竹市',
+  '宜蘭縣', '基隆市', '花蓮縣', '嘉義市', '台東縣', '金門縣', '澎湖縣', '連江縣',
+];
 
-/** A `js/config.js#filterTwRegions`：字元依序出現模糊比對，臺/台互通。 */
-export function filterTwRegions(keyword: string, includeOther = true): string[] {
-  const list = includeOther === false ? TW_REGIONS : TW_REGIONS_WITH_OTHER;
-  const q = String(keyword || '').trim().replace(/臺/g, '台').toLowerCase();
-  if (!q) return list.slice();
-  return list.filter((name) => {
-    const text = name.replace(/臺/g, '台').toLowerCase();
-    let ti = 0;
-    for (let qi = 0; qi < q.length; qi++) {
-      let found = false;
-      while (ti < text.length) {
-        if (text[ti] === q[qi]) {
-          ti++;
-          found = true;
-          break;
-        }
-        ti++;
-      }
-      if (!found) return false;
-    }
-    return true;
-  });
+/**
+ * 地區下拉選項（2026-11-27 站長：地區改成和性別一樣用選的）：照 TW_REGIONS_PICK_ORDER，不含「其他」（兩處驗證只收 TW_REGIONS）。
+ * 目前值不在清單（舊資料，例如「臺中市」或自由文字）時原樣放最前面，畫面照實顯示、不會被當成「請選擇」；送出仍走原本的驗證。
+ */
+export function regionSelectOptions(current: string): string[] {
+  const v = String(current || '').trim();
+  if (!v || TW_REGIONS_PICK_ORDER.includes(v)) return TW_REGIONS_PICK_ORDER.slice();
+  return [v, ...TW_REGIONS_PICK_ORDER];
 }
 
 /** A `profile-core.js#_calcLevelFromExp`。 */

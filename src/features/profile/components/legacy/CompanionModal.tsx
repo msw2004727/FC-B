@@ -109,7 +109,7 @@ export function CompanionModal(props: CompanionModalProps): JSX.Element {
                 value={name}
                 disabled={pending}
                 onInput={(ev) => setName(ev.currentTarget.value)}
-                style="width:100%;padding:.5rem .7rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary);font-size:.85rem;box-sizing:border-box"
+                style="width:100%;padding:.5rem .7rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary);box-sizing:border-box"
               />
             </div>
             <div style="margin-bottom:.6rem">
@@ -121,7 +121,7 @@ export function CompanionModal(props: CompanionModalProps): JSX.Element {
                 value={gender}
                 disabled={pending}
                 onChange={(ev) => setGender(ev.currentTarget.value)}
-                style="width:100%;padding:.5rem .7rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary);font-size:.85rem"
+                style="width:100%;padding:.5rem .7rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary)"
               >
                 <option value="">{lt('不填', '不填')}</option>
                 <option value="男">{lt('男', '男')}</option>
@@ -140,7 +140,7 @@ export function CompanionModal(props: CompanionModalProps): JSX.Element {
                 value={notes}
                 disabled={pending}
                 onInput={(ev) => setNotes(ev.currentTarget.value)}
-                style="width:100%;padding:.5rem .7rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary);font-size:.85rem;resize:none;box-sizing:border-box"
+                style="width:100%;padding:.5rem .7rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);color:var(--text-primary);resize:none;box-sizing:border-box"
               />
             </div>
           </div>

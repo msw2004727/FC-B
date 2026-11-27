@@ -140,7 +140,14 @@ describe('ProfilePage + 報名紀錄卡：頁首 summary 競態（T-048 F1）', 
   async function renderAndWaitMountEffects(): Promise<void> {
     render(<ProfilePage />);
     await waitFor(() => expect(refreshBtn()).toBeTruthy());
-    await waitFor(() => expect(mockedLoadSummary).toHaveBeenCalledTimes(2));
+    // PROFILE-SPEED：卡片沿用頁面的 summaryTask，掛載後只讀一次（原本頁面＋卡片各一次）；頁面那次在 render 時就發出，
+    // 不能再拿「第 2 次呼叫」判斷掛載 effect 跑過。Preact 的 useEffect 排在下一個畫格（requestAnimationFrame 後的 setTimeout），
+    // 在 act 內等過這一格，個人頁與卡片的掛載 effect 就都跑完了。
+    await waitFor(() => expect(mockedLoadSummary).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    });
+    expect(mockedLoadSummary).toHaveBeenCalledTimes(1);
   }
 
   function slowMountRead(): {

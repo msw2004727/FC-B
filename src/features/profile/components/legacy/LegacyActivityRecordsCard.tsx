@@ -37,6 +37,11 @@ const SUMMARY_REUSE_MS = 60_000;
 export interface LegacyActivityRecordsCardProps {
   uid: string;
   /**
+   * PROFILE-SPEED：頁面已發出的 summary 讀取（`AuthenticatedProfile` 已經讀過同一份）；
+   * 卡片沿用同一份不再重複讀，只在結果為 null（失敗）時退回自己讀一次。
+   */
+  summaryTask?: Promise<UserAttendanceSummary | null>;
+  /**
    * 使用者按「重新整理」且 Callable 與重讀都成功後，把剛讀到的新 summary 交給父層
    * （A 刷新後頁首應到／完成／出席率會一起更新；頁首由父層持有，卡片不直接改它）。
    * 沒傳時只更新卡片自己的「資料更新」。
@@ -79,6 +84,9 @@ export function LegacyActivityRecordsCard(
   // 回呼用 ref 保存最新值：不讓父層換 callback 造成載入流程重建。
   const onSummaryRefreshedRef = useRef(props.onSummaryRefreshed);
   onSummaryRefreshedRef.current = props.onSummaryRefreshed;
+  // PROFILE-SPEED：summaryTask 用 ref 保存（不進掛載 effect 依賴），避免父層換 promise 造成重讀。
+  const summaryTaskRef = useRef(props.summaryTask);
+  summaryTaskRef.current = props.summaryTask;
 
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
@@ -144,7 +152,12 @@ export function LegacyActivityRecordsCard(
     if (!targetUid) return undefined;
     let active = true;
     const token = summarySeq.issue();
-    loadUserAttendanceSummary(targetUid)
+    // PROFILE-SPEED：頁面已發出的 summary 讀取沿用同一份，不再重複讀；結果為 null（失敗）才退回自己讀一次。
+    const task = summaryTaskRef.current;
+    const initial: Promise<UserAttendanceSummary | null> = task
+      ? task.then((sum) => (sum !== null ? sum : loadUserAttendanceSummary(targetUid)))
+      : loadUserAttendanceSummary(targetUid);
+    initial
       .then((sum) => {
         if (!active || !mountedRef.current) return;
         applySummary(token, sum);

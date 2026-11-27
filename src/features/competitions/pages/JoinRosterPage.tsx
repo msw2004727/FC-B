@@ -13,16 +13,17 @@ import { Input } from '@/ui/Input';
 import { PageSpinner } from '@/ui/PageSpinner';
 import { rosterFormBlock } from '../access';
 import { liveCpActions } from '../actions';
-import { maskedPublicName } from '../data/names';
+import { maskedPublicName, nicknameShapeOk, rosterRoleOf } from '../data/names';
 import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { isMinorAt } from '../format';
 import { LiveBoundary } from '../live';
 import { isClubMemberByKeys, loadClubMemberKeys, useClubMemberKeys } from '../club-member-keys';
-import { loadMyBirthday } from '../rep-clubs';
+import { loadMyRosterProfile, type MyRosterProfile } from '../rep-clubs';
 import { buildJoinInput, type PositionChoice } from '../payload';
 import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, RosterBlocked } from '../ui/feedback';
 import { POSITION_TEXT_MAX, PositionField } from '../ui/fields';
+import { RosterNameTags } from '../ui/roster-name-tags';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 
 async function loadHead(env: CpInjectedEnv, cid: string): Promise<CpBundle> {
@@ -58,9 +59,12 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   const [guardian, setGuardian] = useState(forcedMinor && prefill);
   const [privacy, setPrivacy] = useState(forcedMinor && prefill);
   const [profileBirthday, setProfileBirthday] = useState<string | null>(null);
+  const [myProfile, setMyProfile] = useState<MyRosterProfile | null>(null);
   const [birthdayReady, setBirthdayReady] = useState(!waitBirthday);
+  // 暱稱預設帶 LINE 暱稱，只有使用者動過才送。預覽 prefill 時視為已改成「阿範」。
+  const [nickDirty, setNickDirty] = useState(prefill && !forcedMinor);
   // field：前端檢查擋下時是哪一欄（文案盤點 B14），錯誤畫在那一欄；伺服器錯誤沒有 field，畫在底下。
-  const [error, setError] = useState<{ reason: string; params?: Record<string, unknown>; field?: 'number' | 'realName' } | null>(null);
+  const [error, setError] = useState<{ reason: string; params?: Record<string, unknown>; field?: 'number' | 'realName' | 'nickname' } | null>(null);
   const [busy, setBusy] = useState(false);
   // 成員雙鍵（顧問 §3.846）：hook 要在提早 return 之前叫。
   const clubKeys = useClubMemberKeys(env.actor, bundle?.entries.find((row) => row.id === enId)?.teamId ?? '', env.clubKeys);
@@ -84,9 +88,10 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   useEffect(() => {
     if (!waitBirthday || !env.actor.uid) return;
     let alive = true;
-    void loadMyBirthday(env.actor.uid).then((value) => {
+    void loadMyRosterProfile(env.actor.uid).then((p) => {
       if (!alive) return;
-      setProfileBirthday(value);
+      setProfileBirthday(p.birthday);
+      setMyProfile(p);
       setBirthdayReady(true);
     }).catch(() => {
       if (!alive) return;
@@ -107,13 +112,16 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   const basis = competition?.ageBasisAt ?? competition?.firstMatchAt ?? now;
   const minor = forcedMinor || (profileBirthday != null && isMinorAt(profileBirthday, basis) === true);
   const masked = maskedPublicName(realName);
-  const ackKey = !minor && nickname.trim()
+  const lineName = env.preview ? (env.actor.displayName ?? '') : (myProfile?.lineDisplayName ?? myProfile?.displayName ?? env.actor.displayName ?? '');
+  const trimmedNick = nickname.trim();
+  const effectiveNick = nickDirty && trimmedNick !== lineName ? nickname : '';
+  const ackKey = !minor && effectiveNick.trim()
     ? 'ackNickname'
     : !minor
       ? 'ackDisplayName'
       : 'ackMasked';
 
-  const fieldError = (field: 'number' | 'realName'): string | undefined => (
+  const fieldError = (field: 'number' | 'realName' | 'nickname'): string | undefined => (
     error?.field === field ? reasonText(ct, error.reason, error.params) : undefined
   );
 
@@ -125,6 +133,11 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
     const parsed = Number(number);
     if (!Number.isInteger(parsed) || parsed < 0 || parsed > 99) {
       setError({ reason: 'FIELD_RANGE', field: 'number' });
+      return;
+    }
+    // 暱稱有動過又打了不合形狀（括號、換行）：本地擋下，不送後端。
+    if (nickDirty && trimmedNick && !nicknameShapeOk(trimmedNick)) {
+      setError({ reason: 'FIELD_FORMAT', field: 'nickname' });
       return;
     }
     const customLen = codePoints(positionText.trim());
@@ -155,7 +168,7 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
         position,
         positionText,
         minor,
-        nickname,
+        nickname: effectiveNick,
         // 組別不要求真名時不送。公開名仍是暱稱或主站顯示名。
         realName: needRealName ? realName : '',
         guardianConsent: guardian,
@@ -228,7 +241,27 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
                   <p class="cps-cap cp3-cap">{ct('minorRealName')}</p>
                 </div>
               ) : null}
-              <Input label={ct('nickname')} value={nickname} maxLength={20} onValueChange={setNickname} />
+              <div>
+                <Input
+                  label={ct('nickname')}
+                  value={nickDirty ? nickname : lineName}
+                  placeholder={lineName}
+                  maxLength={20}
+                  error={error?.field === 'nickname' ? ct('nicknameShape') : undefined}
+                  onValueChange={(v) => { setNickname(v); setNickDirty(true); }}
+                />
+                {lineName ? (
+                  <div class="cps-sub cpn-preview">
+                    {ct('publicShown')}
+                    <RosterNameTags row={{
+                      displayName: lineName,
+                      originalName: lineName || null,
+                      nickname: nickDirty && nickname.trim() && nickname.trim() !== lineName ? nickname.trim() : null,
+                      role: myProfile ? rosterRoleOf(myProfile.role, myProfile.stealth) : 'user',
+                    }} />
+                  </div>
+                ) : null}
+              </div>
             </>
           )}
           <Checkbox label={ct(ackKey)} checked={privacy} onCheckedChange={setPrivacy} />

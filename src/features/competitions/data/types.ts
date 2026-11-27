@@ -190,6 +190,14 @@ export interface RosterPublicDoc {
   position: RosterPositionCode | null;
   positionText: string | null;
   isMinor: boolean;
+  /** 原始暱稱快照（伺服器向 LINE 取得；舊資料、未成年、代填沒有）。 */
+  originalName?: string | null;
+  /** 本人改的暱稱；沒改是 null。 */
+  nickname?: string | null;
+  /** 原始暱稱來源：line＝LINE 暱稱；profile＝退路（會員顯示名）。畫面不顯示。 */
+  nameSource?: 'line' | 'profile' | null;
+  /** 身分快照（伺服器寫；舊資料沒有 → 當 user）。 */
+  role?: string | null;
 }
 
 /**

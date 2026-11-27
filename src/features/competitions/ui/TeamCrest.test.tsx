@@ -1,8 +1,9 @@
 import { fireEvent, render } from '@testing-library/preact';
 import { describe, expect, it } from 'vitest';
 import { FIREBASE_CONFIG } from '@/data/firebase-config';
+import { UPLOAD_STORAGE_BUCKET } from '@/data/storage';
 import { crestIndex } from '../data/present';
-import { CREST_SIZES, crestFontSize, crestFromEntry, isInlinePngCrest, isProjectStorageDownloadUrl, TeamCrest } from './TeamCrest';
+import { CREST_SIZES, CREST_UPLOAD_BUCKET, crestFontSize, crestFromEntry, isInlinePngCrest, isProjectStorageDownloadUrl, TeamCrest } from './TeamCrest';
 
 const BUCKET = FIREBASE_CONFIG.storageBucket;
 const STORAGE_URL = `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/crests%2Fa.png?alt=media&token=t`;
@@ -100,5 +101,31 @@ describe('TeamCrest', () => {
     expect(crestFromEntry('en_b', '銀河隊', entries)).toEqual({ teamId: 'club_g', name: '銀河隊', teamLogo: null });
     expect(crestFromEntry('en_b', '', entries).name).toBe('舊隊名');
     expect(crestFromEntry('en_x', '雷霆隊', entries)).toEqual({ teamId: 'en_x', name: '雷霆隊', teamLogo: null });
+  });
+});
+
+describe('isProjectStorageDownloadUrl 上傳 bucket', () => {
+  const uploadUrl = 'https://firebasestorage.googleapis.com/v0/b/fc-football-6c8dc-asia-east1/o/images%2Fteams%2Fx_avatar_1.webp?alt=media&token=t';
+
+  it('上傳 bucket 的下載網址視為本專案 Storage，元件畫出圖片', () => {
+    expect(isProjectStorageDownloadUrl(uploadUrl)).toBe(true);
+    const view = render(<TeamCrest teamId="club_upload" name="上傳隊" teamLogo={uploadUrl} size={28} />);
+    expect(view.container.querySelector('img')?.getAttribute('src')).toBe(uploadUrl);
+  });
+
+  it('其他 bucket 退回首字', () => {
+    const otherUrl = 'https://firebasestorage.googleapis.com/v0/b/other-project.appspot.com/o/images%2Fteams%2Fx_avatar_1.webp?alt=media&token=t';
+    expect(isProjectStorageDownloadUrl(otherUrl)).toBe(false);
+    const view = render(<TeamCrest teamId="club_other" name="外部隊" teamLogo={otherUrl} size={28} />);
+    expect(view.container.querySelector('img')).toBeNull();
+    expect(view.container.querySelector('.cp3-crest')?.textContent).toBe('外');
+  });
+
+  it('只有 bucket 路徑而沒有物件名時不算下載網址', () => {
+    expect(isProjectStorageDownloadUrl('https://firebasestorage.googleapis.com/v0/b/fc-football-6c8dc-asia-east1/o/')).toBe(false);
+  });
+
+  it('CREST_UPLOAD_BUCKET 與 UPLOAD_STORAGE_BUCKET 一致', () => {
+    expect(CREST_UPLOAD_BUCKET).toBe(UPLOAD_STORAGE_BUCKET.replace(/^gs:\/\//, ''));
   });
 });

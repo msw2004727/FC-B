@@ -1,4 +1,5 @@
-// 圓形隊徽。正式圖只收本專案 Storage 下載網址；截圖可再收內嵌 PNG。
+// 圓形隊徽。正式圖只收本專案 Storage（預設 bucket 與上傳 bucket）下載網址；截圖可再收內嵌 PNG。
+// 2026-11-27 顧問 §3.921：補上傳 bucket，原本只收預設 bucket，真實上傳的隊徽都被當成外部網址丟掉。
 // 其他網址或載入失敗時退回隊名首字＋底色。
 // 底色由 teamId 決定（crestIndex），同 id 永遠同色。不在這裡讀網路：呼叫端把 listEntriesForCrest 的結果傳進來。
 
@@ -8,8 +9,12 @@ import { FIREBASE_CONFIG } from '@/data/firebase-config';
 import { crestIndex, crestInitial } from '../data/present';
 import type { EntryDoc } from '../data/types';
 
-function projectBucket(): string {
-  return FIREBASE_CONFIG.storageBucket.trim().replace(/^gs:\/\//, '').replace(/\/+$/, '');
+/** 上傳 bucket，與 src/data/storage.ts UPLOAD_STORAGE_BUCKET（去掉 gs://）相同；後端 CP_LOGO_BUCKETS 也收這個。測試會比對兩邊一致。 */
+export const CREST_UPLOAD_BUCKET = 'fc-football-6c8dc-asia-east1';
+
+function projectBuckets(): string[] {
+  const defaultBucket = FIREBASE_CONFIG.storageBucket.trim().replace(/^gs:\/\//, '').replace(/\/+$/, '');
+  return [...new Set([defaultBucket, CREST_UPLOAD_BUCKET])].filter((bucket) => bucket.length > 0);
 }
 
 /** 截圖假資料的小張 PNG。正式隊徽仍只走 Storage；SVG 與其他 data URI 不收。 */
@@ -22,7 +27,7 @@ export function isInlinePngCrest(value: string): boolean {
 
 /**
  * 本專案 Storage 下載網址：主機 firebasestorage.googleapis.com，路徑 /v0/b/<bucket>/o/。
- * bucket 取 firebase-config 的 storageBucket。其他網址不收。
+ * bucket 允許預設 bucket 與上傳 bucket。其他網址不收。
  */
 export function isProjectStorageDownloadUrl(value: string): boolean {
   let url: URL;
@@ -34,10 +39,12 @@ export function isProjectStorageDownloadUrl(value: string): boolean {
   if (url.protocol !== 'https:') return false;
   if (url.username || url.password || url.port) return false;
   if (url.hostname !== 'firebasestorage.googleapis.com') return false;
-  const bucket = projectBucket();
-  if (!bucket) return false;
-  const prefixes = [`/v0/b/${bucket}/o/`, `/v0/b/${encodeURIComponent(bucket)}/o/`];
-  return prefixes.some((prefix) => url.pathname.startsWith(prefix) && url.pathname.length > prefix.length);
+  const buckets = projectBuckets();
+  if (buckets.length === 0) return false;
+  return buckets.some((bucket) => {
+    const prefixes = [`/v0/b/${bucket}/o/`, `/v0/b/${encodeURIComponent(bucket)}/o/`];
+    return prefixes.some((prefix) => url.pathname.startsWith(prefix) && url.pathname.length > prefix.length);
+  });
 }
 
 export const CREST_SIZES = [64, 48, 44, 32, 28, 24, 22, 20] as const;

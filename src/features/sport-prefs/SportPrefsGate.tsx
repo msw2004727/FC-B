@@ -1,6 +1,6 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { isSeenLocal, isSportPrefsEnabled, markSeenLocal, SPORT_PREFS_OFF_KEY } from './data';
+import { isSeenLocal, isSportPrefsEnabled, loadOwnedSports, markSeenLocal, SPORT_PREFS_OFF_KEY } from './data';
 import { saveSportPrefs } from './callables';
 
 type Modal = typeof import('./SportPrefsModal').SportPrefsModal;
@@ -21,6 +21,7 @@ function rememberOff(off: boolean): void {
  */
 export function SportPrefsGate({ uid, home, owned, onSaved }: { uid: string; home?: boolean; owned?: readonly string[]; onSaved?: (r: { favSports: string[]; newEventNotify: boolean }) => void }): JSX.Element | null {
   const [Comp, setComp] = useState<Modal | null>(null);
+  const [loaded, setLoaded] = useState<readonly string[] | null>(null);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -32,13 +33,15 @@ export function SportPrefsGate({ uid, home, owned, onSaved }: { uid: string; hom
         if (location.pathname !== '/') return;
         if (document.querySelector('.modal.open, .app-confirm-overlay, #first-login-modal, #sw-reload-deferred-prompt')) return;
       }
-      const mod = await import('./SportPrefsModal');
+      // 首頁沒帶 owned：要跳時才讀一次本人已選，讓彈窗預選、可取消
+      const [mod, got] = await Promise.all([import('./SportPrefsModal'), owned ? Promise.resolve(null) : loadOwnedSports(uid)]);
       if (!alive) return;
+      setLoaded(got);
       setComp(() => mod.SportPrefsModal);
     })().catch(() => {});
     return () => {
       alive = false;
     };
   }, [uid, home]);
-  return Comp ? <Comp uid={uid} owned={owned ?? []} onClose={() => setComp(null)} onSaved={(r) => onSaved?.(r)} onSeen={(saved) => { markSeenLocal(uid); if (!saved) void saveSportPrefs({ promptSeen: true }).catch(() => {}); }} /> : null;
+  return Comp ? <Comp uid={uid} owned={owned ?? loaded ?? []} onClose={() => setComp(null)} onSaved={(r) => onSaved?.(r)} onSeen={(saved) => { markSeenLocal(uid); if (!saved) void saveSportPrefs({ promptSeen: true }).catch(() => {}); }} /> : null;
 }

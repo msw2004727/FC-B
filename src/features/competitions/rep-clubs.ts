@@ -159,15 +159,21 @@ export async function loadRepClubs(uid: string): Promise<CpClub[]> {
   return request.then(copyClubs);
 }
 
-/** 自己登錄時用來判斷是不是未成年。讀 users/{uid}.birthday，沒有就當未知。 */
-export async function loadMyBirthday(uid: string): Promise<string | null> {
-  if (!uid) return null;
+/** 登錄頁、名單頁用：同一次讀自己的 users 文件，取生日、LINE 暱稱、身分（含隱身）。讀不到回全 null。（取代 loadMyBirthday：同一次讀取多取三欄） */
+export interface MyRosterProfile { birthday: string | null; lineDisplayName: string | null; displayName: string | null; role: string | null; stealth: boolean }
+export async function loadMyRosterProfile(uid: string): Promise<MyRosterProfile> {
+  if (!uid) return { birthday: null, lineDisplayName: null, displayName: null, role: null, stealth: false };
   const [{ getFirebase }, fs] = await Promise.all([
     import('@/data/firebase'),
     import('firebase/firestore'),
   ]);
   const { db } = await getFirebase();
   const snap = await fs.getDoc(fs.doc(db, 'users', uid));
-  const birthday = snap.exists() ? snap.data()?.birthday : null;
-  return typeof birthday === 'string' && birthday.trim() ? birthday.trim() : null;
+  const data = snap.exists() ? snap.data() : null;
+  const birthday = typeof data?.birthday === 'string' && data.birthday.trim() ? data.birthday.trim() : null;
+  const lineDisplayName = typeof data?.lineDisplayName === 'string' ? data.lineDisplayName : null;
+  const displayName = typeof data?.displayName === 'string' ? data.displayName : null;
+  const role = typeof data?.role === 'string' ? data.role : null;
+  const stealth = data?.stealth === true;
+  return { birthday, lineDisplayName, displayName, role, stealth };
 }

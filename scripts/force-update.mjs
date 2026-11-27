@@ -80,6 +80,7 @@ export const RUNTIME_CONFIG_KEYS = [
   'minBuild',
   'googleMapsBrowserApiKey',
   'googleMapsVersion',
+  'sportPrefs',
 ];
 
 const CONFIG_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'runtime-config.json');
@@ -103,6 +104,10 @@ export function assertRuntimeConfigShape(data) {
   const twelve = typeof min === 'number' && Number.isInteger(min) && /^\d{12}$/.test(String(min));
   if (min !== 0 && !twelve) {
     throw new Error(`runtime-config.json 的 minBuild 必須是 0 或 12 位整數（實際 ${String(min)}）`);
+  }
+  // 運動喜好九宮格開關（選填）。
+  if ('sportPrefs' in data && typeof data.sportPrefs !== 'boolean') {
+    throw new Error(`runtime-config.json 的 sportPrefs 必須是布林（實際 ${typeof data.sportPrefs}）`);
   }
 }
 

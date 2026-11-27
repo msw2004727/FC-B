@@ -50,6 +50,14 @@ export function TrashIcon(): JSX.Element {
   );
 }
 
+export function PencilIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" />
+    </svg>
+  );
+}
+
 /** 入口列與「全部賽程」鈕尾的「›」（新外觀卡 1b-5）。 */
 export function NextIcon(): JSX.Element {
   return (

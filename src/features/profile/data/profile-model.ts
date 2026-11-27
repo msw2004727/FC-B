@@ -5,11 +5,11 @@
 // - 讀取結果為「讀模型」，B 寫入走 profile-writes 的動作型 payload（L-31／L-32）。
 
 import type { Firestore } from 'firebase/firestore';
-import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocFromCache, getDocs, limit, query, where } from 'firebase/firestore';
 
 import { getFirebase } from '@/data/firebase';
 import { users } from '@/data/paths';
-import { loadPrivateProfileStrict, mergePrivateFields } from '@/data/profile-private';
+import { loadPrivateProfileFromCache, loadPrivateProfileStrict, mergePrivateFields } from '@/data/profile-private';
 
 /**
  * 個人頁讀模型：由 A `_mapUserProfileDoc` 落下的正規化結果。
@@ -118,4 +118,34 @@ export async function loadOwnUserProfile(uid: string): Promise<UserProfile | nul
   ]);
   if (!profile) return null;
   return mergePrivateFields(profile, priv);
+}
+
+/** 只讀本機持久化快取：users/{uid} 根文件與私密文件都在快取裡才回傳合併後的個人資料；任一沒有或任何錯誤回 null。不連伺服器、不 fallback 到 uid／lineUserId 查詢。 */
+export async function loadOwnUserProfileFromCache(uid: string): Promise<UserProfile | null> {
+  const safeUid = String(uid || '').trim();
+  if (!safeUid) return null;
+
+  try {
+    const firebase = await getFirebase();
+    const db = firebase.db as unknown as Firestore;
+    const [rootSnap, priv] = await Promise.all([
+      getDocFromCache(doc(db, users, safeUid)),
+      loadPrivateProfileFromCache(safeUid),
+    ]);
+    if (!rootSnap.exists()) return null;
+    if (!priv.hit) return null;
+
+    const profile = mapUserProfileDoc(
+      rootSnap.data() as Record<string, unknown>,
+      rootSnap.id || safeUid,
+    );
+    if (!profile) return null;
+    return mergePrivateFields(profile, priv.data);
+  } catch (err) {
+    const code = (err as { code?: string } | null | undefined)?.code ?? 'unknown';
+    // PROFILE-SPEED：快取沒有是常態，除錯用一行且不印 uid。
+    // eslint-disable-next-line no-console
+    console.debug('[profile-model] cache read skipped', code);
+    return null;
+  }
 }

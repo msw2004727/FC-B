@@ -38,6 +38,7 @@ import { useViewer } from '../../data/viewer';
 import type { UserProfile } from '../../data/profile-model';
 import {
   loadRelatedActivities,
+  loadRelatedActivitiesFromCache,
   type EventRecord,
   type HostedActivity,
   type RegisteredActivity,
@@ -366,14 +367,51 @@ export interface RelatedActivitiesData {
  * 11-06 改版：「我的報名」「我開的團」的資料由頁面讀一次，圖示列徽章與展開區共用
  * （與改版前進頁即讀一次相同，不多讀）。
  */
-export function useRelatedActivitiesData(uid: string): RelatedActivitiesData {
+export function useRelatedActivitiesData(
+  uid: string,
+  cacheAllowed = false,
+): RelatedActivitiesData {
   // useRemote 以第一個參數值變動重跑載入；用拼上 reloadCount 的 key 觸發重新載入。
   const [reloadCount, setReloadCount] = useState(0);
   const reloadKey = uid ? `${uid}:${reloadCount}` : '';
-  const { state, retry } = useRemote(reloadKey, loadRelatedByReloadKey);
+  const { state: serverState, retry } = useRemote(reloadKey, loadRelatedByReloadKey);
   const reload = useCallback((): void => {
     setReloadCount((n) => n + 1);
   }, []);
+
+  // PROFILE-SPEED：伺服器還在讀時先用快取畫上次的報名／主辦。
+  // reloadCount>0 後（使用者剛報名／取消）一律不用快取；同一 uid 只讀一次。
+  const [cache, setCache] = useState<{ uid: string; data: RelatedActivities } | null>(null);
+  const cacheReadRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!cacheAllowed || reloadCount !== 0 || serverState.status !== 'loading') return undefined;
+    if (!uid || cacheReadRef.current === uid) return undefined;
+    cacheReadRef.current = uid;
+    let active = true;
+    // PROFILE-SPEED：測試以 vi.mock 工廠 mock 該模組而未提供快取函式；包成「丟錯＝快取沒有」。
+    Promise.resolve()
+      .then(() => loadRelatedActivitiesFromCache(uid))
+      .catch(() => null)
+      .then((data) => {
+        if (active && data !== null) setCache({ uid, data });
+      });
+    return () => {
+      active = false;
+    };
+  }, [cacheAllowed, reloadCount, serverState.status, uid]);
+
+  // PROFILE-SPEED：快取只墊「這個 uid 的第一次伺服器讀取」；伺服器結果出現過之後（含 reload、retry 又回到 loading）不再拿快取蓋掉較新的畫面（MiMo A1）。
+  const settledUidRef = useRef<string | null>(null);
+  if (serverState.status !== 'loading') settledUidRef.current = uid;
+  let state: Remote<RelatedActivities>;
+  if (serverState.status !== 'loading') {
+    state = serverState;
+  } else if (cache && cache.uid === uid && reloadCount === 0 && settledUidRef.current !== uid) {
+    state = { status: 'ready', data: cache.data };
+  } else {
+    state = { status: 'loading' };
+  }
+
   return { state, retry, reload };
 }
 

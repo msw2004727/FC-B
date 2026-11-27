@@ -29,7 +29,11 @@
  */
 @supports not (-webkit-touch-callout: none) {
   #scan-manual-uid,
-  #ct-team-sport-tag { font-size: var(--font-size-body-sm); }
+  #ct-team-sport-tag,
+  /* 2026-11-27 夥伴彈窗三欄原本行內 .85rem，iPhone 聚焦會放大，同樣移到這裡。 */
+  #companion-modal-name,
+  #companion-modal-gender,
+  #companion-modal-notes { font-size: var(--font-size-body-sm); }
   #ce-template-name,
   #my-activity-creator-input,
   #fav-sort { font-size: var(--font-size-caption); }

@@ -47,6 +47,11 @@ const ROLE_LABELS: Record<UserRole, string> = {
   super_admin: '總管',
 };
 
+/** 身分底色 class（R-UI-020／021 同一份對照）；賽事名單沒有 uid、不能用 UserTag 時共用。 */
+export function userCapsuleRoleClass(role: UserRole): string {
+  return roleClass(role);
+}
+
 function roleClass(role: UserRole): string {
   return role === 'team_leader' ? 'uc-team-leader' : `uc-${role}`;
 }

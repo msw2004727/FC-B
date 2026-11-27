@@ -17,9 +17,9 @@ import { stringValue } from '../../ui/shared';
 import {
   TW_REGIONS,
   calcAgeFromBirthday,
-  filterTwRegions,
   formatCreatedAt,
   getUserTeamEntries,
+  regionSelectOptions,
 } from './profile-legacy-helpers';
 import { ProfileInfoButton } from './ProfileInfoButton';
 
@@ -67,20 +67,12 @@ export function LegacyProfileInfoCard({
   const [bdM, setBdM] = useState('');
   const [bdD, setBdD] = useState('');
   const [region, setRegion] = useState('');
-  const [regionMatches, setRegionMatches] = useState<string[]>([]);
-  const [regionHighlight, setRegionHighlight] = useState<number>(-1);
   const [phone, setPhone] = useState('');
 
   // U-041：避免連按兩次呼叫 updateProfileFields。
   const pendingRef = useRef(false);
   // 「儲存」進度環：地區檢查通過才轉，成功打勾後才收起編輯。
   const saveRing = useActionRingControl();
-  // U-042：輸入框失焦後延遲收起清單。
-  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => () => {
-    if (blurTimerRef.current !== null) clearTimeout(blurTimerRef.current);
-  }, []);
 
   const favOn = useSportPrefsEnabled() === true;
   const st = useSportPrefsT();
@@ -120,63 +112,12 @@ export function LegacyProfileInfoCard({
     setBdM(parts[1] ? String(Number(parts[1])) : '');
     setBdD(parts[2] ? String(Number(parts[2])) : '');
     setRegion(stringValue(profile['region']));
-    setRegionMatches([]);
     setPhone(stringValue(profile['phone']));
     setEditing(true);
   }
 
   function cancelEdit(): void {
     setEditing(false);
-    setRegionMatches([]);
-  }
-
-  function handleRegionInput(val: string): void {
-    setRegion(val);
-    setRegionMatches(filterTwRegions(val, true));
-    setRegionHighlight(-1);
-  }
-
-  // U-042：鍵盤操作地區清單
-  function handleRegionKeyDown(e: KeyboardEvent): void {
-    if (e.key === 'Escape') {
-      setRegionMatches([]);
-      setRegionHighlight(-1);
-      return;
-    }
-    if (regionMatches.length === 0) return;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setRegionHighlight((prev) => (prev + 1) % regionMatches.length);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setRegionHighlight((prev) => (prev <= 0 ? regionMatches.length - 1 : prev - 1));
-    } else if (e.key === 'Enter') {
-      if (regionHighlight >= 0 && regionHighlight < regionMatches.length) {
-        const picked = regionMatches[regionHighlight];
-        if (picked !== undefined) {
-          e.preventDefault();
-          setRegion(picked);
-          setRegionMatches([]);
-          setRegionHighlight(-1);
-        }
-      }
-    }
-  }
-
-  function handleRegionBlur(): void {
-    if (blurTimerRef.current !== null) clearTimeout(blurTimerRef.current);
-    blurTimerRef.current = setTimeout(() => {
-      blurTimerRef.current = null;
-      setRegionMatches([]);
-      setRegionHighlight(-1);
-    }, 150);
-  }
-
-  function handleRegionFocus(): void {
-    if (blurTimerRef.current !== null) {
-      clearTimeout(blurTimerRef.current);
-      blurTimerRef.current = null;
-    }
   }
 
   async function handleSave(): Promise<void> {
@@ -208,7 +149,6 @@ export function LegacyProfileInfoCard({
       if (!(await saveRing.succeed())) return;
       onSaved(patch);
       setEditing(false);
-      setRegionMatches([]);
       toast.show({ message: '個人資料已更新', tone: 'success' });
     } catch {
       saveRing.fail();
@@ -433,50 +373,18 @@ export function LegacyProfileInfoCard({
           </div>
           <div class="info-row">
             <span data-i18n="profile.region">{lt('profile.region', '地區')}</span>
-            <input
-              type="text"
+            <select
               id="profile-edit-region"
               class="profile-edit-input"
               aria-label="地區"
-              aria-autocomplete="list"
-              aria-controls="profile-region-list"
-              aria-expanded={regionMatches.length > 0 ? 'true' : 'false'}
-              placeholder={lt('輸入搜尋縣市...', '輸入搜尋縣市...')}
-              data-i18n-placeholder="輸入搜尋縣市..."
-              autoComplete="off"
               value={region}
-              onInput={(e) => handleRegionInput(e.currentTarget.value)}
-              onKeyDown={handleRegionKeyDown}
-              onBlur={handleRegionBlur}
-              onFocus={handleRegionFocus}
-            />
-          </div>
-          <div
-            id="profile-region-list"
-            role="listbox"
-            style={`max-height:120px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);${regionMatches.length > 0 ? '' : 'display:none'}`}
-          >
-            {regionMatches.map((name, idx) => {
-              const isHighlighted = idx === regionHighlight;
-              return (
-                <div
-                  key={name}
-                  data-region={name}
-                  role="option"
-                  aria-selected={isHighlighted ? 'true' : 'false'}
-                  style={`padding:6px 10px;font-size:.78rem;border-bottom:1px solid var(--border);cursor:pointer${isHighlighted ? ';background:var(--bg-elevated)' : ''}`}
-                  // U-042：不讓 mousedown 奪走輸入框焦點，click 才能正常選取。
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    setRegion(name);
-                    setRegionMatches([]);
-                    setRegionHighlight(-1);
-                  }}
-                >
-                  {name}
-                </div>
-              );
-            })}
+              onChange={(e) => setRegion(e.currentTarget.value)}
+            >
+              <option value="" data-i18n="請選擇">{lt('請選擇', '請選擇')}</option>
+              {regionSelectOptions(region).map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
           </div>
           <div class={favOn ? 'info-row fav-row' : 'info-row'}>
             <span data-i18n="profile.sports">{lt('profile.sports', '運動類別')}</span>

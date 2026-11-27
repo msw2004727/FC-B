@@ -1,5 +1,5 @@
 // 賽事分享（CP-SHARE）預覽：正式詳情頁＋記憶體假資料。不連 Firestore、不呼叫 Functions、不載 LINE SDK。
-// ?screen=detail|detail-live|sheet|sheet-nopicker|flex 與 ?theme=light|dark。畫完設 window.__CPS_READY。
+// ?screen=detail|detail-live|sheet|sheet-nopicker|sheet-event|sheet-event-nopicker|flex 與 ?theme=light|dark。畫完設 window.__CPS_READY。
 // 分享選單直接用 showShareActionSheet 打開（正式頁按鈕走同一支）；Flex 卡片用簡化的 Flex 繪製，和活動卡並排。
 import { render } from 'preact';
 import type { ComponentChildren, JSX } from 'preact';
@@ -28,7 +28,7 @@ const screenName = params.get('screen') || 'detail';
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 document.documentElement.setAttribute('data-theme', theme);
 
-export const SHARE_SCREENS = ['detail', 'detail-live', 'sheet', 'sheet-nopicker', 'flex'] as const;
+export const SHARE_SCREENS = ['detail', 'detail-live', 'sheet', 'sheet-nopicker', 'sheet-event', 'sheet-event-nopicker', 'flex'] as const;
 
 // 假的合格格式 id（cp_＋20 碼），不是任何真實賽事。
 const CID = 'cp_DEMOdemoDEMOdemo0001';
@@ -201,7 +201,10 @@ async function start(): Promise<void> {
       await until('分享鈕', () => hasText('分享賽事'));
       if (screenName.startsWith('sheet')) {
         const ct = makeCompetitionsT(dict);
-        void showShareActionSheet(screenName === 'sheet', new AbortController().signal, ct('shareBtn'), shareSheetLabels(ct));
+        const picker = !screenName.endsWith('nopicker');
+        // sheet-event*：活動分享的呼叫方式（不傳標題與文案，用元件預設中文）。
+        if (screenName.startsWith('sheet-event')) void showShareActionSheet(picker, new AbortController().signal);
+        else void showShareActionSheet(picker, new AbortController().signal, ct('shareBtn'), shareSheetLabels(ct));
         await until('分享選單', () => document.querySelector('.share-action-sheet.active') != null);
         await new Promise((resolve) => setTimeout(resolve, 450));
       }

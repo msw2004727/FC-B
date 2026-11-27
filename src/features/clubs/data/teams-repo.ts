@@ -15,10 +15,14 @@ import { getTeamStaffIdentity } from './team-detail-model';
 import type { TeamDoc, TeamMember } from './types';
 
 let cachedTeams: TeamDoc[] | null = null;
+let teamsInflight: Promise<TeamDoc[]> | null = null;
+let teamsGeneration = 0;
 
 /** 清除 `loadTeams()` 的 session 記憶體快取。 */
 export function invalidateTeams(): void {
   cachedTeams = null;
+  teamsGeneration += 1;
+  teamsInflight = null;
 }
 
 function isSameTeam(team: TeamDoc, teamKey: string): boolean {
@@ -69,21 +73,33 @@ export function removeCachedTeam(teamKey: string): void {
  */
 export async function loadTeams(): Promise<TeamDoc[]> {
   if (cachedTeams) return cachedTeams;
+  if (teamsInflight) return teamsInflight;
 
-  const [{ collection, getDocs }, ctx] = await Promise.all([
-    import('firebase/firestore'),
-    getFirebaseCore(),
-  ]);
+  const gen = teamsGeneration;
+  const loadPromise = (async (): Promise<TeamDoc[]> => {
+    const [{ collection, getDocs }, ctx] = await Promise.all([
+      import('firebase/firestore'),
+      getFirebaseCore(),
+    ]);
 
-  const snap = await getDocs(collection(ctx.db, teamsCollection));
-  const out: TeamDoc[] = [];
-  snap.forEach((child) => {
-    const data = child.data() as TeamDoc;
-    out.push({ ...data, _docId: child.id });
-  });
+    const snap = await getDocs(collection(ctx.db, teamsCollection));
+    const out: TeamDoc[] = [];
+    snap.forEach((child) => {
+      const data = child.data() as TeamDoc;
+      out.push({ ...data, _docId: child.id });
+    });
 
-  cachedTeams = out;
-  return out;
+    // PROFILE-SPEED：invalidate 後舊讀取不得把過期結果寫回快取。
+    if (gen === teamsGeneration) cachedTeams = out;
+    return out;
+  })();
+
+  teamsInflight = loadPromise;
+  try {
+    return await loadPromise;
+  } finally {
+    if (teamsInflight === loadPromise) teamsInflight = null;
+  }
 }
 
 /**

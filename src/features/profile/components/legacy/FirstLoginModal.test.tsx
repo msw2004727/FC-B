@@ -38,6 +38,14 @@ interface RenderOpts {
   onSaved?: (patch: Record<string, unknown>) => void;
 }
 
+/** 選地區下拉：同 profile.test.tsx setSelectById，先設值再在 act 內送 change。 */
+async function pickRegion(select: HTMLSelectElement, value: string): Promise<void> {
+  fireEvent.input(select, { target: { value } });
+  await act(async () => {
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
 function renderModal(opts: RenderOpts = {}): {
   onClose: ReturnType<typeof vi.fn>;
   onSaved: ReturnType<typeof vi.fn>;
@@ -71,7 +79,7 @@ describe('LegacyFirstLoginModal（M-130 照 A index.html#first-login-modal）', 
     expect(document.getElementById('fl-birthday-y')).not.toBeNull();
     expect(document.getElementById('fl-birthday-m')).not.toBeNull();
     expect(document.getElementById('fl-birthday-d')).not.toBeNull();
-    expect(document.getElementById('fl-region-input')).not.toBeNull();
+    expect(document.getElementById('fl-region')).not.toBeNull();
     expect(document.getElementById('fl-email')).not.toBeNull();
     expect(document.getElementById('fl-legal-consent')).not.toBeNull();
     expect(document.getElementById('fl-error-msg')).not.toBeNull();
@@ -126,32 +134,47 @@ describe('LegacyFirstLoginModal（M-130 照 A index.html#first-login-modal）', 
     expect(saveFirstLoginProfile).not.toHaveBeenCalled();
   });
 
-  it('輸入「台」時出現縣市建議選項（照 A flRenderList）', async () => {
+  it('地區下拉：請選擇＋22 縣市，台中第一、六都在前，其餘照人口，沒有「其他」', () => {
     renderModal();
-    const input = document.getElementById('fl-region-input') as HTMLInputElement;
-    fireEvent.input(input, { target: { value: '台' } });
-    await waitFor(() => {
-      expect(document.querySelector('#fl-region-list [data-region="台北市"]')).not.toBeNull();
-    });
+    const select = document.getElementById('fl-region') as HTMLSelectElement;
+    const values = Array.from(select.options).map((opt) => opt.value);
+    expect(values.slice(0, 8)).toEqual([
+      '', '台中市', '新北市', '高雄市', '台北市', '桃園市', '台南市', '彰化縣',
+    ]);
+    expect(values).toHaveLength(23);
+    expect(values).not.toContain('其他');
   });
 
-  it('點選建議選項後填入地區（照 A flSelectRegion）', async () => {
-    renderModal();
-    const input = document.getElementById('fl-region-input') as HTMLInputElement;
-    fireEvent.input(input, { target: { value: '台' } });
-    await waitFor(() => {
-      expect(document.querySelector('#fl-region-list [data-region="台北市"]')).not.toBeNull();
+  it('地區下拉選了就填入，送出帶該值', async () => {
+    renderModal({
+      initial: { gender: '男', birthday: '1990/01/15', region: '', email: '' },
     });
-    fireEvent.click(document.querySelector('#fl-region-list [data-region="台北市"]') as HTMLElement);
-    await waitFor(() => expect(input.value).toBe('台北市'));
+    const select = document.getElementById('fl-region') as HTMLSelectElement;
+    await pickRegion(select, '高雄市');
+    expect(select.value).toBe('高雄市');
+    fireEvent.click(document.getElementById('fl-legal-consent') as HTMLInputElement);
+    fireEvent.click(document.querySelector('.fl-submit-btn') as HTMLButtonElement);
+    await waitFor(() => expect(saveFirstLoginProfile).toHaveBeenCalledWith('u1', {
+      gender: '男',
+      birthday: '1990/01/15',
+      region: '高雄市',
+      legalConsent: true,
+    }));
+  });
+
+  it('舊資料地區不在清單時仍顯示在第一個選項，不會被清空', () => {
+    renderModal({
+      initial: { gender: '', birthday: '', region: '火星市', email: '' },
+    });
+    const select = document.getElementById('fl-region') as HTMLSelectElement;
+    expect(select.value).toBe('火星市');
+    expect(select.options[1]?.value).toBe('火星市');
   });
 
   it('填無效地區送出顯示錯誤且不呼叫 saveFirstLoginProfile', async () => {
     renderModal({
-      initial: { gender: '男', birthday: '1990/01/15', region: '', email: '' },
+      initial: { gender: '男', birthday: '1990/01/15', region: '火星市', email: '' },
     });
-    const input = document.getElementById('fl-region-input') as HTMLInputElement;
-    fireEvent.input(input, { target: { value: '火星' } });
     fireEvent.click(document.getElementById('fl-legal-consent') as HTMLInputElement);
     fireEvent.click(document.querySelector('.fl-submit-btn') as HTMLButtonElement);
     await waitFor(() => {
@@ -296,33 +319,33 @@ describe('LegacyFirstLoginModal 短螢幕捲動', () => {
     expect(scrollTo).toHaveBeenCalledWith({ top: 800, behavior: 'smooth' });
   });
 
-  it('地區未填時捲到該欄位、外框標錯，填好後移除；原本的缺漏提示仍在', () => {
+  it('地區未填時捲到該欄位、外框標錯，填好後移除；原本的缺漏提示仍在', async () => {
     renderModal({
       initial: { gender: '男', birthday: '1990/01/15', region: '', email: '' },
     });
-    const field = fieldOf('fl-region-input');
-    const input = document.getElementById('fl-region-input') as HTMLInputElement;
+    const field = fieldOf('fl-region');
+    const select = document.getElementById('fl-region') as HTMLSelectElement;
     const scrollIntoView = vi.fn();
-    const focus = vi.spyOn(input, 'focus');
+    const focus = vi.spyOn(select, 'focus');
     field.scrollIntoView = scrollIntoView;
     fireEvent.click(document.getElementById('fl-legal-consent') as HTMLInputElement);
     fireEvent.click(document.querySelector('.fl-submit-btn') as HTMLButtonElement);
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
     expect(focus).toHaveBeenCalledWith();
     expect(field.classList.contains('fl-field--error')).toBe(true);
-    expect(input.classList.contains('fl-field--error')).toBe(true);
+    expect(select.classList.contains('fl-field--error')).toBe(true);
     expect(fieldOf('fl-gender').classList.contains('fl-field--error')).toBe(false);
     expect(vi.mocked(toast.show)).toHaveBeenCalledWith({
       message: '請填寫所有必填欄位（性別、生日、地區）',
     });
     expect(saveFirstLoginProfile).not.toHaveBeenCalled();
 
-    fireEvent.input(input, { target: { value: '   ' } });
+    await pickRegion(select, '');
     expect(field.classList.contains('fl-field--error')).toBe(true);
-    expect(input.classList.contains('fl-field--error')).toBe(true);
-    fireEvent.input(input, { target: { value: '台北市' } });
+    expect(select.classList.contains('fl-field--error')).toBe(true);
+    await pickRegion(select, '台北市');
     expect(field.classList.contains('fl-field--error')).toBe(false);
-    expect(input.classList.contains('fl-field--error')).toBe(false);
+    expect(select.classList.contains('fl-field--error')).toBe(false);
   });
 
   it('紅框 class 在有框線的控制項上，layout.css 該 class 含 border', () => {
@@ -331,9 +354,9 @@ describe('LegacyFirstLoginModal 短螢幕捲動', () => {
     });
     fireEvent.click(document.getElementById('fl-legal-consent') as HTMLInputElement);
     fireEvent.click(document.querySelector('.fl-submit-btn') as HTMLButtonElement);
-    const input = document.getElementById('fl-region-input') as HTMLInputElement;
-    expect(input.tagName).toBe('INPUT');
-    expect(input.classList.contains('fl-field--error')).toBe(true);
+    const select = document.getElementById('fl-region') as HTMLSelectElement;
+    expect(select.tagName).toBe('SELECT');
+    expect(select.classList.contains('fl-field--error')).toBe(true);
     const gender = document.getElementById('fl-gender') as HTMLSelectElement;
     expect(gender.classList.contains('fl-field--error')).toBe(false);
 
@@ -358,7 +381,7 @@ describe('LegacyFirstLoginModal 短螢幕捲動', () => {
     expect(consentFocus).not.toHaveBeenCalled();
     expect(genderField.classList.contains('fl-field--error')).toBe(true);
     expect(gender.classList.contains('fl-field--error')).toBe(true);
-    expect(fieldOf('fl-region-input').classList.contains('fl-field--error')).toBe(false);
+    expect(fieldOf('fl-region').classList.contains('fl-field--error')).toBe(false);
     expect(consent.className).toBe('');
     expect(vi.mocked(toast.show)).toHaveBeenCalledWith({
       message: '請先勾選同意服務條款與隱私權政策。',
@@ -395,7 +418,7 @@ describe('LegacyFirstLoginModal 短螢幕捲動', () => {
     expect(genderField.classList.contains('fl-field--error')).toBe(true);
     expect(gender.tagName).toBe('SELECT');
     expect(gender.classList.contains('fl-field--error')).toBe(true);
-    expect(fieldOf('fl-region-input').classList.contains('fl-field--error')).toBe(false);
+    expect(fieldOf('fl-region').classList.contains('fl-field--error')).toBe(false);
     expect(saveFirstLoginProfile).not.toHaveBeenCalled();
   });
 
@@ -413,7 +436,7 @@ describe('LegacyFirstLoginModal 短螢幕捲動', () => {
     renderModal({
       initial: { gender: '男', birthday: '1990/01/15', region: '', email: '' },
     });
-    const field = fieldOf('fl-region-input');
+    const field = fieldOf('fl-region');
     const scrollIntoView = vi.fn();
     field.scrollIntoView = scrollIntoView;
     fireEvent.click(document.getElementById('fl-legal-consent') as HTMLInputElement);

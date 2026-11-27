@@ -72,6 +72,25 @@ export function loadSportRank(): Promise<string[]> {
   return rankPromise;
 }
 
+/** 首頁自動跳時讀本人已選運動（入口沒帶 favSports，在延後塊讀一次）；讀失敗回 []，照常顯示只是不預選。 */
+export async function loadOwnedSports(uid: string): Promise<string[]> {
+  try {
+    const [{ getFirebase }, { doc, getDoc }] = await Promise.all([
+      import('@/data/firebase'),
+      import('firebase/firestore'),
+    ]);
+    const fb = await getFirebase();
+    const snap = await getDoc(doc(fb.db as Firestore, 'users', uid));
+    const raw = snap.exists() ? (snap.data() as { favSports?: unknown }).favSports : undefined;
+    if (!Array.isArray(raw)) return [];
+    const out: string[] = [];
+    for (const v of raw) if (typeof v === 'string' && !out.includes(v)) out.push(v);
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 let enabledPromise: Promise<boolean> | null = null;
 
 export function isSportPrefsEnabled(): Promise<boolean> {

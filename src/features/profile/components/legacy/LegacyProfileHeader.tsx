@@ -4,7 +4,6 @@ import { useEffect, useState } from 'preact/hooks';
 
 import { emit } from '@/core/events';
 import { GuestAvatarIcon } from '@/ui/GuestAvatarIcon';
-import { useUserRoles } from '@/data/user-roles';
 import type { UserProfile } from '../../data/profile-model';
 import type { ViewerView } from '../../data/viewer';
 import type { UserAttendanceSummary } from '../../data/attendance-summary';
@@ -90,8 +89,7 @@ export function LegacyProfileTopSection({
   viewer: ViewerView;
   summary: UserAttendanceSummary | null;
 }): JSX.Element {
-  const rolesMap = useUserRoles([uid]);
-  const effectiveRole = resolveEffectiveRole(profile, rolesMap[uid]);
+  const effectiveRole = resolveEffectiveRole(profile);
   const roleInfo = ROLE_DISPLAY_MAP[effectiveRole] ?? ROLE_DISPLAY_MAP.user;
 
   // 照 A `renderProfileData`：用 `getCurrentIdentity('profile')` 解析有效身份。
@@ -121,8 +119,7 @@ export function LegacyProfileTopSection({
   // A `_canViewRawUid`：只有 admin / super_admin 看得到原始 UID。
   const canViewRawUid =
     isAdminPlusRole(viewer.role)
-    || isAdminPlusRole(typeof profile['role'] === 'string' ? profile['role'] : '')
-    || isAdminPlusRole(rolesMap[uid]);
+    || isAdminPlusRole(typeof profile['role'] === 'string' ? profile['role'] : '');
 
   const { level, progress, needed, percent } = calcLevelFromExp(profile['exp']);
 

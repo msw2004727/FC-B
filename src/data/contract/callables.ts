@@ -1806,12 +1806,14 @@ export interface SubmitContactMessageRequest {
   source: 'fcb';
 }
 
-/** 運動喜好（計畫書 fcb-sport-fav-notify-plan §5.2）；FC functions/sport-prefs.js。只收這四個鍵，其他鍵伺服器拒絕。 */
+/** 運動喜好（計畫書 fcb-sport-fav-notify-plan §5.2）；FC functions/sport-prefs.js。只收這五個鍵，其他鍵伺服器拒絕。 */
 export interface SaveSportPrefsRequest {
   /** 新增的運動代碼（不含 other，伺服器清單內）。 */
   addSports?: string[];
   /** 移除一個運動代碼。 */
   removeSport?: string;
+  /** 移除多個運動代碼（九宮格再次開啟取消已選）；可與 addSports 同送，兩者不可有交集；不可與 removeSport 同送。 */
+  removeSports?: string[];
   /** 每日新活動開關。 */
   newEventNotify?: boolean;
   /** 只能是 true：記錄彈窗已出現過。 */

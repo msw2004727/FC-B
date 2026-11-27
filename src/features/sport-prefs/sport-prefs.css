@@ -39,15 +39,13 @@
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere;
 }
 #sport-prefs-modal .spf-tile.is-on { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
-#sport-prefs-modal .spf-tile.is-owned { cursor: default; border-style: dashed; border-color: var(--text-muted); background: var(--bg-elevated); color: var(--text-muted); }
 #sport-prefs-modal .spf-check {
   position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.18);
 }
-#sport-prefs-modal .spf-tile.is-owned .spf-check { background: var(--text-muted); }
 @media (hover: hover) {
-  #sport-prefs-modal .spf-tile:not(.is-owned):not(.is-empty):hover { border-color: var(--accent); }
+  #sport-prefs-modal .spf-tile:not(.is-empty):hover { border-color: var(--accent); }
 }
 
 #sport-prefs-modal .spf-dots { display: flex; justify-content: center; gap: 6px; margin: .7rem 0 .2rem; }
@@ -60,7 +58,6 @@
   border: 1px solid var(--accent); border-radius: 999px; background: var(--accent-bg); color: var(--accent);
   font-size: .8rem; font-weight: 600; white-space: nowrap;
 }
-#sport-prefs-modal .spf-tags .spf-tag.is-owned { border-style: dashed; }
 #sport-prefs-modal .spf-tag.is-owned { border-color: var(--border); background: var(--bg-elevated); color: var(--text-secondary); }
 .spf-tag-x { font-size: .95rem; line-height: 1; margin-right: -.15rem; opacity: .8; }
 
@@ -112,6 +109,13 @@
 .legacy-ui .ne-block { margin-bottom: 16px; }
 
 #sport-prefs-modal .spf-ok:disabled { cursor: not-allowed; }
+/* 存檔中：轉圈疊在字上置中、字只變透明（保留寬度與讀屏名稱）；轉圈與時長沿用 ui/button.css 的 ui-button__spinner（ui-spin），半透明照 A 的 _withButtonLoading（.6） */
+#sport-prefs-modal .spf-actions .spf-ok.is-saving { position: relative; opacity: .6; cursor: progress; }
+#sport-prefs-modal .spf-ok.is-saving .spf-ok-label { color: transparent; }
+#sport-prefs-modal .spf-ok-spin { position: absolute; top: 50%; left: 50%; margin: -9px 0 0 -9px; animation: ui-spin var(--ui-spin-dur) var(--ui-ease) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  #sport-prefs-modal .spf-ok-spin { animation: none; }
+}
 .legacy-ui .fav-legacy { color: var(--text-primary); }
 /* 九宮格開著時，安裝浮球與聯繫站長泡泡讓開（計畫書 §7.2） */
 body.sport-prefs-open .pwa-install-fab,

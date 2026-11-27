@@ -10,7 +10,7 @@ import { toast } from '@/ui/Toast';
 import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 
 import { saveFirstLoginProfile, type FirstLoginInput } from '../../data/profile-writes';
-import { TW_REGIONS, filterTwRegions } from './profile-legacy-helpers';
+import { TW_REGIONS, regionSelectOptions } from './profile-legacy-helpers';
 import './profile-modal-glass.css';
 import './profile-complete-viewport.css';
 
@@ -87,9 +87,6 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
   const [month, setMonth] = useState(parsed.month);
   const [day, setDay] = useState(parsed.day);
   const [region, setRegion] = useState(initial.region);
-  const [regionMatches, setRegionMatches] = useState<string[]>([]);
-  const [regionOpen, setRegionOpen] = useState(false);
-  const [regionActiveIndex, setRegionActiveIndex] = useState(-1);
   const [email, setEmail] = useState(initial.email);
   const [legalConsent, setLegalConsent] = useState(false);
   const [errorText, setErrorText] = useState('');
@@ -108,8 +105,7 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
   const yearRef = useRef<HTMLSelectElement>(null);
   const monthRef = useRef<HTMLSelectElement>(null);
   const dayRef = useRef<HTMLSelectElement>(null);
-  const regionRef = useRef<HTMLInputElement>(null);
-  const regionBlurTimerRef = useRef<number | null>(null);
+  const regionRef = useRef<HTMLSelectElement>(null);
   // 捲動容器是 #first-login-modal 本身（.modal 的 overflow-y:auto），不是 .modal-body。
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollRafRef = useRef<number | null>(null);
@@ -142,6 +138,9 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
     const el = scrollRef.current;
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
     if (!el || !vv) return undefined;
+    // 2026-11-27 站長 SE 實測：鍵盤開著時底部同意欄＋按鈕（sticky）佔掉大半可見區，地區欄被蓋住。
+    // 可見高明顯小於開過的最大高（iOS 鍵盤疊上去、Android 整頁縮小都適用）視為鍵盤開著，加 data-kb 讓底部改跟著表單捲。
+    let tallest = 0;
     const sync = (): void => {
       // 使用者雙指放大時可見區會跟著縮，不跟著縮彈窗。
       if (vv.scale > 1.01) return;
@@ -149,6 +148,23 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
       el.style.setProperty('--fl-vv-h', `${Math.round(vv.height)}px`);
       el.style.setProperty('--fl-vv-bottom', `${hidden}px`);
       el.setAttribute('data-vv', '1');
+      tallest = Math.max(tallest, vv.height, window.innerHeight);
+      const keyboard = vv.height < tallest * 0.75;
+      if (keyboard === el.hasAttribute('data-kb')) return;
+      if (!keyboard) {
+        el.removeAttribute('data-kb');
+        return;
+      }
+      el.setAttribute('data-kb', '1');
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && el.contains(active)) {
+        // 整個欄位捲到上緣，下面留給地區建議清單。
+        try {
+          (active.closest('.fl-field') ?? active).scrollIntoView({ block: 'start' });
+        } catch {
+          // noop
+        }
+      }
     };
     sync();
     vv.addEventListener('resize', sync);
@@ -203,21 +219,12 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
     else if (invalidKey === 'region' && region.trim()) setInvalidKey(null);
   }, [invalidKey, gender, year, month, day, region]);
 
-  // 地區建議列表展開會改變內容高度；ResizeObserver 沒來時也要重算提示。
-  useEffect(() => {
-    syncScrollHint();
-  }, [regionOpen]);
-
   useEffect(() => {
     aliveRef.current = true;
     const unlock = lockBody(document.body);
     // 照 A `data-no-backdrop-close="1"`：不關遮罩、不關 Esc、不關返回鍵。
     return () => {
       aliveRef.current = false;
-      if (regionBlurTimerRef.current !== null) {
-        window.clearTimeout(regionBlurTimerRef.current);
-        regionBlurTimerRef.current = null;
-      }
       unlock();
     };
   }, []);
@@ -238,68 +245,6 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
   function changeMonth(value: string): void {
     setMonth(value);
     if (Number(day) > daysInMonth(year, value)) setDay('');
-  }
-
-  function updateRegionMatches(value: string): void {
-    setRegionMatches(filterTwRegions(value, true));
-    setRegionOpen(true);
-    setRegionActiveIndex(-1);
-  }
-
-  function handleRegionInput(value: string): void {
-    setRegion(value);
-    updateRegionMatches(value);
-  }
-
-  function handleRegionFocus(): void {
-    if (regionBlurTimerRef.current !== null) {
-      window.clearTimeout(regionBlurTimerRef.current);
-      regionBlurTimerRef.current = null;
-    }
-    if (regionMatches.length > 0) setRegionOpen(true);
-  }
-
-  function handleRegionBlur(): void {
-    if (regionBlurTimerRef.current !== null) {
-      window.clearTimeout(regionBlurTimerRef.current);
-    }
-    regionBlurTimerRef.current = window.setTimeout(() => {
-      regionBlurTimerRef.current = null;
-      setRegionOpen(false);
-    }, 150);
-  }
-
-  function selectRegion(name: string): void {
-    setRegion(name);
-    setRegionMatches([]);
-    setRegionOpen(false);
-    setRegionActiveIndex(-1);
-    regionRef.current?.focus();
-  }
-
-  function handleRegionKeyDown(event: JSX.TargetedKeyboardEvent<HTMLInputElement>): void {
-    if (event.key === 'Escape') {
-      setRegionOpen(false);
-      return;
-    }
-    if (!regionOpen || regionMatches.length === 0) return;
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      setRegionActiveIndex((prev) => (prev + 1) % regionMatches.length);
-      return;
-    }
-    if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      setRegionActiveIndex((prev) => (prev <= 0 ? regionMatches.length - 1 : prev - 1));
-      return;
-    }
-    if (event.key === 'Enter') {
-      const match = regionActiveIndex >= 0 ? regionMatches[regionActiveIndex] : undefined;
-      if (match) {
-        event.preventDefault();
-        selectRegion(match);
-      }
-    }
   }
 
   function scrollFormToEnd(): void {
@@ -559,60 +504,22 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
               class={invalidKey === 'region' ? 'ce-row fl-field fl-field--error' : 'ce-row fl-field'}
               ref={regionFieldRef}
             >
-              <label for="fl-region-input">
+              <label for="fl-region">
                 {lt('地區', '地區')} <span class="required">{lt('*必填', '*必填')}</span>
               </label>
-              <input
-                type="text"
-                id="fl-region-input"
+              <select
+                id="fl-region"
                 class={invalidKey === 'region' ? 'fl-field--error' : undefined}
                 ref={regionRef}
-                placeholder={lt('輸入縣市名稱', '輸入縣市名稱')}
-                autoComplete="off"
                 value={region}
                 disabled={pending}
-                role="combobox"
-                aria-autocomplete="list"
-                aria-controls="fl-region-list"
-                aria-expanded={regionOpen ? 'true' : 'false'}
-                aria-activedescendant={
-                  regionActiveIndex >= 0 ? `fl-region-option-${regionActiveIndex}` : undefined
-                }
-                onInput={(event) => handleRegionInput(event.currentTarget.value)}
-                onFocus={handleRegionFocus}
-                onBlur={handleRegionBlur}
-                onKeyDown={handleRegionKeyDown}
-              />
-              <div
-                id="fl-region-list"
-                role="listbox"
-                style={regionOpen ? undefined : 'display:none'}
+                onChange={(event) => setRegion(event.currentTarget.value)}
               >
-                {regionMatches.length === 0 ? (
-                  <div style="padding:8px 12px;color:#999;font-size:13px">
-                    {lt('無匹配結果', '無匹配結果')}
-                  </div>
-                ) : (
-                  regionMatches.map((name, index) => (
-                    <div
-                      key={name}
-                      id={`fl-region-option-${index}`}
-                      role="option"
-                      aria-selected={index === regionActiveIndex ? 'true' : 'false'}
-                      data-region={name}
-                      style={`padding:7px 12px;font-size:13px;border-bottom:1px solid var(--border,#eee)${
-                        index === regionActiveIndex
-                          ? ';background:var(--bg-hover,#f3f4f6);font-weight:600'
-                          : ''
-                      }`}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => selectRegion(name)}
-                    >
-                      {name}
-                    </div>
-                  ))
-                )}
-              </div>
+                <option value="">{lt('請選擇', '請選擇')}</option>
+                {regionSelectOptions(region).map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
             </div>
             <div class="ce-row fl-field fl-email-field">
               <label for="fl-email">
