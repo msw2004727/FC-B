@@ -15,6 +15,8 @@ import {
   cpHostCreate,
   cpHostGenerateSchedule,
   cpHostDelete,
+  cpHostSetStatus,
+  cpEntryWithdraw,
   cpHostDeleteNotice,
   cpHostPostNotice,
   cpHostPublish,
@@ -37,11 +39,14 @@ import {
   cpHostCreateInvite,
   cpHostRevokeInvite,
   cpParticipantAcceptInvite,
+  cpParticipantRequestMyDataRemoval,
   cpHostModerate,
   cpHostReviewReport,
   type CpAcceptInviteResult,
   type CpCreateInviteResult,
+  type CpDataRemovalResult,
   type CpDeleteResult,
+  type CpHostSetStatusInput,
   type CpModerateInput,
   type CpReviewStatus,
   type CpAddRosterByRepInput,
@@ -162,6 +167,12 @@ export interface CpActions {
   reviewReport(input: { cid: string; reportId: string; status: CpReviewStatus }): Promise<unknown>;
   /** 刪除整場賽事（cpHost delete）。刪到一半失敗時再呼叫一次即續刪。 */
   deleteCompetition(input: { cid: string }): Promise<CpDeleteResult>;
+  /** 賽事延期、取消、延期後恢復（cpHost setStatus）。 */
+  setCompetitionStatus(input: CpHostSetStatusInput): Promise<unknown>;
+  /** 代表撤回報名（cpEntry withdrawEntry），連同這隊名單一併移除。 */
+  withdrawEntry(input: { cid: string; enId: string }): Promise<unknown>;
+  /** 本人移除自己的賽事資料（cpParticipant requestMyDataRemoval，設計 §4.11）。 */
+  requestMyDataRemoval(): Promise<CpDataRemovalResult>;
 }
 
 export const liveCpActions: CpActions = {
@@ -203,4 +214,7 @@ export const liveCpActions: CpActions = {
   moderate: cpHostModerate,
   reviewReport: cpHostReviewReport,
   deleteCompetition: cpHostDelete,
+  setCompetitionStatus: cpHostSetStatus,
+  withdrawEntry: cpEntryWithdraw,
+  requestMyDataRemoval: cpParticipantRequestMyDataRemoval,
 };

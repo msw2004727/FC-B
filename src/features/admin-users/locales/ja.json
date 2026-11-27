@@ -47,7 +47,8 @@
     "restrict": "制限",
     "unrestrict": "制限を解除",
     "lateCancelState": "臨取狀態：",
-    "clearLateCancelRed": "解除臨取紅標"
+    "clearLateCancelRed": "解除臨取狀態",
+    "clearLateCancelRedShort": "解除"
   },
   "modal": {
     "title": "ユーザーを編集 — {name}",
@@ -95,8 +96,8 @@
     "notFound": "ユーザーが見つかりません"
   },
   "lateCancel": {
-    "confirm": "確定要解除 {name} 的臨取紅標？",
-    "cleared": "已解除臨取紅標",
-    "failed": "解除臨取紅標失敗，請稍後再試"
+    "confirm": "確定要解除 {name} 的臨取狀態？",
+    "cleared": "已解除臨取狀態",
+    "failed": "解除臨取狀態失敗，請稍後再試"
   }
 }

@@ -273,6 +273,7 @@ export function HostFlexCards({
             <p class="cpm-preview cph-effect">{ct('affected', { n: affected })}</p>
             <Textarea
               label={ct('shiftReason')}
+              hint={ct('flexReasonPublic')}
               required
               value={shiftReason}
               maxLength={100}
@@ -333,6 +334,7 @@ export function HostFlexCards({
             ) : null}
             <Textarea
               label={ct('swapReason')}
+              hint={ct('flexReasonPublic')}
               required
               value={swapReason}
               maxLength={100}

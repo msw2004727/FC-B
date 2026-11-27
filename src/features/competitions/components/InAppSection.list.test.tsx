@@ -655,7 +655,7 @@ describe('進行中卡當日摘要', () => {
 
 // 站長 11-21 預設站內後，站內 0 場時訪客第一眼不能是空白（顧問 11-21）：一行空狀態，沿用 cpl-xmsg，不加副標。
 describe('站內 0 場的空狀態', () => {
-  it('公開清單 0 場（訪客）：篩選列照畫，下面一行「目前沒有站內賽事」', async () => {
+  it('公開清單 0 場（訪客）：篩選列照畫，下面一行「目前沒有賽事」', async () => {
     const repo = createFakeCpRepo({ launch: { isPublic: true, bannedWords: [] }, competitions: [] });
     const env = { actor: { ...memberActor, uid: null }, repo, actions: idleActions(), now: NOW };
     render(
@@ -665,12 +665,31 @@ describe('站內 0 場的空狀態', () => {
         </CpEnvProvider>
       </LocationProvider>,
     );
-    const msg = await screen.findByText('目前沒有站內賽事');
+    const msg = await screen.findByText('目前沒有賽事');
     expect(msg.tagName).toBe('P');
     expect(msg.className).toBe('cpl-xmsg');
     expect(document.querySelectorAll('.cpl-xmsg')).toHaveLength(1);
     expect(document.querySelector('[data-inapp="competitions"] .cpl-toolbar')).toBeTruthy();
     expect(document.querySelector('[data-cid]')).toBeNull();
+  });
+
+  it('CP-PO-10：有賽事但只看我的後 0 筆時顯示沒有符合條件的賽事', async () => {
+    const repo = createFakeCpRepo({
+      launch: { isPublic: true, bannedWords: [] },
+      competitions: [competition({ id: 'pub', name: '公開招募', category: 'league', hostType: 'personal', hostTeamId: null })],
+    });
+    const env = { actor: memberActor, repo, actions: idleActions(), now: NOW };
+    render(
+      <LocationProvider>
+        <CpEnvProvider value={env}>
+          <InAppSection />
+        </CpEnvProvider>
+      </LocationProvider>,
+    );
+    expect(await screen.findByText('公開招募')).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: '只看我的' }));
+    expect(await screen.findByText('沒有符合條件的賽事')).toBeTruthy();
+    expect(screen.queryByText('目前沒有賽事')).toBeNull();
   });
 
   it('有卡時不畫空狀態', async () => {
@@ -688,7 +707,7 @@ describe('站內 0 場的空狀態', () => {
         onOpen={() => undefined}
       />,
     );
-    expect(screen.queryByText('目前沒有站內賽事')).toBeNull();
+    expect(screen.queryByText('目前沒有賽事')).toBeNull();
   });
 });
 

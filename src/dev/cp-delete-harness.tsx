@@ -98,7 +98,7 @@ const OPEN: Record<string, () => Promise<void>> = {
   'dialog-unchecked': () => until('確認框', () => hasText('我了解刪除後無法復原')),
   'dialog-arming': () => until('確認框', () => hasText('我了解刪除後無法復原')),
   'dialog-ready': () => until('確認框', () => hasText('我了解刪除後無法復原')),
-  'dialog-error-started': () => until('錯誤', () => hasText('比賽已開始，無法刪除')),
+  'dialog-error-started': () => until('錯誤', () => hasText('比賽已開始或賽事已結束，無法刪除')),
   'dialog-error-hidden': () => until('錯誤', () => hasText('這場賽事目前不公開')),
   'detail-stuck': () => until('續刪', () => hasText('繼續刪除')),
   'detail-stuck-late': () => until('聯繫站長', () => hasText('聯繫站長')),

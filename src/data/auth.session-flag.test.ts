@@ -73,6 +73,14 @@ describe('登入旗標的寫入與清除（fcb:signed-in）', () => {
     expect(localStorage.getItem(FLAG_KEY)).toBeNull();
   });
 
+  it('帳號失效時一併清掉上次頭像紀錄（fcb:avatar）', () => {
+    localStorage.setItem(FLAG_KEY, '1');
+    localStorage.setItem('fcb:avatar', 'https://x/a.png');
+    emitState(null);
+    expect(localStorage.getItem(FLAG_KEY)).toBeNull();
+    expect(localStorage.getItem('fcb:avatar')).toBeNull();
+  });
+
   it('帳號被動失效（狀態事件為 null）→ 首頁「我的下一場活動」快照一起清，其他本機資料不動（顧問 §3.342）', () => {
     emitState(user('U1'));
     localStorage.setItem('fcb:home-next:v1', '{"v":1,"owner":"U1"}');

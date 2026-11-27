@@ -125,6 +125,9 @@ function spyActions() {
     moderate: vi.fn(actions.moderate),
     reviewReport: vi.fn(actions.reviewReport),
     deleteCompetition: vi.fn(actions.deleteCompetition),
+    setCompetitionStatus: vi.fn(actions.setCompetitionStatus),
+    withdrawEntry: vi.fn(actions.withdrawEntry),
+    requestMyDataRemoval: vi.fn(actions.requestMyDataRemoval),
   };
 }
 
@@ -376,7 +379,8 @@ describe('賽事第 2 步畫面', () => {
     expect(view.container.textContent ?? '').toContain('真實姓名僅供主辦核對資格，不會公開。');
     expect(view.container.textContent ?? '').not.toContain('公開顯示：');
     fireEvent.click(screen.getByRole('button', { name: '送出' }));
-    expect((await screen.findByRole('alert')).textContent).toBe('請填寫真實姓名');
+    // 文案盤點 B14：錯誤標在真實姓名那一欄
+    await waitFor(() => expect(view.container.querySelector('[data-field-error]')?.textContent).toBe('請填寫真實姓名'));
     expect(required.joinRoster).not.toHaveBeenCalled();
     fireEvent.input(screen.getByRole('textbox', { name: /真實姓名/ }), { target: { value: '王小範' } });
     fireEvent.click(screen.getByRole('checkbox', { name: '我了解名單會公開顯示暱稱與背號' }));
@@ -417,6 +421,8 @@ describe('賽事第 2 步畫面', () => {
   it('人數不足不能確認；鎖定後唯讀', () => {
     const short = mount(RosterPage, screenEnv('roster'));
     expect(short.container.textContent ?? '').toContain('還需 2 人');
+    // 顧問巡視第 3 條：同一張卡的「最少 N 人」只出現一次（人數那行不重複）
+    expect((short.container.textContent ?? '').split('最少').length - 1).toBe(1);
     expect(screen.getByRole('button', { name: '確認名單' })).toHaveProperty('disabled', true);
     short.unmount();
 
@@ -495,16 +501,16 @@ describe('賽事第 2 步畫面', () => {
   });
 
   it('只有一個俱樂部、從空白開始會帶入那個俱樂部；沒有俱樂部不顯示選項；晚到也會補', async () => {
-    // 建賽的俱樂部欄是必填，標籤後面多「* 必填」：用開頭比對（不會對到「我管理的俱樂部」選項）
+    // 建賽的俱樂部欄是必填，標籤後面多「* 必填」：用開頭比對（不會對到「俱樂部」選項）
     const only = mount(NewCompetitionPage, {
       ...screenEnv('wizard-1'),
       actor: { ...wizardActor, repClubs: [{ id: 'only_club', name: '唯一隊' }] },
       preview: { wizardStep: 1 },
       wizardSeed: { ...wizardSeed(), hostType: 'personal', hostTeamId: '' },
     });
-    expect(screen.queryByLabelText(/^俱樂部/)).toBeNull();
-    fireEvent.click(screen.getByRole('radio', { name: '我管理的俱樂部' }));
-    await waitFor(() => expect((screen.getByLabelText(/^俱樂部/) as HTMLSelectElement).value).toBe('only_club'));
+    expect(screen.queryByRole('combobox', { name: /^俱樂部/ })).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: '俱樂部' }));
+    await waitFor(() => expect((screen.getByRole('combobox', { name: /^俱樂部/ }) as HTMLSelectElement).value).toBe('only_club'));
     only.unmount();
 
     const none = mount(NewCompetitionPage, {
@@ -513,7 +519,7 @@ describe('賽事第 2 步畫面', () => {
       preview: { wizardStep: 1 },
       wizardSeed: { ...wizardSeed(), hostType: 'personal', hostTeamId: '' },
     });
-    expect(screen.queryByRole('radio', { name: '我管理的俱樂部' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '俱樂部' })).toBeNull();
     none.unmount();
 
     let clubs: { id: string; name: string }[] = [];
@@ -524,7 +530,7 @@ describe('賽事第 2 步畫面', () => {
       wizardSeed: { ...wizardSeed(), hostType: 'club' as const, hostTeamId: '' },
     });
     const late = mount(NewCompetitionPage, lateEnv());
-    expect(screen.queryByRole('radio', { name: '我管理的俱樂部' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '俱樂部' })).toBeNull();
     clubs = [{ id: 'late_club', name: '晚到隊' }];
     late.rerender(
       <LocationProvider>
@@ -534,7 +540,7 @@ describe('賽事第 2 步畫面', () => {
         </CpEnvProvider>
       </LocationProvider>,
     );
-    await waitFor(() => expect((screen.getByLabelText(/^俱樂部/) as HTMLSelectElement).value).toBe('late_club'));
+    await waitFor(() => expect((screen.getByRole('combobox', { name: /^俱樂部/ }) as HTMLSelectElement).value).toBe('late_club'));
   });
 
   it('建賽選了俱樂部但沒有可用俱樂部時改回個人', async () => {
@@ -547,7 +553,7 @@ describe('賽事第 2 步畫面', () => {
     await waitFor(() => {
       expect((screen.getByRole('radio', { name: '個人' }) as HTMLInputElement).checked).toBe(true);
     });
-    expect(screen.queryByRole('radio', { name: '我管理的俱樂部' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '俱樂部' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '下一步' }));
     expect(await screen.findByText('組別')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
@@ -686,11 +692,13 @@ describe('賽事第 2 步畫面', () => {
     });
   });
 
-  it('名單已鎖定：報隊管理頁沒按確認的隊也顯示名單已確認，未確認計數不算它（顧問 §3.450）', async () => {
+  // CP-PO-12（第二輪、§3.471）：鎖定後標籤改「名單已鎖定」，取代 §3.450 的「鎖定後一律顯示名單已確認」（0 人的隊也寫已確認會誤導）。
+  it('名單已鎖定：報隊管理頁每隊都顯示名單已鎖定，未確認計數不算它（顧問 §3.450、CP-PO-12）', async () => {
     const lockedBundle = manageBundle({ uid: 'uid_host', roles: ['host'] }, true);
     const locked = mount(CompetitionManagePage, { ...screenEnv('host-approved'), bundle: lockedBundle });
     expect(locked.container.textContent ?? '').toContain('示範隊E');
-    expect(locked.container.textContent ?? '').toContain('名單已確認');
+    expect(locked.container.textContent ?? '').toContain('名單已鎖定');
+    expect(locked.container.textContent ?? '').not.toContain('名單已確認');
     expect(locked.container.textContent ?? '').not.toContain('名單未確認');
     locked.unmount();
 
@@ -1126,7 +1134,7 @@ describe('賽事第 2 步畫面', () => {
       };
     }
     const rejected = mount(JoinRosterPage, closed);
-    expect(rejected.container.textContent ?? '').toContain('這份報隊目前不能登錄名單');
+    expect(rejected.container.textContent ?? '').toContain('這份報隊已被拒絕或已退出，不能登錄名單');
     expect(screen.queryByLabelText('暱稱')).toBeNull();
     rejected.unmount();
 
@@ -1332,5 +1340,70 @@ describe('賽事第 2 步畫面', () => {
     fireEvent.click(screen.getByRole('button', { name: '更多' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '檢舉' }));
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('賽事開放後第一批（CP-PO）', () => {
+  it('CP-PO-14：招募中代表看得到自己待審的報隊，非代表不讀也不顯示', async () => {
+    const repo = createFakeCpRepo({
+      competitions: [competition({ id: 'cup' })],
+      divisions: { cup: [adultDivision] },
+      entries: {
+        cup: [
+          {
+            id: 'en_other', name: '別隊', status: 'approved', dvId: 'dv_adult', teamId: 'club_b',
+            rosterCount: 7, rosterConfirmed: true, teamLogo: null,
+          },
+          {
+            id: 'en_mine', name: '我的待審隊', status: 'pending', dvId: 'dv_adult', teamId: 'club_a',
+            rosterCount: 0, rosterConfirmed: false, teamLogo: null,
+          },
+        ],
+      },
+    });
+    const repEnv: CpInjectedEnv = {
+      actor: repActor, repo, actions: idleActions(), now: NOW, route: { cid: 'cup' },
+    };
+    mount(CompetitionDetailPage, repEnv);
+    expect(await screen.findByText('我的待審隊')).toBeTruthy();
+    expect(screen.getByText('我的待審隊').closest('a')?.textContent ?? '').toContain('待審');
+    expect(screen.getByText('別隊').closest('a')?.textContent ?? '').toContain('已核准');
+    cleanup();
+
+    const callsBefore = repo.calls().filter((name) => name === 'listEntriesByTeams').length;
+    mount(CompetitionDetailPage, {
+      actor: memberActor, repo, actions: idleActions(), now: NOW, route: { cid: 'cup' },
+    });
+    expect(await screen.findByText('別隊')).toBeTruthy();
+    expect(screen.queryByText('我的待審隊')).toBeNull();
+    await waitFor(() => expect(repo.calls().filter((name) => name === 'listEntriesByTeams').length).toBe(callsBefore));
+  });
+
+  it('CP-PO-15c：代表報隊遇到 NOT_CLUB_REP 顯示俱樂部資料同步中', async () => {
+    const actions = spyActions();
+    actions.registerEntry.mockRejectedValue(new CpCallError('NOT_CLUB_REP', {}));
+    mount(CompetitionDetailPage, screenEnv('detail-rep', actions));
+    fireEvent.click(screen.getByRole('button', { name: '以俱樂部報隊' }));
+    fireEvent.click(screen.getByRole('button', { name: '送出報名' }));
+    await waitFor(() => expect(actions.registerEntry).toHaveBeenCalled());
+    expect(await screen.findByText('俱樂部資料同步中')).toBeTruthy();
+    expect(screen.queryByText('只有俱樂部代表可以做這個操作')).toBeNull();
+  });
+
+  it('CP-PO-15d：賽事不存在顯示找不到與返回列表，不顯示讀取失敗', async () => {
+    const repo = createFakeCpRepo();
+    mount(CompetitionDetailPage, {
+      actor: memberActor, repo, actions: idleActions(), now: NOW, route: { cid: 'missing_cup' },
+    });
+    expect(await screen.findByText('找不到這場賽事，可能已刪除')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '返回賽事列表' })).toBeTruthy();
+    expect(screen.queryByText('讀取失敗')).toBeNull();
+    expect(screen.queryByRole('button', { name: '重試' })).toBeNull();
+  });
+
+  it('CP-PO-10：預熱中切到積分顯示目前還沒有積分', async () => {
+    mount(CompetitionDetailPage, screenEnv('real-warm'));
+    fireEvent.click(await screen.findByRole('tab', { name: '積分' }));
+    expect(await screen.findByText('目前還沒有積分')).toBeTruthy();
   });
 });

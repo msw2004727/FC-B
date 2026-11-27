@@ -153,6 +153,11 @@ export interface DivisionDoc {
    * 進行中與已結束首屏不讀組別時，這個欄位不在手上。
    */
   ranking: StandingRanking | null;
+  /**
+   * divisions.schedule.matchCount：上次產生的場次數（clearSchedule 會刪掉 schedule，回 0）。
+   * 只給「產生賽程會取代 N 場」用；沒讀到組別或舊資料是 undefined。
+   */
+  scheduledMatches?: number;
 }
 
 export interface EntryDoc {
@@ -207,6 +212,8 @@ export interface CpMineItem {
   name?: string;
   /** 缺值視為 league。讀取時已用 categoryOf 補上。 */
   category: CompetitionCategory;
+  /** 我在這場賽事登錄的名單列 id（後端 prepareMine 的 plIds）。公開名單沒有 uid，靠這個認出自己那一列。只收非空字串；沒有就省略。 */
+  plIds?: string[];
 }
 
 export interface LaunchDoc {

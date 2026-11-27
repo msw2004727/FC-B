@@ -250,7 +250,8 @@ describe('取消單場與結束賽事', () => {
       match({ id: 'mt_4', status: 'cancelled', matchNo: 4 }),
     ], { ...idleActions(), endCompetition }), HostMatchesPage);
     fireEvent.click(screen.getByRole('button', { name: '結束賽事' }));
-    expect(screen.getByText('結束後不能再改比分；還沒確認的場次不計分')).toBeTruthy();
+    // 顧問 §3.863：補一句有進行中的場次時先不要結束
+    expect(screen.getByText(/結束後不能再改比分；還沒確認的場次不計分。\s*還有比賽進行中時，請先不要結束/)).toBeTruthy();
     expect(screen.getByText('未確認 2 場')).toBeTruthy();
     const dialog = screen.getByRole('dialog', { name: '結束賽事' });
     fireEvent.click(within(dialog).getByRole('button', { name: '確認結束' }));
@@ -320,6 +321,46 @@ describe('取消單場與結束賽事', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '確認結束' }));
     expect(endCompetition).toHaveBeenCalledWith({ cid: 'cup', reason: '只用來報名，不在系統排賽程' });
     await waitFor(() => expect(screen.queryByRole('button', { name: '結束賽事' })).toBeNull());
+  });
+
+  it('CP-PO-06：主辦看得到不能自行恢復的提示，管理員看不到', () => {
+    draw(hostEnv([], idleActions(), hostActor), HostMatchesPage);
+    fireEvent.click(screen.getByRole('button', { name: '結束賽事' }));
+    expect(screen.getByText(/主辦不能自行恢復/)).toBeTruthy();
+    expect(screen.getByText(/聯繫站長/)).toBeTruthy();
+    cleanup();
+
+    draw(hostEnv([], idleActions(), adminActor), HostMatchesPage);
+    fireEvent.click(screen.getByRole('button', { name: '結束賽事' }));
+    expect(screen.queryByText(/主辦不能自行恢復/)).toBeNull();
+  });
+
+  it('CP-PO-HOSTMATCH-ENDED：已結束且沒有場次時不提示排賽程；未結束仍提示', () => {
+    const ended = hostEnv([]);
+    if (ended.bundle) {
+      ended.bundle = {
+        ...ended.bundle,
+        competition: competition({ endedAt: taipeiMs(2027, 1, 9, 10, 0), endedBy: 'host' }),
+      };
+    }
+    draw(ended, HostMatchesPage);
+    expect(screen.getByText('賽事已結束，沒有賽程')).toBeTruthy();
+    expect(screen.queryByText('請先排賽程')).toBeNull();
+    expect(screen.queryByRole('button', { name: '排賽程' })).toBeNull();
+    cleanup();
+
+    // 顧問 §3.791：已取消另一句，同樣不放排賽程鈕。
+    const cancelled = hostEnv([]);
+    if (cancelled.bundle) {
+      cancelled.bundle = { ...cancelled.bundle, competition: competition({ status: 'cancelled' }) };
+    }
+    draw(cancelled, HostMatchesPage);
+    expect(screen.getByText('賽事已取消，沒有賽程')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '排賽程' })).toBeNull();
+    cleanup();
+
+    draw(hostEnv([]), HostMatchesPage);
+    expect(screen.getByText('請先排賽程')).toBeTruthy();
   });
 
   it('延期或草稿不顯示結束賽事', () => {
@@ -446,6 +487,29 @@ describe('同分查詢、裁定與恢復', () => {
     expect(clearTieDecision).toHaveBeenCalledWith({
       cid: 'cup', dvId: 'dv_adult', groupId: 'A', reason: '登錯', expectedVersion: 4,
     });
+  });
+
+  it('A 組審查 P2-1：主辦手動結束後仍看得到同分比較（explainTie 不看結束），但沒有裁定表單；下架時連同分入口都收', async () => {
+    const explainTie = vi.fn(async () => ({ ...explained, pending: true, steps: explained.steps.map((step) => ({ ...step, split: false })) }));
+    const ended = taipeiMs(2027, 1, 11, 10, 0);
+    draw(detailEnv({
+      actor: hostActor,
+      staff: { uid: 'uid_host', roles: ['host'] },
+      actions: { ...idleActions(), explainTie },
+      competitionPatch: { endedAt: ended, endedBy: 'host' },
+    }), CompetitionDetailPage);
+    fireEvent.click(screen.getAllByRole('button', { name: '同分' })[0]!);
+    expect(await screen.findByText('全部相同，待主辦裁定')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '儲存' })).toBeNull();
+    expect(screen.queryByLabelText(/裁定原因/)).toBeNull();
+    cleanup();
+    draw(detailEnv({
+      actor: hostActor,
+      staff: { uid: 'uid_host', roles: ['host'] },
+      actions: { ...idleActions(), explainTie },
+      competitionPatch: { hidden: true },
+    }), CompetitionDetailPage);
+    expect(screen.queryByRole('button', { name: '同分' })).toBeNull();
   });
 
   it('換查另一群時裁定方式回到主辦裁定', async () => {

@@ -18,6 +18,7 @@ import { SportIcon } from '@/ui/SportIcon';
 import { toast } from '@/ui/Toast';
 import { ContactOwnerEntry } from '../components/ContactOwnerEntry';
 import { PwaInstallFabLoader } from '../components/PwaInstallFabLoader';
+import { SportPrefsLoader } from '../components/SportPrefsLoader';
 import { HomeBannerCarousel } from '../components/legacy/HomeBannerCarousel';
 import { HomeNextActivity } from '../components/legacy/HomeNextActivity';
 import {
@@ -655,6 +656,7 @@ export default function HomePage(): JSX.Element {
         <div class="floating-ads" id="floating-ads" />
         <ContactOwnerEntry signedIn={Boolean(viewer.uid)} />
         <PwaInstallFabLoader />
+        <SportPrefsLoader uid={viewer.uid} due={viewer.sportPromptDue} />
 
         {/* 找活動條件篩選對話框（照 A _ensureHomeActivitySearchModal） */}
         {searchModalOpen && (

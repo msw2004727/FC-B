@@ -175,6 +175,8 @@ describe('正式記分頁權限', () => {
     draw(made.deps);
     expect(await screen.findByText(LIVE_COPY.noScorePermission)).toBeTruthy();
     expect(screen.queryByText(LIVE_COPY.assignScorerHint)).toBeNull();
+    // 顧問巡視第 1 條：一般人看到「請主辦把你指派為記分員」，不講指派頁
+    expect(screen.getByText(LIVE_COPY.askHostToAssign)).toBeTruthy();
     expect(screen.queryByRole('button', { name: '開賽' })).toBeNull();
     // §3.508：陌生人（已登入、沒有任何角色）的回去鈕去自己的場次，鈕字跟著是「回我的場次」。
     expect(screen.getByRole('button', { name: LIVE_COPY.backToMyMatches })).toBeTruthy();
@@ -193,6 +195,7 @@ describe('正式記分頁權限', () => {
     draw(made.deps);
     expect(await screen.findByText(LIVE_COPY.noScorePermission)).toBeTruthy();
     expect(screen.getByText(LIVE_COPY.assignScorerHint)).toBeTruthy();
+    expect(screen.queryByText(LIVE_COPY.askHostToAssign)).toBeNull();
   });
 
   it('俱樂部目前代表沒有主辦 staff 文件，也看得到說明；前代表與陌生人看不到', async () => {
@@ -220,6 +223,34 @@ describe('正式記分頁權限', () => {
     draw(host.deps, unused);
     expect(await screen.findByText(LIVE_COPY.assignScorerHint)).toBeTruthy();
     expect(unused).not.toHaveBeenCalled();
+  });
+
+  it('A 組 S1：賽事已結束時不給記分板，顯示賽事已結束；沒結束照常', async () => {
+    const made = await deps({ staffRoles: ['scorer'], matchIds: [MT] });
+    render(
+      <LocationProvider>
+        <ScoringScreen cid={CID} mtId={MT} deps={made.deps} nowMs={NOW} endedCheck={async () => true} />
+      </LocationProvider>,
+    );
+    expect(await screen.findByText('賽事已結束，不能再修改')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '開賽' })).toBeNull();
+    cleanup();
+    const open = await deps({ staffRoles: ['scorer'], matchIds: [MT] });
+    render(
+      <LocationProvider>
+        <ScoringScreen cid={CID} mtId={MT} deps={open.deps} nowMs={NOW} endedCheck={async () => false} />
+      </LocationProvider>,
+    );
+    expect(await screen.findByRole('button', { name: '開賽' })).toBeTruthy();
+    cleanup();
+    // 讀不到賽事（例如網路失敗）：當作沒結束，照常給記分板
+    const failed = await deps({ staffRoles: ['scorer'], matchIds: [MT] });
+    render(
+      <LocationProvider>
+        <ScoringScreen cid={CID} mtId={MT} deps={failed.deps} nowMs={NOW} endedCheck={async () => { throw new Error('offline'); }} />
+      </LocationProvider>,
+    );
+    expect(await screen.findByRole('button', { name: '開賽' })).toBeTruthy();
   });
 
   it('指派過期不開記分板', async () => {

@@ -13,6 +13,7 @@ import {
   getRuntimeRoleSequence,
   type CustomRoleInput,
 } from '@/ui/drawer-menu';
+import { LATE_CANCEL_CLEAR_BLACK_DEPLOYED } from './late-cancel-deployed';
 
 export const ADMIN_USER_PAGE_SIZE = 30;
 const DAY_MS = 86_400_000;
@@ -79,6 +80,8 @@ export interface AdminUser {
   lateCancelLevel: 'black' | 'red' | null;
   lateCancelTotal: number;
   lateCancelLastMs: number | null;
+  /** 黑標到期（毫秒）；沒有或不是黑標為 null。 */
+  lateCancelUntilMs: number | null;
 }
 
 function text(value: unknown): string {
@@ -145,6 +148,7 @@ export function mapUserDoc(data: Record<string, unknown> | undefined, docId: str
     lateCancelLevel: d['lateCancelLevel'] === 'black' || d['lateCancelLevel'] === 'red' ? d['lateCancelLevel'] : null,
     lateCancelTotal: Number(d['lateCancelTotal']) > 0 ? Math.floor(Number(d['lateCancelTotal'])) : 0,
     lateCancelLastMs: lastLateCancelMs(d['lateCancelRecent']),
+    lateCancelUntilMs: coerceTimeMs(d['lateCancelUntil']),
   };
 }
 
@@ -158,17 +162,37 @@ function lastLateCancelMs(raw: unknown): number | null {
   return last;
 }
 
-/** 用戶卡「臨取狀態」一行（預覽 ⑥）：只有紅標才回字串。 */
-export function lateCancelStatusText(user: AdminUser): string | null {
-  if (user.lateCancelLevel !== 'red') return null;
-  if (user.lateCancelLastMs === null) return `紅標（${user.lateCancelTotal} 次）`;
-  const p = taipeiParts(user.lateCancelLastMs);
-  return `紅標（${user.lateCancelTotal} 次，最近 ${p.month}/${p.day}）`;
+/**
+ * 用戶卡「臨取狀態」一行（預覽 ⑥）：紅標與黑標才回字串。
+ * 黑標：有到期且未過期 → 「黑標，最晚 M/D 恢復」（站長 11-26 選；到期日或出席滿場數先到者恢復，所以是最晚日）；無到期 → 「黑標」；已過期 → 不顯示。
+ */
+export function lateCancelStatusText(user: AdminUser, nowMs: number = Date.now()): string | null {
+  if (user.lateCancelLevel === 'red') {
+    if (user.lateCancelLastMs === null) return `紅標（${user.lateCancelTotal} 次）`;
+    const p = taipeiParts(user.lateCancelLastMs);
+    return `紅標（${user.lateCancelTotal} 次，最近 ${p.month}/${p.day}）`;
+  }
+  if (user.lateCancelLevel === 'black') {
+    if (user.lateCancelUntilMs === null) return '黑標';
+    if (user.lateCancelUntilMs <= nowMs) return null;
+    const p = taipeiParts(user.lateCancelUntilMs);
+    return `黑標，最晚 ${p.month}/${p.day} 恢復`;
+  }
+  return null;
 }
 
-/** 「解除臨取紅標」：該用戶是紅標且操作者有 admin.repair.no_show_adjust。 */
-export function canClearLateCancelRedOf(actor: AdminUserActor, target: AdminUser): boolean {
-  return target.lateCancelLevel === 'red' && actor.hasPermission(PERM_LATE_CANCEL_CLEAR);
+/** 解除臨取狀態（紅標或未過期黑標）：操作者有 admin.repair.no_show_adjust。 */
+export function canClearLateCancelOf(
+  actor: AdminUserActor,
+  target: AdminUser,
+  nowMs: number = Date.now(),
+  blackEnabled: boolean = LATE_CANCEL_CLEAR_BLACK_DEPLOYED,
+): boolean {
+  if (!actor.hasPermission(PERM_LATE_CANCEL_CLEAR)) return false;
+  if (target.lateCancelLevel === 'red') return true;
+  // 黑標解除要等新版後端部署（late-cancel-deployed.ts 說明）
+  if (target.lateCancelLevel !== 'black' || !blackEnabled) return false;
+  return target.lateCancelUntilMs === null || target.lateCancelUntilMs > nowMs;
 }
 
 // ─── 篩選（A _getAdminUserFilters／_applyAdminUserFilters） ───

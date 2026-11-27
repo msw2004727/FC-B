@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // 驗證 emulator 規則副本：
 // (a) firestore.rules／storage.rules 與 RULES_SOURCE.json 記錄的雜湊一致。
-// (b) 可選 --upstream <FC 路徑> [--ref <ref>]：用 git show 取正本算雜湊，不同則失敗。
-// (c) 可選 --upstream-url <base>：用 fetch 取 <base>/firestore.rules 與 storage.rules 比對。
+// (b) 可選 --upstream <FC 路徑> [--ref <ref>]：用 git show 取正本算雜湊，不同則失敗。另比對俱樂部代表向量 tests/fixtures/cp-rep-vectors.json。
+// (c) 可選 --upstream-url <base>：用 fetch 取 <base>/firestore.rules 與 storage.rules 比對。另比對俱樂部代表向量 tests/fixtures/cp-rep-vectors.json。
 //
 // 只用 Node 內建模組。
 
@@ -60,6 +60,26 @@ const copies = [
   { label: 'firestore.rules', path: firestorePath, metaKey: 'sha256' },
   { label: 'storage.rules', path: storagePath, metaKey: 'storageSha256' },
 ];
+
+// P2-2 跨 repo 向量：只在對正本比對時檢查（本機一致性由 rep-clubs.test.ts 的雜湊常數把關）。
+const vectorCopy = {
+  label: 'cp-rep-vectors.json',
+  path: resolve(repoRoot, 'src', 'features', 'competitions', 'cp-rep-vectors.json'),
+  upstreamFile: 'tests/fixtures/cp-rep-vectors.json',
+};
+function reportVectorLag(sourceLabel, upstreamBytes) {
+  if (!existsSync(vectorCopy.path)) {
+    error(`缺少 ${vectorCopy.label} 複本`);
+    return;
+  }
+  const copyHash = hash(readFileSync(vectorCopy.path));
+  const upstreamHash = hash(upstreamBytes);
+  if (copyHash !== upstreamHash) {
+    error(`俱樂部代表向量複本落後正本（${sourceLabel}）`);
+    console.error(`[check-rules-sync]     副本: ${copyHash}`);
+    console.error(`[check-rules-sync]     正本: ${upstreamHash}`);
+  }
+}
 
 for (const copy of copies) {
   if (!existsSync(copy.path)) {
@@ -136,6 +156,8 @@ if (upstream) {
     if (bytes) upstreamBytes.set(copy.label, bytes);
   }
   if (upstreamBytes.size === copies.length) reportLag(`git ${ref}`, upstreamBytes);
+  const vectorBytes = gitShow(vectorCopy.upstreamFile);
+  if (vectorBytes) reportVectorLag(`git ${ref}`, vectorBytes);
 }
 
 if (upstreamUrl) {
@@ -161,6 +183,8 @@ if (upstreamUrl) {
     if (bytes) upstreamBytes.set(copy.label, bytes);
   }
   if (upstreamBytes.size === copies.length) reportLag(base, upstreamBytes);
+  const vectorBytes = await fetchRules(vectorCopy.upstreamFile);
+  if (vectorBytes) reportVectorLag(base, vectorBytes);
 }
 
 if (failed) process.exit(1);

@@ -419,7 +419,7 @@ describe('編輯賽事：後端錯誤對回欄位', () => {
   it('沒有對應欄位（賽事剛被取消）：留在第 3 步整頁一句，鈕可再按', async () => {
     await failWith('COMPETITION_CLOSED', {});
     expect(screen.getByText('步驟 3／3')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).toBe('賽事目前的狀態不能修改');
+    expect(screen.getByRole('alert').textContent).toBe('賽事目前的狀態不能修改，請重新整理');
     expect(rowButton('儲存變更').disabled).toBe(false);
   });
 });

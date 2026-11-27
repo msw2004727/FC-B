@@ -117,7 +117,8 @@ describe('詳情頁讀不到根文件', () => {
     expect(button('重試')).toBeNull();
   });
 
-  it('登入還在確認時被拒：先轉圈不閃不公開；uid 到了重讀成功就顯示賽事', async () => {
+  // CP-DETAIL-SPEED d3：取代原本「登入待定先讀一次（被拒）、uid 到了再重讀」。現在登入待定時先不讀、只轉圈，uid 到了只讀一輪。
+  it('登入還在確認時先不讀：轉圈、不閃不公開；uid 到了只讀一次就顯示賽事', async () => {
     const base = createFakeCpRepo({
       competitions: [competition({ id: 'cup', name: '示範盃', hidden: true, hiddenReason: '主辦資料不實' })],
       staff: { cup: [{ uid: 'uid_host', roles: ['host'] }] },
@@ -127,14 +128,14 @@ describe('詳情頁讀不到根文件', () => {
       ...base,
       getCompetition: async (cid: string) => {
         reads += 1;
-        if (reads === 1) throw DENIED;
         return base.getCompetition(cid);
       },
     };
     const pending: CpActor = { ...hostActor, uid: null, authPending: true };
     const view = draw(CompetitionDetailPage, liveEnv(pending, repo));
-    await waitFor(() => expect(reads).toBe(1));
     await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(reads).toBe(0);
+    expect(view.container.querySelector('.ui-page-spinner')).toBeTruthy();
     expect(screen.queryByText('這場賽事目前不公開')).toBeNull();
     view.rerender(
       <LocationProvider>
@@ -145,13 +146,15 @@ describe('詳情頁讀不到根文件', () => {
     );
     expect(await screen.findByText('此賽事已被管理員下架：主辦資料不實')).toBeTruthy();
     expect(screen.queryByText('這場賽事目前不公開')).toBeNull();
+    expect(reads).toBe(1);
   });
 
-  it('登入確認完仍是訪客：被拒就顯示不公開', async () => {
+  it('登入確認完仍是訪客：待定時不讀；確定是訪客才讀一次，被拒就顯示不公開', async () => {
     const repo = failingRepo([DENIED]);
     const pending: CpActor = { ...guestActor, authPending: true };
     const view = draw(CompetitionDetailPage, liveEnv(pending, repo));
-    await waitFor(() => expect(repo.reads()).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(repo.reads()).toBe(0);
     expect(screen.queryByText('這場賽事目前不公開')).toBeNull();
     view.rerender(
       <LocationProvider>
@@ -162,6 +165,7 @@ describe('詳情頁讀不到根文件', () => {
     );
     expect(await screen.findByText('這場賽事目前不公開')).toBeTruthy();
     expect(view.container.querySelector('[data-cp-load="private"]')).toBeTruthy();
+    expect(repo.reads()).toBe(1);
   });
 
   it('主辦看自己被下架的賽事：讀得到根文件，下架提示不變', async () => {

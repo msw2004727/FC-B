@@ -135,7 +135,7 @@ export const QUERY_LIMIT_REGISTRY: Readonly<Record<string, QueryLimitFile>> = {
     ],
   },
   'src/features/competitions/data/cp-repo.ts': {
-    calls: 15,
+    calls: 16,
     entries: [
       {
         purpose: '我的賽事索引（cpMine/{uid}/items，CP_READ_LIMIT.mine 50）',
@@ -217,6 +217,12 @@ export const QUERY_LIMIT_REGISTRY: Readonly<Record<string, QueryLimitFile>> = {
         orderBy: '無排序',
         overflow: '已知未處理：已核准隊數上限是每組 maxTeams（≤ 64）× 最多 8 組，可超過 32，超過的隊伍沒有隊徽',
         status: 'known-gap-batch-D', // 顧問 §3.679：併入 D-3 賽事讀取
+      },
+      {
+        purpose: '代表自己俱樂部的報隊（entries teamId in 代表俱樂部，最多 10 個 id、limit 10）',
+        orderBy: '無排序',
+        overflow: '每個俱樂部在同一賽事最多一筆報隊，id 最多 10 個，筆數不超過上限',
+        status: 'ok',
       },
       {
         purpose: '尚未使用的邀請（invites status == open，CP_INVITE_LIST_LIMIT 30）',

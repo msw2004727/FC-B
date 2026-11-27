@@ -9,6 +9,7 @@ import { _resetOpenExternalForTest, _setLocationAssignForTest } from '@/core/ope
 import type { RouteAccessContext } from '@/core/feature-types';
 import { getTheme, setTheme } from '@/core/theme';
 import { setLocale } from '@/i18n/i18n';
+import * as i18nMod from '@/i18n/i18n';
 import { getToasts, toast } from './Toast';
 import * as authMod from '@/data/auth';
 
@@ -609,6 +610,52 @@ describe('SideDrawer (legacy A DOM & CSS)', () => {
       await waitFor(() => expect(pick.querySelector('.drawer-lang-code')?.textContent).toBe('EN'), { timeout: 3000 });
     } finally {
       await act(async () => { await setLocale('zh-TW'); });
+    }
+  });
+
+  it('切換語言時「正在載入語言」只給讀屏：保留 role=status，畫面上視覺隱藏', async () => {
+    render(<Harness />);
+    openDrawer();
+    const select = document.getElementById('lang-select') as HTMLSelectElement;
+    try {
+      act(() => {
+        select.value = 'en';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      const status = screen.getByRole('status');
+      expect(status.textContent).toBe('ui.sideDrawer.loading');
+      expect(status.classList.contains('drawer-sr-only')).toBe(true);
+      // 載入中：縮寫先換成按下的語言、按鈕變淡、下拉 disabled 擋重複點擊
+      const pick = select.closest('label.drawer-lang')!;
+      expect(pick.querySelector('.drawer-lang-code')?.textContent).toBe('EN');
+      expect(pick.classList.contains('is-loading')).toBe(true);
+      expect(select.disabled).toBe(true);
+      await waitFor(() => expect(screen.queryByText('ui.sideDrawer.loading')).toBeNull(), { timeout: 3000 });
+      expect(pick.classList.contains('is-loading')).toBe(false);
+      expect(pick.querySelector('.drawer-lang-code')?.textContent).toBe('EN');
+    } finally {
+      await act(async () => { await setLocale('zh-TW'); });
+    }
+  });
+
+  it('切換語言失敗：縮寫跳回原語言、按鈕不再變淡，顯示原本的錯誤提示', async () => {
+    const spy = vi.spyOn(i18nMod, 'setLocale').mockRejectedValueOnce(new Error('load failed'));
+    try {
+      render(<Harness />);
+      openDrawer();
+      const select = document.getElementById('lang-select') as HTMLSelectElement;
+      const pick = select.closest('label.drawer-lang')!;
+      await act(async () => {
+        select.value = 'en';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('ui.sideDrawer.localeError'));
+      expect(pick.querySelector('.drawer-lang-code')?.textContent).toBe('繁中');
+      expect(pick.classList.contains('is-loading')).toBe(false);
+      expect(select.disabled).toBe(false);
+      expect(select.value).toBe('zh-TW');
+    } finally {
+      spy.mockRestore();
     }
   });
 

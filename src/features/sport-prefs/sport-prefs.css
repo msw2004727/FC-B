@@ -1,0 +1,120 @@
+/* 運動喜好九宮格（P0 預覽站長 11-26 同意的外觀）。外殼沿用個人頁彈窗液態玻璃（profile-modal-glass.css 的底色、陰影、上緣主色亮線）。 */
+#sport-prefs-modal.modal {
+  background: var(--color-roster-slab-bg);
+  box-shadow: var(--color-roster-slab-shadow), 0 -14px 40px -18px rgba(15,23,42,.55);
+  border-radius: 20px 20px 0 0;
+  max-height: 92vh;
+  max-height: 92dvh;
+}
+#sport-prefs-modal.modal::before {
+  content: ''; position: absolute; left: 14%; right: 14%; top: 0; height: 2px; z-index: 2;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  pointer-events: none;
+}
+#sport-prefs-modal .modal-header { background: transparent; border-bottom: 0; padding: 1rem 1.1rem .4rem; }
+#sport-prefs-modal .modal-header h3 { min-width: 0; font-size: 1.05rem; font-weight: 800; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 360px) { #sport-prefs-modal .modal-header h3 { font-size: .98rem; } }
+#sport-prefs-modal .modal-close {
+  width: 32px; height: 32px; flex: none; border: 0;
+  background: var(--color-roster-slab-bg); box-shadow: var(--color-roster-slab-shadow); color: var(--text-primary);
+}
+#sport-prefs-modal .modal-actions { border-top: 0; padding: .4rem 1.1rem 1rem; }
+
+.spf-body { padding: .5rem 1.1rem .4rem; }
+#sport-prefs-modal .spf-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .55rem; max-width: 420px; margin: 0 auto; }
+#sport-prefs-modal .spf-tile {
+  position: relative; aspect-ratio: 1 / .82;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .35rem;
+  padding: .3rem; border: 1.5px solid var(--border); border-radius: 14px;
+  background: var(--bg-card); color: var(--text-primary);
+  font-size: .85rem; font-weight: 600; line-height: 1.2; cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+#sport-prefs-modal .spf-tile.is-empty { border-style: dashed; border-color: transparent; background: transparent; cursor: default; }
+#sport-prefs-modal .spf-tile .spf-icon { font-size: 1.85rem; line-height: 1; }
+#sport-prefs-modal .spf-name { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; line-height: 1.35; padding-block: 1px; }
+/* 外語長名稱（例如泰文、越南文「餐廳(觀賽)」）：縮字並刻意排成至多兩行置中，不出現省略號（格子高度固定，不推動版面） */
+#sport-prefs-modal .spf-name.is-long {
+  font-size: .72rem; line-height: 1.25; letter-spacing: -.01em; white-space: normal; text-align: center;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere;
+}
+#sport-prefs-modal .spf-tile.is-on { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
+#sport-prefs-modal .spf-tile.is-owned { cursor: default; border-style: dashed; border-color: var(--text-muted); background: var(--bg-elevated); color: var(--text-muted); }
+#sport-prefs-modal .spf-check {
+  position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.18);
+}
+#sport-prefs-modal .spf-tile.is-owned .spf-check { background: var(--text-muted); }
+@media (hover: hover) {
+  #sport-prefs-modal .spf-tile:not(.is-owned):not(.is-empty):hover { border-color: var(--accent); }
+}
+
+#sport-prefs-modal .spf-dots { display: flex; justify-content: center; gap: 6px; margin: .7rem 0 .2rem; }
+#sport-prefs-modal .spf-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+#sport-prefs-modal .spf-dots span.on { width: 16px; border-radius: 3px; background: var(--accent); }
+
+#sport-prefs-modal .spf-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem; min-height: 1.75rem; max-width: 420px; margin: .5rem auto 0; }
+#sport-prefs-modal .spf-tag {
+  display: inline-flex; align-items: center; gap: .2rem; height: 1.75rem; padding: 0 .6rem;
+  border: 1px solid var(--accent); border-radius: 999px; background: var(--accent-bg); color: var(--accent);
+  font-size: .8rem; font-weight: 600; white-space: nowrap;
+}
+#sport-prefs-modal .spf-tags .spf-tag.is-owned { border-style: dashed; }
+#sport-prefs-modal .spf-tag.is-owned { border-color: var(--border); background: var(--bg-elevated); color: var(--text-secondary); }
+.spf-tag-x { font-size: .95rem; line-height: 1; margin-right: -.15rem; opacity: .8; }
+
+#sport-prefs-modal .spf-actions { display: grid; grid-template-columns: 1fr 1.6fr; gap: .6rem; }
+#sport-prefs-modal .spf-actions .outline-btn, #sport-prefs-modal .spf-actions .primary-btn { height: 44px; font-size: .92rem; font-weight: 700; border-radius: 12px; }
+#sport-prefs-modal .spf-actions .outline-btn:focus:not(:focus-visible) { border-color: var(--border); color: var(--text-secondary); }
+#sport-prefs-modal .spf-actions .primary-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+#sport-prefs-modal .spf-saved { display: flex; flex-direction: column; align-items: center; gap: .8rem; padding: .6rem 1.1rem 1.3rem; text-align: center; }
+#sport-prefs-modal .spf-saved-tags .spf-tag.is-owned { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
+.spf-saved-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem; }
+.spf-saved-hint { margin: .2rem 0 0; font-size: .85rem; color: var(--text-secondary); white-space: nowrap; }
+.spf-push-btn { width: 100%; max-width: 320px; height: 46px; font-size: .95rem; font-weight: 700; border-radius: 12px; }
+
+/* 個人頁「運動類別」標籤與「喜好通知＋」 */
+.legacy-ui .fav-tags { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .3rem; }
+.legacy-ui .fav-tag {
+  display: inline-flex; align-items: center; gap: .15rem; height: 1.55rem; padding: 0 .55rem;
+  border-radius: 999px; background: var(--accent-bg); color: var(--accent);
+  font-size: .78rem; font-weight: 700; white-space: nowrap;
+}
+.legacy-ui .fav-tag-x {
+  display: inline-flex; align-items: center; justify-content: center; width: 1.1rem; height: 1.1rem; margin-right: -.3rem;
+  border: 0; border-radius: 50%; background: transparent; color: inherit; font-size: .95rem; line-height: 1; cursor: pointer;
+}
+.legacy-ui .fav-add {
+  display: inline-flex; align-items: center; height: 1.55rem; padding: 0 .55rem;
+  border: 1px dashed var(--accent); border-radius: 999px; background: transparent; color: var(--accent);
+  font-size: .78rem; font-weight: 700; white-space: nowrap; cursor: pointer;
+}
+#profile-info-card .pfi-kv.fav-kv { align-items: center; }
+#profile-info-card .pfi-kv.fav-kv > span:first-child { flex: none; white-space: nowrap; }
+#profile-info-card #profile-info-edit .info-row.fav-row { align-items: start; }
+#profile-info-card #profile-info-edit .info-row.fav-row > span:first-child { padding-top: .2rem; }
+#profile-info-card #profile-info-edit .fav-row .fav-tags { justify-content: flex-start; }
+
+/* 推播頁籤「每日新活動」開關列（C 案推播卡下方） */
+.legacy-ui .ne-block {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: .6rem;
+  margin-top: var(--space-2); padding: .65rem .8rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card);
+}
+.ne-title { font-size: .88rem; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
+.ne-sub { display: block; margin-top: .15rem; font-size: .72rem; font-weight: 400; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (min-width: 800px) {
+  #sport-prefs-modal.modal { max-width: 480px; bottom: 24px; border-radius: 20px; }
+}
+#profile-info-card #profile-info-edit .fav-row .fav-tags { padding-right: 2px; row-gap: .4rem; }
+.legacy-ui .ne-block { margin-bottom: 16px; }
+
+#sport-prefs-modal .spf-ok:disabled { cursor: not-allowed; }
+.legacy-ui .fav-legacy { color: var(--text-primary); }
+/* 九宮格開著時，安裝浮球與聯繫站長泡泡讓開（計畫書 §7.2） */
+body.sport-prefs-open .pwa-install-fab,
+body.sport-prefs-open .pwa-install-fab-hint,
+body.sport-prefs-open .contact-owner-fab,
+body.sport-prefs-open .contact-owner-fab-hint { display: none !important; }

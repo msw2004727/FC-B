@@ -2,11 +2,11 @@
 
 import type { MatchDoc, MatchStatus, RosterPublicDoc } from '../data/types';
 import type { LiveClock, LiveLink } from './clock';
-import { blockedStep, heldQueued, heldRejected, LIVE_COPY, minuteMark, pkKickLine } from './copy';
+import { blockedStep, heldQueued, heldRejected, LIVE_COPY, minuteMark, pkKickLine, subPairLine } from './copy';
 import { eventLines, findPlayer, nextPkRound, type EventLine } from './present';
 import type { ScoreFeedRow, ScoreHeldLine, ScorePadProps, ScorePick, TimeoutView } from './ScorePad';
 import type { ScoringView } from './data/session';
-import type { ServerEvent, UnappliedView } from './data/types';
+import type { CardIntent, GoalIntent, ServerEvent, UnappliedView } from './data/types';
 import type { ActionLogEntry, CardType, GoalKind, TimelineEvent, VoidMark } from './types';
 
 const MATCH_STATUS: readonly MatchStatus[] = [
@@ -166,6 +166,9 @@ function pendingRow(
   const match = view.match;
   if (!match) return null;
   const intent = row.intent;
+  if (intent.kind === 'sub') {
+    return subRow(view, row.op, -1, true, intent.side, intent.outPlId, intent.inPlId, intent.matchSecond);
+  }
   if (intent.kind !== 'goal' && intent.kind !== 'card' && intent.kind !== 'pk') return null;
   const side = intent.side;
   const team = side === 'home' ? match.home.name : match.away.name;
@@ -212,6 +215,37 @@ function pendingRow(
   };
 }
 
+/** CP-PO-07：換人列（記分頁紀錄區才有；觀眾頁的 eventLines 不收換人）。 */
+function subRow(
+  view: ScoringView,
+  key: string,
+  seq: number,
+  pending: boolean,
+  side: 'home' | 'away',
+  outPlId: string,
+  inPlId: string,
+  matchSecond: number,
+): ScoreFeedRow | null {
+  const match = view.match;
+  if (!match) return null;
+  const team = side === 'home' ? match.home.name : match.away.name;
+  const out = findPlayer(view.roster.home, view.roster.away, outPlId);
+  const into = findPlayer(view.roster.home, view.roster.away, inPlId);
+  const minute = minuteMark(Math.floor(matchSecond / 60));
+  const pair = subPairLine(out?.number ?? null, out?.displayName ?? '', into?.number ?? null, into?.displayName ?? '');
+  return {
+    key,
+    seq,
+    pending,
+    text: `${minute} ${team} ${pair}`,
+    label: `${minute} ${LIVE_COPY.sub} ${team} ${pair}`,
+    kind: 'sub',
+    secondYellow: false,
+    voided: false,
+    side,
+  };
+}
+
 function feedOf(view: ScoringView, timeline: readonly TimelineEvent[], voids: readonly VoidMark[]): ScoreFeedRow[] {
   const home = view.match?.home.name ?? '';
   const away = view.match?.away.name ?? '';
@@ -239,6 +273,13 @@ function feedOf(view: ScoringView, timeline: readonly TimelineEvent[], voids: re
     voided: line.voided,
     side: line.side,
   }));
+  // 換人列併進伺服器列，照 seq 新到舊（eventLines 的 recent 排序）。
+  for (const event of timeline) {
+    if (event.type !== 'sub') continue;
+    const built = subRow(view, opBySeq.get(event.seq) || String(event.seq), event.seq, false, event.side, event.outPlId, event.inPlId, event.matchSecond);
+    if (built) serverRows.push(built);
+  }
+  serverRows.sort((a, b) => b.seq - a.seq);
   const pending = view.unapplied
     .filter((row) => (row.state === 'pending' || row.state === 'sending') && !serverOps.has(row.op))
     .sort((a, b) => b.createdAt - a.createdAt);
@@ -248,6 +289,17 @@ function feedOf(view: ScoringView, timeline: readonly TimelineEvent[], voids: re
     if (built) pendingRows.push(built);
   }
   return [...pendingRows, ...serverRows];
+}
+
+/** 待送第二黃指向的第一黃 seq；第二黃自己已排了作廢的不算。 */
+function pendingSecondRefsOf(view: ScoringView): number[] {
+  const open = view.unapplied.filter((row) => row.state === 'pending' || row.state === 'sending');
+  const voidedOps = new Set(open.flatMap((row) => (row.intent.kind === 'void' && row.intent.targetOp ? [row.intent.targetOp] : [])));
+  return open.flatMap((row) => {
+    const intent = row.intent;
+    if (intent.kind !== 'card' || intent.cardType !== 'second_yellow' || intent.refSeq == null) return [];
+    return voidedOps.has(row.op) ? [] : [intent.refSeq];
+  });
 }
 
 function rejectedLog(view: ScoringView): ActionLogEntry[] {
@@ -364,6 +416,27 @@ function sendRecord(view: ScoringView, pick: ScorePick): void {
   });
 }
 
+/** 改判的新紀錄。只有進球與牌可改判；牌沒有球員時不送。比賽秒沿用原事件。 */
+function amendIntentOf(pick: ScorePick): GoalIntent | CardIntent | null {
+  const matchSecond = typeof pick.matchSecond === 'number' && Number.isFinite(pick.matchSecond)
+    ? pick.matchSecond
+    : Math.max(0, Math.floor(pick.minute * 60));
+  if (pick.action === 'goal') {
+    return {
+      kind: 'goal',
+      side: pick.side,
+      goalKind: pick.goalKind === 'penalty' || pick.goalKind === 'own' ? pick.goalKind : 'normal',
+      matchSecond,
+      ...(pick.plId ? { plId: pick.plId } : {}),
+    };
+  }
+  // 是不是第二黃由工作階段的 amend 判斷（看得到待送的牌與作廢），不用畫面算的 refSeq。
+  if ((pick.action === 'yellow' || pick.action === 'red') && pick.plId) {
+    return { kind: 'card', side: pick.side, plId: pick.plId, cardType: pick.action, matchSecond };
+  }
+  return null;
+}
+
 function timeoutSide(value: string | undefined): 'home' | 'away' | null {
   if (value === 'home' || value === 'away') return value;
   return null;
@@ -427,6 +500,7 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     events: timeline,
     voids: view.voids,
     actionLog: rejectedLog(view),
+    pendingSecondRefs: pendingSecondRefsOf(view),
     eventCount: view.budget.used,
     pauseUses: view.budget.pauseUses,
     crests: [],
@@ -435,13 +509,28 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     nowMs,
     takeoverOffered: view.control.needsTakeover,
     takeoverSelf: view.control.takeoverSelf,
+    // 控制文件不存在＝沒有別的裝置在記；場次還沒讀到時不算。session 進場時 match 與 control 取自同一筆 open 回應（session.ts start），
+    // 所以 match 已到而 control 是 null 就代表真的沒有控制文件（第一輪審查 P2-3 核實）。
+    takeoverFree: view.control.needsTakeover && view.control.uid == null && view.match != null,
     timeoutView: timeoutViewFrom(view, nowMs),
     onRecord: (pick) => {
       sendRecord(view, pick);
       return true;
     },
+    // 一律走 undoFirstYellow：沒有連結時它自己退回 voidEvent；第二黃還在待送時也看得到（S2 審查 P3-4）。
     onUndo: (seq) => {
-      void view.actions.voidEvent({ seq });
+      void view.actions.undoFirstYellow({ seq });
+      return true;
+    },
+    // 第二黃與第一黃的作廢、改判的作廢與新紀錄，要用工作階段的原子群組依序送（S2）。
+    onUndoPair: (seq) => {
+      void view.actions.undoFirstYellow({ seq });
+      return true;
+    },
+    onAmend: (seq, pick) => {
+      const next = amendIntentOf(pick);
+      if (!next) return false;
+      void view.actions.amend({ seq }, next);
       return true;
     },
     onClock: (next) => {
@@ -464,6 +553,10 @@ export function scorePadPropsFrom(view: ScoringView, nowMs: number): ScorePadPro
     clockControlled: true,
     timeoutControlled: true,
     onTimeout: (side) => { void view.actions.timeout({ side }); },
+    onSub: (input) => {
+      void view.actions.sub(input);
+      return true;
+    },
     timeoutRule: view.timeoutRule,
     timeoutUses: timeoutUsesFrom(view),
     pkCanStart: view.pk.canStart,

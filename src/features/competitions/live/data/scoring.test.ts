@@ -1742,6 +1742,21 @@ describe('P1-A 疊加狀態擋規則不允許的動作', () => {
     expect(h.match.score).toEqual({ home: 1, away: 0 });
   });
 
+  it('改判進球帶 matchSecond 0 時保留 0，不換成按改判當下的時間', async () => {
+    const h = await openHarness();
+    const seq = await goalAt(h);
+    // 時鐘停在 90 秒：舊寫法（||）會把 0 換成 90
+    h.match.clockBase = { startedAt: null, pausedSec: 90, running: false, period: 'h1' };
+    h.listener.onMatch(snapshotOf(h.match));
+    expect((await h.session.getState().actions.amend(
+      { seq },
+      { kind: 'goal', side: 'home', goalKind: 'penalty', matchSecond: 0 },
+    )).status).toBe('applied');
+    const last = h.events[h.events.length - 1];
+    expect(last?.type).toBe('goal');
+    expect(last?.matchSecond).toBe(0);
+  });
+
   it('伺服器仍 live、本機已按半場（待送）：改判進球也被擋', async () => {
     const h = await openHarness();
     const seq = await goalAt(h);

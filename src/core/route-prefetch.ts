@@ -16,11 +16,12 @@ const ROUTE_LOAD_RECHECK_MS = 500;
 export const CONTENT_WAIT_CAP_MS = 8_000;
 
 /**
- * 「本頁內容還在載入」＝主內容區（App 的 `main.app-main`）裡有 aria-busy="true"（各頁骨架與清單載入中的既有標記，載完就拿掉）。
+ * 「本頁內容還在載入」＝主內容區（App 的 `main.app-main`）裡有 aria-busy="true"（各頁骨架與清單載入中的既有標記，載完就拿掉），
+ * 或有整頁轉圈 `.ui-page-spinner`（PageSpinner；賽事詳情等頁載入中只畫它、沒有 aria-busy。CP-DETAIL-SPEED e1：認 class 而不加 aria-busy，不改轉圈的無障礙語意）。
  * 只看主內容區：route-loading 掛在 body 的 #status-hint 隱藏後仍常駐 aria-busy="true"，頂欄、側欄也有自己的 aria-busy，都不算本頁內容。
  */
 function isContentLoading(): boolean {
-  return document.querySelector('.app-main [aria-busy="true"]') !== null;
+  return document.querySelector('.app-main [aria-busy="true"],.app-main .ui-page-spinner') !== null;
 }
 
 const PREFETCH_PRIORITY_PATHS = [

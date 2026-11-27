@@ -43,6 +43,19 @@ it('沒有 picker 時隱藏好友選項，保留 A 的 R/share 入口', () => {
   expect(screen.getByText('分享到 LINE')).toBeTruthy();
 });
 
+it('賽事分享傳入的文字取代預設中文（活動不傳維持原樣）', () => {
+  const labels = {
+    friends: 'F', friendsSub: 'FS', community: 'C', communitySub: 'CS',
+    toLine: 'L', copy: 'K', copySub: 'KS', cancel: 'X',
+  };
+  const view = render(<ShareActionSheet canPicker title="T" labels={labels} onChoice={vi.fn()} />);
+  for (const text of ['T', 'F', 'FS', 'C', 'CS', 'K', 'KS', 'X']) expect(screen.getByText(text)).toBeTruthy();
+  expect(screen.queryByText('LINE 好友')).toBeNull();
+  view.unmount();
+  render(<ShareActionSheet canPicker={false} labels={labels} onChoice={vi.fn()} />);
+  expect(screen.getByText('L')).toBeTruthy();
+});
+
 // 測試同步更新：照 A cleanup(choice) 同步回報選擇（Gemini 審查：延遲 400ms 會讓手勢權限過期）。
 it('返回鍵當下回報 cancel，卸載會釋放 overlay', () => {
   const onChoice = vi.fn();

@@ -130,3 +130,50 @@ describe('T-050：骨架「上次已登入」頭像與 TopBar authPending 的實
     expect(shapeOf(shellSignedInDom().querySelector('#line-user-topbar')!)).toEqual(shapeOf(live!));
   });
 });
+
+describe('LOGIN-SPEED ⑥：骨架有上次頭像時畫頭像＋外圈', () => {
+  afterEach(() => {
+    cleanup();
+    document.body.innerHTML = '';
+    localStorage.clear();
+  });
+
+  function runShell(): void {
+    const match = html.match(/\(function \(\) \{\s*var signedIn = false;[\s\S]*?\}\)\(\);/);
+    expect(match).not.toBeNull();
+    // eslint-disable-next-line no-new-func
+    new Function(match![0])();
+  }
+
+  it('fcb:avatar 是 https 時：骨架和 TopBar authPending 都畫頭像＋外圈', () => {
+    document.body.innerHTML = '<div id="line-login-wrapper"></div>';
+    localStorage.setItem('fcb:signed-in', '1');
+    localStorage.setItem('fcb:avatar', 'https://x/a.png');
+    runShell();
+    const shellAv = document.querySelector<HTMLElement>('#line-avatar-topbar')!;
+    expect(shellAv).not.toBeNull();
+    const im = shellAv.querySelector('img')!;
+    expect(im).not.toBeNull();
+    expect(im.getAttribute('src')).toBe('https://x/a.png');
+    expect(shellAv.querySelector('.line-avatar-ring')).not.toBeNull();
+    expect(shellAv.querySelector('.line-avatar-spinner')).toBeNull();
+
+    const { container } = render(
+      h(TopBar, { drawerOpen: false, onMenuClick: () => undefined, onLogin: () => undefined, authPending: true }),
+    );
+    const live = container.querySelector('#line-user-topbar')!;
+    expect(live).not.toBeNull();
+    expect(shapeOf(shellAv.closest('#line-user-topbar')!)).toEqual(shapeOf(live));
+  });
+
+  it('fcb:avatar 是 http:// 時：骨架仍然是轉圈圈', () => {
+    document.body.innerHTML = '<div id="line-login-wrapper"></div>';
+    localStorage.setItem('fcb:signed-in', '1');
+    localStorage.setItem('fcb:avatar', 'http://x/a.png');
+    runShell();
+    const shellAv = document.querySelector('#line-avatar-topbar')!;
+    expect(shellAv.querySelectorAll('.line-avatar-spinner').length).toBe(1);
+    expect(shellAv.querySelector('img')).toBeNull();
+    expect(shellAv.querySelector('.line-avatar-ring')).toBeNull();
+  });
+});

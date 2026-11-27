@@ -99,9 +99,12 @@ service cloud.firestore {
     function scorerCtlPath(cid, mt) {
       return /databases/$(database)/documents/competitions/$(cid)/matches/$(mt)/control/scorer;
     }
-    // 賽事可記分：已發布、未下架、內部賽事只限管理員／測試者（取消、延期、草稿一律拒）
+    // 賽事可記分：已發布、未下架、未結束（endedAt 非 null 一律拒，不分 endedBy；缺鍵視同未結束）、
+    // 內部賽事只限管理員／測試者（取消、延期、草稿一律拒）
     function compScorableData(c) {
-      return c.status == 'published' && c.hidden == false && internalGate(c);
+      return c.status == 'published' && c.hidden == false
+        && c.get('endedAt', null) == null
+        && internalGate(c);
     }
     // 本場指派：roles 含 scorer 或 referee、matchIds 含本場（空陣列＝無權限）、未過期
     // （文件不存在時 get 產生錯誤值；本函式只用在 && 正向語境，錯誤＝拒絕）
@@ -648,6 +651,12 @@ service cloud.firestore {
     match /cpAudits/{auditId} { allow read, write: if false; }
     // 檢舉 LINE 冷卻與每日計數（伺服器寫；與外送匣 cpOutbox 分開，顧問 §3.254）
     match /cpLineThrottle/{throttleId} { allow read, write: if false; }
+    // 個資移除工作、檢舉 180 天清除佇列、每日排程游標（設計卡 ① §4.9；只給伺服器）
+    match /cpRemovalJobs/{jobId} { allow read, write: if false; }
+    match /cpReportPurge/{purgeId} { allow read, write: if false; }
+    match /cpDailyState/{stateId} { allow read, write: if false; }
+    // 個資人工刪除的站長 uid 白名單（只給伺服器讀；管理頁不可讀，Opus 審 P11）
+    match /cpOwnerConfig/{configId} { allow read, write: if false; }
     // 其他路徑：Rules 預設拒絕；刻意不寫 {document=**}／{path=**}（§5.2 不開 collectionGroup）
   }
 }

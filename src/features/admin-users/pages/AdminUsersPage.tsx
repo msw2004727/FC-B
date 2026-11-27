@@ -17,6 +17,7 @@ import { getRuntimeRoleSequence, type CustomRoleInput } from '@/ui/drawer-menu';
 import { toast } from '@/ui/Toast';
 
 import { UserCard } from '../components/UserCard';
+import type { CpRemovalModal as CpRemovalModalType } from '../cp-removal/CpRemovalModal';
 import { UserEditModal } from '../components/UserEditModal';
 import { UserFilterPanel, type RoleFilterOption } from '../components/UserFilterPanel';
 import {
@@ -31,7 +32,7 @@ import {
   buildProfileEditOpLog,
   buildRestrictionOpLog,
   buildRoleChangeOpLog,
-  canClearLateCancelRedOf,
+  canClearLateCancelOf,
   canManageTarget,
   canToggleRestrictionOf,
   hasActiveFilters,
@@ -60,7 +61,7 @@ import {
   type AdminUsersLoad,
 } from '../data/admin-users';
 import { isViewerPermissionsLoaded } from '../data/viewer-ready';
-import { LATE_CANCEL_CLEAR_CALLABLE_DEPLOYED } from '../data/late-cancel-deployed';
+import { LATE_CANCEL_CLEAR_BLACK_DEPLOYED, LATE_CANCEL_CLEAR_CALLABLE_DEPLOYED } from '../data/late-cancel-deployed';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 
@@ -80,6 +81,8 @@ export interface AdminUsersPageProps {
   extraUiEnabled?: boolean;
   /** 測試注入；未傳用 LATE_CANCEL_CLEAR_CALLABLE_DEPLOYED（解除臨取紅標 Callable 是否已部署）。 */
   lateCancelClearEnabled?: boolean;
+  /** 測試注入；未傳用 LATE_CANCEL_CLEAR_BLACK_DEPLOYED（黑標解除需要新版後端）。 */
+  lateCancelClearBlackEnabled?: boolean;
 }
 
 const CENTER_NOTE = 'text-align:center;padding:2rem;color:var(--text-muted)';
@@ -94,6 +97,7 @@ const CENTER_NOTE = 'text-align:center;padding:2rem;color:var(--text-muted)';
 export default function AdminUsersPage({
   extraUiEnabled = ADMIN_USERS_EXTRA_UI_ENABLED,
   lateCancelClearEnabled = LATE_CANCEL_CLEAR_CALLABLE_DEPLOYED,
+  lateCancelClearBlackEnabled = LATE_CANCEL_CLEAR_BLACK_DEPLOYED,
 }: AdminUsersPageProps = {}): JSX.Element {
   const t = useT();
   const viewer = useViewer();
@@ -116,6 +120,8 @@ export default function AdminUsersPage({
   const [inputs, setInputs] = useState<AdminUserFilterInputs>(EMPTY_FILTER_INPUTS);
   const [visibleCount, setVisibleCount] = useState(ADMIN_USER_PAGE_SIZE);
   const [editTarget, setEditTarget] = useState<AdminUser | null>(null);
+  // 賽事個資移除面板：按了才延遲載入（不進用戶管理頁本身的分塊）。
+  const [cpRemoval, setCpRemoval] = useState<{ user: AdminUser; Modal: typeof CpRemovalModalType } | null>(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -216,6 +222,12 @@ export default function AdminUsersPage({
     });
     return keys.map((key) => ({ value: key, label: roleLabel(key, customRoles) }));
   }, [customRoles, users]);
+
+  const openCpRemoval = useCallback((user: AdminUser): void => {
+    void import('../cp-removal/CpRemovalModal')
+      .then((mod) => setCpRemoval({ user, Modal: mod.CpRemovalModal }))
+      .catch(() => toast.show({ message: t('admin-users.list.loadFailed'), tone: 'error' }));
+  }, [t]);
 
   const openProfile = useCallback((uid: string): void => {
     if (uid) location.route(`/profile/${encodeURIComponent(uid)}`);
@@ -435,7 +447,7 @@ export default function AdminUsersPage({
   const handleClearLateCancelRed = async (user: AdminUser): Promise<void> => {
     if (busyRef.current) return;
     const target = findUser(user._docId);
-    if (!target || !canClearLateCancelRedOf(actor, target)) {
+    if (!target || !canClearLateCancelOf(actor, target, undefined, lateCancelClearBlackEnabled)) {
       toast.show({ message: t('admin-users.toast.noPermission'), tone: 'error' });
       return;
     }
@@ -444,7 +456,7 @@ export default function AdminUsersPage({
     try {
       if (!await appConfirm(t('admin-users.lateCancel.confirm', { name: target.name }))) return;
       const latest = usersRef.current.find((item) => item._docId === target._docId) ?? null;
-      if (!latest || !canClearLateCancelRedOf(actorRef.current, latest)) return;
+      if (!latest || !canClearLateCancelOf(actorRef.current, latest, undefined, lateCancelClearBlackEnabled)) return;
       try {
         await clearLateCancelRed(latest.uid);
       } catch (err: unknown) {
@@ -454,7 +466,7 @@ export default function AdminUsersPage({
         return;
       }
       setUsers((prev) => prev.map((item) =>
-        item._docId === target._docId ? { ...item, lateCancelLevel: null } : item));
+        item._docId === target._docId ? { ...item, lateCancelLevel: null, lateCancelUntilMs: null } : item));
       toast.show({ message: t('admin-users.lateCancel.cleared'), tone: 'success' });
     } finally {
       busyRef.current = false;
@@ -612,7 +624,9 @@ export default function AdminUsersPage({
               onClearLateCancelRed={lateCancelClearEnabled
                 ? (target) => { handleClearLateCancelRed(target).catch(() => undefined); }
                 : undefined}
+              lateCancelBlackEnabled={lateCancelClearBlackEnabled}
               onOpenProfile={openProfile}
+              onCpRemoval={viewer.role === 'super_admin' ? openCpRemoval : undefined}
             />
           ))}
           {status === 'ready' && page.hasMore && (
@@ -629,6 +643,14 @@ export default function AdminUsersPage({
           )}
         </div>
       </section>
+      {cpRemoval && (
+        <cpRemoval.Modal
+          uid={cpRemoval.user.uid}
+          name={cpRemoval.user.name}
+          canRun={viewer.role === 'super_admin'}
+          onClose={() => setCpRemoval(null)}
+        />
+      )}
       {editTarget && (
         <UserEditModal
           user={editTarget}

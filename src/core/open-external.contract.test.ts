@@ -17,6 +17,8 @@ const BLANK_ALLOWLIST: Record<string, string> = {
     '站內信是使用者自填的任意網址。window.open 在部分瀏覽器回傳 null 時清不掉 opener，反向分頁劫持由對方控制，所以保留 rel="noopener noreferrer" 的另開。',
   'src/features/events/data/event-share.ts':
     'line.me 分享網址維持原行為，不是一般外連。Mini App 的 Flex 分享走既有 shareTargetPicker，不另寫流程。',
+  'src/features/competitions/data/competition-share.ts':
+    '賽事分享照 event-share：line.me 分享網址的退路與活動分享同一行為，不是一般外連（CP-SHARE）。',
   'src/features/events/components/AttendanceRosterTable.tsx':
     '施工卡禁止修改：名單改版分支在改。「到舊版」目前不顯示，之後再處理。',
   'src/features/events/components/UnregRosterTable.tsx':

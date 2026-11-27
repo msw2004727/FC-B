@@ -337,18 +337,19 @@ describe('報隊管理：換封面、移除（按下去直接存）', () => {
     expect(document.querySelector('input[type="file"]')).toBeNull();
   });
 
-  it('已取消沒封面：不畫封面欄', () => {
+  it('已取消沒封面：不畫封面欄；分類與聯絡文字也改不了（後端 COMPETITION_CLOSED，#17），整個編輯入口不出現', () => {
     const { env } = manageEnv({ status: 'cancelled', cover: null });
     draw(env, CompetitionManagePage);
-    openPanel();
+    expect(screen.queryByRole('button', { name: '編輯賽事資訊' })).toBeNull();
     expect(document.querySelector('.cpc')).toBeNull();
-    expect(screen.getByRole('radio', { name: '聯賽' })).toBeTruthy();
+    expect(screen.queryByRole('radio', { name: '聯賽' })).toBeNull();
   });
 
   it('下架：主辦看不到封面欄；管理員照畫', () => {
     const host = manageEnv({ hidden: true, cover: COVER });
     const view = draw(host.env, CompetitionManagePage);
-    openPanel();
+    // 下架時主辦連分類、聯絡文字都改不了（後端 COMPETITION_HIDDEN，#14），編輯入口不出現
+    expect(screen.queryByRole('button', { name: '編輯賽事資訊' })).toBeNull();
     expect(document.querySelector('.cpc')).toBeNull();
     expect(document.body.innerHTML).not.toContain(URL1);
     view.unmount();
@@ -447,6 +448,9 @@ describe('詳情頂部', () => {
     const img = document.querySelector<HTMLImageElement>('.d2-hero > .d2-hero__cover');
     expect(img?.getAttribute('src')).toBe(URL1);
     expect(img?.nextElementSibling?.classList.contains('d2-board')).toBe(true);
+    // CP-DETAIL-SPEED d5：封面圖優先下載（不是 lazy）。
+    expect(img?.getAttribute('fetchpriority')).toBe('high');
+    expect(img?.getAttribute('loading')).toBeNull();
   });
 
   it('沒封面：與現況相同（沒有圖）', () => {

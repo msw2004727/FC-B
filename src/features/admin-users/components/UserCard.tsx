@@ -10,7 +10,7 @@ import { UserTag } from '@/ui/UserTag';
 import { getAvatarInitial, sanitizeHttpAvatarUrl } from '@/features/profile/components/legacy/profile-legacy-helpers';
 
 import {
-  canClearLateCancelRedOf,
+  canClearLateCancelOf,
   canToggleRestrictionOf,
   formatLastLogin,
   lateCancelStatusText,
@@ -21,6 +21,7 @@ import {
   type AdminUser,
   type AdminUserActor,
 } from '../data/admin-users-model';
+import { CP_REMOVAL_COPY } from '../cp-removal/copy';
 
 export interface UserCardProps {
   user: AdminUser;
@@ -35,7 +36,11 @@ export interface UserCardProps {
   onToggleRestriction: (user: AdminUser) => void;
   /** 「解除臨取紅標」；未傳（Callable 未部署）不顯示按鈕。 */
   onClearLateCancelRed?: (user: AdminUser) => void;
+  /** 黑標也能解除（新版後端部署後才 true；預設照 LATE_CANCEL_CLEAR_BLACK_DEPLOYED）。 */
+  lateCancelBlackEnabled?: boolean;
   onOpenProfile: (uid: string) => void;
+  /** 「賽事個資移除」；未傳（非 super_admin）不顯示按鈕。 */
+  onCpRemoval?: (user: AdminUser) => void;
 }
 
 const TAG_ROLES: ReadonlySet<string> = new Set<UserRole>([
@@ -80,7 +85,9 @@ export function UserCard({
   onEdit,
   onToggleRestriction,
   onClearLateCancelRed,
+  lateCancelBlackEnabled,
   onOpenProfile,
+  onCpRemoval,
 }: UserCardProps): JSX.Element {
   const t = useT();
   const level = userLevelFromExp(user.exp);
@@ -95,7 +102,10 @@ export function UserCard({
   const tagRoleKey = tagRole(user);
   const restrictBtn = canToggleRestrictionOf(actor, user);
   const lateCancelText = lateCancelStatusText(user);
-  const clearLateBtn = !!onClearLateCancelRed && canClearLateCancelRedOf(actor, user);
+  // 名字標籤照 R-UI-021：紅標紅底、黑標黑底（黑標條件與臨取狀態那一行相同：未過期或無到期；用戶管理不讀出席數，「最晚」字樣涵蓋提早恢復）。
+  // 取代原本只傳 red（d475ae10 當時用戶卡不顯示黑標；11-26 起顯示黑標，標籤一併套，顧問 §3.822）。
+  const lateCancelTag = user.lateCancelLevel === 'red' ? 'red' : user.lateCancelLevel === 'black' && lateCancelText ? 'black' : null;
+  const clearLateBtn = !!onClearLateCancelRed && canClearLateCancelOf(actor, user, undefined, lateCancelBlackEnabled);
 
   return (
     <div class="admin-user-card">
@@ -108,7 +118,7 @@ export function UserCard({
               name={user.name}
               role={(TAG_ROLES.has(tagRoleKey) ? tagRoleKey : 'user') as UserRole}
               level={level}
-              lateCancel={user.lateCancelLevel === 'red' ? 'red' : null}
+              lateCancel={lateCancelTag}
               onOpenProfile={onOpenProfile}
             />
           </div>
@@ -121,7 +131,20 @@ export function UserCard({
             {`${t('admin-users.card.restrictState')}${user.isRestricted ? t('admin-users.card.restricted') : t('admin-users.card.normal')}`}
           </div>
           {lateCancelText && (
-            <div class="admin-user-meta">{`${t('admin-users.card.lateCancelState')}${lateCancelText}`}</div>
+            <div class="admin-user-meta au-lc-row">
+              <span>{`${t('admin-users.card.lateCancelState')}${lateCancelText}`}</span>
+              {clearLateBtn && (
+                <button
+                  type="button"
+                  class="au-btn au-btn-lc-clear"
+                  aria-label={t('admin-users.card.clearLateCancelRed')}
+                  disabled={busy}
+                  onClick={() => onClearLateCancelRed?.(user)}
+                >
+                  {t('admin-users.card.clearLateCancelRedShort')}
+                </button>
+              )}
+            </div>
           )}
           <div class="admin-user-meta" style="word-break:break-all">
             {`${t('admin-users.card.lastLogin')}${formatLastLogin(user, t('admin-users.card.noRecord'))}`}
@@ -152,14 +175,9 @@ export function UserCard({
               {user.isRestricted ? t('admin-users.card.unrestrict') : t('admin-users.card.restrict')}
             </button>
           )}
-          {clearLateBtn && (
-            <button
-              type="button"
-              class="au-btn au-btn-lc"
-              disabled={busy}
-              onClick={() => onClearLateCancelRed?.(user)}
-            >
-              {t('admin-users.card.clearLateCancelRed')}
+          {onCpRemoval && (
+            <button type="button" class="au-btn au-btn-lc au-btn-cp-remove" disabled={busy} onClick={() => onCpRemoval(user)}>
+              {CP_REMOVAL_COPY.entry}
             </button>
           )}
         </div>

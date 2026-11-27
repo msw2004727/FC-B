@@ -42,6 +42,7 @@ const ANCHORS = {
   'real-notice-delete-sys': '這是系統公告，確定要刪除？', 'real-load-failed': '讀取失敗', 'real-crest-live': '雷霆隊', 'real-crest-colors': '隊徽底色', 'real-reschedule-tbd': '確認改期', 'real-tie-overlimit': '裁定原因', 'real-cancel-overlimit': '取消原因會公開', 'real-done-scorers': '射手榜', 'real-notices-more': '更多', 'real-tie-skip': '銀河隊', 'real-wizard-two-venues': '新增場地', 'real-corrected-pk': '藍鯨隊',
   // 新外觀第 4 批第 7 節
   'real-swap-open': '確認對調', 'real-shift-clash': '仍要順延', 'real-shift-clash-settled': '仍要順延', 'real-pending-fresh': '登錄比分', 'real-host-matches-empty': '請先排賽程',
+  'real-host-matches-ended': '賽事已結束，沒有賽程', 'real-warm-stand': '目前還沒有積分', 'real-pending-mine': '晨星足球俱樂部', 'real-detail-missing': '找不到這場賽事',
   'real-schedule-preview': '共 12 場、需 2 天、每隊 3 場', 'real-schedule-unplaced': '還有 4 場排不下', 'real-schedule-too-many': '場次太多，請調整賽制',
   'real-schedule-replace': '清除賽程',
   // 卡 2-5 補、頁首賽事名小字（設計總監 03:38／03:52）
@@ -115,6 +116,11 @@ const SCREENS = [
   ['real:real-shift-clash-settled', NEW, THEMES, true],
   ['real:real-pending-fresh', NEW, THEMES, true],
   ['real:real-host-matches-empty', NEW, THEMES, false],
+  // 賽事開放後第一批（CP-PO）：360／390／1280。
+  ['real:real-host-matches-ended', ALL, THEMES, false],
+  ['real:real-warm-stand', ALL, THEMES, false],
+  ['real:real-pending-mine', ALL, THEMES, true],
+  ['real:real-detail-missing', ALL, THEMES, false],
   ['real:real-host-matches-denied', NEW, THEMES, false],
   ['real:real-schedule-preview', NEW, THEMES, true],
   ['real:real-schedule-unplaced', NEW, THEMES, true],

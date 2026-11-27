@@ -199,12 +199,13 @@ describe('指派頁與我的場次', () => {
     expect(view.container.querySelector('.cps-top__ctx')?.textContent ?? '').not.toBe('');
   });
 
-  it('頁首賽事名小字：主辦那條路不讀賽事，用報隊管理、排賽程記下的名稱；沒記過就不畫（第 4 批 3.2）', async () => {
+  it('頁首賽事名小字：主辦那條路的名稱不取自賽事文件，用報隊管理、排賽程記下的名稱；沒記過就不畫（第 4 批 3.2）', async () => {
     rememberCompName('cup', '記憶示範盃');
     const repo = staffRepo();
     const view = draw({ actor: hostActor, repo, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
     expect(await screen.findByText('我自己')).toBeTruthy();
-    expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites']);
+    // A 組 #11：主辦、管理員另讀賽事主文件一次（與名單並行），判斷結束後收起按鈕
+    expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites', 'getCompetition']);
     expect(view.container.querySelector('.cps-top__ctx')?.textContent).toBe('記憶示範盃');
     view.unmount();
     forgetCompNames();
@@ -260,7 +261,7 @@ describe('指派頁與我的場次', () => {
       const row = rowOf(view, '成員 6');
       expect(row?.textContent ?? '', who.uid ?? '').toContain('記分員');
       expect(row?.textContent ?? '', who.uid ?? '').not.toContain('主辦');
-      expect(repo.calls(), who.uid ?? '').not.toContain('getCompetition');
+      expect(repo.calls().filter((name) => name === 'getCompetition'), who.uid ?? '').toHaveLength(1);
       cleanup();
     }
   });
@@ -279,13 +280,13 @@ describe('指派頁與我的場次', () => {
     const host = staffRepo();
     draw({ actor: hostActor, repo: host, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
     expect(await screen.findByText('我自己')).toBeTruthy();
-    expect(host.calls()).not.toContain('getCompetition');
+    expect(host.calls().filter((name) => name === 'getCompetition')).toHaveLength(1);
     cleanup();
 
     const admin = staffRepo();
     draw({ actor: adminActor, repo: admin, actions: idleActions(), route: { cid: 'cup' } }, <StaffPage />);
     expect(await screen.findByText('成員 2')).toBeTruthy();
-    expect(admin.calls()).not.toContain('getCompetition');
+    expect(admin.calls().filter((name) => name === 'getCompetition')).toHaveLength(1);
   });
 
   it('代表清單還在讀時不發讀取、不先顯示沒有權限', async () => {
@@ -345,7 +346,7 @@ describe('指派頁與我的場次', () => {
     if (!button) throw new Error('記分員應有移除鈕');
     fireEvent.click(button);
     expect(await screen.findByText('移除記分角色？')).toBeTruthy();
-    expect(screen.getByText('這位成員將不能再記分。')).toBeTruthy();
+    expect(screen.getByText('這位成員會從記分員與裁判移除，不能再記分。')).toBeTruthy();
     const dialog = document.body.querySelector('[role="dialog"]');
     const confirm = [...(dialog?.querySelectorAll('button') ?? [])].find((el) => (el.textContent ?? '').trim() === '移除');
     if (!confirm) throw new Error('確認框應有移除');
@@ -398,7 +399,7 @@ describe('指派頁與我的場次', () => {
     if (!button) throw new Error('共同主辦兼記分員應有移除鈕');
     fireEvent.click(button);
     expect(await screen.findByText('移除記分角色？')).toBeTruthy();
-    expect(screen.getByText('這位成員將不能再記分。')).toBeTruthy();
+    expect(screen.getByText('這位成員會從記分員與裁判移除，不能再記分。')).toBeTruthy();
     const dialog = document.body.querySelector('[role="dialog"]');
     const confirm = [...(dialog?.querySelectorAll('button') ?? [])].find((el) => (el.textContent ?? '').trim() === '移除');
     if (!confirm) throw new Error('確認框應有移除');
@@ -498,7 +499,8 @@ describe('指派頁與我的場次', () => {
       route: { cid: 'cup' },
     }, <StaffPage />);
     expect(await screen.findByText('指派記分員')).toBeTruthy();
-    expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites']);
+    // A 組 #11：主辦、管理員另讀賽事主文件一次（與名單並行），判斷結束後收起按鈕
+    expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites', 'getCompetition']);
   });
 
   it('指派沿用既有場次、預勾已指派的場，送出單一角色', async () => {
@@ -600,7 +602,8 @@ describe('指派頁與我的場次', () => {
     expect(enters).toHaveLength(4);
     expect(repo.calls()[0]).toBe('getStaffAssignment');
     expect(repo.calls().filter((name) => name === 'getMatch')).toHaveLength(7);
-    expect(repo.calls()).not.toContain('getCompetition');
+    // 記分盤點 S1：賽事主文件與場次並行讀一次，判斷是否已結束
+    expect(repo.calls().filter((name) => name === 'getCompetition')).toHaveLength(1);
     // 板卡＝進行中那一場（亮燈），全頁只有它是實心主要鈕
     const boards = view.container.querySelectorAll('.s4b-mb');
     expect(boards).toHaveLength(1);
@@ -687,7 +690,10 @@ describe('指派頁與我的場次', () => {
       route: { cid: 'cup' },
     }, <CompetitionDetailPage />);
     expect(await screen.findByRole('button', { name: '我的場次' })).toBeTruthy();
-    expect(scorer.calls()).toContain('getStaffAssignment');
+    // CP-DETAIL-SPEED d1：指派跟職員合併成一次讀，不再另打 getStaff／getStaffAssignment。
+    expect(scorer.calls().filter((name) => name === 'getStaffWithAssignment')).toHaveLength(1);
+    expect(scorer.calls()).not.toContain('getStaffAssignment');
+    expect(scorer.calls()).not.toContain('getStaff');
     fireEvent.click(screen.getByRole('button', { name: '我的場次' }));
     expect(window.location.pathname).toBe('/competitions/cup/my-matches');
     window.history.pushState(null, '', previous || '/');
@@ -705,7 +711,8 @@ describe('指派頁與我的場次', () => {
       route: { cid: 'cup' },
     }, <CompetitionDetailPage />);
     expect(await screen.findByText('示範盃')).toBeTruthy();
-    expect(hostOnly.calls()).toContain('getStaffAssignment');
+    expect(hostOnly.calls()).toContain('getStaffWithAssignment');
+    expect(hostOnly.calls()).not.toContain('getStaffAssignment');
     expect(plain.container.querySelector('button') && screen.queryByRole('button', { name: '我的場次' })).toBeNull();
     cleanup();
 
@@ -720,12 +727,14 @@ describe('指派頁與我的場次', () => {
     expect(await screen.findByText('示範盃')).toBeTruthy();
     expect(guest.calls()).not.toContain('getStaff');
     expect(guest.calls()).not.toContain('getStaffAssignment');
+    expect(guest.calls()).not.toContain('getStaffWithAssignment');
     expect(screen.queryByRole('button', { name: '我的場次' })).toBeNull();
   });
 
   it('詳情頁登入才讀自己的 staff，重新渲染與切換分頁不重讀', async () => {
     const repo = createFakeCpRepo({
-      competitions: [competition({ id: 'cup' })],
+      // 換 cid 要讀得到賽事根才會合併讀指派（賽事不存在就不讀職員）。
+      competitions: [competition({ id: 'cup' }), competition({ id: 'other' })],
       assignments: {
         cup: [{ uid: 'uid_member', roles: ['scorer'], matchIds: ['mt_1'], expiresAt: null, memberNo: 4 }],
       },
@@ -742,8 +751,11 @@ describe('指派頁與我的場次', () => {
     const view = draw(base, <CompetitionDetailPage />);
     try {
       expect(await screen.findByRole('tab', { name: '積分' })).toBeTruthy();
-      const assignment = () => repo.calls().filter((name) => name === 'getStaffAssignment');
+      // CP-DETAIL-SPEED d1：第一次跟職員合併讀；之後指派走頁內快取，回前景只重讀 getStaff。
+      const assignment = () => repo.calls().filter((name) => name === 'getStaffWithAssignment' || name === 'getStaffAssignment');
+      const staffOnly = () => repo.calls().filter((name) => name === 'getStaff');
       expect(assignment()).toHaveLength(1);
+      expect(staffOnly()).toHaveLength(0);
 
       const again = (env: CpInjectedEnv) => {
         view.rerender(
@@ -764,12 +776,15 @@ describe('指派頁與我的場次', () => {
       Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
       document.dispatchEvent(new Event('visibilitychange'));
       await waitFor(() => expect(repo.calls().filter((name) => name === 'getCompetition').length).toBeGreaterThan(1));
+      await waitFor(() => expect(staffOnly()).toHaveLength(1));
       expect(assignment()).toHaveLength(1);
 
       again({ ...base, actor: { ...memberActor, uid: 'uid_other' } });
       await waitFor(() => expect(assignment()).toHaveLength(2));
       again({ ...base, route: { cid: 'other' } });
       await waitFor(() => expect(assignment()).toHaveLength(3));
+      expect(repo.calls()).not.toContain('getStaffAssignment');
+      expect(staffOnly()).toHaveLength(1);
     } finally {
       nowSpy.mockRestore();
     }
@@ -786,6 +801,7 @@ describe('指派頁與我的場次', () => {
     }, <CompetitionDetailPage />);
     expect(await screen.findByText('示範盃')).toBeTruthy();
     expect(guest.calls().filter((name) => name === 'getStaffAssignment')).toHaveLength(0);
+    expect(guest.calls().filter((name) => name === 'getStaffWithAssignment')).toHaveLength(0);
     expect(guest.calls().filter((name) => name === 'getStaff')).toHaveLength(0);
   });
 

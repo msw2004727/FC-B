@@ -107,6 +107,11 @@ const PAGES: Record<string, ComponentType> = {
   'real-notice-delete': CompetitionDetailPage,
   'real-notice-delete-sys': CompetitionDetailPage,
   'real-load-failed': CompetitionDetailPage,
+  // 賽事開放後第一批（CP-PO）
+  'real-warm-stand': CompetitionDetailPage,
+  'real-pending-mine': CompetitionDetailPage,
+  'real-detail-missing': CompetitionDetailPage,
+  'real-host-matches-ended': HostMatchesPage,
   // u4-detail-live／u4-detail-corrected-pk 外層沒有 .cps-root：改在這裡用正式詳情頁畫同樣的列（即時、已更正、PK、內嵌隊徽）。
   'real-crest-live': CompetitionDetailPage,
   'real-corrected-pk': CompetitionDetailPage,
@@ -450,6 +455,14 @@ const OPEN: Record<string, () => Promise<void>> = {
   'real-notice-delete': () => openNoticeDelete('領隊會議改在示範球場門口', '確定要刪除這則公告？'),
   'real-notice-delete-sys': () => openNoticeDelete('因雨延後一小時', '這是系統公告，確定要刪除？'),
   'real-load-failed': () => until('讀取失敗', () => hasText('讀取失敗') && buttonsNamed('重試').length > 0),
+  'real-warm-stand': async () => {
+    await until('積分分頁', () => [...document.querySelectorAll('[role="tab"]')].some((el) => (el.textContent ?? '').includes('積分')));
+    [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find((el) => (el.textContent ?? '').includes('積分'))?.click();
+    await until('積分空狀態', () => hasText('目前還沒有積分'));
+  },
+  'real-pending-mine': () => until('待審', () => hasText('晨星足球俱樂部') && hasText('待審')),
+  'real-detail-missing': () => until('找不到', () => hasText('找不到這場賽事')),
+  'real-host-matches-ended': () => until('已結束', () => hasText('賽事已結束，沒有賽程')),
   'real-crest-live': () => until('即時列', () => hasText('雷霆隊') && hasText('藍鯨隊')),
   'real-crest-colors': () => until('八色隊徽', () => document.querySelectorAll('.cp3-crest--txt').length === 8),
   'real-corrected-pk': () => until('已更正列', () => hasText('藍鯨隊')),

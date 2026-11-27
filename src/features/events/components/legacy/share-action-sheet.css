@@ -1,0 +1,68 @@
+/* 分享選單（照 A _showShareActionSheet）。從 activity.css 原樣搬來，由 ShareActionSheet.tsx 載入（活動與賽事共用）。
+ * 路徑含 /legacy/，打包時一樣限定到 .legacy-ui（showShareActionSheet 的掛載點有這個 class）。 */
+/* ─── Share Action Sheet ─── */
+.share-action-sheet {
+  position: fixed; inset: 0; z-index: 9990;
+  background: rgba(0,0,0,0); display: flex;
+  align-items: flex-end; justify-content: center;
+  transition: background .25s ease;
+}
+.share-action-sheet.active { background: rgba(0,0,0,.45); }
+.share-action-sheet-panel {
+  width: 100%; max-width: 420px;
+  background: var(--bg-card, #fff);
+  border-radius: 16px 16px 0 0;
+  padding: 16px 16px 12px;
+  padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  transform: translateY(100%);
+  transition: transform .3s cubic-bezier(.22,1,.36,1);
+  max-height: 60vh; overflow-y: auto;
+}
+.share-action-sheet.active .share-action-sheet-panel { transform: translateY(0); }
+.share-action-sheet-title {
+  font-size: .92rem; font-weight: 700; text-align: center;
+  color: var(--text-primary, #222); padding-bottom: 10px;
+  border-bottom: 1px solid var(--border, #e5e5e5); margin-bottom: 12px;
+}
+.share-action-sheet-grid {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  justify-content: center;
+}
+.share-action-sheet-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  flex: 1 1 0; min-width: 90px; max-width: 160px;
+  padding: 14px 8px 12px; border: 1.5px solid var(--border, #e5e5e5);
+  background: var(--bg-elevated, #f9fafb);
+  font-size: .82rem; font-weight: 600; color: var(--text-primary, #222);
+  cursor: pointer; border-radius: 12px;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+  gap: 6px; text-align: center;
+}
+.share-action-sheet-btn:active {
+  background: var(--accent-bg, #eef2ff);
+  border-color: var(--accent, #6366f1);
+  box-shadow: 0 0 0 2px rgba(99,102,241,.12);
+}
+.share-action-sheet-btn-icon {
+  font-size: 1.5rem; line-height: 1;
+}
+.share-action-sheet-btn-label {
+  font-size: .82rem; font-weight: 600; line-height: 1.2;
+}
+.share-action-sheet-btn-sub {
+  display: block; font-size: .65rem; font-weight: 400;
+  color: var(--text-muted, #999); margin-top: 1px; line-height: 1.3;
+}
+.share-action-sheet-cancel {
+  display: block; width: 100%; padding: 12px 0; border: none;
+  background: none; font-size: .88rem; color: var(--text-muted, #999);
+  cursor: pointer; margin-top: 8px; border-top: 1px solid var(--border, #e5e5e5);
+}
+[data-theme="dark"] .share-action-sheet-btn {
+  background: var(--bg-elevated, #1e1e1e);
+  border-color: var(--border, #333);
+}
+[data-theme="dark"] .share-action-sheet-btn:active {
+  background: rgba(99,102,241,.15);
+  border-color: var(--accent, #818cf8);
+}

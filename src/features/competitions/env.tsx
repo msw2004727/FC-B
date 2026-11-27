@@ -23,6 +23,7 @@ import type {
   SummaryEntry,
 } from './data/types';
 import type { DivisionDraft, VenueDraft } from './payload';
+import type { ClubKeysPort } from './club-member-keys';
 
 export interface CpActor {
   uid: string | null;
@@ -56,6 +57,8 @@ export interface CpBundle {
   roster: RosterPublicDoc[];
   privates: EntryPrivateDoc[];
   staff: StaffDoc | null;
+  /** 名單頁：我在這場賽事的名單列 id（cpMine 的 plIds）。省略當空。 */
+  myPlIds?: readonly string[];
 }
 
 /** harness 要首屏就有內容（截圖不等非同步）。正式頁不帶。 */
@@ -83,6 +86,8 @@ export interface CpPreview {
   reportsOpen?: boolean;
   /** 詳情頁刪除確認框：首屏打開。ack＝已勾；armed 省略時照 0.6 秒計時；error＝顯示這個錯誤碼。 */
   deleteDialog?: { ack: boolean; armed?: boolean; error?: string };
+  /** 詳情頁延期／取消確認框：首屏打開。 */
+  statusDialog?: { choice?: 'published' | 'postponed' | 'cancelled'; reason?: string; ack?: boolean; armed?: boolean; error?: string };
 }
 
 export interface CpScheduleSnapshot {
@@ -131,6 +136,11 @@ export interface CpInjectedEnv {
   coverUpload?: (dataUrl: string) => Promise<UploadedCover>;
   /** 站內清單本機快照（data/list-snapshot.ts）。省略＝注入環境不讀不寫快照；正式頁一律開。 */
   listSnapshot?: CpListSnapshotPorts;
+  /**
+   * 俱樂部成員雙鍵換算（顧問 §3.846，club-member-keys.ts）：文件 id → [文件 id, 自訂 id]。
+   * 省略＝只用文件 id 一把、不讀網路（測試與 harness）；正式頁一律帶 loadClubMemberKeys。
+   */
+  clubKeys?: ClubKeysPort;
 }
 
 /** 站內清單快照的守門來源。confirmedUid：登入模組確認的帳號（未定 undefined、沒登入 null）。 */

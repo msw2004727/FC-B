@@ -51,6 +51,59 @@ afterEach(() => {
 });
 
 describe('TopBar (legacy A DOM & CSS)', () => {
+  it('LOGIN-SPEED ⑥：有上次頭像紀錄時 authPending 畫頭像＋外圈，不畫轉圈圈', () => {
+    localStorage.setItem('fcb:avatar', 'https://x/a.png');
+    const { container } = render(
+      <TopBar drawerOpen={false} onMenuClick={() => undefined} authPending />,
+    );
+    const avatar = container.querySelector<HTMLElement>('#line-avatar-topbar')!;
+    const img = avatar.querySelector('img')!;
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('https://x/a.png');
+    expect(img.getAttribute('alt')).toBe('');
+    expect(img.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(avatar.querySelector('.line-avatar-ring')).not.toBeNull();
+    expect(avatar.querySelector('.line-avatar-spinner')).toBeNull();
+    expect(avatar.classList.contains('line-avatar-fallback')).toBe(true);
+    expect(avatar.classList.contains('line-avatar-loading')).toBe(true);
+  });
+
+  it('LOGIN-SPEED ⑥：沒有上次頭像紀錄或紀錄是 http:// 時 authPending 仍只有轉圈圈', () => {
+    localStorage.setItem('fcb:avatar', 'http://x/a.png');
+    const { container } = render(
+      <TopBar drawerOpen={false} onMenuClick={() => undefined} authPending />,
+    );
+    const avatar = container.querySelector('#line-avatar-topbar')!;
+    expect(avatar.querySelectorAll('.line-avatar-spinner').length).toBe(1);
+    expect(avatar.querySelector('.line-avatar-ring')).toBeNull();
+    expect(avatar.querySelector('img')).toBeNull();
+  });
+
+  it('LOGIN-SPEED ⑥：上次頭像載入失敗時改回轉圈圈並清掉紀錄', () => {
+    localStorage.setItem('fcb:avatar', 'https://x/a.png');
+    const { container } = render(
+      <TopBar drawerOpen={false} onMenuClick={() => undefined} authPending />,
+    );
+    const img = container.querySelector('#line-avatar-topbar img')!;
+    expect(img).not.toBeNull();
+    fireEvent.error(img);
+    expect(container.querySelector('#line-avatar-topbar .line-avatar-spinner')).not.toBeNull();
+    expect(container.querySelector('#line-avatar-topbar .line-avatar-ring')).toBeNull();
+    expect(localStorage.getItem('fcb:avatar')).toBeNull();
+  });
+
+  it('LOGIN-SPEED ⑥：換成沒有頭像的帳號時清掉上一位的頭像紀錄', () => {
+    localStorage.setItem('fcb:avatar', 'https://old/a.png');
+    render(
+      <TopBar
+        drawerOpen={false}
+        onMenuClick={() => undefined}
+        user={{ uid: 'U2', displayName: 'B', pictureUrl: null }}
+      />,
+    );
+    expect(localStorage.getItem('fcb:avatar')).toBeNull();
+  });
+
   it('wraps #top-bar in .legacy-ui.legacy-chrome and renders A structure in order', () => {
     const login = vi.fn();
     const { container } = render(

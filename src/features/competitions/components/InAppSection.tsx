@@ -54,6 +54,7 @@ import { useInjectedEnv } from '../env';
 import { LiveBoundary } from '../live';
 import { representativeClubs } from '../rep-clubs';
 import { InAppCardList } from './InAppCardList';
+import { MyDataRemoval } from './MyDataRemoval';
 import { liveCpActions, type CpActions } from '../actions';
 import { DeleteDialog, teamCountOf } from '../ui/delete-competition';
 import { dangerConfirm } from '../ui/danger-confirm';
@@ -140,6 +141,9 @@ function SectionBody({
   const ct = ctOrKey(cpDict);
   const { route } = useLocation();
   const [phase, setPhase] = useState<'loading' | 'hidden' | 'ready'>('loading');
+  // 公開清單讀取失敗（不是 0 場）。重試時把 reloadTick 加一，重跑同一個讀取 effect。
+  const [publicFailed, setPublicFailed] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
   const [baseMine, setBaseMine] = useState<MineListRow[]>([]);
   const [hosted, setHosted] = useState<CompetitionDoc[]>([]);
   const [publicDocs, setPublicDocs] = useState<CompetitionDoc[]>([]);
@@ -244,6 +248,7 @@ function SectionBody({
       // 公開清單讀取失敗而畫面上是快照：保留快照（不把清單換成空的），也不寫。
       if (!publicOk && snapShown.current) return;
       fresh.current = { uid: actor.uid, scope, publicOk, mineOk };
+      setPublicFailed(!publicOk);
       snapShown.current = false;
       setSnap(null);
       setBaseMine(dedupeMine(namedMine));
@@ -264,7 +269,7 @@ function SectionBody({
     };
     // onGate 走 ref。repKey 不在這裡，避免俱樂部到了就重讀。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actor.authPending, actor.rolePending, actor.role, actor.uid, repo]);
+  }, [actor.authPending, actor.rolePending, actor.role, actor.uid, repo, reloadTick]);
 
   useEffect(() => {
     if (!hostQuery) return;
@@ -376,6 +381,20 @@ function SectionBody({
     const ok = await dangerConfirm(ct('deleteAsk', { name }), { okText: ct('deleteComp'), danger: true });
     if (ok) setDel({ cid, name });
   };
+  // 「只看我的」清單最下方的移除我的資料（設計 §4.11）：清單空的、快照畫面、未登入都不畫。
+  const showRemoval = onlyMine && visible.length > 0 && !!actor.uid && !actor.authPending && !showingSnap;
+  // 移除完只重讀我的清單（公開與俱樂部主辦不因本人移除而變）；讀失敗留原畫面。
+  const reloadMine = async (): Promise<void> => {
+    const uid = actor.uid;
+    if (!uid) return;
+    try {
+      const items = await repo.listMine(uid);
+      const rows = await Promise.all(items.map((item) => resolveMine(repo, item)));
+      if (appliedUid.current === uid) setBaseMine(dedupeMine(rows));
+    } catch {
+      // 留原畫面
+    }
+  };
   const dropDoc = (cid: string): void => {
     setPublicDocs((list) => list.filter((doc) => doc.id !== cid));
     setHosted((list) => list.filter((doc) => doc.id !== cid));
@@ -399,8 +418,11 @@ function SectionBody({
         route(`/competitions/${cid}`);
       }}
       onDelete={canDelete ? (cid, name) => void onDelete(cid, name) : undefined}
+      filtered={tab !== 'all' || status !== 'all' || onlyMine}
       statusSlot={statusSlot}
+      onRetry={publicFailed && phase === 'ready' ? () => setReloadTick((n) => n + 1) : undefined}
     />
+    {showRemoval ? <MyDataRemoval ct={ct} actions={actions} onRemoved={() => void reloadMine()} /> : null}
     {/* 換帳號或權限變了不再顯示（審查 P2-2） */}
     {del && canDelete ? (
       <DeleteDialog

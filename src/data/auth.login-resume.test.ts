@@ -330,6 +330,12 @@ describe('LINE 授權回跳接手登入', () => {
 });
 
 describe('signOutAndReload（照 A LineAuth.logout）', () => {
+  it('登出清掉上次頭像紀錄（fcb:avatar）', async () => {
+    localStorage.setItem('fcb:avatar', 'https://x/a.png');
+    await auth.signOutAndReload(vi.fn());
+    expect(localStorage.getItem('fcb:avatar')).toBeNull();
+  });
+
   function seedAccountState(): void {
     localStorage.setItem('fcb:signed-in', '1');
     localStorage.setItem(LIFF_KEY, 'token');

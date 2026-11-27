@@ -365,6 +365,64 @@ describe('viewer 登入狀態判定（authPending）', () => {
     expect(textOf('auth')).toBe('u2|settled');
   });
 
+  // CP-DETAIL-SPEED d3：賽事詳情在 authPending 時先不讀，所以 authPending 一定要解除；讀取失敗、Auth 卡住兩條路都要走得出去。
+  it('讀登入狀態失敗（getCurrentUser 拋錯）：判定為訪客，authPending 解除', async () => {
+    vi.mocked(getCurrentUser).mockRejectedValue(new Error('auth boom'));
+    render(<AuthProbe />);
+    expect(textOf('auth')).toBe('guest|pending');
+    await waitFor(() => expect(textOf('auth')).toBe('guest|settled'));
+  });
+
+  it('currentUser 為 null 且初始化 Firebase 失敗（getFirebase 拋錯）：判定為訪客，authPending 解除', async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue(null);
+    vi.mocked(getFirebase).mockRejectedValue(new Error('init boom'));
+    render(<AuthProbe />);
+    await waitFor(() => expect(textOf('auth')).toBe('guest|settled'));
+  });
+
+  it('authStateReady 一直不回來：最多 10 秒就判定（訪客），authPending 解除、不會永遠轉圈', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const auth = { currentUser: null, authStateReady: () => new Promise<void>(() => undefined) };
+      vi.mocked(getFirebase).mockResolvedValue({ db: {}, auth } as unknown as Awaited<ReturnType<typeof getFirebase>>);
+      vi.mocked(getCurrentUser).mockResolvedValue(null);
+      render(<AuthProbe />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(9_900);
+      });
+      expect(textOf('auth')).toBe('guest|pending');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      expect(textOf('auth')).toBe('guest|settled');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('authStateReady 一直不回來但 currentUser 在 10 秒內還原：10 秒到時直接是登入者', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const auth: { currentUser: { uid: string } | null; authStateReady: () => Promise<void> } = {
+        currentUser: null,
+        authStateReady: () => new Promise<void>(() => undefined),
+      };
+      vi.mocked(getFirebase).mockResolvedValue({ db: {}, auth } as unknown as Awaited<ReturnType<typeof getFirebase>>);
+      vi.mocked(getCurrentUser).mockResolvedValue(null);
+      render(<AuthProbe />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      auth.currentUser = { uid: 'u1' };
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_100);
+      });
+      expect(textOf('auth')).toBe('u1|settled');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('所有訂閱者卸載後還原成 pending，下次掛載重新判定', async () => {
     vi.mocked(getCurrentUser).mockResolvedValue(null);
     const first = render(<AuthProbe />);

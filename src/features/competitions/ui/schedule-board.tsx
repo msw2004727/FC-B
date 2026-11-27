@@ -379,7 +379,18 @@ function ScorerBlock({
     : null;
   return (
     <div class="cp-scb">
-      {tables ? (
+      {tables?.failed ? (
+        <>
+          {groups ? <div class="cp-sc__bar">{groups}</div> : null}
+          {/* 讀取失敗不說「還沒有紀錄」：沿用全部賽程讀取失敗那一塊（cp3-panel＋重試），重試＝重讀這一組 */}
+          <div role="alert" class="cp3-panel">
+            <p class="cps-note">{ct('loadFailed')}</p>
+            <div class="cps-actions">
+              <Button variant="secondary" onClick={() => onPick(state?.dvId ?? '')}>{ct('retry')}</Button>
+            </div>
+          </div>
+        </>
+      ) : tables ? (
         <ScorersTable
           scorers={tables.scorers}
           cards={tables.cards}
@@ -561,7 +572,7 @@ export function DetailPhaseBody({
             label: ct('tabStandings'),
             panel: (
               <div class="cp3-panel">
-                {standingsNode}
+                {standings.length > 0 ? standingsNode : <p class="cps-note">{ct('standingsEmpty')}</p>}
               </div>
             ),
           },

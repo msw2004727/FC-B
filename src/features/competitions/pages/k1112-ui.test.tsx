@@ -133,7 +133,8 @@ describe('工作人員頁（K11）', () => {
     const exp = [...view.container.querySelectorAll('.s4b-staff__exp')].map((el) => el.textContent);
     // 只有陳小明（記分員、有到期）。共同主辦沒有記分角色不顯示；裁判 null 不顯示。
     expect(exp).toEqual(['01/16 18:00 到期']);
-    expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites']);
+    // A 組 #11：主辦、管理員另讀賽事主文件一次（與名單並行），判斷結束後收起按鈕
+    expect(repo.calls()).toEqual(['getStaff', 'listStaff', 'listInvites', 'getCompetition']);
   });
 
   it('顧問 11-20：主辦兼記分顯示「主辦」「記分員」兩個標籤，到期跟著記分角色；只有主辦一個標籤', async () => {
@@ -423,7 +424,7 @@ describe('接受邀請（K11，代碼放 #）', () => {
   it('顧問 11-20：已登入看到告知句（接受後成為記分人員、主辦會看到顯示名稱）', async () => {
     openWithHash();
     draw(acceptEnv(), <InviteAcceptPage />);
-    expect(await screen.findByText('接受後你會成為這場賽事的記分人員，主辦會看到你的顯示名稱。')).toBeTruthy();
+    expect(await screen.findByText('接受後你會依邀請成為這場賽事的記分員或裁判，主辦會看到你的顯示名稱。')).toBeTruthy();
   });
 
   it('顧問 11-20：沒有 # 也沒有暫存（換瀏覽器、LINE 登入回來暫存不見）顯示找不到邀請資料', async () => {
@@ -448,7 +449,7 @@ describe('接受邀請（K11，代碼放 #）', () => {
     expect(location.hash).toBe('');
     history.replaceState(null, '', `/competitions/cup/invite#i=${IV}&c=${CODE}`);
     window.dispatchEvent(new HashChangeEvent('hashchange'));
-    expect(await screen.findByText('接受後你會成為這場賽事的記分人員，主辦會看到你的顯示名稱。')).toBeTruthy();
+    expect(await screen.findByText('接受後你會依邀請成為這場賽事的記分員或裁判，主辦會看到你的顯示名稱。')).toBeTruthy();
     expect(location.hash).toBe('');
     noCodeLeak();
     fireEvent.click(button('接受邀請'));

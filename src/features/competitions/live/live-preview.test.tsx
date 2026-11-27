@@ -26,6 +26,7 @@ import {
   type S4ScoreScene,
 } from '../testing/step4-fixtures';
 import { CardFlash } from './CardFlash';
+import { LIVE_COPY } from './copy';
 import { stageLabel } from './clock';
 import { LiveMatchView } from './LiveMatchView';
 import { LiveScoreBadge } from './LiveScoreBadge';
@@ -360,6 +361,46 @@ describe('第 4 步預覽元件', () => {
     expect(screen.getByText("雷霆隊 10 號 5' 點球")).toBeTruthy();
   });
 
+  it('有 onUndoPair／onAmend 時，兩張黃牌的復原與改判各只呼叫一次原子群組（S2）', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const onUndo = vi.fn(() => true);
+    const onRecord = vi.fn(() => true);
+    const onUndoPair = vi.fn(() => true);
+    const onAmend = vi.fn(() => true);
+    pad(S4_SCENE_LIVE, { onUndo, onRecord, onUndoPair, onAmend });
+    fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
+    fireEvent.click(button(/^復原/));
+    armConfirm();
+    fireEvent.click(button(LIVE_COPY.undoBothConfirm));
+    expect(onUndoPair.mock.calls).toEqual([[3]]);
+    expect(onUndo).not.toHaveBeenCalled();
+
+    fireEvent.click(button("12' 黃牌 海風隊 4 周子維"));
+    fireEvent.click(button('紅牌'));
+    fireEvent.click(button(/^改判/));
+    armConfirm();
+    fireEvent.click(button('確定改判'));
+    expect(onAmend.mock.calls).toEqual([[3, {
+      side: 'away', action: 'red', plId: 'pl_hf4', goalKind: null, minute: 12, refSeq: null, matchSecond: 12 * 60 + 40,
+    }]]);
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(onRecord).not.toHaveBeenCalled();
+    cleanup();
+
+    // 沒有連結的改判也走同一個群組（作廢與新紀錄不分開送）。
+    const plainAmend = vi.fn(() => true);
+    pad(S4_SCENE_LIVE, { onUndo, onRecord, onAmend: plainAmend });
+    fireEvent.click(button("5' 進球 雷霆隊 9 劉冠廷"));
+    fireEvent.click(button('點球'));
+    fireEvent.click(button('10 蔡明哲'));
+    fireEvent.click(button(/^改判/));
+    expect(plainAmend.mock.calls).toEqual([[2, {
+      side: 'home', action: 'goal', plId: 'pl_th10', goalKind: 'penalty', minute: 5, matchSecond: 5 * 60 + 12,
+    }]]);
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(onRecord).not.toHaveBeenCalled();
+  });
+
   it('改判被引用的第一張黃牌先確認，再依序復原第二黃、第一黃、記新的', () => {
     // 不能復原的確認框打開後 CONFIRM_ARM_MS 內確認鈕停用（防連點），這裡用假時鐘走過去。
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -488,14 +529,14 @@ describe('第 4 步預覽元件', () => {
     expect(pauseHeldForScoring(131)).toBe(true);
 
     pad(S4_SCENE_LIVE, { eventCount: 129 });
-    expect(screen.queryByText('為保留記分額度，停錶已停用')).toBeNull();
+    expect(screen.queryByText('目前不開放停錶')).toBeNull();
     expect(screen.queryByText('本場紀錄接近上限')).toBeNull();
     expectOff('停錶・剩20', false);
     expectOff('雷霆隊 進球', false);
     cleanup();
 
     pad(S4_SCENE_LIVE, { eventCount: 131 });
-    expect(screen.getByText('為保留記分額度，停錶已停用')).toBeTruthy();
+    expect(screen.getByText('目前不開放停錶')).toBeTruthy();
     expect(screen.queryByText('本場紀錄接近上限')).toBeNull();
     expect(screen.queryByText('紀錄已達上限，請由主辦在賽後登錄比分')).toBeNull();
     expectOff('停錶・剩20', true);
@@ -518,7 +559,7 @@ describe('第 4 步預覽元件', () => {
 
     pad(S4_SCENE_LIVE, { eventCount: 180 });
     expect(screen.getByText('本場紀錄接近上限')).toBeTruthy();
-    expect(screen.getByText('為保留記分額度，停錶已停用')).toBeTruthy();
+    expect(screen.getByText('目前不開放停錶')).toBeTruthy();
     expect(screen.queryByText('紀錄已達上限，請由主辦在賽後登錄比分')).toBeNull();
     expectOff('雷霆隊 進球', false);
     expectOff('雷霆隊 黃牌', false);
@@ -534,7 +575,7 @@ describe('第 4 步預覽元件', () => {
     pad(S4_SCENE_LIVE, { eventCount: 190 });
     expect(screen.queryByText('本場紀錄接近上限')).toBeNull();
     expect(screen.getByText('紀錄已達上限，請由主辦在賽後登錄比分')).toBeTruthy();
-    expect(screen.getByText('為保留記分額度，停錶已停用')).toBeTruthy();
+    expect(screen.getByText('目前不開放停錶')).toBeTruthy();
     expectOff('雷霆隊 進球', true);
     expectOff('雷霆隊 黃牌', true);
     expectOff('雷霆隊 紅牌', true);
@@ -579,7 +620,7 @@ describe('第 4 步預覽元件', () => {
     expect(screen.getByText('本場紀錄接近上限')).toBeTruthy();
     cleanup();
     pad(S4_SCENE_LIVE, { match: s4Match({ rev: 200, resetRev: 69 }) });
-    expect(screen.getByText('為保留記分額度，停錶已停用')).toBeTruthy();
+    expect(screen.getByText('目前不開放停錶')).toBeTruthy();
     expectOff('停錶・剩20', true);
   });
 

@@ -97,7 +97,7 @@ const step = (name, data) => { report.steps.push({ t: new Date().toISOString(), 
 await mkdir(OUT, { recursive: true });
 const backup = await readFile(RULES_TARGET);
 const snapshot = await readFile('emulator/asia-main.rules');
-if (createHash('sha256').update(snapshot).digest('hex').slice(0, 16) !== '99a8cafef181e8e0') throw new Error('asia-main.rules 雜湊不符');
+if (createHash('sha256').update(snapshot).digest('hex').slice(0, 16) !== '37add016c3084d24') throw new Error('asia-main.rules 雜湊不符');
 let server = null;
 let browser = null;
 try {

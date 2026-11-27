@@ -100,6 +100,7 @@ export function ScoringScreen({
   nowMs,
   clubRepCheck,
   isAdmin = false,
+  endedCheck,
 }: {
   cid: string;
   mtId: string;
@@ -109,6 +110,8 @@ export function ScoringScreen({
   clubRepCheck?: () => Promise<boolean>;
   /** 站台管理員（actor.role）。只用來決定「回賽程」「離開記分」的去處，不影響能不能記分。 */
   isAdmin?: boolean;
+  /** 賽事是否已結束（記分盤點 S1：結束後記完也確認不了，不給記分板）。省略＝不判斷；讀取失敗當作沒結束。 */
+  endedCheck?: () => Promise<boolean>;
 }): JSX.Element {
   const cpDict = useCompetitionsT();
   const ct = cpDict.ct;
@@ -116,6 +119,18 @@ export function ScoringScreen({
   const view = useScoring(cid, mtId, deps);
   const now = nowMs ?? Date.now();
   const [clubRep, setClubRep] = useState(false);
+  const [ended, setEnded] = useState<boolean | null>(endedCheck ? null : false);
+  useEffect(() => {
+    if (!endedCheck) return undefined;
+    let alive = true;
+    setEnded(null);
+    void endedCheck().then((value) => { if (alive) setEnded(value); }, () => { if (alive) setEnded(false); });
+    return () => {
+      alive = false;
+    };
+    // 換場次重問一次。結束後本機未送的紀錄也送不出去：後端結束後本來就確認不了。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cid, mtId]);
   const staffAccess = view.loading || view.loadError ? null : scoreAccess({
     roles: view.staff.roles,
     matchIds: view.staff.matchIds,
@@ -143,7 +158,7 @@ export function ScoringScreen({
   }, [askRep]);
   useScoreDocumentTitle(ct ? ct('scoreTitle') : null);
   if (!ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
-  if (view.loading) return <div class="cps-root"><PageSpinner /></div>;
+  if (view.loading || ended === null) return <div class="cps-root"><PageSpinner /></div>;
   const exitPath = scoringExitPath(cid, {
     signedIn: true,
     isAdmin,
@@ -178,6 +193,19 @@ export function ScoringScreen({
     nowMs: now,
     clubRep,
   });
+  if (ended) {
+    return (
+      <CpFrame title={ct('scoreTitle')} onBack={back}>
+        <CpCard class="cps-gate">
+          <LockIcon />
+          <p class="cps-gate__text">{ct('reason.COMPETITION_ENDED')}</p>
+          <div class="cps-gate__btns">
+            <Button onClick={back}>{backLabel}</Button>
+          </div>
+        </CpCard>
+      </CpFrame>
+    );
+  }
   if (!access.pad) {
     return (
       <CpFrame title={ct('scoreTitle')} onBack={back}>
@@ -185,7 +213,7 @@ export function ScoringScreen({
         <CpCard class="cps-gate">
           <LockIcon />
           <p class="cps-gate__text">{LIVE_COPY.noScorePermission}</p>
-          {access.hint ? <p class="cps-note">{LIVE_COPY.assignScorerHint}</p> : null}
+          <p class="cps-note">{access.hint ? LIVE_COPY.assignScorerHint : LIVE_COPY.askHostToAssign}</p>
           <div class="cps-gate__btns">
             <Button onClick={back}>{backLabel}</Button>
           </div>
@@ -252,6 +280,7 @@ export default function ScoringPage(): JSX.Element {
             deps={{ uid: actor.uid }}
             clubRepCheck={() => scoringClubRep(cid, actor.uid ?? '')}
             isAdmin={isCpAdmin(actor.role)}
+            endedCheck={async () => (await getCompetitionsRepo().getCompetition(cid))?.endedAt != null}
           />
         )
       )}

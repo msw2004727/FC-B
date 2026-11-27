@@ -132,6 +132,8 @@ import type {
   SearchPmAuditUsersResponse,
   SendPrivateMessageRequest,
   SendPrivateMessageResponse,
+  SaveSportPrefsRequest,
+  SaveSportPrefsResponse,
   SubmitContactMessageRequest,
   SubmitContactMessageResponse,
   SyncGroupActionStatusRequest,
@@ -281,6 +283,7 @@ export interface CallableMap {
     res: SaveEduSessionAttendanceChangesResponse;
   };
   saveRealtimeConfig: { req: SaveRealtimeConfigRequest; res: SaveRealtimeConfigResponse };
+  saveSportPrefs: { req: SaveSportPrefsRequest; res: SaveSportPrefsResponse };
   searchPmAuditUsers: { req: SearchPmAuditUsersRequest; res: SearchPmAuditUsersResponse };
   sendPrivateMessage: { req: SendPrivateMessageRequest; res: SendPrivateMessageResponse };
   submitContactMessage: { req: SubmitContactMessageRequest; res: SubmitContactMessageResponse };

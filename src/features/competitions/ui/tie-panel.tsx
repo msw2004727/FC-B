@@ -322,6 +322,7 @@ export function TieWorkspace({
   crests,
   divisions,
   canHost,
+  canRule = canHost,
   cid,
   actions,
   summary,
@@ -334,7 +335,10 @@ export function TieWorkspace({
   docs: readonly StandingDoc[];
   crests: readonly EntryDoc[];
   divisions: readonly DivisionDoc[];
+  /** 看比較說明（後端 explainTie 只走 hostComp）。 */
   canHost: boolean;
+  /** 裁定與撤銷（後端 resolveTie／clearTieDecision 另過 assertNotEnded）；省略＝同 canHost。 */
+  canRule?: boolean;
   cid: string;
   actions: {
     explainTie(input: { cid: string; dvId: string; groupId?: string; teamIds: string[] }): Promise<unknown>;
@@ -519,10 +523,10 @@ export function TieWorkspace({
       />
       {message && active && !result ? <p class="cps-note cps-warn" role="alert">{message}</p> : null}
       {/* 新外觀卡 2-5：比較表與裁定表單接成一塊。錯誤句只在還沒有比較結果時出現，排在這一塊前面與原本的先後相同。 */}
-      {active && (result || (canHost && order.length >= 2)) ? (
+      {active && (result || (canRule && order.length >= 2)) ? (
         <div class="cpm-tie">
           {result ? <CompareCard ct={ct} doc={active} result={result} summary={summary} /> : null}
-          {canHost && order.length >= 2 ? (
+          {canRule && order.length >= 2 ? (
             <RulingForm
               ct={ct}
               doc={active}
@@ -560,7 +564,7 @@ export function TieWorkspace({
         <DecisionCard
           ct={ct}
           override={decision.manualOverride}
-          canHost={canHost}
+          canHost={canRule}
           clearReason={clearReason}
           message={message}
           busy={busy}

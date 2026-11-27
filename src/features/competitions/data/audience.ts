@@ -73,6 +73,8 @@ export interface ScorerTables {
   empty: boolean;
   capped: boolean;
   stalled: boolean;
+  /** 讀取失敗（不是沒有紀錄）。畫面改顯示讀取失敗與重試（文案盤點 B11）。 */
+  failed?: boolean;
 }
 
 export interface AudiencePorts {

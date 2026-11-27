@@ -13,8 +13,9 @@ import { RadioGroup } from '@/ui/RadioGroup';
 import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 import { toast } from '@/ui/Toast';
-import { canEditCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canRestoreCompetition, isCpAdmin } from '../access';
+import { canEditCompetition, canHostOrCo, canManageCompetition, canRegisterClubEntry, canRestoreCompetition, hostEditsOpen, isCpAdmin } from '../access';
 import { canDeleteCompetition, isPrimaryHostView } from '../delete-access';
+import { canSetCompetitionStatus } from '../status-access';
 import { representativeClubs } from '../rep-clubs';
 import { liveCpActions } from '../actions';
 import type { CpBundle, CpInjectedEnv } from '../env';
@@ -46,10 +47,12 @@ import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, type CpLoadFail
 import { FeeLine } from '../ui/fields';
 import { categoryText, DetailPhaseBody, type ScheduleClock } from '../ui/schedule-board';
 import { DetailHero } from '../ui/detail-hero';
+import { ShareCompetitionButton } from '../ui/share-button';
 import { shownCover } from '../data/cover';
 import { TieWorkspace } from '../ui/tie-panel';
 import { AdminPanel, HiddenNotice } from '../ui/admin-moderation';
 import { DeleteCompetition, teamCountOf } from '../ui/delete-competition';
+import { StatusCompetitionEntry } from '../ui/status-competition';
 import { HostLine, hostLineShown, PublicBoard } from '../ui/public-board';
 import { StatusTag, type StatusKind } from '../ui/status-tag';
 import { CpCard, CpFrame, CpI18nPending, CpRow, AlertIcon, MoreIcon, NextIcon } from '../ui/shell';
@@ -102,8 +105,8 @@ interface DetailData {
 }
 
 /**
- * 自己的 staff 指派。同一個 cid＋uid 在這次開頁只打一次 getStaffAssignment。
- * 重新渲染、切分頁、回前景、重試都不重讀。換賽事或換登入者才再讀。
+ * 自己的 staff 指派。同一個 cid＋uid 在這次開頁只讀一次：第一次跟職員合併讀（getStaffWithAssignment），
+ * 之後重新渲染、切分頁、回前景、重試都不重讀指派。換賽事或換登入者才再讀。
  */
 interface MineReadCache {
   readyKey: string;
@@ -158,13 +161,38 @@ async function loadDetail(env: CpInjectedEnv, cid: string, mine: MineReadCache):
   // ASSUMPTION: 詳情的隊伍圖示用隊徽查詢（上限 32），不用 listEntries（上限 100）。
   // ASSUMPTION: 內部期 3 筆由列表閘門負責，詳情頁不重讀。
   // 不傳 internal，所以這裡不會打 getLaunch、getLaunchTester、listMine。
+  const uid = env.actor.uid;
+  const key = uid ? mineKey(cid, uid) : '';
+  // CP-DETAIL-SPEED d1：這個 cid＋uid 還沒讀過指派，就讓職員那 1 筆改成合併讀，順便拿到自己的指派（保留 scorer／referee），
+  // 少一筆讀取、少一段來回。已讀過或正在讀，照舊只讀 getStaff，指派走 readMyAssignment 的快取。
+  const merge = !!uid && mine.readyKey !== key && mine.flight?.key !== key;
+  let token = 0;
+  if (merge) {
+    // 作廢還在飛的另一個 cid／uid，避免晚到的結果蓋掉這次。
+    token = mine.token + 1;
+    mine.token = token;
+    mine.flight = null;
+  }
   const view = await loadScheduleDetail(env.repo, {
     cid,
-    uid: env.actor.uid,
+    uid,
     now: env.now ?? Date.now(),
+    withAssignment: merge,
   });
-  // 登入才多讀自己的 staff（保留 scorer／referee）。未登入不讀。同一次開頁只讀一次。
-  const myAssignment = await readMyAssignment(env, cid, mine);
+  let myAssignment: StaffAssignment | null;
+  if (!merge) {
+    // 未登入不讀；已讀過用快取。
+    myAssignment = await readMyAssignment(env, cid, mine);
+  } else if (view.assignment !== undefined) {
+    myAssignment = view.assignment;
+    if (mine.token === token) {
+      mine.readyKey = key;
+      mine.value = myAssignment;
+    }
+  } else {
+    // 賽事不存在：沒讀職員，也不記快取（之後重試讀到賽事才合併讀）。
+    myAssignment = null;
+  }
   return {
     bundle: {
       competition: view.competition,
@@ -194,7 +222,7 @@ function applyDetail(
   setSummary(next.summary);
   setStandings(next.standings);
   setMine(next.myAssignment);
-  setLoadState(next.bundle.competition ? 'ready' : 'error');
+  setLoadState(next.bundle.competition ? 'ready' : 'missing');
 }
 
 function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Element {
@@ -204,6 +232,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [bundle, setBundle] = useState<CpBundle | null>(env.bundle ?? null);
   const [summary, setSummary] = useState<SummaryEntry[]>(env.schedule?.summary ?? []);
   const [standings, setStandings] = useState<StandingDoc[]>(env.schedule?.standings ?? []);
+  // 代表自己俱樂部的報隊（CP-PO-14）：詳情頁組別卡要看得到自己待審的隊。
+  const [myEntries, setMyEntries] = useState<EntryDoc[]>([]);
   const [myAssignment, setMyAssignment] = useState<StaffAssignment | null>(null);
   const [loadState, setLoadState] = useState<LoadState>(env.bundle ? 'ready' : 'loading');
   const [menuOpen, setMenuOpen] = useState(env.preview?.menuOpen === true);
@@ -239,6 +269,23 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   pageCid.current = cid;
   const now = env.now ?? Date.now();
   const clubs = representativeClubs(env.actor);
+  const mineClubKey = clubs.map((club) => club.id).join('\0');
+  // 只有招募中畫組別卡隊伍清單；其他階段不多讀。
+  const recruitNow = bundle?.competition ? competitionPhase(bundle.competition, now) === 'recruit' : false;
+
+  async function reloadMine(shouldApply: () => boolean = () => true): Promise<void> {
+    const ids = clubs.map((club) => club.id);
+    if (env.bundle || !env.actor.uid || ids.length === 0 || !recruitNow) {
+      if (shouldApply()) setMyEntries([]);
+      return;
+    }
+    try {
+      const rows = await env.repo.listEntriesByTeams(cid, ids);
+      if (shouldApply()) setMyEntries(rows);
+    } catch {
+      if (shouldApply()) setMyEntries([]);
+    }
+  }
 
   useEffect(() => {
     if (teamId) return;
@@ -254,6 +301,15 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   useEffect(() => {
     if (env.actor.uid) setReportError(null);
   }, [env.actor.uid]);
+
+  useEffect(() => {
+    let alive = true;
+    void reloadMine(() => alive);
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cid, env.actor.uid, env.bundle, mineClubKey, recruitNow]);
 
   // 只在換賽事時清全部賽程快取。首次掛載不清：effect 晚於第一次繪製，
   // 使用者若在那之前就按展開，剛讀到的全集會被清掉、展開後一片空白（截圖驗收抓到）。
@@ -315,6 +371,9 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 
   useEffect(() => {
     if (env.bundle) return;
+    // CP-DETAIL-SPEED d3：登入狀態還沒確定先不讀（畫面維持轉圈）。uid 到了或確定是訪客才讀一輪，
+    // 不會先用訪客身分整組讀一次、uid 到了再整組重讀並閃回轉圈。authPending 一定會解除（viewer 的 Auth 等待有 10 秒上限、失敗也發訪客快照）。
+    if (env.actor.authPending) return;
     // ASSUMPTION: 審核在管理頁，詳情頁沒有審核成功處可呼叫 invalidateCrests。
     // 進入詳情頁先讓這個 cid 的隊徽快取失效，這次讀到新的。同頁回前景不走這裡。
     // 主辦在別頁核准後，要再進一次詳情才看得到新隊徽。
@@ -330,9 +389,23 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     return () => {
       alive = false;
     };
-    // 注入的 bundle 是首屏快照。正式頁只在賽事 id 或帳號變了才重讀。
+    // 注入的 bundle 是首屏快照。正式頁只在賽事 id、帳號或登入判定變了才重讀。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cid, env.actor.uid, env.bundle]);
+  }, [cid, env.actor.uid, env.actor.authPending, env.bundle]);
+
+  // CP-DETAIL-SPEED d4：賽事名稱第一次畫出時記一個本機效能標記，給 staging 量測用（只寫瀏覽器效能時間軸，不送資料、不帶網址或任何參數）。
+  // 每次掛載最多一次；注入的 bundle（harness、畫面測試）不記。
+  const titleMarked = useRef(false);
+  const titleShown = loadState === 'ready' && !!bundle?.competition && !!cpDict.ct;
+  useEffect(() => {
+    if (env.bundle || titleMarked.current || !titleShown) return;
+    titleMarked.current = true;
+    try {
+      performance.mark('cp:detail-title');
+    } catch {
+      // 不支援 performance.mark 就略過。
+    }
+  }, [env.bundle, titleShown]);
 
   const phaseNow = bundle?.competition ? competitionPhase(bundle.competition, now) : null;
   const phaseRef = useRef(phaseNow);
@@ -418,23 +491,24 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       if (!mounted.current || scorerToken.current !== token) return;
       setScorerState({
         dvId,
-        tables: { scorers: [], cards: [], empty: true, capped: false, stalled: false },
+        tables: { scorers: [], cards: [], empty: true, capped: false, stalled: false, failed: true },
       });
     });
   }
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const competition = bundle?.competition ?? null;
-  // 登入還在確認時先轉圈：主辦從深連結進來，uid 到之前會被拒，不先閃「不公開」（uid 到了 effect 會重讀）。
+  // 登入還在確認時先轉圈：主辦從深連結進來，uid 到之前會被拒，不先閃「不公開」。
+  // CP-DETAIL-SPEED d3 之後待定時不讀，正常流程到不了 hidden＋authPending；條件留著當防線。
   if (loadState === 'loading' || (loadState === 'hidden' && env.actor.authPending)) {
     return <div class="cps-root"><PageSpinner /></div>;
   }
-  if (!competition || loadState === 'error' || loadState === 'hidden') {
+  if (!competition || loadState === 'error' || loadState === 'hidden' || loadState === 'missing') {
     // 權限被拒＝不公開：不放重試，也不說是下架、草稿還是內部期。網路或其他錯誤才給重試。
     return (
       <CpLoadFailed
         title={ct('detailTitle')}
-        fail={loadState === 'hidden' ? 'hidden' : 'error'}
+        fail={loadState === 'hidden' || loadState === 'missing' ? loadState : 'error'}
         onRetry={() => {
           setLoadState('loading');
           void loadDetail(env, cid, mineCache.current).then((next) => {
@@ -460,6 +534,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     repClubIds: clubs.map((club) => club.id),
     status: competition.status,
     hidden: competition.hidden,
+    rostersLockedAt: competition.rostersLockedAt,
+    endedAt: competition.endedAt,
     regOpenAt: competition.regOpenAt,
     regCloseAt: competition.regCloseAt,
     now,
@@ -487,11 +563,17 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     repClubIds: clubs.map((club) => club.id),
     hidden: competition.hidden,
     deletingAt,
+    endedAt: competition.endedAt,
     firstMatchAt: competition.firstMatchAt,
     now,
   });
   // 刪到一半：只留續刪入口與返回，其他主辦操作一律藏起來（後端也會回 COMPETITION_DELETING）。
   const frozen = deletingAt != null;
+  // 下架時主辦寫入只留管理員（後端 hostComp COMPETITION_HIDDEN，#14）；發布連管理員也不行（host.ts publish）。
+  const hiddenBlock = competition.hidden && !isAdmin;
+  const noticeHost = hostOps && !frozen && !hiddenBlock;
+  // 同分裁定另外過 assertNotEnded（末場確認 3 天寬限、管理員不受限）。
+  const tieHost = noticeHost && hostEditsOpen(competition, isAdmin, now);
   // 卡住時的說明：能續刪的人按下方；主辦但首場已過（只剩管理員能續刪）請聯絡管理員；共同主辦只看到刪除中。
   const stuckText = showDelete
     ? ct('deleteStuck')
@@ -727,8 +809,13 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       toast.show({ message: ct('registerDone'), tone: 'success' });
       const next = await loadDetail(env, cid, mineCache.current);
       applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);
+      void reloadMine(() => mounted.current);
     } catch (err) {
-      setRegisterError(errorOf(err));
+      const info = errorOf(err);
+      // 後端鏡像未建好時先判代表會回 NOT_CLUB_REP（第二輪模擬 C-04），前端已知是代表就顯示同步中。
+      setRegisterError(info.reason === 'NOT_CLUB_REP' && clubs.some((club) => club.id === chosenTeam)
+        ? { ...info, reason: 'CLUB_SYNC_PENDING' }
+        : info);
     } finally {
       setBusy(false);
     }
@@ -759,7 +846,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         <nav class="cps-card d2-rows d2-manage d2-lines d2-lines--48" aria-label={ct('hostOnly')}>
           <div class="d2-manage__k">
             <span>{ct('hostOnly')}</span>
-            {manage && competition.status === 'draft' ? (
+            {manage && competition.status === 'draft' && !competition.hidden ? (
               <Button variant="primary" size="sm" loading={busy} onClick={() => { void publish(); }}>
                 {ct('publish')}
               </Button>
@@ -772,6 +859,26 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           {canEditCompetition(competition, { canHost: hostOps, isAdmin: hostInput.isAdmin }) ? (
             <Button variant="ghost" trailing={<NextIcon />} onClick={() => route(`/competitions/new?edit=${cid}`)}>{ct('editTitle')}</Button>
           ) : null}
+          {/* CP-PO-05：延期、取消、延期後恢復（cpHost setStatus）。顯示條件對齊後端（status-access.ts）。 */}
+          {(competition.status === 'published' || competition.status === 'postponed')
+            && canSetCompetitionStatus(competition, { canHost: hostOps, isAdmin: hostInput.isAdmin }) ? (
+              <StatusCompetitionEntry
+                ct={ct}
+                cid={cid}
+                status={competition.status}
+                actions={env.actions}
+                previewOpen={env.preview?.statusDialog}
+                onDone={(next) => {
+                  setBundle((current) => (current?.competition
+                    ? { ...current, competition: { ...current.competition, status: next.status, statusReason: next.statusReason } }
+                    : current));
+                  toast.show({
+                    message: ct(next.status === 'postponed' ? 'statusDonePostponed' : next.status === 'cancelled' ? 'statusDoneCancelled' : 'statusDoneResumed'),
+                    tone: 'success',
+                  });
+                }}
+              />
+            ) : null}
         </nav>
       ) : null}
       {error ? <CpError reason={error.reason} params={error.params} /> : null}
@@ -860,6 +967,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
           />
         ) : undefined}
       />
+      {/* 分享（CP-SHARE）：位置比照活動詳情，緊接在主資訊下面；只給收到連結的人讀得到的賽事（已發布、未下架、公開）。 */}
+      {frozen ? null : <ShareCompetitionButton ct={ct} competition={competition} loggedIn={Boolean(env.actor.uid)} />}
       {hostCards}
       {showHostEnd ? (
         // 主辦結束賽事的說明卡（新外觀卡 1b-5）：第一行結論跨兩欄，第二行左原因、右「恢復賽事」小鈕
@@ -900,7 +1009,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       <PublicBoard
         ct={ct}
         notices={competition.notices}
-        hostOps={hostOps && !frozen}
+        hostOps={noticeHost}
         busy={busy}
         onPost={publishNotice}
         onDelete={removeNotice}
@@ -965,7 +1074,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       </CpCard>
 
       {divisions.map((division) => (
-        <DivisionBlock key={division.dvId} division={division} entries={entries} cid={cid} competition={competition} now={now} />
+        <DivisionBlock key={division.dvId} division={division} entries={entries} pendingMine={myEntries.filter((entry) => entry.status === 'pending')} cid={cid} competition={competition} now={now} />
       ))}
       </>
       ) : (
@@ -993,7 +1102,8 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
                 docs={docs}
                 crests={entries}
                 divisions={divisions}
-                canHost={hostOps && !frozen}
+                canHost={noticeHost}
+                canRule={tieHost}
                 cid={cid}
                 actions={env.actions}
                 summary={fullSchedule ?? summary}
@@ -1114,12 +1224,14 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
 function DivisionBlock({
   division,
   entries,
+  pendingMine,
   cid,
   competition,
   now,
 }: {
   division: DivisionDoc;
   entries: EntryDoc[];
+  pendingMine: EntryDoc[];
   cid: string;
   competition: CompetitionDoc;
   now: number;
@@ -1129,6 +1241,7 @@ function DivisionBlock({
   const { route } = useLocation();
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const approved = entries.filter((entry) => entry.dvId === division.dvId && entry.status === 'approved');
+  const pendingRows = pendingMine.filter((entry) => entry.dvId === division.dvId && !approved.some((row) => row.id === entry.id));
   const meta = [
     ct('rosterLine', {
       format: ct('formatN', { n: division.playersOnField }),
@@ -1140,6 +1253,21 @@ function DivisionBlock({
       : '',
   ].filter(Boolean).join('　');
   const width = division.maxTeams > 0 ? Math.min(100, (division.approvedCount / division.maxTeams) * 100) : 0;
+  const rowOf = (entry: EntryDoc, pending: boolean): JSX.Element => (
+    <li class="cps-li" key={entry.id}>
+      <a class="d2-div__team" href={`/competitions/${cid}/entries/${entry.id}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); route(`/competitions/${cid}/entries/${entry.id}`); }}>
+        <span class="cps-li__main">
+          <span class="cp3-tn">
+            <TeamCrest teamId={entry.teamId} name={entry.name} teamLogo={entry.teamLogo} size={28} />
+            <em>{entry.name}</em>
+          </span>
+        </span>
+        {/* 顧問 §3.463：長隊名時「已核准」被擠成兩行。只在這一列讓標籤不縮、不換行，隊名讓位省略；不動共用 Badge。 */}
+        <StatusTag kind="neutral" label={pending ? ct('pending') : ct('approved')} class="cps-li__tag" />
+        <NextIcon />
+      </a>
+    </li>
+  );
   return (
     // 組別卡（新外觀卡 1b-5）：隊伍列整列是連結（最小高 48），不靠外擴點擊區（原本只有名字那一條 232×26 可點）
     <CpCard class="d2-div">
@@ -1153,21 +1281,8 @@ function DivisionBlock({
       <div class="cps-bar" aria-hidden="true"><i style={`width:${width}%`} /></div>
       <p class="cps-cap">{ct('approvedTeams', { teams: division.approvedCount, max: division.maxTeams })}</p>
       <ul class="cps-list">
-        {approved.map((entry) => (
-          <li class="cps-li" key={entry.id}>
-            <a class="d2-div__team" href={`/competitions/${cid}/entries/${entry.id}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); route(`/competitions/${cid}/entries/${entry.id}`); }}>
-              <span class="cps-li__main">
-                <span class="cp3-tn">
-                  <TeamCrest teamId={entry.teamId} name={entry.name} teamLogo={entry.teamLogo} size={28} />
-                  <em>{entry.name}</em>
-                </span>
-              </span>
-              {/* 顧問 §3.463：長隊名時「已核准」被擠成兩行。只在這一列讓標籤不縮、不換行，隊名讓位省略；不動共用 Badge。 */}
-              <StatusTag kind="neutral" label={ct('approved')} class="cps-li__tag" />
-              <NextIcon />
-            </a>
-          </li>
-        ))}
+        {approved.map((entry) => rowOf(entry, false))}
+        {pendingRows.map((entry) => rowOf(entry, true))}
       </ul>
     </CpCard>
   );

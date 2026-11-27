@@ -62,10 +62,12 @@ export function Mark({
   second,
   scored,
 }: {
-  kind: 'goal' | 'yellow' | 'red' | 'pk';
+  kind: 'goal' | 'yellow' | 'red' | 'pk' | 'sub';
   second: boolean;
   scored?: boolean;
 }): JSX.Element {
+  // 換人：沿用 PK 沒進的空心樣式、改回方角（行內，不加樣式表：賽事樣式七支已貼近上限）。
+  if (kind === 'sub') return <i class="s4-mark s4-mark--miss" style={{ borderRadius: '3px' }} aria-hidden="true" />;
   if (kind === 'pk') {
     return <i class={scored ? 's4-mark s4-mark--goal' : 's4-mark s4-mark--miss'} aria-hidden="true" />;
   }

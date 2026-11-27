@@ -103,6 +103,9 @@ export function idleActions(): CpActions {
     moderate: async () => ({}),
     reviewReport: async () => ({}),
     deleteCompetition: async ({ cid }) => ({ cid, deleted: true }),
+    setCompetitionStatus: async ({ cid, status }) => ({ cid, status }),
+    withdrawEntry: async () => ({}),
+    requestMyDataRemoval: async () => ({ status: 'done', processed: 0, waiting: [] }),
   };
 }
 
@@ -1401,6 +1404,8 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return listInEnv(actions);
     case 'real-recruit':
       return detailEnv(memberActor, NOW, {}, { summary: [], standings: [] });
+    // CP-PO-10：預熱中切到積分分頁（harness 點分頁）。
+    case 'real-warm-stand':
     case 'real-warm':
       return detailEnv(memberActor, WARM_NOW, {}, { summary: warmSchedule(), standings: [] });
     case 'real-live':
@@ -1705,6 +1710,29 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return hostEnv(freshPendingMatches(), actions);
     case 'real-host-matches-empty':
       return hostEnv([], actions);
+    // ── 賽事開放後第一批（CP-PO）──
+    case 'real-host-matches-ended': {
+      // HOSTMATCH-ENDED：已結束、0 場，不再叫人排賽程。
+      const env = hostEnv([], actions);
+      const comp = env.bundle?.competition;
+      if (!env.bundle || !comp) return env;
+      return { ...env, bundle: { ...env.bundle, competition: { ...comp, endedAt: LIVE_NOW - 3_600_000, endedBy: 'host', endReason: '示範' } } };
+    }
+    case 'real-pending-mine':
+      // CP-PO-14：代表剛報的隊（待審）在詳情頁組別卡看得到。走 repo 讀取（不帶 bundle）。
+      return repoDetailEnv(
+        actor({ uid: 'uid_rep_p', repClubs: [{ id: 'club_p', name: '晨星足球俱樂部' }], memberClubIds: ['club_p'] }),
+        NOW,
+        createFakeCpRepo({
+          competitions: [competition()],
+          divisions: { cup: [adultDivision, youthDivision] },
+          entries: { cup: [...detailBundle().entries, entry({ id: 'en_p', name: '晨星足球俱樂部', status: 'pending', dvId: 'dv_adult', teamId: 'club_p' })] },
+        }),
+        actions,
+      );
+    case 'real-detail-missing':
+      // CP-PO-15d：管理員開已刪除賽事（讀取成功、文件不存在）。
+      return repoDetailEnv(adminActor, NOW, createFakeCpRepo(), actions);
     case 'real-host-matches-denied':
       return { ...base(actions, memberActor, manageBundle(null)), now: LIVE_NOW, matches: [] };
     case 'real-schedule-preview':
@@ -1756,6 +1784,29 @@ export function screenEnv(screen: string, actions: CpActions = idleActions()): C
       return base(actions, memberActor, rosterBundle(SHORT_PLAYERS, false));
     case 'roster-remove':
       return base(actions, repActor, rosterBundle(SHORT_PLAYERS, false));
+    // ── CP-PO-08 球員本人退出：隊員視角，pl_2（林示範）是自己那一列；確認框由 harness 點正式按鈕打開 ──
+    case 'roster-self':
+    case 'roster-self-confirm':
+      return base(actions, memberActor, { ...rosterBundle(SHORT_PLAYERS, false), myPlIds: ['pl_2'] });
+    case 'roster-self-locked':
+      return base(actions, memberActor, { ...rosterBundle(SHORT_PLAYERS, true), myPlIds: ['pl_2'] });
+    case 'roster-rep-self':
+      // 代表自己已登錄（pl_1 王示範）：自己那列是退出鍵，別人的列是垃圾桶；「登錄名單」不出現
+      return base(actions, repActor, { ...rosterBundle(SHORT_PLAYERS, false), myPlIds: ['pl_1'] });
+    case 'roster-self-long': {
+      // 審查 P2-1：自己那一列是 20 字暱稱＋未成年標籤，退出鍵不能被壓扁，由暱稱省略讓位
+      const players = SHORT_PLAYERS.map((row) => (row.id === 'pl_2' ? { ...row, displayName: '上官歐陽司徒長孫東方西門南宮慕容令狐皇甫', isMinor: true } : row));
+      return base(actions, memberActor, { ...rosterBundle(players, false), myPlIds: ['pl_2'] });
+    }
+    case 'roster-self-started':
+      // 第一場已開打（名單未鎖）：一樣不顯示退出鍵
+      return { ...base(actions, memberActor, { ...rosterBundle(SHORT_PLAYERS, false), myPlIds: ['pl_2'] }), now: FIRST_MATCH };
+    // 已在本賽事其他隊伍名單：送出登錄時後端回 ALREADY_IN_ROSTER
+    case 'form-already':
+      return base({
+        ...actions,
+        joinRoster: async () => { throw new CpCallError('ALREADY_IN_ROSTER', {}); },
+      }, memberActor, rosterBundle(SHORT_PLAYERS, false), { prefillForm: true });
     case 'form-error':
     case 'form-custom-pos':
       return base(actions, memberActor, rosterBundle(SHORT_PLAYERS, false), { prefillForm: true });

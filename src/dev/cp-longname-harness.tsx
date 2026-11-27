@@ -1,6 +1,6 @@
 // 長賽事名稱／長隊名量測（顧問 §3.460）：正式頁面＋記憶體假資料，不連 Firestore、不呼叫 Functions。
 // ?page=list|detail|detail-live|manage|matches|schedule|staff|roster|join|add|wizard-3|wizard-done|accept|live
-// ?name=short|22|24（賽事名稱）、?team=short|long|24（隊名；24＝24 個字，第 3 批卡 3-2 驗收）、?nick=long（名單 20 字暱稱）、?theme=light|dark。畫完設 window.__CPS_READY。
+// ?name=short|22|24（賽事名稱）、?team=short|long|24|mixed（隊名；24＝24 個字，第 3 批卡 3-2 驗收；mixed 只用在觀眾即時頁）、?nick=long（名單 20 字暱稱）、?theme=light|dark。畫完設 window.__CPS_READY。
 import { render } from 'preact';
 import type { ComponentChildren, ComponentType } from 'preact';
 import { LocationProvider } from 'preact-iso';
@@ -168,9 +168,13 @@ function ListIn(): ComponentChildren {
 
 function LiveScreen(): ComponentChildren {
   const scene = S4_SCENE_LIVE;
+  // ?team=mixed：主隊 13 字、客隊原本的短名（CP-PO-13 顧問 §3.791：記分板一長一短的對齊）。
+  const mixed = params.get('team') === 'mixed';
   const m = LONG_TEAM
     ? { ...scene.match, home: { ...scene.match.home, name: longTeam(scene.match.home.name) }, away: { ...scene.match.away, name: longTeam(scene.match.away.name) } }
-    : scene.match;
+    : mixed
+      ? { ...scene.match, home: { ...scene.match.home, name: '新北市三重區社區足球俱樂部' } }
+      : scene.match;
   const crests = LONG_TEAM ? scene.crests.map((row) => ({ ...row, name: longTeam(row.name), teamLogo: null })) : scene.crests.map((row) => ({ ...row, teamLogo: null }));
   return (
     <LiveMatchView match={m} clock={scene.clock} events={scene.events} voids={scene.voids} homeRoster={scene.homeRoster} awayRoster={scene.awayRoster} crests={crests} />

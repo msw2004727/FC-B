@@ -1,10 +1,16 @@
 import type { JSX } from 'preact';
+import { lazy, Suspense } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
 import { lt, useT } from '@/i18n/i18n';
 import { toast } from '@/ui/Toast';
+import { appConfirm } from '@/ui/AppConfirm';
 import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
+import { useSportPrefsEnabled } from '@/features/sport-prefs/data';
+import { saveSportPrefs, SportPrefsCallError } from '@/features/sport-prefs/callables';
+import { FavSportTags } from '@/features/sport-prefs/ProfileBits';
+import { useSportPrefsT, sportName } from '@/features/sport-prefs/i18n';
 import type { UserProfile } from '../../data/profile-model';
 import { updateProfileFields } from '../../data/profile-writes';
 import { stringValue } from '../../ui/shared';
@@ -16,6 +22,8 @@ import {
   getUserTeamEntries,
 } from './profile-legacy-helpers';
 import { ProfileInfoButton } from './ProfileInfoButton';
+
+const SportPrefsModal = lazy(() => import('@/features/sport-prefs/SportPrefsModal'));
 
 function daysInMonth(year: string, month: string): number {
   const y = Number(year);
@@ -73,6 +81,27 @@ export function LegacyProfileInfoCard({
   useEffect(() => () => {
     if (blurTimerRef.current !== null) clearTimeout(blurTimerRef.current);
   }, []);
+
+  const favOn = useSportPrefsEnabled() === true;
+  const st = useSportPrefsT();
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const favTags: string[] = Array.isArray(profile['favSports']) ? (profile['favSports'] as string[]).filter((x) => typeof x === 'string') : [];
+  const legacySports = stringValue(profile['sports']);
+  const favAliveRef = useRef(true);
+  useEffect(() => () => { favAliveRef.current = false; }, []);
+  async function removeFav(key: string): Promise<void> {
+    const ok = await appConfirm(st('removeConfirm', { name: sportName(st, key) }), { okText: st('removeOk'), danger: true });
+    if (!ok) return;
+    try {
+      const r = await saveSportPrefs({ removeSport: key });
+      if (!favAliveRef.current) return;
+      onSaved({ favSports: r.favSports, newEventNotify: r.newEventNotify });
+    } catch (err) {
+      if (!favAliveRef.current) return;
+      const code = err instanceof SportPrefsCallError ? err.code : 'internal';
+      toast.show({ message: code === 'resource-exhausted' ? st('limit') : st('saveFailed'), tone: 'error' });
+    }
+  }
 
   const currentYear = new Date().getFullYear();
   const teams = getUserTeamEntries(profile);
@@ -293,9 +322,13 @@ export function LegacyProfileInfoCard({
                 {renderValue('profile-region', stringValue(profile['region']), 'pfi-fact-v')}
               </div>
             </div>
-            <div class="pfi-kv">
+            <div class={favOn ? 'pfi-kv fav-kv' : 'pfi-kv'}>
               <span data-i18n="profile.sports">{lt('profile.sports', '運動類別')}</span>
-              {renderValue('profile-sports', stringValue(profile['sports']), 'pfi-kv-v')}
+              {favOn ? (
+                <span class="pfi-kv-v" id="profile-sports"><FavSportTags tags={favTags} legacyText={legacySports} onAdd={() => setPrefsOpen(true)} /></span>
+              ) : (
+                renderValue('profile-sports', stringValue(profile['sports']), 'pfi-kv-v')
+              )}
             </div>
             <div class="pfi-kv">
               <span data-i18n="profile.phone">{lt('profile.phone', '聯繫方式')}</span>
@@ -445,9 +478,15 @@ export function LegacyProfileInfoCard({
               );
             })}
           </div>
-          <div class="info-row">
+          <div class={favOn ? 'info-row fav-row' : 'info-row'}>
             <span data-i18n="profile.sports">{lt('profile.sports', '運動類別')}</span>
-            <span id="profile-sports-display">{stringValue(profile['sports']) || '-'}</span>
+            <span id="profile-sports-display">
+              {favOn ? (
+                <FavSportTags tags={favTags} legacyText={legacySports} editing onRemove={(k) => { removeFav(k).catch(() => {}); }} onAdd={() => setPrefsOpen(true)} />
+              ) : (
+                stringValue(profile['sports']) || '-'
+              )}
+            </span>
           </div>
           <div class="info-row">
             <span data-i18n="profile.phone">{lt('profile.phone', '聯繫方式')}</span>
@@ -492,6 +531,11 @@ export function LegacyProfileInfoCard({
           </div>
         </div>
       </div>
+      {prefsOpen && (
+        <Suspense fallback={null}>
+          <SportPrefsModal uid={uid} owned={favTags} onClose={() => setPrefsOpen(false)} onSaved={(r) => onSaved({ favSports: r.favSports, newEventNotify: r.newEventNotify })} />
+        </Suspense>
+      )}
     </div>
   );
 }

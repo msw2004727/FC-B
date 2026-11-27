@@ -18,9 +18,10 @@ import type { CpBundle, CpInjectedEnv } from '../env';
 import { useInjectedEnv } from '../env';
 import { isMinorAt } from '../format';
 import { LiveBoundary } from '../live';
+import { isClubMemberByKeys, loadClubMemberKeys, useClubMemberKeys } from '../club-member-keys';
 import { loadMyBirthday } from '../rep-clubs';
 import { buildJoinInput, type PositionChoice } from '../payload';
-import { CpError, CpLoadFailed, errorOf, loadFailOf, RosterBlocked } from '../ui/feedback';
+import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, RosterBlocked } from '../ui/feedback';
 import { POSITION_TEXT_MAX, PositionField } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 
@@ -58,8 +59,11 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   const [privacy, setPrivacy] = useState(forcedMinor && prefill);
   const [profileBirthday, setProfileBirthday] = useState<string | null>(null);
   const [birthdayReady, setBirthdayReady] = useState(!waitBirthday);
-  const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
+  // field：前端檢查擋下時是哪一欄（文案盤點 B14），錯誤畫在那一欄；伺服器錯誤沒有 field，畫在底下。
+  const [error, setError] = useState<{ reason: string; params?: Record<string, unknown>; field?: 'number' | 'realName' } | null>(null);
   const [busy, setBusy] = useState(false);
+  // 成員雙鍵（顧問 §3.846）：hook 要在提早 return 之前叫。
+  const clubKeys = useClubMemberKeys(env.actor, bundle?.entries.find((row) => row.id === enId)?.teamId ?? '', env.clubKeys);
 
   useEffect(() => {
     if (env.bundle) return;
@@ -109,14 +113,18 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
       ? 'ackDisplayName'
       : 'ackMasked';
 
+  const fieldError = (field: 'number' | 'realName'): string | undefined => (
+    error?.field === field ? reasonText(ct, error.reason, error.params) : undefined
+  );
+
   async function submit(): Promise<void> {
     if (number.trim() === '') {
-      setError({ reason: 'FIELD_REQUIRED' });
+      setError({ reason: 'FIELD_REQUIRED', field: 'number' });
       return;
     }
     const parsed = Number(number);
     if (!Number.isInteger(parsed) || parsed < 0 || parsed > 99) {
-      setError({ reason: 'FIELD_RANGE' });
+      setError({ reason: 'FIELD_RANGE', field: 'number' });
       return;
     }
     const customLen = codePoints(positionText.trim());
@@ -126,7 +134,7 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
     }
     const needRealName = minor || division?.requireRealName === true;
     if (needRealName && !realName.trim()) {
-      setError({ reason: 'REAL_NAME_REQUIRED' });
+      setError({ reason: 'REAL_NAME_REQUIRED', field: 'realName' });
       return;
     }
     if (minor && !guardian) {
@@ -168,8 +176,14 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
   // 代表清單還沒回來時，空陣列不代表「不是成員」。
   if (env.actor.repClubsPending === true) return <div class="cps-root"><PageSpinner /></div>;
 
-  const isMember = env.actor.memberClubIds.includes(entry?.teamId ?? '');
   const isRep = env.actor.repClubs.some((club) => club.id === entry?.teamId);
+  // 雙鍵還在換算時，「不是成員」還不能下結論（代表不必等）。
+  if (!isRep && clubKeys.pending) return <div class="cps-root"><PageSpinner /></div>;
+  const isMember = isClubMemberByKeys(env.actor.memberClubIds, entry?.teamId ?? '', clubKeys.keys);
+  // 俱樂部文件讀不到：不能下「不是成員」的結論，顯示讀取失敗與重試（TEAMID 審查 P3-2）。
+  if (!isRep && !isMember && clubKeys.failed) {
+    return <CpLoadFailed title={ct('joinTitle')} fail="error" onRetry={clubKeys.retry} />;
+  }
   const block = rosterFormBlock({
     kind: 'self',
     // 後端 joinRoster 接受成員或代表。代表也可以自己登錄。
@@ -195,13 +209,13 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
       <CpCard>
         <div class="cps-fields cp3-jform">
           <div class="cps-grid2">
-            <Input label={ct('number')} type="number" value={number} min={0} max={99} onValueChange={setNumber} />
+            <Input label={ct('number')} type="number" value={number} min={0} max={99} error={fieldError('number')} onValueChange={setNumber} />
             <div />
           </div>
           <PositionField value={position} text={positionText} onChange={(next, text) => { setPosition(next); setPositionText(text); }} />
           {minor ? (
             <>
-              <Input label={ct('realName')} required value={realName} maxLength={40} onValueChange={setRealName} />
+              <Input label={ct('realName')} required value={realName} maxLength={40} error={fieldError('realName')} onValueChange={setRealName} />
               {masked ? <p class="cps-sub cp3-pubname" data-public-name>{ct('maskedPreview', { name: masked })}</p> : null}
               <p class="cps-privacy cps-pre">{ct('minorPublic')}{'\n'}{ct('minorRealName')}</p>
               <Checkbox label={ct('guardianConsent')} checked={guardian} onCheckedChange={setGuardian} />
@@ -210,7 +224,7 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
             <>
               {division?.requireRealName ? (
                 <div>
-                  <Input label={ct('realName')} required value={realName} maxLength={40} onValueChange={setRealName} />
+                  <Input label={ct('realName')} required value={realName} maxLength={40} error={fieldError('realName')} onValueChange={setRealName} />
                   <p class="cps-cap cp3-cap">{ct('minorRealName')}</p>
                 </div>
               ) : null}
@@ -218,7 +232,7 @@ function JoinView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: s
             </>
           )}
           <Checkbox label={ct(ackKey)} checked={privacy} onCheckedChange={setPrivacy} />
-          {error ? <CpError reason={error.reason} params={error.params} /> : null}
+          {error && !error.field ? <CpError reason={error.reason} params={error.params} /> : null}
         </div>
       </CpCard>
       <div class="cps-actions cp3-jact">
@@ -237,7 +251,7 @@ export default function JoinRosterPage(): JSX.Element {
   if (injected) return <JoinView env={injected} cid={cid} enId={enId} />;
   return (
     <LiveBoundary>
-      {(actor, repo) => <JoinView env={{ actor, repo, actions: liveCpActions }} cid={cid} enId={enId} />}
+      {(actor, repo) => <JoinView env={{ actor, repo, actions: liveCpActions, clubKeys: loadClubMemberKeys }} cid={cid} enId={enId} />}
     </LiveBoundary>
   );
 }

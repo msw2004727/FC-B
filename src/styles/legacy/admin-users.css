@@ -60,6 +60,13 @@
 /* 解除臨取紅標（FC 契約 late-cancel §8，預覽 ⑥）；按鈕列改可換行（取代原單行，四顆在 375 寬會擠爆）。 */
 .au-btn-lc { border-color: var(--danger); color: var(--danger); }
 .au-btn-lc:hover { background: var(--danger); border-color: var(--danger); color: #fff; }
+/* 解除臨取紅標：放在臨取狀態那一行尾端的黃框小鈕；賽事個資移除排最後、前面空開（站長 §3.818 選建議版 B） */
+.au-lc-row { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+/* 字級沿用 .au-btn 的 .72rem（不新增寫死字級）；淺色主題黃字加深到 #b45309 達 AA（白底約 5:1）；hover 用深色字（Opus 截圖終審 P2／P3） */
+.au-btn-lc-clear { padding: .1rem .5rem; border-color: var(--warning); color: var(--warning); }
+[data-theme="light"] .au-btn-lc-clear { color: #b45309; }
+.au-btn-lc-clear:hover { background: var(--warning); border-color: var(--warning); color: #1a1d24; }
+.au-btn-cp-remove { margin-left: .6rem; }
 
 /* LOADANIM-4：名單載入沿用 .reg-loading。不整檔引入 activity.css（裡面的 .back-btn 會蓋掉後台返回鈕）。
    規則同 src/features/events/legacy/activity.css；多 white-space:nowrap 以免窄視窗斷行。

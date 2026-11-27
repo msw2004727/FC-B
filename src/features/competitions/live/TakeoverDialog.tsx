@@ -5,10 +5,12 @@ import { ConfirmFooter, useConfirmArmed } from './score-states';
 
 export function TakeoverDialog({
   open,
+  free,
   onTakeover,
   onClose,
 }: {
   open: boolean;
+  free?: boolean;
   onTakeover: () => void;
   onClose: () => void;
 }): JSX.Element {
@@ -17,20 +19,21 @@ export function TakeoverDialog({
     <Modal
       open={open}
       class="s4-dialog d2-panel"
-      title={LIVE_COPY.takeoverTitle}
+      title={free ? LIVE_COPY.takeoverFreeTitle : LIVE_COPY.takeoverTitle}
       onClose={onClose}
       footer={(
         <ConfirmFooter
           armed={armed}
-          confirmLabel={LIVE_COPY.takeoverAction}
+          confirmLabel={free ? LIVE_COPY.takeoverFreeAction : LIVE_COPY.takeoverAction}
           cancelLabel={LIVE_COPY.takeoverLater}
-          confirmVariant="danger"
+          // 沒有別的裝置在記時「開始記分」不是危險動作，用一般主要按鈕；搶走別人記分（接手）才用紅框（Opus 截圖終審 P3）。
+          confirmVariant={free ? 'primary' : 'danger'}
           onConfirm={onTakeover}
           onCancel={onClose}
         />
       )}
     >
-      <p class="s4-note">{LIVE_COPY.takeoverNote}</p>
+      <p class="s4-note">{free ? LIVE_COPY.takeoverFreeNote : LIVE_COPY.takeoverNote}</p>
     </Modal>
   );
 }

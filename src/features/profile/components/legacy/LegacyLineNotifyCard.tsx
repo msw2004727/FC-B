@@ -21,6 +21,10 @@ import {
 import { lt, useT } from '@/i18n/i18n';
 import { appConfirm } from '@/ui/AppConfirm';
 import { toast } from '@/ui/Toast';
+import { useSportPrefsEnabled } from '@/features/sport-prefs/data';
+import { saveSportPrefs } from '@/features/sport-prefs/callables';
+import { NewEventToggleRow } from '@/features/sport-prefs/ProfileBits';
+import { useSportPrefsT } from '@/features/sport-prefs/i18n';
 
 import type { UserProfile } from '../../data/profile-model';
 import {
@@ -83,6 +87,27 @@ export function LegacyLineNotifyCard({
   const [friend, setFriend] = useState<boolean | null>(null);
   // gen：請求世代，只採用最新一次查詢的結果；forceNext：按過加好友按鈕，下一次回前景強制重查（不受 inFlight 與節流擋）。
   const friendCheckRef = useRef({ gen: 0, inFlight: false, lastAt: 0, forceNext: false });
+
+  const favOn = useSportPrefsEnabled() === true;
+  const st = useSportPrefsT();
+  const [neBusy, setNeBusy] = useState(false);
+  const [neOptimistic, setNeOptimistic] = useState<boolean | null>(null);
+  const neChecked = neOptimistic ?? profile['newEventNotify'] !== false;
+  async function toggleNewEvent(next: boolean): Promise<void> {
+    if (neBusy) return;
+    setNeBusy(true);
+    setNeOptimistic(next);
+    try {
+      const r = await saveSportPrefs({ newEventNotify: next });
+      if (!mountedRef.current) return;
+      onSaved({ newEventNotify: r.newEventNotify });
+    } catch {
+      if (!mountedRef.current) return;
+      toast.show({ message: st('saveFailed'), tone: 'error' });
+    } finally {
+      if (mountedRef.current) { setNeBusy(false); setNeOptimistic(null); }
+    }
+  }
 
   useEffect(() => {
     mountedRef.current = true;
@@ -310,6 +335,7 @@ export function LegacyLineNotifyCard({
       )}
 
       {embedded && <WebPushSlot uid={uid} />}
+      {embedded && favOn && <NewEventToggleRow checked={neChecked} disabled={neBusy} onChange={(v) => { toggleNewEvent(v).catch(() => {}); }} />}
 
       <div
         class="profile-collapse-content"

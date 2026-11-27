@@ -35,7 +35,9 @@ describe('competitionPhase', () => {
   it('依時間分成招募、預熱、進行中、已結束', () => {
     expect(competitionPhase(times, 50)).toBe('recruit');
     expect(competitionPhase(times, 100)).toBe('recruit');
-    expect(competitionPhase(times, 200)).toBe('recruit');
+    // 截止那一毫秒起不收報名（後端 REG_CLOSED：now >= regCloseAt，一致性盤點 #13）
+    expect(competitionPhase(times, 199)).toBe('recruit');
+    expect(competitionPhase(times, 200)).toBe('warm');
     expect(competitionPhase(times, 201)).toBe('warm');
     expect(competitionPhase(times, 299)).toBe('warm');
     expect(competitionPhase(times, 300)).toBe('live');

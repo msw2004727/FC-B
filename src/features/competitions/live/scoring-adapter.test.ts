@@ -142,7 +142,7 @@ describe('scorePadPropsFrom', () => {
     expect(props.onRecord?.({ side: 'home', action: 'pk-in', plId: 'pl_th9', goalKind: null, minute: 9 })).toBe(true);
     expect(pk).toHaveBeenCalledWith({ side: 'home', scored: true, plId: 'pl_th9' });
     expect(props.onUndo?.(1)).toBe(true);
-    expect(voidEvent).toHaveBeenCalledWith({ seq: 1 });
+    expect(undoFirstYellow).toHaveBeenCalledWith({ seq: 1 });
     props.onClock?.({ running: false, period: 'h1', pausedSec: 10, startedAt: NOW });
     expect(pauseClock).toHaveBeenCalledTimes(1);
     props.onClock?.({ running: true, period: 'h1', pausedSec: 10, startedAt: NOW });
@@ -336,6 +336,33 @@ describe('顧問 §3.454 G-14：改判沿用原事件的比賽秒', () => {
     expect(card).toHaveBeenLastCalledWith({ side: 'away', plId: 'pl_hf4', cardType: 'red', matchSecond: 352 });
     props.onRecord?.({ side: 'away', action: 'red', plId: 'pl_hf4', goalKind: null, minute: 5 });
     expect(card).toHaveBeenLastCalledWith({ side: 'away', plId: 'pl_hf4', cardType: 'red' });
+  });
+});
+
+describe('S2：兩張黃牌的復原與改判走原子群組', () => {
+  it('onUndo／onUndoPair 呼叫 undoFirstYellow；onAmend 依改判內容組出新紀錄並呼叫 amend', () => {
+    const undoFirstYellow = vi.fn(async () => ({ status: 'applied' as const }));
+    const amend = vi.fn(async () => ({ status: 'applied' as const }));
+    const voidEvent = vi.fn(async () => ({ status: 'applied' as const }));
+    const props = scorePadPropsFrom(view({
+      actions: { undoFirstYellow, amend, voidEvent } as unknown as ScoringView['actions'],
+    }), NOW);
+    expect(props.onUndoPair?.(3)).toBe(true);
+    expect(undoFirstYellow).toHaveBeenCalledWith({ seq: 3 });
+    expect(props.onAmend?.(3, { side: 'away', action: 'red', plId: 'pl_hf4', goalKind: null, minute: 12, refSeq: null, matchSecond: 760 })).toBe(true);
+    expect(amend).toHaveBeenLastCalledWith({ seq: 3 }, { kind: 'card', side: 'away', plId: 'pl_hf4', cardType: 'red', matchSecond: 760 });
+    expect(props.onAmend?.(7, { side: 'home', action: 'yellow', plId: 'pl_th9', goalKind: null, minute: 5, refSeq: 2, matchSecond: 300 })).toBe(true);
+    // 畫面算的 refSeq 不採用：是不是第二黃交給工作階段判斷
+    expect(amend).toHaveBeenLastCalledWith({ seq: 7 }, { kind: 'card', side: 'home', plId: 'pl_th9', cardType: 'yellow', matchSecond: 300 });
+    expect(props.onAmend?.(2, { side: 'home', action: 'goal', plId: null, goalKind: 'own', minute: 0, matchSecond: 0 })).toBe(true);
+    expect(amend).toHaveBeenLastCalledWith({ seq: 2 }, { kind: 'goal', side: 'home', goalKind: 'own', matchSecond: 0 });
+    // 牌沒有球員、PK 不能改判：不送
+    expect(props.onAmend?.(2, { side: 'home', action: 'red', plId: null, goalKind: null, minute: 1 })).toBe(false);
+    expect(props.onAmend?.(2, { side: 'home', action: 'pk-in', plId: null, goalKind: null, minute: 1 })).toBe(false);
+    expect(amend).toHaveBeenCalledTimes(3);
+    props.onUndo?.(4);
+    expect(undoFirstYellow).toHaveBeenLastCalledWith({ seq: 4 });
+    expect(voidEvent).not.toHaveBeenCalled();
   });
 });
 

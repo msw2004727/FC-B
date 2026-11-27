@@ -15,6 +15,7 @@ function input(partial: Partial<DeleteAccessInput> = {}): DeleteAccessInput {
     repClubIds: [],
     hidden: false,
     deletingAt: null,
+    endedAt: null,
     firstMatchAt: FIRST,
     now: BEFORE,
     ...partial,

@@ -167,10 +167,10 @@ const fullMax = CP_READ_LIMIT.summary + RULES_PARENT;
 /**
  * 詳情頁預算表
  * - 沿用 loadScheduleDetail（已登入的 getStaff 算在 STAFF）
- * - 登入 +1（自己的 staff）：getStaffAssignment。同一次開頁只讀一次
- * - 未登入不加
+ * - 自己的 staff 指派跟 STAFF 那 1 筆合併讀（getStaffWithAssignment，同一份 staff/{uid}），不另加（CP-DETAIL-SPEED d1；原本 +1 的 getStaffAssignment）
+ * - 同一次開頁只讀一次；未登入不加
  */
-const DETAIL_ASSIGNMENT = 1;
+const DETAIL_ASSIGNMENT = 0;
 const liveExact = ROOT
   + 1
   + (CP_READ_LIMIT.standings + RULES_PARENT)
@@ -554,7 +554,7 @@ describe('詳情讀取預算', () => {
       </LocationProvider>,
     );
     await waitFor(() => expect(recruit.calls()).toEqual([
-      'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaff', 'getStaffAssignment',
+      'getCompetition', 'listDivisions', 'listEntriesForCrest', 'getStaffWithAssignment',
     ]));
     expect(recruit.readCount()).toBeLessThanOrEqual(recruitMax + DETAIL_ASSIGNMENT);
     expect(recruit.calls()).not.toContain('listSummary');
@@ -573,7 +573,7 @@ describe('詳情讀取預算', () => {
       </LocationProvider>,
     );
     await waitFor(() => expect(live.calls()).toEqual([
-      'getCompetition', 'getSummaryShard', 'listStandings', 'listEntriesForCrest', 'getStaff', 'getStaffAssignment',
+      'getCompetition', 'getSummaryShard', 'listStandings', 'listEntriesForCrest', 'getStaffWithAssignment',
     ]));
     expect(live.readCount()).toBeLessThanOrEqual(liveMax + DETAIL_ASSIGNMENT);
     expect(live.calls()).not.toContain('listSummary');
@@ -584,7 +584,7 @@ describe('詳情讀取預算', () => {
 
   it('摘要有已取消場次時詳情頁讀取數不變、不呼叫 listMatches', async () => {
     const liveCalls = [
-      'getCompetition', 'getSummaryShard', 'listStandings', 'listEntriesForCrest', 'getStaff', 'getStaffAssignment',
+      'getCompetition', 'getSummaryShard', 'listStandings', 'listEntriesForCrest', 'getStaffWithAssignment',
     ];
     const plain = repoFor(8);
     render(

@@ -18,7 +18,7 @@ import { useInjectedEnv } from '../env';
 import { isMinorAt } from '../format';
 import { LiveBoundary } from '../live';
 import { buildAddInput, type PositionChoice } from '../payload';
-import { CpError, CpLoadFailed, errorOf, loadFailOf, RosterBlocked } from '../ui/feedback';
+import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, RosterBlocked } from '../ui/feedback';
 import { DateField, POSITION_TEXT_MAX, PositionField } from '../ui/fields';
 import { CpCard, CpFrame, CpI18nPending } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
@@ -55,7 +55,8 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
   const [nickname, setNickname] = useState(nickSeed ? '阿範' : '');
   const [guardian, setGuardian] = useState(prefill && !adultSeed);
   const [privacy, setPrivacy] = useState(prefill && !adultSeed);
-  const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
+  // field：前端檢查擋下時是哪一欄（文案盤點 B14），錯誤畫在那一欄；伺服器錯誤沒有 field，畫在底下。
+  const [error, setError] = useState<{ reason: string; params?: Record<string, unknown>; field?: 'number' | 'realName' } | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -87,9 +88,13 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
   const shown = adult && nickname.trim() ? nickname.trim() : maskedPublicName(realName);
   const ackKey = adult && nickname.trim() ? 'ackNickname' : 'ackMasked';
 
+  const fieldError = (field: 'number' | 'realName'): string | undefined => (
+    error?.field === field ? reasonText(ct, error.reason, error.params) : undefined
+  );
+
   async function submit(): Promise<void> {
     if (!realName.trim()) {
-      setError({ reason: 'REAL_NAME_REQUIRED' });
+      setError({ reason: 'REAL_NAME_REQUIRED', field: 'realName' });
       return;
     }
     if (!birthday.trim()) {
@@ -101,12 +106,12 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
       return;
     }
     if (number.trim() === '') {
-      setError({ reason: 'FIELD_REQUIRED' });
+      setError({ reason: 'FIELD_REQUIRED', field: 'number' });
       return;
     }
     const parsed = Number(number);
     if (!Number.isInteger(parsed) || parsed < 0 || parsed > 99) {
-      setError({ reason: 'FIELD_RANGE' });
+      setError({ reason: 'FIELD_RANGE', field: 'number' });
       return;
     }
     const customLen = codePoints(positionText.trim());
@@ -150,6 +155,8 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
     return <CpLoadFailed title={ct('addTitle')} fail={phase === 'hidden' ? 'hidden' : 'error'} />;
   }
 
+  // 代表清單還沒回來時，空陣列不代表「不是代表」（一致性盤點 #21，與登錄頁同一條）。
+  if (env.actor.repClubsPending === true) return <div class="cps-root"><PageSpinner /></div>;
   const block = rosterFormBlock({
     kind: 'rep',
     isMember: env.actor.memberClubIds.includes(entry?.teamId ?? ''),
@@ -169,7 +176,7 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
       </CpCard>
       <CpCard>
         <div class="cps-fields cp3-jform">
-          <Input label={ct('realName')} required value={realName} maxLength={40} onValueChange={setRealName} />
+          <Input label={ct('realName')} required value={realName} maxLength={40} error={fieldError('realName')} onValueChange={setRealName} />
           <div>
             <DateField id="cp-birthday" label={ct('birthday')} required value={birthday} onValueChange={setBirthday} />
             <p class="cps-cap cp3-cap">{ct('birthdayHint')}</p>
@@ -178,7 +185,7 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
             <div class="cps-hint-line"><StatusTag kind="neutral" label={ct('minor')} /></div>
           ) : null}
           <div class="cps-grid2">
-            <Input label={ct('number')} type="number" value={number} min={0} max={99} onValueChange={setNumber} />
+            <Input label={ct('number')} type="number" value={number} min={0} max={99} error={fieldError('number')} onValueChange={setNumber} />
             <div />
           </div>
           <PositionField value={position} text={positionText} onChange={(next, text) => { setPosition(next); setPositionText(text); }} />
@@ -189,7 +196,7 @@ function AddView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId: st
           {minor ? <p class="cps-privacy cps-pre">{ct('minorPublic')}{'\n'}{ct('minorRealName')}</p> : null}
           {minor ? <Checkbox label={ct('guardianConsent')} checked={guardian} onCheckedChange={setGuardian} /> : null}
           <Checkbox label={ct(ackKey)} checked={privacy} onCheckedChange={setPrivacy} />
-          {error ? <CpError reason={error.reason} params={error.params} /> : null}
+          {error && !error.field ? <CpError reason={error.reason} params={error.params} /> : null}
         </div>
       </CpCard>
       <div class="cps-actions cp3-jact">

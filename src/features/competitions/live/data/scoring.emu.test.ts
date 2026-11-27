@@ -14,10 +14,12 @@ import {
 } from 'firebase/firestore';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LIVE_COPY } from '../copy';
-import { MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
+import { compareEntries, MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
+import { emuFetch } from './emu-test-utils';
 import { createFirestoreBackend } from './live-repo';
 import { Sender } from './sender';
 import { createScoringSession, type ScoringSession } from './session';
+import { scorePadPropsFrom } from '../scoring-adapter';
 import { memorySidStore, type SidStore } from './sid';
 import type { BatchPlan, LogEntry } from './types';
 
@@ -105,7 +107,7 @@ function root(path: string): string {
 }
 
 async function rest(method: string, url: string, body?: unknown): Promise<{ status: number; text: string }> {
-  const res = await fetch(url, {
+  const res = await emuFetch(url, {
     method,
     headers: {
       Authorization: 'Bearer owner',
@@ -122,7 +124,7 @@ let rulesBackup: Buffer | null = null;
 function useSnapshotRules(): void {
   const content = readFileSync('emulator/asia-main.rules');
   const hash = createHash('sha256').update(content).digest('hex');
-  expect(hash.slice(0, 16)).toBe('99a8cafef181e8e0');
+  expect(hash.slice(0, 16)).toBe('37add016c3084d24');
   if (!rulesBackup) rulesBackup = readFileSync(RULES_TARGET);
   writeFileSync(RULES_TARGET, content);
 }
@@ -133,11 +135,35 @@ function restoreStartupRules(): void {
   rulesBackup = null;
 }
 
+/**
+ * 等模擬器重載回啟動規則。兩份規則開頭相同，不能比前幾十字；改找「啟動規則有、快照沒有」的一行
+ * （ASCII、不含引號與反斜線，JSON 回應裡原樣出現）。5 秒內沒看到就丟錯，不靜默結束。
+ */
+async function waitForStartupRules(restored: string): Promise<void> {
+  const snapshot = readFileSync('emulator/asia-main.rules').toString('utf8');
+  const marker = restored.split('\n').map((line) => line.trim()).find((line) => line.length >= 20
+    && /^[\x20-\x7e]+$/.test(line) && !line.includes('"') && !line.includes('\\') && !snapshot.includes(line));
+  if (!marker) throw new Error('啟動規則找不到可辨識的特徵行');
+  let last = '';
+  for (let i = 0; i < 25; i += 1) {
+    try {
+      const res = await emuFetch(`http://${HOST}:${PORT}/emulator/v1/projects/${PROJECT}:securityRules`);
+      const text = await res.text();
+      if (res.ok && text.includes(marker)) return;
+      last = `${res.status}`;
+    } catch (err) {
+      last = String(err);
+    }
+    await new Promise((resolve) => { setTimeout(resolve, 200); });
+  }
+  throw new Error(`還原規則 5 秒內未生效（${last}）`);
+}
+
 async function waitForRules(): Promise<void> {
   const path = root(`competitions/${CID}/matches/${MT}`);
   let last = '';
   for (let i = 0; i < 30; i += 1) {
-    const res = await fetch(path);
+    const res = await emuFetch(path);
     last = `${res.status} ${(await res.text()).slice(0, 160)}`;
     if (res.status === 200) return;
     await new Promise((resolve) => { setTimeout(resolve, 200); });
@@ -290,6 +316,8 @@ async function startLive(name: string, options?: {
   beforeCommit?: (plan: BatchPlan, nth: number) => Promise<void> | void;
   afterCommit?: (plan: BatchPlan, nth: number) => Promise<void> | void;
   visible?: { value: boolean };
+  now?: () => number;
+  randomBytes?: (n: number) => Uint8Array;
 }): Promise<Live> {
   const app = initializeApp({ apiKey: 'demo', projectId: PROJECT, appId: 'demo-u1' }, `${name}-${Date.now()}-${Math.random()}`);
   const db = initializeFirestore(app, {
@@ -323,6 +351,8 @@ async function startLive(name: string, options?: {
     backend,
     log,
     sids,
+    ...(options?.now ? { now: options.now } : {}),
+    ...(options?.randomBytes ? { randomBytes: options.randomBytes } : {}),
     online: () => online.value,
     watchOnline: (cb) => {
       notify = cb;
@@ -413,6 +443,30 @@ async function expectBoard(score: { home: number; away: number }, opts?: { conti
   }
 }
 
+/**
+ * 照 IndexedDbActionLog.list 的排法：索引 getAll 依主鍵（op）出列，再做穩定排序 compareEntries。
+ * createdAt 相同時，先後由隨機 op 決定，不是建立順序。
+ */
+class OpOrderedLog extends MemoryActionLog {
+  override async list(cid: string, mtId: string): Promise<LogEntry[]> {
+    const out = await super.list(cid, mtId);
+    return out.sort((a, b) => (a.op < b.op ? -1 : a.op > b.op ? 1 : 0)).sort(compareEntries);
+  }
+}
+
+/** arm 之後的前幾次用指定位元組填滿（控制 op 字典序），其餘照常隨機。 */
+function fillQueue(): { bytes: (n: number) => Uint8Array; arm: (fills: number[]) => void } {
+  const fills: number[] = [];
+  return {
+    bytes: (n) => {
+      const fill = fills.shift();
+      if (fill === undefined) return globalThis.crypto.getRandomValues(new Uint8Array(n));
+      return new Uint8Array(n).fill(fill);
+    },
+    arm: (next) => { fills.push(...next); },
+  };
+}
+
 describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
   beforeAll(async () => {
     useSnapshotRules();
@@ -427,15 +481,7 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
   afterAll(async () => {
     restoreStartupRules();
     // 還原規則會讓模擬器再載一次。先等它載完，腳本關機時才不會撞上 securityRules。
-    const restored = readFileSync(RULES_TARGET).toString('utf8');
-    for (let i = 0; i < 25; i += 1) {
-      try {
-        const res = await fetch(`http://${HOST}:${PORT}/emulator/v1/projects/${PROJECT}:securityRules`);
-        const text = await res.text();
-        if (res.ok && text.includes(restored.slice(0, 60))) return;
-      } catch { /* 模擬器還在套用 */ }
-      await new Promise((resolve) => { setTimeout(resolve, 200); });
-    }
+    await waitForStartupRules(readFileSync(RULES_TARGET).toString('utf8'));
   });
 
   beforeEach(async () => {
@@ -724,12 +770,25 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
       const goals = (await rows(live.log)).filter((row) => row.kind === 'goal');
       return goals.length === 1 && goals[0]?.state === 'discarded' && goals[0]?.rejectReason === 'reset';
     }, 80);
-    expect(result.status).not.toBe('applied');
+    // 回應遺失後重讀場次可能讀到本機監聽的舊快照（主辦重置還沒到），先判成 applied；
+    // 監聽追上後由 discardStale 改成 discarded。中間回報 applied 或 queued 都可以，不可以是被拒（顧問 §3.810）。
+    expect(['queued', 'applied']).toContain(result.status);
     const op = (await goalOps(live.log))[0];
     const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
     expect(events.some((event) => event.op === op && Number(event.seq) <= line)).toBe(true);
     expect(events.some((event) => event.op === op && Number(event.seq) > line)).toBe(false);
     expect(live.commits).toHaveLength(1);
+    // 收尾再送一輪也不重送（比照第 12 條）。
+    await live.session.whenIdle();
+    expect(live.commits).toHaveLength(1);
+    // 比分以伺服器為準：伺服器 0:0、resetRev 是重置線；畫面也回到 0:0、沒有待送。
+    const match = await readDoc(`competitions/${CID}/matches/${MT}`);
+    expect(match?.score).toEqual({ home: 0, away: 0 });
+    expect(Number(match?.resetRev)).toBe(line);
+    await waitUntil('畫面比分回到伺服器 0:0', () => {
+      const score = live.session.getState().score;
+      return score.home === 0 && score.away === 0 && score.pendingCount === 0;
+    }, 80);
   });
 
   it('14. 隱藏期間另一裝置進球，恢復可見後作廢成功', async () => {
@@ -856,6 +915,26 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
     expect(logged.some((row) => row.kind === 'goal' || row.kind === 'void')).toBe(false);
   });
 
+  it('20. 換人（CP-PO-07）：進行中與中場都寫入、比分不變；換人不能作廢', async () => {
+    const live = await startLive('s20');
+    const before = await readDoc(`competitions/${CID}/matches/${MT}`);
+    expect((await live.session.getState().actions.sub({ side: 'home', outPlId: 'pl_h1', inPlId: 'pl_h2' })).status).toBe('applied');
+    let events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    const sub = events.find((event) => event.type === 'sub');
+    expect(sub).toMatchObject({ side: 'home', outPlId: 'pl_h1', inPlId: 'pl_h2' });
+    const after = await readDoc(`competitions/${CID}/matches/${MT}`);
+    expect(after?.score).toEqual(before?.score);
+    expect((await live.session.getState().actions.halftime()).status).toBe('applied');
+    expect((await live.session.getState().actions.sub({ side: 'away', outPlId: 'pl_a1', inPlId: 'pl_a2' })).status).toBe('applied');
+    events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.filter((event) => event.type === 'sub')).toHaveLength(2);
+    // Rules 只允許作廢進球或牌：作廢換人會被伺服器拒絕，沒有任何寫入（畫面上換人列本來就不能點開）。
+    const timelineBefore = (await listCollection(`competitions/${CID}/matches/${MT}/timeline`)).length;
+    expect((await live.session.getState().actions.voidEvent({ seq: sub?.seq as number })).status).toBe('rejected');
+    expect(await listCollection(`competitions/${CID}/matches/${MT}/timeline`)).toHaveLength(timelineBefore);
+    expect(await listCollection(`competitions/${CID}/matches/${MT}/voids`)).toHaveLength(0);
+  });
+
   it('19. 正規比分不平手時 pkStart 不產生', async () => {
     await patchDoc(`competitions/${CID}/matches/${MT}`, {
       status: 'live',
@@ -869,5 +948,150 @@ describe.skipIf(!EMU)('記分模擬器', { timeout: 60000 }, () => {
     const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
     expect(events.some((event) => event.type === 'pkStart')).toBe(false);
     expect(await rows(live.log)).toHaveLength(0);
+  });
+
+  // S2：ScorePad 復原、改判兩張黃牌時，原本 adapter 連呼兩次 voidEvent（不等結果）。同一毫秒建立的兩筆，
+  // IndexedDB 依 op 出列；後建的第一黃作廢 op 較小時排到前面，第二黃還沒作廢就被 Rules 拒、佇列停住。
+  // 修正後走工作階段的原子群組（at + index），與 op 字典序無關。這裡固定讓後建的 op 較小
+  // （base64url 首字元 'A'(65) < 'E'(69) < '_'(95) < 'g'(103)）。
+  async function twoYellows(): Promise<void> {
+    const live = await startLive('s2pre');
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    await live.release();
+    opened.length = 0;
+  }
+  async function settled(log: ActionLog, count: number): Promise<LogEntry[]> {
+    await waitUntil('都送完或停住', async () => {
+      const logged = await rows(log);
+      return logged.length === count && logged.every((row) => row.state === 'applied' || row.state === 'rejected');
+    }, 200).catch(() => {});
+    return rows(log);
+  }
+
+  it('20. 復原兩張黃牌：同毫秒、op 反序仍依序送出', async () => {
+    await twoYellows();
+    const at = Date.now();
+    const ops = fillQueue();
+    const s = await startLive('s20', { log: new OpOrderedLog(), now: () => at, randomBytes: ops.bytes });
+    await waitUntil('兩張黃牌已載入', () => s.session.getState().events.length >= 2, 200);
+    const props = scorePadPropsFrom(s.session.getState(), at);
+    // 依取號順序遞減：'g' > '_' > 'E' > 'A'。不論走群組（先取群組 id）還是改回逐筆送，後建的 op 都比較小。
+    ops.arm([0x80, 0xff, 0x11, 0x00]);
+    expect(props.onUndoPair?.(1)).toBe(true);
+    const logged = await settled(s.log, 2);
+    expect(logged.map((row) => row.state)).toEqual(['applied', 'applied']);
+    expect(s.commits.map((plan) => (plan.event as { targetSeq?: number }).targetSeq)).toEqual([2, 1]);
+    expect(await listCollection(`competitions/${CID}/matches/${MT}/voids`)).toHaveLength(2);
+  });
+
+  it('21. 改判被引用的第一黃為紅牌：三筆同毫秒、op 反序仍依序送出', async () => {
+    await twoYellows();
+    const at = Date.now();
+    const ops = fillQueue();
+    const s = await startLive('s21', { log: new OpOrderedLog(), now: () => at, randomBytes: ops.bytes });
+    await waitUntil('兩張黃牌已載入', () => s.session.getState().events.length >= 2, 200);
+    const props = scorePadPropsFrom(s.session.getState(), at);
+    // 同上：取號順序遞減，與建立序相反。
+    ops.arm([0x80, 0xff, 0x11, 0x00]);
+    expect(props.onAmend?.(1, {
+      side: 'home', action: 'red', plId: 'pl_h1', goalKind: null, minute: 0, refSeq: null, matchSecond: 30,
+    })).toBe(true);
+    const logged = await settled(s.log, 3);
+    expect(logged.map((row) => row.state)).toEqual(['applied', 'applied', 'applied']);
+    expect(s.commits.map((plan) => plan.event.type)).toEqual(['void', 'void', 'card']);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.find((event) => Number(event.seq) === 5)).toMatchObject({ type: 'card', cardType: 'red', matchSecond: 30 });
+  });
+
+  it('22. 離線先記一張待送黃牌，再把別的牌改判成同一人黃牌：寫成第二黃', async () => {
+    const live = await startLive('s22');
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h2', cardType: 'red' });
+    await waitUntil('紅牌已載入', () => live.session.getState().events.length >= 1, 200);
+    await goOffline(live);
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    const props = scorePadPropsFrom(live.session.getState(), Date.now());
+    expect(props.onAmend?.(1, {
+      side: 'home', action: 'yellow', plId: 'pl_h1', goalKind: null, minute: 0, refSeq: null, matchSecond: 40,
+    })).toBe(true);
+    await waitUntil('改判已排入', async () => (await rows(live.log)).length === 3, 200);
+    const queued = (await rows(live.log)).find((row) => row.group && row.intent.kind === 'card');
+    expect(queued?.intent).toMatchObject({ kind: 'card', cardType: 'second_yellow', plId: 'pl_h1' });
+    await goOnline(live);
+    await waitUntil('三筆都送完', async () => (await rows(live.log)).every((row) => row.state === 'applied'), 200);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    const yellow = events.find((event) => event.cardType === 'yellow');
+    const second = events.find((event) => event.cardType === 'second_yellow');
+    expect(second).toMatchObject({ plId: 'pl_h1', refSeq: Number(yellow?.seq), matchSecond: 40 });
+    expect(await listCollection(`competitions/${CID}/matches/${MT}/voids`)).toHaveLength(1);
+  });
+
+  // S2 審查 P3（顧問 §3.863）：審查只有推論、沒有測試的三種改判情境。
+  async function redThenYellow(name: string): Promise<Live> {
+    const live = await startLive(name);
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h2', cardType: 'red' });
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    await waitUntil('兩張牌已載入', () => live.session.getState().events.length >= 2, 200);
+    return live;
+  }
+  const yellowPick = (plId: string, matchSecond: number) => ({
+    side: 'home' as const, action: 'yellow' as const, plId, goalKind: null, minute: 0, refSeq: null, matchSecond,
+  });
+  async function openRows(live: Live): Promise<LogEntry[]> {
+    return (await rows(live.log)).filter((row) => row.state !== 'applied' && row.state !== 'discarded');
+  }
+  async function allApplied(live: Live): Promise<void> {
+    await waitUntil('都送完', async () => (await openRows(live)).length === 0, 200);
+  }
+
+  it('23. 黃牌的作廢還在待送，把別的牌改判成同一人黃牌：寫成普通黃牌，不被拒', async () => {
+    const live = await redThenYellow('s23');
+    await goOffline(live);
+    expect(scorePadPropsFrom(live.session.getState(), Date.now()).onUndo?.(2)).toBe(true);
+    await waitUntil('作廢已排入', async () => (await openRows(live)).length === 1, 200);
+    expect(scorePadPropsFrom(live.session.getState(), Date.now()).onAmend?.(1, yellowPick('pl_h1', 50))).toBe(true);
+    await waitUntil('改判已排入', async () => (await openRows(live)).length === 3, 200);
+    const queued = (await rows(live.log)).find((row) => row.group && row.intent.kind === 'card');
+    expect(queued?.intent).toMatchObject({ kind: 'card', cardType: 'yellow', plId: 'pl_h1' });
+    expect(queued?.intent).not.toHaveProperty('refSeq');
+    await goOnline(live);
+    await allApplied(live);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.find((event) => Number(event.seq) === 5)).toMatchObject({ type: 'card', cardType: 'yellow', plId: 'pl_h1' });
+    expect(await listCollection(`competitions/${CID}/matches/${MT}/voids`)).toHaveLength(2);
+  });
+
+  it('24. 已有待送第二黃指向那張黃牌，把別的牌改判成同一人黃牌：寫成普通黃牌，不被拒', async () => {
+    const live = await redThenYellow('s24');
+    await goOffline(live);
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    await waitUntil('第二黃已排入', async () => (await openRows(live)).length === 1, 200);
+    const pendingSecond = (await openRows(live))[0];
+    expect(pendingSecond?.intent).toMatchObject({ cardType: 'second_yellow', refSeq: 2 });
+    expect(scorePadPropsFrom(live.session.getState(), Date.now()).onAmend?.(1, yellowPick('pl_h1', 50))).toBe(true);
+    await waitUntil('改判已排入', async () => (await openRows(live)).length === 3, 200);
+    const queued = (await rows(live.log)).find((row) => row.group && row.intent.kind === 'card');
+    expect(queued?.intent).toMatchObject({ kind: 'card', cardType: 'yellow', plId: 'pl_h1' });
+    await goOnline(live);
+    await allApplied(live);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.filter((event) => event.cardType === 'second_yellow')).toHaveLength(1);
+    expect(events.find((event) => Number(event.seq) === 5)).toMatchObject({ type: 'card', cardType: 'yellow', plId: 'pl_h1' });
+  });
+
+  it('25. 改判第二黃本身（同一人仍判黃）：寫成第二黃指向第一黃，連結改指新的這張', async () => {
+    const live = await startLive('s25');
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    await live.session.getState().actions.card({ side: 'home', plId: 'pl_h1', cardType: 'yellow' });
+    await waitUntil('兩張黃牌已載入', () => live.session.getState().events.length >= 2, 200);
+    expect(scorePadPropsFrom(live.session.getState(), Date.now()).onAmend?.(2, yellowPick('pl_h1', 70))).toBe(true);
+    await waitUntil('改判已送完', async () => {
+      const logged = (await rows(live.log)).filter((row) => row.group);
+      return logged.length === 2 && logged.every((row) => row.state === 'applied' || row.state === 'rejected');
+    }, 200);
+    expect((await rows(live.log)).filter((row) => row.group).map((row) => row.state)).toEqual(['applied', 'applied']);
+    const events = await listCollection(`competitions/${CID}/matches/${MT}/timeline`);
+    expect(events.find((event) => Number(event.seq) === 4)).toMatchObject({ type: 'card', cardType: 'second_yellow', refSeq: 1, matchSecond: 70 });
+    expect(await readDoc(`competitions/${CID}/matches/${MT}/cardLinks/1`)).toMatchObject({ seq: 4 });
   });
 });

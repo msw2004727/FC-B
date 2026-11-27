@@ -113,7 +113,7 @@ export function DetailHero({
   const shown = cover && cover !== broken ? cover : null;
   return (
     <section class={`d2-hero${foot ? '' : ' d2-hero--bare'}`}>
-      {shown ? <img class="d2-hero__cover" src={shown} alt="" width={1200} height={450} decoding="async" onError={() => setBroken(shown)} /> : null}
+      {shown ? <img class="d2-hero__cover" src={shown} alt="" width={1200} height={450} decoding="async" fetchpriority="high" onError={() => setBroken(shown)} /> : null}
       <div class={hero.board ? `d2-sb d2-board${hero.lit ? ' d2-sb--lit' : ''}` : 'd2-plain'}>
         <div class="d2-board__top">
           <span class={`d2-sb__st${danger ? ' d2-sb__st--danger' : ''}`}><i aria-hidden="true" />{status}</span>

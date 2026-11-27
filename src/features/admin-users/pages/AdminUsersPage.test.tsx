@@ -128,7 +128,7 @@ function makeUser(id: string, patch: Partial<AdminUser> = {}): AdminUser {
   return {
     _docId: id, uid: id, lineUserId: '', name: `名字-${id}`, role: 'user', email: '', gender: '', region: '', sports: '',
     phone: '', birthday: '', exp: 0, pictureUrl: '', teamName: '', isRestricted: false, stealth: false,
-    joinedAtMs: null, lastLoginMs: null, lastLoginIp: '', lastLoginRegion: '', lastLoginIsp: '', lateCancelLevel: null, lateCancelTotal: 0, lateCancelLastMs: null, ...patch,
+    joinedAtMs: null, lastLoginMs: null, lastLoginIp: '', lastLoginRegion: '', lastLoginIsp: '', lateCancelLevel: null, lateCancelTotal: 0, lateCancelLastMs: null, lateCancelUntilMs: null, ...patch,
   };
 }
 
@@ -532,7 +532,7 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     expect(within(cardOf('Plain')).getByText('解除限制')).toBeTruthy();
   });
 
-  it('臨取紅標：顯示臨取狀態一行；有 no_show_adjust 且 Callable 已部署才有「解除臨取紅標」，確認後呼叫 clearLateCancelRed', async () => {
+  it('臨取紅標：顯示臨取狀態一行；有 no_show_adjust 且 Callable 已部署才有「解除臨取狀態」，確認後呼叫 clearLateCancelRed', async () => {
     const red = makeUser('r1', {
       name: 'Kai', lateCancelLevel: 'red', lateCancelTotal: 3, lateCancelLastMs: Date.parse('2026-11-20T10:00:00+08:00'),
     });
@@ -544,14 +544,14 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
     expect(cardOf('Kai').textContent).toContain('臨取狀態：紅標（3 次，最近 11/20）');
     expect(cardOf('Kai').querySelector('.uc-lc-red')).not.toBeNull();
-    expect(within(cardOf('Kai')).queryByText('解除臨取紅標')).toBeNull();
+    expect(within(cardOf('Kai')).queryByRole('button', { name: '解除臨取狀態' })).toBeNull();
     cleanup();
     // 已部署但沒有權限：沒有按鈕。
     mockUseViewer.mockReturnValue(viewerOf('admin', FULL_ADMIN_PERMS));
     mockLoadUsers.mockResolvedValue(loadOf([red]));
     render(<AdminUsersPage lateCancelClearEnabled />);
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
-    expect(within(cardOf('Kai')).queryByText('解除臨取紅標')).toBeNull();
+    expect(within(cardOf('Kai')).queryByRole('button', { name: '解除臨取狀態' })).toBeNull();
     cleanup();
     // 已部署且有權限：按下 → 確認 → 呼叫 → 狀態列消失。
     mockUseViewer.mockReturnValue(viewerOf('admin', perms));
@@ -560,12 +560,55 @@ describe('用戶卡內容與按鈕顯示（四身分＋權限碼）', () => {
     mockCallFn.mockResolvedValue({ ok: true });
     render(<AdminUsersPage lateCancelClearEnabled />);
     await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(2));
-    expect(within(cardOf('Normal')).queryByText('解除臨取紅標')).toBeNull();
-    fireEvent.click(within(cardOf('Kai')).getByText('解除臨取紅標'));
+    expect(within(cardOf('Normal')).queryByRole('button', { name: '解除臨取狀態' })).toBeNull();
+    expect(within(cardOf('Kai')).getByRole('button', { name: '解除臨取狀態' }).closest('.au-lc-row')).not.toBeNull();
+    fireEvent.click(within(cardOf('Kai')).getByRole('button', { name: '解除臨取狀態' }));
     await waitFor(() => expect(mockCallFn).toHaveBeenCalledWith('clearLateCancelRed', { targetUid: 'r1' }));
-    expect(mockConfirm).toHaveBeenCalledWith('確定要解除 Kai 的臨取紅標？');
+    expect(mockConfirm).toHaveBeenCalledWith('確定要解除 Kai 的臨取狀態？');
     await waitFor(() => expect(cardOf('Kai').textContent).not.toContain('臨取狀態'));
-    expect(toastMessages()).toContain('已解除臨取紅標');
+    expect(toastMessages()).toContain('已解除臨取狀態');
+  });
+
+  it('臨取黑標：未過期顯示臨取狀態一行與「解除」鈕', async () => {
+    const black = makeUser('b1', {
+      name: 'Blackie', lateCancelLevel: 'black', lateCancelUntilMs: Date.now() + 7 * 86_400_000,
+    });
+    const perms = [...FULL_ADMIN_PERMS, 'admin.repair.no_show_adjust'];
+    mockUseViewer.mockReturnValue(viewerOf('admin', perms));
+    mockLoadUsers.mockResolvedValue(loadOf([black]));
+    render(<AdminUsersPage lateCancelClearEnabled lateCancelClearBlackEnabled />);
+    await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
+    expect(cardOf('Blackie').textContent).toContain('臨取狀態：黑標，最晚');
+    expect(within(cardOf('Blackie')).getByRole('button', { name: '解除臨取狀態' }).closest('.au-lc-row')).not.toBeNull();
+    // 名字標籤黑底（R-UI-021）
+    expect(cardOf('Blackie').querySelector('.ui-user-tag.uc-lc-black')).not.toBeNull();
+  });
+
+  it('臨取黑標：新版後端未部署（旗標 false）時只顯示狀態、沒有解除鈕', async () => {
+    const black = makeUser('b1', {
+      name: 'Blackie', lateCancelLevel: 'black', lateCancelUntilMs: Date.now() + 7 * 86_400_000,
+    });
+    const perms = [...FULL_ADMIN_PERMS, 'admin.repair.no_show_adjust'];
+    mockUseViewer.mockReturnValue(viewerOf('admin', perms));
+    mockLoadUsers.mockResolvedValue(loadOf([black]));
+    render(<AdminUsersPage lateCancelClearEnabled lateCancelClearBlackEnabled={false} />);
+    await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
+    expect(cardOf('Blackie').textContent).toContain('臨取狀態：黑標，最晚');
+    expect(within(cardOf('Blackie')).queryByRole('button', { name: '解除臨取狀態' })).toBeNull();
+  });
+
+  it('臨取黑標已過期：不顯示臨取狀態一行、沒有解除鈕', async () => {
+    const black = makeUser('b1', {
+      name: 'Blackie', lateCancelLevel: 'black', lateCancelUntilMs: Date.now() - 86_400_000,
+    });
+    const perms = [...FULL_ADMIN_PERMS, 'admin.repair.no_show_adjust'];
+    mockUseViewer.mockReturnValue(viewerOf('admin', perms));
+    mockLoadUsers.mockResolvedValue(loadOf([black]));
+    render(<AdminUsersPage lateCancelClearEnabled />);
+    await waitFor(() => expect(document.querySelectorAll('.admin-user-card').length).toBe(1));
+    expect(cardOf('Blackie').textContent).not.toContain('臨取狀態');
+    expect(within(cardOf('Blackie')).queryByRole('button', { name: '解除臨取狀態' })).toBeNull();
+    expect(cardOf('Blackie').querySelector('.uc-lc-black')).toBeNull();
   });
 
   it('「查看」與膠囊都導向該用戶名片（以 UID 為準）', async () => {
@@ -1223,5 +1266,29 @@ describe('退修 1：目標文件不一致、序號保護、可指派角色、�
     expect(screen.getByLabelText('最後登入區間（日） 迄')).toBe(document.getElementById('admin-user-login-max-days'));
     expect(screen.getByLabelText('身份')).toBe(document.getElementById('admin-user-role-filter'));
     expect(screen.getByLabelText('性別')).toBe(document.getElementById('admin-user-gender-filter'));
+  });
+});
+
+// 移除面板連賽事的 Functions 接點：這裡只驗入口，換成不連線的替身（本檔已把 firebase 換掉，真模組載不起來）。
+vi.mock('@/features/competitions/data/cp-callables', () => ({
+  cpHostAdminRemovalDryRun: vi.fn(),
+  cpHostAdminRemovalRun: vi.fn(),
+  toCpCallError: (err: unknown) => err,
+}));
+
+describe('賽事個資移除入口（顧問 §3.816②）', () => {
+  it('super_admin：每張用戶卡有「賽事個資移除」，按了帶入該會員開面板（顯示會員名、不打 uid）', async () => {
+    await renderReady([makeUser('a', { name: 'Alice' })], viewerOf('super_admin', 'all'));
+    const btn = Array.from(cardOf('Alice').querySelectorAll('button')).find((el) => el.textContent === '賽事個資移除');
+    expect(btn).toBeTruthy();
+    fireEvent.click(btn!);
+    const dialog = await screen.findByRole('dialog', { name: '賽事個資移除' });
+    expect(dialog.querySelector('[data-cp-member]')?.textContent).toBe('Alice');
+    expect(dialog.querySelector('input')).toBeNull();
+  });
+
+  it('admin（有全部用戶管理權限碼）看不到入口', async () => {
+    await renderReady([makeUser('a', { name: 'Alice' })]);
+    expect(Array.from(cardOf('Alice').querySelectorAll('button')).some((el) => el.textContent === '賽事個資移除')).toBe(false);
   });
 });

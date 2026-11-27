@@ -91,6 +91,9 @@ function ScorerView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [matches, setMatches] = useState<MatchDoc[]>([]);
   const [venues, setVenues] = useState<CompetitionDoc['venues']>([]);
+  // 賽事已結束：不給進入記分（記分盤點 S1；記完主辦也確認不了）。
+  const [ended, setEnded] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     if (env.actor.authPending) return undefined;
@@ -113,15 +116,15 @@ function ScorerView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
         setPhase('ready');
         return;
       }
-      const found = (await Promise.all(ids.map((id) => env.repo.getMatch(cid, id))))
-        .filter((match): match is MatchDoc => match != null);
+      // 賽事主文件與場次並行讀（+1 讀）：要知道是否已結束，也順便給缺名稱的場地。讀不到就照舊顯示。
+      const [rows, competition] = await Promise.all([
+        Promise.all(ids.map((id) => env.repo.getMatch(cid, id))),
+        env.repo.getCompetition(cid).catch(() => null),
+      ]);
+      const found = rows.filter((match): match is MatchDoc => match != null);
       if (!alive) return;
-      const needVenue = found.some((match) => !match.venueName && match.venueIdx != null);
-      if (needVenue) {
-        const competition = await env.repo.getCompetition(cid);
-        if (!alive) return;
-        setVenues(competition?.venues ?? []);
-      }
+      setVenues(competition?.venues ?? []);
+      setEnded(competition?.endedAt != null);
       setMatches(found);
       setPhase('ready');
     })().catch(() => {
@@ -130,18 +133,25 @@ function ScorerView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
     return () => {
       alive = false;
     };
-  }, [cid, env.actor.authPending, env.actor.uid, env.repo]);
+  }, [cid, env.actor.authPending, env.actor.uid, env.repo, reloadTick]);
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   const back = () => route(`/competitions/${cid}`);
   if (env.actor.authPending || phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
   if (phase === 'error') {
     return (
-      <ScorerMatchesScreen title={ct('myMatches')} days={[]} empty={ct('loadFailed')} onBack={back} />
+      <ScorerMatchesScreen
+        title={ct('myMatches')}
+        days={[]}
+        onBack={back}
+        failed={{ message: ct('loadFailed'), retryLabel: ct('retry'), onRetry: () => setReloadTick((n) => n + 1) }}
+      />
     );
   }
   const now = env.now ?? Date.now();
-  const days = toDays(ct, matches, venues, now);
+  const days = toDays(ct, matches, venues, now).map((day) => (ended
+    ? { ...day, matches: day.matches.map((row) => ({ ...row, showEnter: false })) }
+    : day));
   return (
     <ScorerMatchesScreen
       title={ct('myMatches')}

@@ -650,6 +650,65 @@ export function cpParticipantAcceptInvite(input: { cid: string; ivId: string; co
   return callAction('cpParticipant', payload('acceptInvite', { cid: input.cid, ivId: input.ivId, code: input.code }));
 }
 
+export interface CpDataRemovalResult {
+  status: 'done' | 'partial' | 'waiting';
+  processed: number;
+  /** 還不能完全移除的賽事（同一場可能因多個原因列多筆）。 */
+  waiting: Array<{ cid: string; reason: string }>;
+}
+
+/** 本人移除自己的賽事資料（設計 §4.11）。不帶 uid，伺服器只認登入者；confirm 固定 REMOVE。 */
+export function cpParticipantRequestMyDataRemoval(): Promise<CpDataRemovalResult> {
+  return callAction('cpParticipant', payload('requestMyDataRemoval', { confirm: 'REMOVE' }));
+}
+
+export interface CpAdminRemovalComp {
+  cid: string;
+  name: string;
+  roles: string[];
+  phase: 'roster_open' | 'started' | 'ended';
+  /** 現在會做的各項計數（鍵見畫面對照表；0 不顯示）。 */
+  now: Record<string, number>;
+  later: { reasons: string[]; until: string } | null;
+}
+
+/** cpHost adminRemoveUserData 試算回傳（設計 §4.8）。不含 uid 原文。 */
+export interface CpAdminRemovalDryRun {
+  dryRun: true;
+  subject: string;
+  reasonCode: CpAdminRemovalReason;
+  generatedAt: string;
+  confirmToken: string;
+  expiresAt: string;
+  competitions: CpAdminRemovalComp[];
+  totals: { competitions: number; writesNow: number; writesLater: number };
+  irreversible: string[];
+  warnings: string[];
+  /** 固定說明，一定要顯示（後端新版才有；沒有就不畫）。 */
+  limitations?: string[];
+}
+
+export type CpAdminRemovalReason = 'subject_request' | 'account_deleted';
+
+/** 管理員試算（任何管理員）。只讀，伺服器只寫一筆確認碼。 */
+export function cpHostAdminRemovalDryRun(input: { uid: string; reasonCode: CpAdminRemovalReason }): Promise<CpAdminRemovalDryRun> {
+  return callAction('cpHost', payload('adminRemoveUserData', { uid: input.uid, reasonCode: input.reasonCode, dryRun: true }));
+}
+
+/** 管理員執行（只有 super_admin，伺服器另擋）。要帶試算給的確認碼。 */
+export function cpHostAdminRemovalRun(input: {
+  uid: string;
+  reasonCode: CpAdminRemovalReason;
+  confirmToken: string;
+}): Promise<CpDataRemovalResult> {
+  return callAction('cpHost', payload('adminRemoveUserData', {
+    uid: input.uid,
+    reasonCode: input.reasonCode,
+    dryRun: false,
+    confirmToken: input.confirmToken,
+  }));
+}
+
 export type CpModerateInput = { cid: string; hidden: true; reason: string } | { cid: string; hidden: false };
 
 /** 管理員下架（帶原因）或恢復（不帶 reason，帶了伺服器回 UNKNOWN_FIELD）。 */

@@ -25,7 +25,7 @@ export const LIVE_COPY = {
   correctClock: '修正時鐘',
   pauseClock: '停錶',
   resumeClock: '繼續計時',
-  pauseReserved: '為保留記分額度，停錶已停用',
+  pauseReserved: '目前不開放停錶',
   matchMenu: '選單',
   amend: '改判',
   amendNote: '會先復原原紀錄，再記新的',
@@ -41,11 +41,11 @@ export const LIVE_COPY = {
   fulltimeSent: '終場已送出',
   undoFulltime: '撤回終場',
   unappliedTitle: '未套用的動作',
-  unappliedHint: '另一支裝置可能也在記這場',
+  unappliedHint: '可能另一支裝置在記，或賽事狀態、權限已變更',
   pending: '待送',
   rejected: '被拒',
   rejectedTakenOver: '被拒：已被接手',
-  rejectedConflict: '被拒：比分版本衝突',
+  rejectedConflict: '被拒：比分剛被更新',
   rejectedLocked: '被拒：場次已鎖',
   reapply: '重新套用',
   discard: '捨棄',
@@ -53,6 +53,9 @@ export const LIVE_COPY = {
   takeoverAction: '接手記分',
   takeoverLater: '先不要',
   takeoverNote: '接手後，另一支裝置記的動作會送不出去',
+  takeoverFreeTitle: '開始記這場',
+  takeoverFreeNote: '這支裝置會成為這場的記分裝置',
+  takeoverFreeAction: '開始記分',
   takeoverEntry: '其他裝置記分中',
   offlineUnstored: '離線紀錄無法保存，斷網時記的動作重整後會消失',
   wakeLock: '請關閉手機自動鎖定',
@@ -102,7 +105,16 @@ export const LIVE_COPY = {
   loadFailed: '讀取失敗',
   retry: '重試',
   leaveScore: '離開記分',
+  /** CP-PO-07 換人（計畫書事件模型 sub；Rules 不允許作廢換人，送出前要確認）。 */
+  sub: '換人',
+  subOut: '換下',
+  subIn: '換上',
+  subConfirm: '確認換人',
+  subNote: '換人送出後不能作廢',
+  subNoRoster: '這隊名單沒有球員，無法記換人',
   assignScorerHint: '請先在指派頁把自己指派為記分員',
+  /** 不是主辦的人沒有本場指派時的第二句（顧問巡視）：只有主辦才講指派頁。 */
+  askHostToAssign: '請主辦把你指派為記分員',
 } as const;
 
 export function offlineChip(pending: number): string {
@@ -215,4 +227,10 @@ export function withEvent(action: string, detail: string): string {
 /** 球隊暫停選隊鈕的第二行「剩 1 次」（選隊鈕一律兩行：隊名、剩幾次）。 */
 export function timeoutLeftText(left: number): string {
   return `剩 ${left} 次`;
+}
+
+/** 換人確認框與紀錄列：「7 王小明 換下、12 李大華 換上」。 */
+export function subPairLine(outNo: number | null, outName: string, inNo: number | null, inName: string): string {
+  const who = (no: number | null, name: string) => (no == null ? name : `${no} ${name}`);
+  return `${who(outNo, outName)} ${LIVE_COPY.subOut}、${who(inNo, inName)} ${LIVE_COPY.subIn}`;
 }

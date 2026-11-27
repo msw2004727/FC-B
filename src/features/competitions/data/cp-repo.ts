@@ -66,6 +66,8 @@ export interface CompetitionsRepo {
   getLaunch(): Promise<LaunchDoc | null>;
   getLaunchTester(uid: string): Promise<boolean>;
   listMine(uid: string): Promise<CpMineItem[]>;
+  /** 單筆 cpMine/{uid}/items/{cid}（Rules 允許本人 get）。沒有文件回 null。 */
+  getMine(uid: string, cid: string): Promise<CpMineItem | null>;
   /** includeInternal：測試者／管理員不帶 visibility，才能看到內部賽。一般會員維持只查公開。 */
   listPublic(includeInternal?: boolean): Promise<CompetitionDoc[]>;
   listByHostTeam(teamId: string, publicOnly: boolean): Promise<CompetitionDoc[]>;
@@ -82,6 +84,11 @@ export interface CompetitionsRepo {
   listStaff(cid: string): Promise<StaffAssignment[]>;
   /** 單筆 staff。保留記分角色。沒有文件是 null。 */
   getStaffAssignment(cid: string, uid: string): Promise<StaffAssignment | null>;
+  /**
+   * 自己的 staff 一次讀（CP-DETAIL-SPEED d1）：同一份 staff/{uid} 只 getDoc 一次，
+   * 同時回 getStaff 與 getStaffAssignment 的形狀。沒有文件兩者都是 null。
+   */
+  getStaffWithAssignment(cid: string, uid: string): Promise<{ staff: StaffDoc | null; assignment: StaffAssignment | null }>;
   /** 該賽事場次，最多 CP_READ_LIMIT.matches。不監聽。 */
   listMatches(cid: string): Promise<MatchDoc[]>;
   /** 單筆場次。沒有或壞掉是 null。 */
@@ -98,6 +105,8 @@ export interface CompetitionsRepo {
    * 失敗不記住，下次可以重試。不得改成即時監聽。
    */
   listEntriesForCrest(cid: string): Promise<EntryDoc[]>;
+  /** 指定俱樂部的報隊（teamId in，最多 10 個 id、limit 10）。詳情頁給代表看自己待審的隊。不快取、不監聽。 */
+  listEntriesByTeams(cid: string, teamIds: readonly string[]): Promise<EntryDoc[]>;
   /** 清掉這個賽事的隊徽快取。下次 listEntriesForCrest 會再查。 */
   invalidateCrests(cid: string): void;
   /** 尚未使用的邀請（status == open），最多 CP_INVITE_LIST_LIMIT。只給主辦／共同主辦呼叫。 */
@@ -287,7 +296,7 @@ function noticesOf(value: unknown): CompetitionNotice[] {
   return out;
 }
 
-function divisionFromDoc(id: string, raw: Record<string, unknown>): DivisionDoc | null {
+export function divisionFromDoc(id: string, raw: Record<string, unknown>): DivisionDoc | null {
   const name = str(raw.name);
   const playersOnField = oneOf<`${PlayersOnField}`>(String(raw.playersOnField), PLAYERS.map(String) as `${PlayersOnField}`[]);
   const onField = playersOnField == null ? null : Number(playersOnField) as PlayersOnField;
@@ -313,6 +322,7 @@ function divisionFromDoc(id: string, raw: Record<string, unknown>): DivisionDoc 
     approvedCount: num(raw.approvedCount) ?? 0,
     order: num(raw.order) ?? 0,
     ranking: rankingOf(raw.schedule),
+    scheduledMatches: isRecord(raw.schedule) ? (num(raw.schedule.matchCount) ?? 0) : 0,
   };
 }
 
@@ -383,6 +393,9 @@ function mineFromDoc(id: string, raw: Record<string, unknown>): CpMineItem | nul
     ? raw.roles.filter((role): role is MineRole => oneOf(role, MINE_ROLES) != null)
     : [];
   const name = str(raw.name)?.trim();
+  const plIds = Array.isArray(raw.plIds)
+    ? raw.plIds.filter((plId): plId is string => typeof plId === 'string' && plId !== '')
+    : [];
   return {
     id,
     cid: str(raw.cid) ?? id,
@@ -390,6 +403,7 @@ function mineFromDoc(id: string, raw: Record<string, unknown>): CpMineItem | nul
     host: bool(raw.host) ?? false,
     ...(name ? { name } : {}),
     category: categoryOf(raw),
+    ...(plIds.length ? { plIds } : {}),
   };
 }
 
@@ -809,6 +823,14 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
         .filter((item): item is CpMineItem => item != null);
     },
 
+    async getMine(uid, cid) {
+      if (!isSafeId(uid) || !isSafeId(cid)) return null;
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDoc(sdk.doc(db, `cpMine/${uid}/items/${cid}`));
+      if (!snap.exists()) return null;
+      return mineFromDoc(snap.id, snap.data() ?? {});
+    },
+
     async listPublic(includeInternal = false) {
       const { db, sdk } = await ready();
       const clauses: unknown[] = [];
@@ -943,6 +965,17 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
       return data ? assignmentFromDoc(uid, data) : null;
     },
 
+    async getStaffWithAssignment(cid, uid) {
+      if (!isSafeId(cid) || !isSafeId(uid)) return { staff: null, assignment: null };
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDoc(sdk.doc(db, `competitions/${cid}/staff/${uid}`));
+      if (!snap.exists()) return { staff: null, assignment: null };
+      const data = snap.data();
+      return data
+        ? { staff: staffFromDoc(uid, data), assignment: assignmentFromDoc(uid, data) }
+        : { staff: null, assignment: null };
+    },
+
     async listMatches(cid) {
       if (!isSafeId(cid)) return [];
       const { db, sdk } = await ready();
@@ -1023,6 +1056,21 @@ export function createCompetitionsRepo(deps: CpRepoDeps): CompetitionsRepo {
         crestCache.delete(cid);
         throw err;
       }
+    },
+
+    async listEntriesByTeams(cid, teamIds) {
+      if (!isSafeId(cid)) return [];
+      const ids = teamIds.filter(isSafeId).slice(0, 10);
+      if (ids.length === 0) return [];
+      const { db, sdk } = await ready();
+      const snap = await sdk.getDocs(sdk.query(
+        sdk.collection(db, `competitions/${cid}/entries`),
+        sdk.where('teamId', 'in', ids),
+        sdk.limit(10),
+      ));
+      return snap.docs
+        .map((doc) => entryFromDoc(doc.id, doc.data() ?? {}))
+        .filter((doc): doc is EntryDoc => doc != null);
     },
 
     invalidateCrests(cid) {

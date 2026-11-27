@@ -19,6 +19,8 @@ export interface DeleteAccessInput {
   hidden: boolean;
   /** 刪除到一半的封鎖時間。沒有是 null。 */
   deletingAt: number | null;
+  /** 已結束（任何結束方式）。後端 host.ts deleteCompetition：非管理員 endedAt 有值回 DELETE_AFTER_START。 */
+  endedAt: number | null;
   firstMatchAt: number;
   now: number;
 }
@@ -39,7 +41,8 @@ export function isPrimaryHostView(input: Pick<DeleteAccessInput, 'hostType' | 'h
  * - 管理員：一律顯示（host.ts 492、500～501；503～504 的限制只對非管理員）。
  * - 主辦：isPrimaryHost（host.ts 500～501），而且
  *   沒有被下架，或下架是因為刪除到一半（host.ts 503：hidden && !deletingAt 拒絕），而且
- *   首場還沒開始（host.ts 504：now >= firstMatchAt 拒絕；續刪也一樣）。
+ *   首場還沒開始（host.ts 504：now >= firstMatchAt 拒絕；續刪也一樣），而且
+ *   還沒結束（首場前手動結束也一樣，後端同樣回 DELETE_AFTER_START）。
  * - 共同主辦、一般用戶、未登入：不顯示。
  */
 export function canDeleteCompetition(input: DeleteAccessInput): boolean {
@@ -47,5 +50,6 @@ export function canDeleteCompetition(input: DeleteAccessInput): boolean {
   if (isCpAdmin(input.role)) return true;
   if (!isPrimaryHostView(input)) return false;
   if (input.hidden && input.deletingAt == null) return false;
+  if (input.endedAt != null) return false;
   return input.now < input.firstMatchAt;
 }

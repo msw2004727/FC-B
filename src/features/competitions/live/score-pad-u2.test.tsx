@@ -196,6 +196,23 @@ describe('記分板新狀態', () => {
     expect(screen.queryByRole('button', { name: LIVE_COPY.unspecified })).toBeNull();
   });
 
+  it('CP-PO-15a：沒有控制文件時入口與框內寫開始記分／開始記這場，有別的裝置時仍寫接手記分', () => {
+    render(<ScorePad {...S4_SCENE_LIVE} takeoverOffered takeoverSelf takeoverFree />);
+    expect(screen.queryByRole('button', { name: LIVE_COPY.takeoverAction })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.takeoverFreeAction }));
+    const freeDialog = screen.getByRole('dialog', { name: LIVE_COPY.takeoverFreeTitle });
+    expect(freeDialog.textContent ?? '').toContain(LIVE_COPY.takeoverFreeNote);
+    expect(freeDialog.textContent ?? '').toContain(LIVE_COPY.takeoverFreeAction);
+    expect(freeDialog.textContent ?? '').not.toContain(LIVE_COPY.takeoverAction);
+    expect(screen.queryByRole('dialog', { name: LIVE_COPY.takeoverTitle })).toBeNull();
+    cleanup();
+
+    render(<ScorePad {...S4_SCENE_LIVE} takeoverOffered takeoverSelf />);
+    fireEvent.click(screen.getByRole('button', { name: LIVE_COPY.takeoverAction }));
+    const dialog = screen.getByRole('dialog', { name: LIVE_COPY.takeoverTitle });
+    expect(dialog.textContent ?? '').toContain(LIVE_COPY.takeoverNote);
+  });
+
   it('別的裝置仍寫其他裝置記分中，記分鈕停用', () => {
     render(<ScorePad {...S4_SCENE_TAKEOVER} />);
     const entry = screen.getByRole('button', { name: LIVE_COPY.takeoverEntry }) as HTMLButtonElement;

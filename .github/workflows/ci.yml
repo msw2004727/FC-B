@@ -2,11 +2,12 @@
 # 只有 bundle-budget 這個 job 會建置。建置輸出只拿來量大小：不部署、不上傳 artifact、不用 secret。
 # 建置不連 Firestore，只是把 PROD 設定寫進檔案。除了規則測試（emulator），其餘 job 不建置、不連網路服務。不用第三方 action。
 # 規則測試（emulator）會連 raw.githubusercontent.com 讀公開正本、不用 secret。
+# 記分模擬器測試（emulator）只連本機模擬器（demo 專案），不用 secret、不連正式 Firestore。
 # 本機（Windows）不再跑全測，Playwright 與速度量測仍在本機。
 name: CI
 
 # 2026-11-12 CI 省時（ci-cost-trim）：取代原本「任何分支 push 都跑全套」。
-# - push 只在 main 觸發完整 CI（上線證據 9 項＝本檔 8 個 job＋Cloudflare Pages，多「規則測試（emulator）」）。
+# - push 只在 main 觸發完整 CI（上線證據 10 項＝本檔 9 個 job＋Cloudflare Pages，多「規則測試（emulator）」「記分模擬器測試（emulator）」）。
 #   其他分支 push 改走 ci-lite.yml 輕量檢查；backup/**、promo 分支完全不跑。
 # - PR 照跑完整 CI；要在分支上跑全套，用 Actions 頁 workflow_dispatch 選分支。
 # - 只改 Markdown／docs／.claude 的 push 或 PR 不觸發；同一次 push 只要有任一檔不在清單內就照跑全套。
@@ -195,3 +196,52 @@ jobs:
 
       - name: 規則測試
         run: npm run test:rules
+
+  # 開放後第一批 #17（顧問 §3.483 補記二）：記分資料層的 *.emu.test.*（vitest.u1-emu.config.ts，約 32 條）。
+  # 一般 vitest 全套沒開模擬器，這三檔會整檔 describe.skipIf 略過；這裡開 Firestore 模擬器實跑。
+  # 埠：沿用 emulator/firebase.json 的 8080，用 FCB_EMU_PORT 告訴測試（測試預設 8402 是本機慣例）。
+  # 專案必須是 demo-cp-u1（測試寫死；規則只對啟動時的專案生效）。測試會暫換 emulator/firestore.rules 成
+  # asia-main.rules 快照並在 afterAll 還原，只在 runner 的工作副本內，不 commit。
+  # 模擬器沒連上時 vitest 仍回 0，所以另用 check-emu-report.mjs 核對「通過 ≥32、略過 0、失敗 0」。
+  # 根治 afterAll 等待（比對整份規則）屬記分測試檔，另開卡，不在本 job 動。
+  emu:
+    name: 記分模擬器測試（emulator）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FCB_EMU_PORT: '8080'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 安裝依賴（npm ci）
+        run: npm ci --no-audit --no-fund
+
+      # 不用 emulators:exec：測試 afterAll 還原規則後的等待只比對前 60 字（兩份規則開頭相同，等待形同沒有），
+      # exec 關模擬器時常撞上規則重載，32 條全過仍回 1（本機 10 輪 1 次）。改成背景開模擬器、步驟結果只看 vitest；
+      # job 結束時 runner 會收掉背景行程。
+      - name: 記分模擬器測試
+        run: |
+          npx firebase emulators:start --only firestore --project demo-cp-u1 --config emulator/firebase.json > emu-server.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -sf -o /dev/null "http://127.0.0.1:${FCB_EMU_PORT}/"; then break; fi
+            sleep 1
+          done
+          if ! curl -sf -o /dev/null "http://127.0.0.1:${FCB_EMU_PORT}/"; then
+            echo '模擬器 90 秒內沒起來'; cat emu-server.log; exit 1
+          fi
+          npx vitest run --config vitest.u1-emu.config.ts --reporter=default --reporter=json --outputFile.json=emu-report.json
+
+      - name: 核對沒有整檔略過（通過 ≥32、略過 0）
+        run: node scripts/check-emu-report.mjs emu-report.json 32

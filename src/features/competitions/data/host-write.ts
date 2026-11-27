@@ -192,6 +192,16 @@ export function unconfirmedCount(matches: readonly MatchDoc[]): number {
   )).length;
 }
 
+/**
+ * 「登錄比分」按了會不會成功。對齊後端 match-host.ts recordResult：
+ * finished 一定已開賽；scheduled 要有開賽時間而且已經過了（MATCH_NOT_SCHEDULED／MATCH_NOT_STARTED）。
+ * 判棄權（setWalkover）不看開賽時間，另外給入口。
+ */
+export function scoreEntryOpen(match: Pick<MatchDoc, 'status' | 'kickoffAt'>, now: number): boolean {
+  if (match.status === 'finished') return true;
+  return match.status === 'scheduled' && match.kickoffAt != null && now >= match.kickoffAt;
+}
+
 export function hostActions(status: MatchStatus): HostAction[] {
   switch (status) {
     case 'scheduled': return ['reschedule', 'cancel', 'score'];

@@ -67,6 +67,17 @@ describe('App share links', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
+  it('賽事分享 ?competition= 導向 /competitions/:cid（只收 cp_＋20 碼）', () => {
+    expect(resolveShareLink('/?competition=cp_TESTabcdefghij012345')).toBe('/competitions/cp_TESTabcdefghij012345');
+    expect(resolveShareLink('/?competition=cp_TESTabcdefghij012345&profile=U1')).toBe('/competitions/cp_TESTabcdefghij012345');
+    expect(resolveShareLink('/?team=team_123&competition=cp_TESTabcdefghij012345')).toBe('/teams/team_123');
+    for (const bad of ['cup', 'cp_short', 'cp_TESTabcdefghij0123456', 'cp_TESTabcdefghij01234_', '']) {
+      expect(resolveShareLink(`/?competition=${bad}`)).toBeNull();
+    }
+    expect(resolveShareLink('/?competition=cp_TESTabcdefghij012345&competition=cp_TESTabcdefghij012346')).toBeNull();
+    expect(resolveShareLink('/?tournament=cp_TESTabcdefghij012345')).toBeNull();
+  });
+
   it('同時帶 team 與 profile 時 team 優先', () => {
     expect(resolveShareLink('/?profile=U1&team=team_123')).toBe('/teams/team_123');
   });

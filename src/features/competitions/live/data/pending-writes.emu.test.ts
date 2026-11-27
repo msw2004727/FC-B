@@ -18,6 +18,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { blockedStep, LIVE_COPY } from '../copy';
 import { scorePadPropsFrom } from '../scoring-adapter';
 import { MemoryActionLog, ResilientActionLog, type ActionLog } from './action-log';
+import { emuFetch } from './emu-test-utils';
 import { createFirestoreBackend } from './live-repo';
 import { createScoringSession, type ScoringSession } from './session';
 import { memorySidStore, type SidStore } from './sid';
@@ -124,7 +125,7 @@ function root(path: string): string {
 }
 
 async function rest(method: string, url: string, body?: unknown): Promise<{ status: number; text: string }> {
-  const res = await fetch(url, {
+  const res = await emuFetch(url, {
     method,
     headers: {
       Authorization: 'Bearer owner',
@@ -141,7 +142,7 @@ let rulesBackup: Buffer | null = null;
 function useSnapshotRules(): void {
   const content = readFileSync('emulator/asia-main.rules');
   const hash = createHash('sha256').update(content).digest('hex');
-  expect(hash.slice(0, 16)).toBe('99a8cafef181e8e0');
+  expect(hash.slice(0, 16)).toBe('37add016c3084d24');
   if (!rulesBackup) rulesBackup = readFileSync(RULES_TARGET);
   writeFileSync(RULES_TARGET, content);
 }
@@ -152,11 +153,35 @@ function restoreStartupRules(): void {
   rulesBackup = null;
 }
 
+/**
+ * 等模擬器重載回啟動規則。兩份規則開頭相同，不能比前幾十字；改找「啟動規則有、快照沒有」的一行
+ * （ASCII、不含引號與反斜線，JSON 回應裡原樣出現）。5 秒內沒看到就丟錯，不靜默結束。
+ */
+async function waitForStartupRules(restored: string): Promise<void> {
+  const snapshot = readFileSync('emulator/asia-main.rules').toString('utf8');
+  const marker = restored.split('\n').map((line) => line.trim()).find((line) => line.length >= 20
+    && /^[\x20-\x7e]+$/.test(line) && !line.includes('"') && !line.includes('\\') && !snapshot.includes(line));
+  if (!marker) throw new Error('啟動規則找不到可辨識的特徵行');
+  let last = '';
+  for (let i = 0; i < 25; i += 1) {
+    try {
+      const res = await emuFetch(`http://${HOST}:${PORT}/emulator/v1/projects/${PROJECT}:securityRules`);
+      const text = await res.text();
+      if (res.ok && text.includes(marker)) return;
+      last = `${res.status}`;
+    } catch (err) {
+      last = String(err);
+    }
+    await new Promise((resolve) => { setTimeout(resolve, 200); });
+  }
+  throw new Error(`還原規則 5 秒內未生效（${last}）`);
+}
+
 async function waitForRules(): Promise<void> {
   const path = root(`competitions/${CID}/matches/${MT}`);
   let last = '';
   for (let i = 0; i < 30; i += 1) {
-    const res = await fetch(path);
+    const res = await emuFetch(path);
     last = `${res.status} ${(await res.text()).slice(0, 160)}`;
     if (res.status === 200) return;
     await new Promise((resolve) => { setTimeout(resolve, 200); });
@@ -461,15 +486,7 @@ describe.skipIf(!EMU)('記分模擬器：本機未送寫入', { timeout: 60000 }
   afterAll(async () => {
     restoreStartupRules();
     // 還原規則會讓模擬器再載一次。先等它載完，腳本關機時才不會撞上 securityRules。
-    const restored = readFileSync(RULES_TARGET).toString('utf8');
-    for (let i = 0; i < 25; i += 1) {
-      try {
-        const res = await fetch(`http://${HOST}:${PORT}/emulator/v1/projects/${PROJECT}:securityRules`);
-        const text = await res.text();
-        if (res.ok && text.includes(restored.slice(0, 60))) return;
-      } catch { /* 模擬器還在套用 */ }
-      await new Promise((resolve) => { setTimeout(resolve, 200); });
-    }
+    await waitForStartupRules(readFileSync(RULES_TARGET).toString('utf8'));
   });
 
   beforeEach(async () => {

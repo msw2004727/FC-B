@@ -758,7 +758,7 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       const intents: Intent[] = [];
       if (secondYellow) intents.push(voidOf(secondYellow));
       intents.push(voidOf(target));
-      intents.push(next.kind === 'goal' ? { ...next, matchSecond: next.matchSecond || second() } : { ...next });
+      intents.push(next.kind === 'goal' ? { ...next, matchSecond: next.matchSecond ?? second() } : amendCard(next, target, secondYellow));
       if (intents.some((intent) => intentForbidden(intent))) return rejected('rules');
       if (!allowGroup(intents)) return rejected('limit');
       const label: GroupLabel = secondYellow ? 'amendFirstYellow' : 'amend';
@@ -907,6 +907,47 @@ export function createScoringSession(options: SessionOptions): ScoringSession {
       pausedSec: Math.max(0, Math.min(10800, Math.floor(elapsedSec()))),
       startedAt: null,
     };
+  }
+
+  /**
+   * 改判成黃牌：跟 card() 一樣用 findOpenYellow 決定是不是第二黃（含待送黃牌的 refOp）。
+   * 同組先作廢的原事件與連帶第二黃，解析時當成已作廢，不會指向自己正要作廢的那張（S2 審查 P1-1）。
+   */
+  function amendCard(
+    next: CardIntent,
+    target: { seq?: number; op?: string },
+    secondYellow: { seq?: number; op?: string } | null,
+  ): CardIntent {
+    const card: CardIntent = { ...next };
+    delete card.refSeq;
+    delete card.refOp;
+    if (card.cardType !== 'yellow') return card;
+    const gone = secondYellow ? [target, secondYellow] : [target];
+    const goneOps = new Set(gone.flatMap((item) => (item.op ? [item.op] : [])));
+    const voids: ServerEvent[] = gone.flatMap((item, index) => (item.seq == null ? [] : [{
+      seq: Number.MAX_SAFE_INTEGER - index,
+      type: 'void',
+      op: '',
+      sid: '',
+      targetSeq: item.seq,
+      matchSecond: 0,
+      createdAt: 0,
+    }]));
+    const open = findOpenYellow(
+      card.plId,
+      card.side,
+      [...knownEvents(), ...voids],
+      entries.filter((entry) => !goneOps.has(entry.op)),
+      match?.resetRev ?? 0,
+    );
+    if (open?.seq != null) {
+      card.cardType = 'second_yellow';
+      card.refSeq = open.seq;
+    } else if (open?.op) {
+      card.cardType = 'second_yellow';
+      card.refOp = open.op;
+    }
+    return card;
   }
 
   function voidOf(target: { seq?: number; op?: string }): VoidIntent {

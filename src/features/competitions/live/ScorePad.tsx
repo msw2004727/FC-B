@@ -30,10 +30,11 @@ import {
   timeoutLeftText,
   timeoutTeamChoice,
   undoWithin,
+  subPairLine,
 } from './copy';
 import { EventSheet } from './EventSheet';
 import { ConfirmFooter, KickoffConfirmDialog, Mark, PendingTag, PkConfirmDialog, useConfirmArmed } from './score-states';
-import { PlayerSheet } from './PlayerSheet';
+import { PlayerSheet, RosterGrid } from './PlayerSheet';
 import {
   EVENT_MAX,
   EVENT_RESERVE,
@@ -106,8 +107,16 @@ export interface ScorePadProps {
   takeoverOffered: boolean;
   /** 沒有本機 sid、控制權不是別人時，按鈕寫「接手記分」。沒傳沿用「其他裝置記分中」。 */
   takeoverSelf?: boolean;
+  /** 控制文件不存在＝沒有別的裝置在記；場次還沒讀到時不算。 */
+  takeoverFree?: boolean;
   onRecord?: (pick: ScorePick) => void | boolean;
   onUndo?: (seq: number) => void | boolean;
+  /** 復原被第二黃引用的第一黃：兩筆作廢走同一個原子群組（依建立序送出）。沒傳時沿用兩次 onUndo。 */
+  onUndoPair?: (firstSeq: number) => void | boolean;
+  /** 改判：作廢原事件（被引用的第一黃連第二黃）與新紀錄走同一個原子群組。沒傳時沿用 onUndo＋onRecord。 */
+  onAmend?: (seq: number, pick: ScorePick) => void | boolean;
+  /** 待送（還沒落地、也沒排作廢）的第二黃所指的第一黃 seq。復原、改判這些第一黃時照樣先確認（S2 審查 P3）。 */
+  pendingSecondRefs?: readonly number[];
   /** 停錶／繼續只改 clockBase，不改狀態與比分。 */
   onClock?: (clockBase: MatchClock) => void;
   onKickoff?: () => void;
@@ -134,6 +143,8 @@ export interface ScorePadProps {
   /** 正式頁：球隊暫停只回呼，不跑預覽倒數。 */
   timeoutControlled?: boolean;
   onTimeout?: (side: MatchSideName) => void;
+  /** CP-PO-07：換人（選單→選隊→換下→換上→確認）。沒傳不顯示選單項。 */
+  onSub?: (input: { side: MatchSideName; outPlId: string; inPlId: string }) => void | boolean;
   /** 有傳才改次數判斷。沒傳維持預覽的每半場 1 次。 */
   timeoutRule?: { enabled: boolean; per: 'half' | 'match'; count: number; seconds: number; stopsClock: boolean };
   timeoutUses?: { home: number; away: number };
@@ -170,7 +181,8 @@ export interface ScoreFeedRow {
   pending: boolean;
   text: string;
   label: string;
-  kind: 'goal' | 'yellow' | 'red' | 'pk';
+  /** sub＝換人（只顯示，不能點開復原或改判：Rules 不允許作廢換人）。 */
+  kind: 'goal' | 'yellow' | 'red' | 'pk' | 'sub';
   secondYellow: boolean;
   pkScored?: boolean;
   voided: boolean;
@@ -194,6 +206,12 @@ interface TimeoutUses {
   home: number;
   away: number;
 }
+
+type SubFlow =
+  | { step: 'team' }
+  | { step: 'out'; side: MatchSideName }
+  | { step: 'in'; side: MatchSideName; outId: string }
+  | { step: 'confirm'; side: MatchSideName; outId: string; inId: string };
 
 type ConfirmPair =
   | { mode: 'undo'; first: number; second: number }
@@ -361,6 +379,12 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   const [takeoverOpen, setTakeoverOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [timeoutOpen, setTimeoutOpen] = useState(false);
+  const [subFlow, setSubFlow] = useState<SubFlow | null>(null);
+  const subArmed = useConfirmArmed(subFlow?.step === 'confirm');
+  // 換人流程中被接手、改成讀分頁、進 PK 或離開進行中／中場：整個收掉，恢復後不會直接重開確認框（DeepSeek 初審 P2-2／P3-3）。
+  useEffect(() => {
+    if (cardOff || pk) setSubFlow(null);
+  }, [cardOff, pk]);
   const [teamTimeout, setTeamTimeout] = useState<TeamTimeoutState | null>(() => previewTimeout(props.timeoutView));
   const [hiddenStart, setHiddenStart] = useState<number | null>(null);
   const [timeoutUses, setTimeoutUses] = useState<TimeoutUses>({
@@ -573,9 +597,16 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
     : lineOpen;
   const openEventDoc = events.find((item) => item.seq === eventSeq) ?? null;
 
+  /** 已套用的第二黃回它的 seq；只有待送的回 -1（只用來跳確認框，送出交給 onUndoPair／onAmend）。 */
+  function secondOf(seq: number, grouped: boolean): number | null {
+    const applied = linkedSecondSeq(cards, seq);
+    if (applied != null) return applied;
+    return grouped && (props.pendingSecondRefs ?? []).includes(seq) ? -1 : null;
+  }
+
   function undoSeq(seq: number): void {
     if (blocked) return;
-    const second = linkedSecondSeq(cards, seq);
+    const second = secondOf(seq, props.onUndoPair != null);
     if (second != null) {
       setConfirmPair({ mode: 'undo', first: seq, second });
       return;
@@ -585,6 +616,13 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   }
 
   function finishAmend(first: number, pick: ScorePick, second?: number): void {
+    // 分開送時同一毫秒建立的幾筆會依隨機 op 排序，第一黃作廢可能排在第二黃作廢前面而被規則拒（S2）。
+    if (props.onAmend) {
+      props.onAmend(first, pick);
+      setConfirmPair(null);
+      setEventSeq(null);
+      return;
+    }
     if (second != null) {
       const secondOk = props.onUndo?.(second) !== false;
       if (!secondOk) {
@@ -656,7 +694,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       };
     }
     const second = openEventDoc.type === 'card' && openEventDoc.cardType === 'yellow'
-      ? linkedSecondSeq(cards, openEventDoc.seq)
+      ? secondOf(openEventDoc.seq, props.onAmend != null)
       : null;
     if (second != null) {
       setConfirmPair({ mode: 'amend', first: openEventDoc.seq, second, pick });
@@ -668,6 +706,12 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
   function runConfirm(): void {
     if (!confirmPair) return;
     if (confirmPair.mode === 'undo') {
+      if (props.onUndoPair) {
+        props.onUndoPair(confirmPair.first);
+        setConfirmPair(null);
+        setEventSeq(null);
+        return;
+      }
       const secondOk = props.onUndo?.(confirmPair.second) !== false;
       if (!secondOk) {
         setConfirmPair(null);
@@ -859,7 +903,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
             {props.feed.map((row) => (
               <li key={row.key} class={`s4-ev${row.voided ? ' s4-ev--void' : ''}${row.side ? ` s4-ev--${row.side}` : ''}`}>
                 <Mark kind={row.kind} second={row.secondYellow} scored={row.pkScored} />
-                {row.pending || row.voided || !phaseOpen ? (
+                {row.pending || row.voided || !phaseOpen || row.kind === 'sub' ? (
                   <>
                     <div class="s4-ev__main">{row.text}</div>
                     <span class="s4-sr">{row.label}</span>
@@ -923,7 +967,8 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       {reserved ? <p class="s4-banner s4-banner--block" role="status">{LIVE_COPY.atCap}</p> : null}
       {takeoverOffered ? (
         <Button disabled={readerOff} onClick={() => setTakeoverOpen(true)}>
-          {props.takeoverSelf ? LIVE_COPY.takeoverAction : LIVE_COPY.takeoverEntry}
+          {/* 沒有任何裝置在記：入口鈕與框內確認鈕同一句「開始記分」（顧問 §3.791 第 7a 題）。 */}
+          {props.takeoverFree ? LIVE_COPY.takeoverFreeAction : props.takeoverSelf ? LIVE_COPY.takeoverAction : LIVE_COPY.takeoverEntry}
         </Button>
       ) : null}
     </div>
@@ -1074,6 +1119,18 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
                     {LIVE_COPY.teamTimeout}
                   </Button>
                 ) : null}
+                {props.onSub && (phase === 'play' || phase === 'ht') && !pk ? (
+                  <Button
+                    variant="ghost"
+                    disabled={cardOff}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setSubFlow({ step: 'team' });
+                    }}
+                  >
+                    {LIVE_COPY.sub}
+                  </Button>
+                ) : null}
                 {props.onLeave ? (
                   <Button
                     variant="ghost"
@@ -1096,6 +1153,72 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       ) : null}
     </div>
   );
+
+  // CP-PO-07 換人：選隊 → 換下 → 換上 → 確認（換人不能作廢，送出前一定確認）。比賽狀態變了（不在進行中／中場、停用）就收掉。
+  function subSheet(flow: SubFlow): JSX.Element | null {
+    if (cardOff || pk) return null;
+    const close = () => setSubFlow(null);
+    if (flow.step === 'team') {
+      return (
+        <BottomSheet open class="s4-sheet d2-panel" title={LIVE_COPY.sub} onClose={close}>
+          <div class="s4-timeout-picks">
+            <Button onClick={() => setSubFlow({ step: 'out', side: 'home' })}>{match.home.name}</Button>
+            <Button onClick={() => setSubFlow({ step: 'out', side: 'away' })}>{match.away.name}</Button>
+          </div>
+        </BottomSheet>
+      );
+    }
+    const roster = flow.side === 'away' ? awayRoster : homeRoster;
+    const team = sideName(flow.side);
+    if (flow.step === 'out' || flow.step === 'in') {
+      const list = flow.step === 'in' ? roster.filter((player) => player.id !== flow.outId) : roster;
+      const word = flow.step === 'out' ? LIVE_COPY.subOut : LIVE_COPY.subIn;
+      return (
+        <BottomSheet
+          open
+          class={`s4-sheet${list.length > 8 ? ' s4-sheet--long' : ''} d2-panel s4-sheet--${flow.side}`}
+          title={`${team}・${word}`}
+          onClose={close}
+        >
+          {list.length === 0 ? <p class="s4-note">{LIVE_COPY.subNoRoster}</p> : null}
+          <div class="s4-pick">
+            <RosterGrid
+              roster={list}
+              onPick={(plId) => setSubFlow(flow.step === 'out'
+                ? { step: 'in', side: flow.side, outId: plId }
+                : { step: 'confirm', side: flow.side, outId: flow.outId, inId: plId })}
+            />
+          </div>
+        </BottomSheet>
+      );
+    }
+    const out = roster.find((player) => player.id === flow.outId);
+    const into = roster.find((player) => player.id === flow.inId);
+    return (
+      <Modal
+        open
+        class="s4-dialog d2-panel"
+        title={`${team} ${LIVE_COPY.sub}`}
+        onClose={close}
+        footer={(
+          <ConfirmFooter
+            armed={subArmed}
+            confirmLabel={LIVE_COPY.subConfirm}
+            cancelLabel={LIVE_COPY.takeoverLater}
+            confirmVariant="primary"
+            onConfirm={() => {
+              setSubFlow(null);
+              props.onSub?.({ side: flow.side, outPlId: flow.outId, inPlId: flow.inId });
+            }}
+            onCancel={close}
+          />
+        )}
+      >
+        <p class="s4-note">{subPairLine(out?.number ?? null, out?.displayName ?? '', into?.number ?? null, into?.displayName ?? '')}</p>
+        <p class="s4-note">{LIVE_COPY.subNote}</p>
+      </Modal>
+    );
+  }
 
   const alertBlock = alerts.length > 0 ? <div key="alerts" class="s4-alerts">{alerts}</div> : null;
   const homeTimeoutLeft = timeoutLeft('home');
@@ -1218,6 +1341,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
           </div>
         </BottomSheet>
       ) : null}
+      {subFlow ? subSheet(subFlow) : null}
       {flash ? <CardFlash {...flash} onClose={closeFlash} /> : null}
       <UnappliedSheet
         open={unappliedOpen}
@@ -1228,6 +1352,7 @@ export function ScorePad(props: ScorePadProps): JSX.Element {
       />
       <TakeoverDialog
         open={takeoverOpen}
+        free={props.takeoverFree === true}
         onTakeover={() => {
           setTakeoverOpen(false);
           props.onTakeover?.();

@@ -283,6 +283,23 @@ describe('createCompetitionsRepo（查詢條件與上限）', () => {
     expect(queries.at(-1)?.clauses[0]).toEqual({ kind: 'where', field: 'uid', op: '==', value: 'uid_me' });
   });
 
+  it('單筆 mine（CP-PO-08）：讀 cpMine/{uid}/items/{cid}，plIds 只收非空字串，沒文件回 null', async () => {
+    const { repo, docs, gets } = harness();
+    docs.set('cpMine/uid_me/items/cid_1', { cid: 'cid_1', roles: ['player'], plIds: ['pl_a', '', 3, null, 'pl_b'] });
+    await expect(repo.getMine('uid_me', 'cid_1')).resolves.toEqual({
+      id: 'cid_1', cid: 'cid_1', roles: ['player'], host: false, category: 'league', plIds: ['pl_a', 'pl_b'],
+    });
+    expect(gets.at(-1)).toBe('cpMine/uid_me/items/cid_1');
+    docs.set('cpMine/uid_me/items/cid_2', { roles: ['rep'], plIds: 'pl_a' });
+    const noPl = await repo.getMine('uid_me', 'cid_2');
+    expect(noPl && 'plIds' in noPl).toBe(false);
+    await expect(repo.getMine('uid_me', 'cid_none')).resolves.toBeNull();
+    const before = gets.length;
+    await expect(repo.getMine('uid_me', 'a/b')).resolves.toBeNull();
+    await expect(repo.getMine('', 'cid_1')).resolves.toBeNull();
+    expect(gets.length).toBe(before);
+  });
+
   it('我的賽事、開賽設定、測試員、staff', async () => {
     const { repo, docs, cols, queries, gets } = harness();
     cols.set('cpMine/uid_me/items', [
@@ -405,6 +422,49 @@ describe('createCompetitionsRepo（查詢條件與上限）', () => {
       uid: 'uid_me',
       roles: [],
     });
+  });
+
+  // CP-DETAIL-SPEED d1：詳情頁把 getStaff 與 getStaffAssignment 合成一次讀。兩種形狀都要和單讀方法一模一樣，
+  // 否則計分員會看不到自己的場次、主辦會看不到管理區。
+  it('getStaffWithAssignment：同一份 staff 文件只 getDoc 一次，兩種形狀分別等於 getStaff 與 getStaffAssignment', async () => {
+    const shapes: Record<string, unknown>[] = [
+      { roles: ['coHost', 'creator', 'referee'], matchIds: [], expiresAt: null },
+      { roles: ['scorer', 'scorer', 'host'], matchIds: ['mt_a', 'mt_a', 'mt_b'], expiresAt: 50, memberNo: 3 },
+      { roles: ['host'], memberNo: 1 },
+      { roles: ['scorer'], memberNo: Number.NaN, matchIds: ['mt_1', 7] },
+      { roles: 'host' },
+      {},
+    ];
+    for (const data of shapes) {
+      const { repo, docs, gets } = harness();
+      docs.set('competitions/cid_1/staff/uid_me', data);
+      const staff = await repo.getStaff('cid_1', 'uid_me');
+      const assignment = await repo.getStaffAssignment('cid_1', 'uid_me');
+      gets.length = 0;
+      await expect(repo.getStaffWithAssignment('cid_1', 'uid_me')).resolves.toEqual({ staff, assignment });
+      expect(gets).toEqual(['competitions/cid_1/staff/uid_me']);
+    }
+
+    // 鎖住記分員那條：指派要保留 scorer 與場次（staff 形狀本來就不收記分角色）。
+    const { repo, docs } = harness();
+    docs.set('competitions/cid_1/staff/uid_me', { roles: ['scorer'], matchIds: ['mt_1', 'mt_2'], expiresAt: null });
+    await expect(repo.getStaffWithAssignment('cid_1', 'uid_me')).resolves.toEqual({
+      staff: { uid: 'uid_me', roles: [] },
+      assignment: { uid: 'uid_me', roles: ['scorer'], matchIds: ['mt_1', 'mt_2'], expiresAt: null },
+    });
+  });
+
+  it('getStaffWithAssignment：沒有文件兩者都是 null；id 不安全不發請求', async () => {
+    const { repo, gets, dbHits } = harness();
+    await expect(repo.getStaffWithAssignment('cid_1', 'uid_none')).resolves.toEqual({ staff: null, assignment: null });
+    expect(gets).toEqual(['competitions/cid_1/staff/uid_none']);
+    gets.length = 0;
+    const before = dbHits();
+    for (const [cid, uid] of [['a/b', 'uid_me'], ['cid_1', '..'], ['', 'uid_me'], ['cid_1', '.'], ['cid_1', 'x/y']]) {
+      await expect(repo.getStaffWithAssignment(cid!, uid!)).resolves.toEqual({ staff: null, assignment: null });
+    }
+    expect(gets).toEqual([]);
+    expect(dbHits()).toBe(before);
   });
 
   it('id 含斜線或為 . / .. 時不查詢', async () => {
