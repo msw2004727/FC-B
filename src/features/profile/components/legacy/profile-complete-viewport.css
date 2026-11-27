@@ -8,6 +8,11 @@
 #first-login-modal.modal.profile-complete-modal[data-vv] {
   max-height: min(calc(var(--fl-vv-h, 100vh) * .88), 720px);
 }
+/* 2026-11-27 站長：鍵盤開著時彈窗撐滿可見區（原本只用 88%、上方露背景），聚焦欄位由元件捲到上緣。 */
+#first-login-modal.modal.profile-complete-modal[data-vv][data-kb] {
+  max-height: var(--fl-vv-h, 100vh);
+  height: var(--fl-vv-h, 100vh);
+}
 @media (max-width: 679px) {
   #first-login-modal.modal.profile-complete-modal[data-vv] { bottom: var(--fl-vv-bottom, 0px); }
 }

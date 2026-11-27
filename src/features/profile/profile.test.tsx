@@ -303,14 +303,14 @@ async function fillFirstLogin(email = 'a@example.com'): Promise<void> {
   await setSelectById('fl-birthday-y', '1999');
   await setSelectById('fl-birthday-m', '03');
   await setSelectById('fl-birthday-d', '04');
-  await setInputById('fl-region-input', '臺中市');
+  await setSelectById('fl-region', '台中市');
   await setInputById('fl-email', email);
 
   expect((document.getElementById('fl-gender') as HTMLSelectElement).value).toBe('女');
   expect((document.getElementById('fl-birthday-y') as HTMLSelectElement).value).toBe('1999');
   expect((document.getElementById('fl-birthday-m') as HTMLSelectElement).value).toBe('03');
   expect((document.getElementById('fl-birthday-d') as HTMLSelectElement).value).toBe('04');
-  expect((document.getElementById('fl-region-input') as HTMLInputElement).value).toBe('臺中市');
+  expect((document.getElementById('fl-region') as HTMLSelectElement).value).toBe('台中市');
   expect((document.getElementById('fl-email') as HTMLInputElement).value).toBe(email);
 }
 
@@ -597,12 +597,7 @@ describe('我的個人頁（A 版結構）', () => {
     await selectValue('生日月', '6');
     await selectValue('生日日', '15');
 
-    const regionInput = document.getElementById('profile-edit-region') as HTMLInputElement;
-    fireEvent.input(regionInput, { target: { value: '台中' } });
-    const regionItem = document.querySelector('#profile-region-list [data-region="台中市"]') as HTMLElement;
-    expect(regionItem).toBeTruthy();
-    fireEvent.click(regionItem);
-    expect(regionInput.value).toBe('台中市');
+    await selectValue('地區', '台中市');
 
     const phoneInput = document.getElementById('profile-edit-phone') as HTMLInputElement;
     fireEvent.input(phoneInput, { target: { value: '0911-222-333' } });
@@ -639,35 +634,21 @@ describe('我的個人頁（A 版結構）', () => {
     expect(updateProfileFields).toHaveBeenCalledTimes(1);
   });
 
-  it('U-042：地區清單可用鍵盤選擇並以 Escape 收起（Escape 不收合展開區）', async () => {
+  // 2026-11-27 站長：地區改成和性別一樣的下拉（取代 U-042 打字建議清單＋鍵盤選擇）。
+  it('地區是下拉：請選擇＋22 縣市（台中第一、六都在前），選了即填入、展開區不收合', async () => {
     render(<ProfilePage />);
     expect(await screen.findByText('王小明')).toBeTruthy();
     fireEvent.click(quickBtn('info'));
     fireEvent.click(document.getElementById('profile-edit-btn') as HTMLElement);
 
-    const regionInput = document.getElementById('profile-edit-region') as HTMLInputElement;
-    fireEvent.input(regionInput, { target: { value: '台' } });
-    await waitFor(() => {
-      expect(document.querySelectorAll('#profile-region-list [data-region]').length).toBeGreaterThan(0);
-    });
-
-    fireEvent.keyDown(regionInput, { key: 'Escape' });
-    await waitFor(() => {
-      expect(document.querySelectorAll('#profile-region-list [data-region]').length).toBe(0);
-    });
-    // 輸入框內的 Escape 只收地區清單，「我的資料」展開區與編輯中的內容保留。
+    const region = document.getElementById('profile-edit-region') as HTMLSelectElement;
+    expect(region.tagName).toBe('SELECT');
+    const values = Array.from(region.options).map((o) => o.value);
+    expect(values.slice(0, 7)).toEqual(['', '台中市', '新北市', '高雄市', '台北市', '桃園市', '台南市']);
+    expect(values).not.toContain('其他');
+    await selectValue('地區', '高雄市');
+    expect(region.value).toBe('高雄市');
     expect(quickBtn('info').getAttribute('aria-expanded')).toBe('true');
-    expect(document.getElementById('profile-edit-region')).toBe(regionInput);
-
-    fireEvent.input(regionInput, { target: { value: '台' } });
-    await waitFor(() => {
-      expect(document.querySelectorAll('#profile-region-list [data-region]').length).toBeGreaterThan(0);
-    });
-    const firstOption = document.querySelector('#profile-region-list [data-region]') as HTMLElement;
-    const firstName = firstOption.getAttribute('data-region')!;
-    fireEvent.keyDown(regionInput, { key: 'ArrowDown' });
-    fireEvent.keyDown(regionInput, { key: 'Enter' });
-    expect(regionInput.value).toBe(firstName);
   });
 
   // 測試同步更新：11-06 個人頁改版，「我的資料」標題列改成原生 button（Enter／Space 由瀏覽器觸發 click）。
@@ -1034,7 +1015,7 @@ describe('我的個人頁（A 版結構）', () => {
     expect((document.getElementById('fl-birthday-y') as HTMLSelectElement).value).toBe('1999');
     expect((document.getElementById('fl-birthday-m') as HTMLSelectElement).value).toBe('03');
     expect((document.getElementById('fl-birthday-d') as HTMLSelectElement).value).toBe('04');
-    expect((document.getElementById('fl-region-input') as HTMLInputElement).value).toBe('臺中市');
+    expect((document.getElementById('fl-region') as HTMLSelectElement).value).toBe('台中市');
     expect((document.getElementById('fl-email') as HTMLInputElement).value).toBe('a@example.com');
     expect((document.getElementById('fl-legal-consent') as HTMLInputElement).checked).toBe(true);
 
@@ -1047,7 +1028,7 @@ describe('我的個人頁（A 版結構）', () => {
     const expected = {
       gender: '女',
       birthday: '1999/03/04',
-      region: '臺中市',
+      region: '台中市',
       email: 'a@example.com',
       legalConsent: true,
     };
@@ -1084,7 +1065,7 @@ describe('我的個人頁（A 版結構）', () => {
     expect(saveFirstLoginProfile).toHaveBeenCalledWith('U-me', {
       gender: '女',
       birthday: '1999/03/04',
-      region: '臺中市',
+      region: '台中市',
       legalConsent: true,
     });
     await waitFor(() => expect(document.getElementById('first-login-modal')).toBeNull());
@@ -1107,7 +1088,7 @@ describe('我的個人頁（A 版結構）', () => {
     await waitFor(() => expect(saveFirstLoginProfile).toHaveBeenCalledWith('U-me', {
       gender: '女',
       birthday: '1999/02/28',
-      region: '臺中市',
+      region: '台中市',
       legalConsent: true,
     }));
   });
