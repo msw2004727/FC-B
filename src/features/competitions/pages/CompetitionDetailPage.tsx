@@ -390,7 +390,7 @@ function DetailView({ env, cid }: { env: CpInjectedEnv; cid: string }): JSX.Elem
       // 主辦在別頁核准後，要再進一次詳情才看得到新隊徽。
       env.repo.invalidateCrests(cid);
       return loadDetail(env, cid, mineCache.current);
-    });
+    }, undefined, { authSettled: !env.actor.authPending });
     void run.promise.then((next) => {
       if (seq !== loadSeq.current) return;
       applyDetail(next, setBundle, setSummary, setStandings, setLoadState, setMyAssignment);

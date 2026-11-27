@@ -96,3 +96,8 @@ export function getCpFirebase(): Promise<CpFirebase> {
   }
   return pending;
 }
+
+/** 這一頁是否已開始建立 asia-main 實例（唯讀，不觸發建立）。 */
+export function isCpFirebaseStarted(): boolean {
+  return pending !== null;
+}

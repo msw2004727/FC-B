@@ -152,7 +152,7 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
     // 換帳號：新資料回來前先清掉上一個帳號的「我的名單列」，不讓退出鍵掛在別人的列上（L-43）
     setBundle((prev) => (prev?.myPlIds?.length ? { ...prev, myPlIds: [] } : prev));
     const seq = ++loadSeq.current;
-    const run = runFirstLoad('roster', () => loadRoster(env, cid, enId));
+    const run = runFirstLoad('roster', () => loadRoster(env, cid, enId), undefined, { authSettled: !env.actor.authPending });
     void run.promise.then((next) => {
       if (seq !== loadSeq.current) return;
       setBundle(next);
