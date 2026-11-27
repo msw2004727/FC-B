@@ -126,6 +126,27 @@ describe('LegacyFirstLoginModal（M-130 照 A index.html#first-login-modal）', 
     expect(saveFirstLoginProfile).not.toHaveBeenCalled();
   });
 
+  it('點地區欄就展開全部縣市：六都在前、台中第一，其餘照人口，最後是其他（站長 11-27）', async () => {
+    renderModal();
+    act(() => (document.getElementById('fl-region-input') as HTMLInputElement).focus());
+    await waitFor(() => expect(document.querySelectorAll('#fl-region-list [data-region]').length).toBe(23));
+    const names = [...document.querySelectorAll('#fl-region-list [data-region]')].map((el) => el.getAttribute('data-region'));
+    expect(names.slice(0, 7)).toEqual(['台中市', '新北市', '高雄市', '台北市', '桃園市', '台南市', '彰化縣']);
+    expect(names.slice(-2)).toEqual(['連江縣', '其他']);
+  });
+
+  it('已填完整縣市時點欄位仍展開全部方便改選；打字才篩選', async () => {
+    renderModal({ initial: { gender: '', birthday: '', region: '台中市', email: '' } });
+    const input = document.getElementById('fl-region-input') as HTMLInputElement;
+    fireEvent.click(input);
+    await waitFor(() => expect(document.querySelectorAll('#fl-region-list [data-region]').length).toBe(23));
+    fireEvent.input(input, { target: { value: '高' } });
+    await waitFor(() => {
+      const names = [...document.querySelectorAll('#fl-region-list [data-region]')].map((el) => el.getAttribute('data-region'));
+      expect(names).toEqual(['高雄市']);
+    });
+  });
+
   it('輸入「台」時出現縣市建議選項（照 A flRenderList）', async () => {
     renderModal();
     const input = document.getElementById('fl-region-input') as HTMLInputElement;

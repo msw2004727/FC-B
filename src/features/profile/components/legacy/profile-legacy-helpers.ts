@@ -17,9 +17,19 @@ export const TW_REGIONS: readonly string[] = [
 
 export const TW_REGIONS_WITH_OTHER: readonly string[] = [...TW_REGIONS, '其他'];
 
-/** A `js/config.js#filterTwRegions`：字元依序出現模糊比對，臺/台互通。 */
+/**
+ * 地區清單顯示順序（2026-11-27 站長）：六都在前、台中第一，其餘照人口（內政部 2026 年 10 月底）。
+ * 只影響個人頁地區清單的排列；驗證仍用上面 TW_REGIONS（照 A 原順序）。
+ */
+export const TW_REGIONS_PICK_ORDER: readonly string[] = [
+  '台中市', '新北市', '高雄市', '台北市', '桃園市', '台南市',
+  '彰化縣', '屏東縣', '雲林縣', '新竹縣', '苗栗縣', '嘉義縣', '南投縣', '新竹市',
+  '宜蘭縣', '基隆市', '花蓮縣', '嘉義市', '台東縣', '金門縣', '澎湖縣', '連江縣',
+];
+
+/** A `js/config.js#filterTwRegions`：字元依序出現模糊比對，臺/台互通。清單照 TW_REGIONS_PICK_ORDER 排。 */
 export function filterTwRegions(keyword: string, includeOther = true): string[] {
-  const list = includeOther === false ? TW_REGIONS : TW_REGIONS_WITH_OTHER;
+  const list = includeOther === false ? TW_REGIONS_PICK_ORDER : [...TW_REGIONS_PICK_ORDER, '其他'];
   const q = String(keyword || '').trim().replace(/臺/g, '台').toLowerCase();
   if (!q) return list.slice();
   return list.filter((name) => {
@@ -39,6 +49,13 @@ export function filterTwRegions(keyword: string, includeOther = true): string[] 
     }
     return true;
   });
+}
+
+/** 點地區欄時要展開的選項：空白或已是完整縣市名（方便直接改選）給全部，打到一半照字篩選。 */
+export function regionOptionsOnOpen(value: string): string[] {
+  const all = filterTwRegions('', true);
+  const q = String(value || '').trim().replace(/臺/g, '台');
+  return !q || all.includes(q) ? all : filterTwRegions(q, true);
 }
 
 /** A `profile-core.js#_calcLevelFromExp`。 */

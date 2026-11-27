@@ -20,6 +20,7 @@ import {
   filterTwRegions,
   formatCreatedAt,
   getUserTeamEntries,
+  regionOptionsOnOpen,
 } from './profile-legacy-helpers';
 import { ProfileInfoButton } from './ProfileInfoButton';
 
@@ -177,6 +178,9 @@ export function LegacyProfileInfoCard({
       clearTimeout(blurTimerRef.current);
       blurTimerRef.current = null;
     }
+    // 2026-11-27 站長：點欄位就展開縣市清單，讓用戶一開始就能用點選；輸入時再篩選。
+    setRegionMatches(regionOptionsOnOpen(region));
+    setRegionHighlight(-1);
   }
 
   async function handleSave(): Promise<void> {
@@ -449,6 +453,7 @@ export function LegacyProfileInfoCard({
               onKeyDown={handleRegionKeyDown}
               onBlur={handleRegionBlur}
               onFocus={handleRegionFocus}
+              onClick={handleRegionFocus}
             />
           </div>
           <div

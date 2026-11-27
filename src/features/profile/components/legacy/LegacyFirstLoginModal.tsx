@@ -10,7 +10,7 @@ import { toast } from '@/ui/Toast';
 import { ActionRingButton, useActionRingControl } from '@/ui/action-ring';
 
 import { saveFirstLoginProfile, type FirstLoginInput } from '../../data/profile-writes';
-import { TW_REGIONS, filterTwRegions } from './profile-legacy-helpers';
+import { TW_REGIONS, filterTwRegions, regionOptionsOnOpen } from './profile-legacy-helpers';
 import './profile-modal-glass.css';
 import './profile-complete-viewport.css';
 
@@ -276,7 +276,10 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
       window.clearTimeout(regionBlurTimerRef.current);
       regionBlurTimerRef.current = null;
     }
-    if (regionMatches.length > 0) setRegionOpen(true);
+    // 2026-11-27 站長：點欄位就展開縣市清單，讓用戶一開始就能用點選；輸入時再篩選。
+    setRegionMatches(regionOptionsOnOpen(region));
+    setRegionOpen(true);
+    setRegionActiveIndex(-1);
   }
 
   function handleRegionBlur(): void {
@@ -600,6 +603,7 @@ export function LegacyFirstLoginModal(props: LegacyFirstLoginModalProps): JSX.El
                 }
                 onInput={(event) => handleRegionInput(event.currentTarget.value)}
                 onFocus={handleRegionFocus}
+                onClick={handleRegionFocus}
                 onBlur={handleRegionBlur}
                 onKeyDown={handleRegionKeyDown}
               />
