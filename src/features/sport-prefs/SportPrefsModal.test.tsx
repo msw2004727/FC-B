@@ -139,7 +139,7 @@ describe('SportPrefsModal', () => {
     await screen.findByText('已儲存');
     const pushBtn = await screen.findByRole('button', { name: '開啟通知' });
     fireEvent.click(pushBtn);
-    expect(mocks.routeSpy).toHaveBeenCalledWith('/profile?open=line');
+    expect(mocks.routeSpy).toHaveBeenCalledWith('/profile?open=line&focus=push');
     expect(onClose).toHaveBeenCalled();
   });
 

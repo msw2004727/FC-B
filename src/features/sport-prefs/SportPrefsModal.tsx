@@ -135,7 +135,8 @@ export function SportPrefsModal({ owned, onClose, onSaved, onSeen }: SportPrefsM
 
   const onPush = (): void => {
     close();
-    route('/profile?open=line');
+    // focus=push：個人頁展開通知面板後捲到「手機／電腦通知」列（profile/components/legacy/push-focus.ts；2026-11-27）。
+    route('/profile?open=line&focus=push');
   };
 
   const pushOn = step === 'saved' ? devicePushOn() : false;

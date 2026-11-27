@@ -44,6 +44,7 @@ import {
 import { LegacyCompanionsCard } from '../components/legacy/LegacyCompanionsCard';
 import { LegacyActivityRecordsCard } from '../components/legacy/LegacyActivityRecordsCard';
 import { ProfileQuickBar, type QuickItem } from '../components/legacy/ProfileQuickBar';
+import { focusPushRow, hasPushFocus } from '../components/legacy/push-focus';
 import { readLineNotify } from '../data/line-notify-settings';
 // A 的個人頁活動卡沿用活動列表的 tl-event-* 樣式（A 全站載入 activity.css）。
 import '@/features/events/legacy/activity.css';
@@ -127,6 +128,9 @@ function ProfileContent({
   const relatedLoading = related.state.status === 'loading';
   const relatedCounts = related.state.status === 'ready' ? related.state.data : null;
   const lineBound = readLineNotify(profile).bound;
+  // 九宮格「開啟通知」帶 focus=push：捲到「手機／電腦通知」列（2026-11-27）。
+  const pushFocus = hasPushFocus(location.search);
+  useEffect(() => (pushFocus ? focusPushRow() : undefined), [pushFocus]);
 
   // 頁首 summary 有兩個來源：掛載時的讀取、卡片刷新後交來的較新值。兩者共用卡片同一套發出序號保護，
   // 掛載讀取比刷新慢完成時，舊值不得蓋掉較新的頁首數字。
