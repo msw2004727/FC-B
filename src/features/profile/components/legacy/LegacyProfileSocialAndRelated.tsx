@@ -400,10 +400,13 @@ export function useRelatedActivitiesData(
     };
   }, [cacheAllowed, reloadCount, serverState.status, uid]);
 
+  // PROFILE-SPEED：快取只墊「這個 uid 的第一次伺服器讀取」；伺服器結果出現過之後（含 reload、retry 又回到 loading）不再拿快取蓋掉較新的畫面（MiMo A1）。
+  const settledUidRef = useRef<string | null>(null);
+  if (serverState.status !== 'loading') settledUidRef.current = uid;
   let state: Remote<RelatedActivities>;
   if (serverState.status !== 'loading') {
     state = serverState;
-  } else if (cache && cache.uid === uid) {
+  } else if (cache && cache.uid === uid && reloadCount === 0 && settledUidRef.current !== uid) {
     state = { status: 'ready', data: cache.data };
   } else {
     state = { status: 'loading' };

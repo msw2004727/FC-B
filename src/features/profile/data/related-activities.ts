@@ -479,6 +479,10 @@ async function computeRelatedActivities(
     .map((r) => (typeof r.eventId === 'string' ? r.eventId : ''))
     .filter((v) => !!v && lookupKeys.has(v));
   const eventsById = await loadEventsByIds(regEventIds, source);
+  // PROFILE-SPEED：快取裡少了任何一場有效報名的活動，就當整體沒命中（回 null 讓畫面等伺服器），不先畫出偏少的筆數（MiMo B1）。
+  if (source === 'cache' && new Set(regEventIds).size > eventsById.size) {
+    throw new Error('related-activities: cache incomplete');
+  }
 
   const registered = buildRegisteredActivities(registrations, eventsById, allowedUids, now);
   const hosted = buildHostedActivities(hostedCandidates, allowedUids, now);

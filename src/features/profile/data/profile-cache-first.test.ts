@@ -239,6 +239,24 @@ describe('loadRelatedActivitiesFromCache', () => {
     store.cacheFail = true;
     expect(await loadRelatedActivitiesFromCache('U1', NOW)).toBeNull();
   });
+
+  it('快取少了有效報名的活動：當整體沒命中回 null，不畫偏少的筆數（PROFILE-SPEED，MiMo B1）', async () => {
+    // 報名仍在快取，但活動 e2 不在：活動查詢（documentId in）回空
+    getDocsFromCacheMock.mockImplementation(async (q: never) => {
+      const qq = q as { constraints?: Array<{ field: unknown }> };
+      if ((qq.constraints ?? []).some((w) => w.field === DOC_ID)) return { docs: [] } as never;
+      return runQuery(q, true) as never;
+    });
+    expect(await loadRelatedActivitiesFromCache('U1', NOW)).toBeNull();
+    // 伺服器版同樣情境（活動真的不見）照舊略過該筆、不丟錯
+    getDocsMock.mockImplementation(async (q: never) => {
+      const qq = q as { constraints?: Array<{ field: unknown }> };
+      if ((qq.constraints ?? []).some((w) => w.field === DOC_ID)) return { docs: [] } as never;
+      return runQuery(q, false) as never;
+    });
+    const server = await loadRelatedActivities('U1', NOW);
+    expect(server.counts.registered).toBe(0);
+  });
 });
 
 describe('loadRelatedActivities（server）', () => {

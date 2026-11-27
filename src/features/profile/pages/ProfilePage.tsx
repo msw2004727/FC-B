@@ -182,7 +182,6 @@ function ProfileContent({
   viewer,
   related,
   summaryTask,
-  fresh,
   serverProfile,
 }: {
   uid: string;
@@ -190,7 +189,7 @@ function ProfileContent({
   viewer: ViewerView;
   related: RelatedActivitiesData;
   summaryTask: Promise<UserAttendanceSummary | null>;
-  fresh: boolean;
+  /** PROFILE-SPEED：伺服器值（ready 才有）；null＝畫面目前是本機快取。 */
   serverProfile: UserProfile | null;
 }): JSX.Element {
   const [profile, setProfile] = useState(initial);
@@ -199,36 +198,41 @@ function ProfileContent({
   const [editor, setEditor] = useState<Editor>(null);
   const [pendingEditor, setPendingEditor] = useState<Editor>(null);
   const [summary, setSummary] = useState<UserAttendanceSummary | null>(null);
+  // PROFILE-SPEED：editable＝profile 狀態已是伺服器值。不能直接用「伺服器值已到」：它變 true 的那一次 render，profile 還是快取物件，
+  // 用它開閘會讓編輯卡拿快取值當初值、俱樂部申請先用快取 profile 讀一次再因換物件重讀（MiMo A5）。沒有快取時一掛載就是伺服器值。
+  const [editable, setEditable] = useState(() => serverProfile !== null && serverProfile === initial);
 
   const t = useT();
   // PROFILE-SPEED：首次登入提示要用伺服器值決定，不得用快取資料決定要不要跳。
-  const firstOpen = fresh && !dismissed && needsFirstLogin(profile);
+  const firstOpen = editable && !dismissed && needsFirstLogin(profile);
   const canEditIdentity = viewer.hasPermission('profile.secondary_identity');
 
-  // PROFILE-SPEED：伺服器值到了才換新；下面閘門讓伺服器值到之前不可能有本地編輯，不會覆蓋使用者改的內容。
+  // 伺服器值到了才換新；閘門讓伺服器值到之前不可能有本地編輯，不會覆蓋使用者改的內容。setProfile 與 setEditable 同一批更新。
   useEffect(() => {
-    if (serverProfile) setProfile(serverProfile);
+    if (!serverProfile) return;
+    setProfile(serverProfile);
+    setEditable(true);
   }, [serverProfile]);
 
-  // PROFILE-SPEED：伺服器值到之前按下的編輯先記著，fresh 後才真的打開（失敗一直不 fresh 就一直不開）。
+  // PROFILE-SPEED：伺服器值到之前按下的編輯先記著，editable 後才真的打開（伺服器一直失敗就一直不開）。
   useEffect(() => {
-    if (fresh && pendingEditor) {
+    if (editable && pendingEditor) {
       setEditor(pendingEditor);
       setPendingEditor(null);
     }
-  }, [fresh, pendingEditor]);
+  }, [editable, pendingEditor]);
 
   // 11-06 改版：徽章與「申請」是否顯示要在收合時就知道，資料由頁面讀一次、展開區共用（讀取次數同改版前）。
   // related 由外層與個人資料同時開始讀（顧問 §3.233 ③甲）。
   // PROFILE-SPEED：伺服器值到才讀申請，避免 profile 換新造成重讀一次收件匣。
-  const applications = useMyTeamApplications(uid, profile, fresh);
+  const applications = useMyTeamApplications(uid, profile, editable);
   const relatedLoading = related.state.status === 'loading';
   const relatedCounts = related.state.status === 'ready' ? related.state.data : null;
   const lineBound = readLineNotify(profile).bound;
   // 九宮格「開啟通知」帶 focus=push：捲到「手機／電腦通知」列（2026-11-27）。
   const pushFocus = hasPushFocus(location.search);
   // PROFILE-SPEED：伺服器值到才捲動；快取階段先不動作。
-  useEffect(() => (pushFocus && fresh ? focusPushRow() : undefined), [pushFocus, fresh]);
+  useEffect(() => (pushFocus && editable ? focusPushRow() : undefined), [pushFocus, editable]);
 
   // 頁首 summary 有兩個來源：掛載時的讀取、卡片刷新後交來的較新值。兩者共用卡片同一套發出序號保護，
   // 掛載讀取比刷新慢完成時，舊值不得蓋掉較新的頁首數字。
@@ -292,8 +296,8 @@ function ProfileContent({
       icon: 'info',
       label: t('profile.quick.info'),
       ariaLabel: t('profile.quick.infoName'),
-      // PROFILE-SPEED：伺服器值到之前按了先記住，不展開；fresh 後自動展開。
-      deferred: !fresh,
+      // PROFILE-SPEED：伺服器值到之前按了先記住，不展開；editable 後自動展開。
+      deferred: !editable,
       render: () => <LegacyProfileInfoCard embedded uid={uid} profile={profile} onSaved={saved} />,
     },
     ...(canEditIdentity
@@ -302,7 +306,7 @@ function ProfileContent({
           icon: 'id2',
           label: t('profile.quick.id2'),
           ariaLabel: t('profile.quick.id2Name'),
-          deferred: !fresh,
+          deferred: !editable,
           render: () => <LegacyIdentityCard embedded uid={uid} profile={profile} viewer={viewer} />,
         } satisfies QuickItem]
       : []),
@@ -314,7 +318,7 @@ function ProfileContent({
         name: t('profile.quick.lineName'),
       }),
       dot: lineBound,
-      deferred: !fresh,
+      deferred: !editable,
       render: () => (
         <LegacyLineNotifyCard
           embedded
@@ -342,7 +346,7 @@ function ProfileContent({
       icon: 'mate',
       label: t('profile.quick.mate'),
       ariaLabel: t('profile.quick.mateName'),
-      deferred: !fresh,
+      deferred: !editable,
       render: () => <LegacyCompanionsCard embedded uid={uid} profile={profile} onSaved={saved} />,
     },
     // 照 A `_showApplicationsCard`：有申請才留。讀取中（null）不畫鈕：多數使用者沒有申請，
@@ -372,8 +376,8 @@ function ProfileContent({
       <LegacySocialGrid
         profile={profile}
         onEdit={(platform) => {
-          // PROFILE-SPEED：伺服器值到之前先記住，fresh 後才真的打開。
-          if (fresh) {
+          // PROFILE-SPEED：伺服器值到之前先記住，editable 後才真的打開。
+          if (editable) {
             setEditor({ kind: 'social', platform });
           } else {
             setPendingEditor({ kind: 'social', platform });
@@ -384,7 +388,7 @@ function ProfileContent({
       <ProfileQuickBar
         items={quickItems}
         groupLabel={t('profile.quick.group')}
-        initialOpenKey={fresh ? new URLSearchParams(location.search).get('open') : null}
+        initialOpenKey={editable ? new URLSearchParams(location.search).get('open') : null}
       />
 
       {SHOW_FAVORITES && (
@@ -464,7 +468,6 @@ function AuthenticatedProfile({
         viewer={viewer}
         related={related}
         summaryTask={summaryTask}
-        fresh={fresh}
         serverProfile={fresh ? state.data : null}
       />
     </>

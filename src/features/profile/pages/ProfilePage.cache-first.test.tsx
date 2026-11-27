@@ -341,10 +341,17 @@ describe('ProfilePage 快取先畫、伺服器後到換新（PROFILE-SPEED F2）
     // 整頁掛載後只發一次 summary；卡片沿用頁面的 summaryTask 不再多讀。
     expect(summarySpy).toHaveBeenCalledTimes(1);
 
-    // useMyTeamApplications：fresh 前 enabled=false（不讀），fresh 後 enabled=true。
+    // useMyTeamApplications：伺服器值到前 enabled=false（不讀），之後 enabled=true。
     const calls = useMyTeamApplicationsSpy.mock.calls as unknown[][];
     expect(calls.some((c) => c[2] === false)).toBe(true);
     expect(calls[calls.length - 1]?.[2]).toBe(true);
+    // PROFILE-SPEED（MiMo A5）：enabled=true 的每一次都必須已是伺服器值的 profile，
+    // 否則 hook 會先用快取 profile 讀一次、換物件後再讀一次（收件匣多讀）。
+    const enabledCalls = calls.filter((c) => c[2] === true);
+    expect(enabledCalls.length).toBeGreaterThan(0);
+    const enabledProfiles = new Set(enabledCalls.map((c) => c[1]));
+    expect(enabledProfiles.size).toBe(1);
+    expect((enabledCalls[0]?.[1] as { displayName?: string }).displayName).toBe('小明');
   });
 
   it('第一次開（快取沒有）：先轉圈，伺服器回來才畫', async () => {
