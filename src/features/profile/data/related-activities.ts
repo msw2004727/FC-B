@@ -451,6 +451,48 @@ async function loadHostedCandidateEvents(
     .map((docId) => mapEventDoc(byDocId.get(docId) as QueryDocumentSnapshot<DocumentData>));
 }
 
+/** 每次伺服器讀取最多替幾場「查不到的活動」補一次單筆讀取（只有本機快取還不知道它不存在時才讀；之後快取記得就不再讀）。 */
+const CONFIRM_MISSING_MAX = 20;
+
+/** 本機快取是否「確知」這場活動不存在（伺服器單筆讀過且回不存在）。快取沒有紀錄、id 不合法或任何錯誤都回 false。 */
+async function isKnownMissingInCache(db: Firestore, id: string): Promise<boolean> {
+  if (!isQueryableDocId(id)) return false;
+  try {
+    const snap = await getDocFromCache(doc(db, eventsCollection, id));
+    return !snap.exists();
+  } catch {
+    return false;
+  }
+}
+
+async function allKnownMissingInCache(ids: readonly string[]): Promise<boolean> {
+  const firebase = await getFirebase();
+  const db = firebase.db as unknown as Firestore;
+  const flags = await Promise.all(ids.map((id) => isKnownMissingInCache(db, id)));
+  return flags.every(Boolean);
+}
+
+/**
+ * PROFILE-SPEED（顧問 §3.935）：伺服器的 `documentId() in` 查詢對查不到的 id 不會在本機快取留下「不存在」紀錄，
+ * 改用單筆 getDoc 讀一次，SDK 會把「不存在」存進持久化快取（已實測關掉重開仍在）。
+ * 快取已確知不存在的跳過（0 次讀取）；其餘最多 CONFIRM_MISSING_MAX 筆。失敗靜默，不影響畫面。
+ */
+async function confirmMissingEventsInCache(ids: readonly string[]): Promise<void> {
+  try {
+    const firebase = await getFirebase();
+    const db = firebase.db as unknown as Firestore;
+    const unknown: string[] = [];
+    for (const id of ids) {
+      if (unknown.length >= CONFIRM_MISSING_MAX) break;
+      if (!isQueryableDocId(id)) continue;
+      if (!(await isKnownMissingInCache(db, id))) unknown.push(id);
+    }
+    await Promise.all(unknown.map((id) => getDoc(doc(db, eventsCollection, id)).catch(() => null)));
+  } catch {
+    /* 只是替下次開頁鋪快取，失敗不處理 */
+  }
+}
+
 async function computeRelatedActivities(
   uid: string,
   now: number,
@@ -479,9 +521,16 @@ async function computeRelatedActivities(
     .map((r) => (typeof r.eventId === 'string' ? r.eventId : ''))
     .filter((v) => !!v && lookupKeys.has(v));
   const eventsById = await loadEventsByIds(regEventIds, source);
-  // PROFILE-SPEED：快取裡少了任何一場有效報名的活動，就當整體沒命中（回 null 讓畫面等伺服器），不先畫出偏少的筆數（MiMo B1）。
-  if (source === 'cache' && new Set(regEventIds).size > eventsById.size) {
+  const missingEventIds = Array.from(new Set(regEventIds)).filter((id) => !eventsById.has(id));
+  // PROFILE-SPEED：快取裡少了有效報名的活動，只有「本機快取確知這場活動不存在」才放行（伺服器結果同樣沒有它，筆數一致）；
+  // 其他缺件（快取沒讀過）一律當整體沒命中、回 null 等伺服器，不先畫偏少的筆數（MiMo B1）。
+  // 取代 325e4830 的「缺任何一場就不用快取」：老帳號只要有一筆孤兒報名（活動已刪或 id 對不上）快取就永遠不生效（顧問 §3.935）。
+  if (source === 'cache' && missingEventIds.length > 0 && !(await allKnownMissingInCache(missingEventIds))) {
     throw new Error('related-activities: cache incomplete');
+  }
+  if (source === 'server' && missingEventIds.length > 0) {
+    // 不 await：畫面不等它。讓快取記下「伺服器也查不到」，下次開頁快取才能先畫。
+    void confirmMissingEventsInCache(missingEventIds);
   }
 
   const registered = buildRegisteredActivities(registrations, eventsById, allowedUids, now);
