@@ -477,12 +477,14 @@
 
 /* 頁框（卡 1b-2）：左右 8px，加外框 .app-main 的 8px 合計 16px，與清單頁相同。
  * 底色鋪滿視窗：根節點自己不鋪底，同一組漸層鋪在固定在視窗上的 ::before（清單頁 .tournaments-root::before 同做法），
- * 短頁面底色不會中途斷掉。根節點自成一層（z-index 0），底色層在它裡面排最後（-1）；外框上方列與底部導覽不受影響。 */
+ * 短頁面底色不會中途斷掉。根節點自成一層（z-index 0），底色層在它裡面排最後（-1）；外框上方列與底部導覽不受影響。
+ * 最小高 100vh（站長 2026-11-27 選定，取代 11-21「不設整頁最小高」）：iOS 18 以下 Safari 先捲長頁再點進短頁時，
+ * 工具列重新展開卻沒重算固定元素位置，底部導覽被蓋住；短頁要能捲一下才會修回來。原本的 100% 因父層沒有高度等於沒作用。 */
 .cps-root {
   position: relative;
   z-index: 0;
   box-sizing: border-box;
-  min-height: 100%;
+  min-height: 100vh;
   padding: 0 8px 96px;
   color: var(--color-text-primary);
   font-family: var(--font-sans);
