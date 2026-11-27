@@ -92,7 +92,7 @@ describe('SportPrefsModal', () => {
     const arg = mocks.saveSportPrefs.mock.calls[0]?.[0] as { addSports: string[] };
     expect(Array.isArray(arg.addSports)).toBe(true);
     expect(arg.addSports.length).toBe(1);
-    expect(Object.keys(arg)).toEqual(['addSports']);
+    expect(Object.keys(arg)).toEqual(['addSports', 'promptSeen']);
   });
 
   it('連按「更多」三次回到第一批、已選保留、全程無重複運動', async () => {
@@ -116,15 +116,61 @@ describe('SportPrefsModal', () => {
     expect((confirm as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('owned 的格子 aria-disabled=true 且點了不會變', async () => {
+  const tileOf = (name: string): HTMLElement => {
+    const hit = screen.getAllByRole('checkbox').find((t) => t.textContent?.includes(name));
+    expect(hit).toBeTruthy();
+    return hit!;
+  };
+
+  it('owned 預選、可點取消（站長 11-27）：送 removeSports＋promptSeen', async () => {
+    mocks.saveSportPrefs.mockResolvedValue({ favSports: ['tennis'], newEventNotify: true });
+    renderModal({ owned: ['football', 'tennis'] });
+    await screen.findAllByRole('checkbox');
+    const football = tileOf('足球');
+    expect(football.getAttribute('aria-checked')).toBe('true');
+    expect(football.getAttribute('aria-disabled')).toBeNull();
+    fireEvent.click(football);
+    expect(football.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: '確認' }));
+    await waitFor(() => expect(mocks.saveSportPrefs).toHaveBeenCalledTimes(1));
+    expect(mocks.saveSportPrefs.mock.calls[0]?.[0]).toEqual({ removeSports: ['football'], promptSeen: true });
+  });
+
+  it('同時加減：送 addSports＋removeSports 差集', async () => {
+    mocks.saveSportPrefs.mockResolvedValue({ favSports: ['basketball'], newEventNotify: true });
     renderModal({ owned: ['football'] });
     await screen.findAllByRole('checkbox');
-    const tiles = screen.getAllByRole('checkbox');
-    const football = tiles.find((t) => t.textContent?.includes('足球'));
-    expect(football).toBeTruthy();
-    expect(football!.getAttribute('aria-disabled')).toBe('true');
-    fireEvent.click(football!);
-    // 確認鈕 0 個也能按（站長 11-27），改用「按確認不存檔」證明 owned 沒被勾進去
+    fireEvent.click(tileOf('足球'));
+    fireEvent.click(tileOf('籃球'));
+    fireEvent.click(screen.getByRole('button', { name: '確認' }));
+    await waitFor(() => expect(mocks.saveSportPrefs).toHaveBeenCalledTimes(1));
+    expect(mocks.saveSportPrefs.mock.calls[0]?.[0]).toEqual({ addSports: ['basketball'], removeSports: ['football'], promptSeen: true });
+  });
+
+  it('標籤 × 可取消原有的運動', async () => {
+    mocks.saveSportPrefs.mockResolvedValue({ favSports: [], newEventNotify: true });
+    renderModal({ owned: ['football'] });
+    await screen.findAllByRole('checkbox');
+    fireEvent.click(await screen.findByRole('button', { name: '取消足球' }));
+    expect(tileOf('足球').getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('owned 含清單外代碼：不預選、不送進 removeSports', async () => {
+    mocks.saveSportPrefs.mockResolvedValue({ favSports: [], newEventNotify: true });
+    renderModal({ owned: ['football', 'xx_old', 'football'] });
+    await screen.findAllByRole('checkbox');
+    expect(screen.queryByRole('button', { name: '取消xx_old' })).toBeNull();
+    fireEvent.click(tileOf('足球'));
+    fireEvent.click(screen.getByRole('button', { name: '確認' }));
+    await waitFor(() => expect(mocks.saveSportPrefs).toHaveBeenCalledTimes(1));
+    expect(mocks.saveSportPrefs.mock.calls[0]?.[0]).toEqual({ removeSports: ['football'], promptSeen: true });
+  });
+
+  it('0 變動（取消再勾回）：不存檔', async () => {
+    renderModal({ owned: ['football'] });
+    await screen.findAllByRole('checkbox');
+    fireEvent.click(tileOf('足球'));
+    fireEvent.click(tileOf('足球'));
     fireEvent.click(screen.getByRole('button', { name: '確認' }));
     expect(mocks.saveSportPrefs).not.toHaveBeenCalled();
   });

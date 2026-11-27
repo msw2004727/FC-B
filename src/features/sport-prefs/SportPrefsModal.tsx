@@ -6,19 +6,12 @@ import { SportIcon } from '@/ui/SportIcon';
 import { lockBody } from '@/ui/Modal';
 import { pushOverlay } from '@/core/overlay-back';
 import { toast } from '@/ui/Toast';
-import { batchCells, batchCount, devicePushOn, loadSportRank, orderedSports } from './data';
+import { batchCells, batchCount, devicePushOn, favPool, loadSportRank, orderedSports } from './data';
 import { saveSportPrefs, SportPrefsCallError, type SaveSportPrefsResult } from './callables';
 import { sportName, useSportPrefsT } from './i18n';
 import './sport-prefs.css';
 
-function Check({ locked = false }: { locked?: boolean }): JSX.Element {
-  if (locked) {
-    return (
-      <span class="spf-check" aria-hidden="true">
-        <svg viewBox="0 0 16 16" width="11" height="11"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" fill="currentColor" /><path d="M5.5 7V5.2a2.5 2.5 0 015 0V7" fill="none" stroke="currentColor" stroke-width="1.8" /></svg>
-      </span>
-    );
-  }
+function Check(): JSX.Element {
   return (
     <span class="spf-check" aria-hidden="true">
       <svg viewBox="0 0 16 16" width="12" height="12"><path d="M3.6 8.4l2.9 2.8 5.9-6.3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
@@ -28,6 +21,7 @@ function Check({ locked = false }: { locked?: boolean }): JSX.Element {
 
 export interface SportPrefsModalProps {
   uid: string;
+  /** 已選的運動：開啟時預選，可點取消（站長 11-27） */
   owned: readonly string[];
   onClose: () => void;
   onSaved: (r: SaveSportPrefsResult) => void;
@@ -40,7 +34,12 @@ export function SportPrefsModal({ owned, onClose, onSaved, onSeen }: SportPrefsM
   const { route } = useLocation();
   const [rank, setRank] = useState<string[]>([]);
   const [batch, setBatch] = useState(0);
-  const [picked, setPicked] = useState<string[]>([]);
+  // 只預選九宮格清單內的運動：清單外的舊代碼送 removeSports 會被伺服器整筆拒絕（伺服器任何寫入都會順手清掉它）
+  const [initial] = useState<string[]>(() => {
+    const pool = favPool().map((s) => s.key);
+    return owned.filter((k, i) => pool.includes(k) && owned.indexOf(k) === i);
+  });
+  const [picked, setPicked] = useState<string[]>(initial);
   const [step, setStep] = useState<'pick' | 'saved'>('pick');
   const [savedTags, setSavedTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -106,14 +105,21 @@ export function SportPrefsModal({ owned, onClose, onSaved, onSeen }: SportPrefsM
 
   const onConfirm = async (): Promise<void> => {
     if (saving) return;
-    if (picked.length === 0) {
+    const add = picked.filter((k) => !initial.includes(k));
+    const remove = initial.filter((k) => !picked.includes(k));
+    if (add.length === 0 && remove.length === 0) {
       seen(false);
       close();
       return;
     }
     setSaving(true);
     try {
-      const result = await saveSportPrefs({ addSports: picked });
+      // 一律帶 promptSeen：只取消不新增時也要記看過
+      const result = await saveSportPrefs({
+        ...(add.length > 0 ? { addSports: add } : {}),
+        ...(remove.length > 0 ? { removeSports: remove } : {}),
+        promptSeen: true,
+      });
       // 存檔成功就算看過；存檔途中彈窗被關掉也照記（伺服器已記下）
       seen(true);
       if (!mountedRef.current) return;
@@ -155,23 +161,19 @@ export function SportPrefsModal({ owned, onClose, onSaved, onSeen }: SportPrefsM
               <div class="spf-grid" role="group" aria-label={t('group')}>
                 {cells.map((s, i) => {
                   if (!s) return <span key={`e${i}`} class="spf-tile is-empty" aria-hidden="true" />;
-                  const isOwned = owned.includes(s.key);
-                  const on = isOwned || picked.includes(s.key);
+                  const on = picked.includes(s.key);
                   return (
                     <button
                       key={s.key}
                       type="button"
                       role="checkbox"
                       aria-checked={on ? 'true' : 'false'}
-                      aria-disabled={isOwned ? 'true' : undefined}
-                      class={`spf-tile${on ? ' is-on' : ''}${isOwned ? ' is-owned' : ''}`}
-                      onClick={() => {
-                        if (!isOwned) toggle(s.key);
-                      }}
+                      class={`spf-tile${on ? ' is-on' : ''}`}
+                      onClick={() => toggle(s.key)}
                     >
                       <SportIcon sportKey={s.key} className="spf-icon" />
                       <span class={`spf-name${sportName(t, s.key).length > 6 ? ' is-long' : ''}`}>{sportName(t, s.key)}</span>
-                      {on ? <Check locked={isOwned} /> : null}
+                      {on ? <Check /> : null}
                     </button>
                   );
                 })}
@@ -180,7 +182,6 @@ export function SportPrefsModal({ owned, onClose, onSaved, onSeen }: SportPrefsM
                 {Array.from({ length: pages }, (_, i) => <span key={i} class={i === batch ? 'on' : undefined} />)}
               </div>
               <div class="spf-tags" aria-live="polite">
-                {owned.map((k) => <span key={k} class="spf-tag is-owned">{sportName(t, k)}</span>)}
                 {picked.map((k) => (
                   <button
                     key={k}

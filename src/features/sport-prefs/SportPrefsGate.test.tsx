@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/pr
 const dataMocks = vi.hoisted(() => ({
   isSeenLocal: vi.fn(),
   isSportPrefsEnabled: vi.fn(),
+  loadOwnedSports: vi.fn(),
   markSeenLocal: vi.fn(),
   SPORT_PREFS_OFF_KEY: 'fcb:spOff',
 }));
@@ -17,9 +18,9 @@ vi.mock('./data', () => dataMocks);
 vi.mock('./callables', () => callableMocks);
 vi.mock('./SportPrefsModal', () => {
   modalLoads.n += 1;
-  const M = (props: { onClose: () => void; onSeen?: (saved: boolean) => void }) => createElement(
+  const M = (props: { owned: readonly string[]; onClose: () => void; onSeen?: (saved: boolean) => void }) => createElement(
     'div',
-    { 'data-testid': 'spf-modal' },
+    { 'data-testid': 'spf-modal', 'data-owned': props.owned.join(',') },
     createElement('button', { 'data-testid': 'm-x', onClick: () => { props.onSeen?.(false); props.onClose(); } }),
     createElement('button', { 'data-testid': 'm-bg', onClick: () => { props.onClose(); } }),
     createElement('button', { 'data-testid': 'm-saved', onClick: () => { props.onSeen?.(true); } }),
@@ -37,6 +38,7 @@ beforeEach(() => {
   dataMocks.isSeenLocal.mockReturnValue(false);
   dataMocks.isSportPrefsEnabled.mockResolvedValue(true);
   dataMocks.markSeenLocal.mockReturnValue(undefined);
+  dataMocks.loadOwnedSports.mockResolvedValue([]);
   callableMocks.saveSportPrefs.mockResolvedValue({ favSports: [], newEventNotify: false });
 });
 
@@ -131,6 +133,28 @@ describe('SportPrefsGate', () => {
     fireEvent.click(screen.getByTestId('m-saved'));
     expect(dataMocks.markSeenLocal).toHaveBeenCalledWith('u1');
     expect(callableMocks.saveSportPrefs).not.toHaveBeenCalled();
+  });
+
+  it('首頁沒帶 owned：讀本人已選並傳給彈窗', async () => {
+    dataMocks.loadOwnedSports.mockResolvedValue(['football', 'tennis']);
+    render(<SportPrefsGate uid="u1" home />);
+    await waitFor(() => expect(screen.getByTestId('spf-modal')).toBeTruthy());
+    expect(dataMocks.loadOwnedSports).toHaveBeenCalledWith('u1');
+    expect(screen.getByTestId('spf-modal').getAttribute('data-owned')).toBe('football,tennis');
+  });
+
+  it('有帶 owned：不另讀、照傳入值', async () => {
+    render(<SportPrefsGate uid="u1" owned={['badminton']} />);
+    await waitFor(() => expect(screen.getByTestId('spf-modal')).toBeTruthy());
+    expect(dataMocks.loadOwnedSports).not.toHaveBeenCalled();
+    expect(screen.getByTestId('spf-modal').getAttribute('data-owned')).toBe('badminton');
+  });
+
+  it('開關關時不讀本人已選', async () => {
+    dataMocks.isSportPrefsEnabled.mockResolvedValue(false);
+    render(<SportPrefsGate uid="u1" home />);
+    await waitFor(() => expect(dataMocks.isSportPrefsEnabled).toHaveBeenCalled());
+    expect(dataMocks.loadOwnedSports).not.toHaveBeenCalled();
   });
 
   it('promptSeen 失敗不丟未處理例外、不重試', async () => {

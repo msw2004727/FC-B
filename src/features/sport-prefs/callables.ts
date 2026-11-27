@@ -6,6 +6,7 @@ const SPORT_PREFS_CALL_TIMEOUT_MS = 10_000;
 export interface SaveSportPrefsRequest {
   addSports?: string[];
   removeSport?: string;
+  removeSports?: string[];
   newEventNotify?: boolean;
   promptSeen?: true;
 }
@@ -72,6 +73,7 @@ function whitelist(req: SaveSportPrefsRequest): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (req.addSports !== undefined) out.addSports = req.addSports;
   if (req.removeSport !== undefined) out.removeSport = req.removeSport;
+  if (req.removeSports !== undefined) out.removeSports = req.removeSports;
   if (req.newEventNotify !== undefined) out.newEventNotify = req.newEventNotify;
   if (req.promptSeen !== undefined) out.promptSeen = req.promptSeen;
   return out;

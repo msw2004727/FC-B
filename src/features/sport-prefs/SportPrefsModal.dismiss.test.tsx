@@ -131,7 +131,7 @@ describe('SportPrefsModal dismiss', () => {
     fireEvent.click(screen.getByRole('button', { name: '確認' }));
     await screen.findByText('已儲存');
     const arg = mocks.saveSportPrefs.mock.calls[0]?.[0] as { addSports: string[] };
-    expect(Object.keys(arg)).toEqual(['addSports']);
+    expect(Object.keys(arg)).toEqual(['addSports', 'promptSeen']);
     expect(onSeen).toHaveBeenCalledWith(true);
     expect(onClose).not.toHaveBeenCalled();
   });

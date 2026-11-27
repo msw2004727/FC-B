@@ -62,6 +62,7 @@ registerSportPrefsMock(async (data) => {
   if (saveDelayMs > 0) await new Promise((r) => setTimeout(r, saveDelayMs));
   if (Array.isArray(data.addSports)) favState = [...favState, ...(data.addSports as string[]).filter((k) => !favState.includes(k))];
   if (typeof data.removeSport === 'string') favState = favState.filter((k) => k !== data.removeSport);
+  if (Array.isArray(data.removeSports)) favState = favState.filter((k) => !(data.removeSports as string[]).includes(k));
   return { ok: true, favSports: favState, newEventNotify: data.newEventNotify !== false };
 });
 
