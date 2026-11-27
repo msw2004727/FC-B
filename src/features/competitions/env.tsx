@@ -141,6 +141,17 @@ export interface CpInjectedEnv {
    * 省略＝只用文件 id 一把、不讀網路（測試與 harness）；正式頁一律帶 loadClubMemberKeys。
    */
   clubKeys?: ClubKeysPort;
+  /** 自己的 users 文件（生日、LINE 暱稱、身分）。名單頁的名字補正用；省略＝不讀、不補正（測試與 harness）。正式頁一律帶 loadMyRosterProfile。 */
+  myRosterProfile?: (uid: string) => Promise<MyRosterProfile>;
+}
+
+/** 與 rep-clubs.ts 的 MyRosterProfile 相同形狀（放這裡避免 env ↔ rep-clubs 循環 import）。 */
+export interface MyRosterProfile {
+  birthday: string | null;
+  lineDisplayName: string | null;
+  displayName: string | null;
+  role: string | null;
+  stealth: boolean;
 }
 
 /** 站內清單快照的守門來源。confirmedUid：登入模組確認的帳號（未定 undefined、沒登入 null）。 */

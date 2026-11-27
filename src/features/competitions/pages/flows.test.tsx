@@ -68,7 +68,8 @@ vi.mock('../rep-clubs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../rep-clubs')>();
   return {
     ...actual,
-    loadMyBirthday: (uid: string) => (birthdayBox.load ? birthdayBox.load(uid) : Promise.resolve(null)),
+    loadMyRosterProfile: (uid: string) => (birthdayBox.load ? birthdayBox.load(uid) : Promise.resolve(null))
+      .then((birthday: string | null) => ({ ...({ birthday: null, lineDisplayName: null, displayName: null, role: null, stealth: false }), birthday })),
   };
 });
 
@@ -94,6 +95,8 @@ function spyActions() {
     joinRoster: vi.fn(actions.joinRoster),
     addRosterByRep: vi.fn(actions.addRosterByRep),
     leaveRoster: vi.fn(actions.leaveRoster),
+    updateRosterNickname: vi.fn(actions.updateRosterNickname),
+    syncRosterName: vi.fn(actions.syncRosterName),
     confirmRoster: vi.fn(actions.confirmRoster),
     lockRosters: vi.fn(actions.lockRosters),
     unlockRosters: vi.fn(actions.unlockRosters),

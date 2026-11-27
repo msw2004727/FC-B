@@ -68,3 +68,27 @@ export function maskedPublicName(realName: string): string {
   if (words.length >= 2) return `${[...firstWord][0]?.toUpperCase() ?? ''}. ${lastWord}`;
   return `${[...s][0]?.toUpperCase() ?? ''}.`;
 }
+
+/** 名單身分白名單（與伺服器 functions-cp main-profile.ts、src/data/user-roles.ts 相同）。 */
+export const ROSTER_ROLES = ['user', 'coach', 'captain', 'team_leader', 'venue_owner', 'admin', 'super_admin'] as const;
+export type RosterRole = typeof ROSTER_ROLES[number];
+/** 照活動名單算法：白名單外一律 user；admin／super_admin 開隱身顯示 user。 */
+export function rosterRoleOf(role: unknown, stealth: unknown = false): RosterRole {
+  const r = typeof role === 'string' && (ROSTER_ROLES as readonly string[]).includes(role) ? (role as RosterRole) : 'user';
+  if ((r === 'admin' || r === 'super_admin') && stealth === true) return 'user';
+  return r;
+}
+/**
+ * 名單名字原料：main＝主名（改過的暱稱，沒改就是原始暱稱）；orig＝改過時的原始暱稱，沒改或舊資料是 null。
+ * 舊資料（沒有 originalName）一律用 displayName。只讀原料欄位，不拆字串。
+ */
+export function rosterNameParts(row: { displayName: string; nickname?: string | null; originalName?: string | null }): { main: string; orig: string | null } {
+  if (!row.originalName) return { main: row.displayName, orig: null };
+  if (row.nickname && row.nickname !== row.originalName) return { main: row.nickname, orig: row.originalName };
+  return { main: row.originalName, orig: null };
+}
+/** 暱稱前端形狀檢查（伺服器是最終判斷）：含括號或換行回 false。NFKC 後全形括號也算。 */
+export function nicknameShapeOk(value: string): boolean {
+  if (/[\r\n]/.test(value)) return false;
+  return !/[()]/.test(value.normalize('NFKC'));
+}

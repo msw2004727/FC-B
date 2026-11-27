@@ -2,12 +2,14 @@
 // 球員本人：自己那一列有「退出名單」（CP-PO-08）。公開名單沒有 uid，靠 cpMine 的 plIds 認出自己。
 
 import type { JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useLocation, useRoute } from 'preact-iso';
 import { useGoBack } from '@/core/back-guard';
 import { ctOrKey, useCompetitionsT, type CompetitionsT } from '../i18n';
 import { Button } from '@/ui/Button';
 import { PageSpinner } from '@/ui/PageSpinner';
+import { BottomSheet } from '@/ui/BottomSheet';
+import { Input } from '@/ui/Input';
 import { rosterPhaseOpen } from '../access';
 import { liveCpActions } from '../actions';
 import type { CpBundle, CpInjectedEnv } from '../env';
@@ -15,10 +17,13 @@ import { useInjectedEnv } from '../env';
 import { positionLabel } from '../format';
 import { LiveBoundary } from '../live';
 import { isClubMemberByKeys, loadClubMemberKeys, useClubMemberKeys } from '../club-member-keys';
+import { nicknameShapeOk, rosterNameParts, rosterRoleOf } from '../data/names';
 import type { EntryStatus, RosterPublicDoc } from '../data/types';
-import { CpError, CpLoadFailed, errorOf, loadFailOf, type CpLoadFail } from '../ui/feedback';
+import { CpError, CpLoadFailed, errorOf, loadFailOf, reasonText, type CpLoadFail } from '../ui/feedback';
 import { dangerConfirm } from '../ui/danger-confirm';
-import { CpCard, CpFrame, CpI18nPending, TrashIcon } from '../ui/shell';
+import { loadMyRosterProfile } from '../rep-clubs';
+import { RosterNameTags } from '../ui/roster-name-tags';
+import { CpCard, CpFrame, CpI18nPending, PencilIcon, TrashIcon } from '../ui/shell';
 import { StatusTag } from '../ui/status-tag';
 import { toast } from '@/ui/Toast';
 import { TeamCrest } from '../ui/TeamCrest';
@@ -65,17 +70,22 @@ function PlayerRow({
   player,
   canEdit,
   canLeave,
+  canRename,
   busy,
   onRemove,
   onLeave,
+  onRename,
 }: {
   player: RosterPublicDoc;
   canEdit: boolean;
   /** 這一列是我自己，而且還能退出（rosterPhaseOpen：已發布、未下架、未結束、名單未鎖、首場前；與後端 leaveRoster 的 assertRosterPhase 一致）。 */
   canLeave: boolean;
+  /** 這一列是我自己、成年、而且是新規則的列（有原始暱稱）才有筆；舊列、未成年、代填都沒有。 */
+  canRename: boolean;
   busy: boolean;
   onRemove: () => void;
   onLeave: () => void;
+  onRename: () => void;
 }): JSX.Element {
   const cpDict = useCompetitionsT();
   const ct = ctOrKey(cpDict);
@@ -92,16 +102,22 @@ function PlayerRow({
     <li class="cps-li cps-player" data-roster-row>
       <span class="cps-num">{player.number}</span>
       {/* 顧問 §3.471 X-02：20 字暱稱把這列撐出卡片。只在名單頁暱稱加 --fit：可縮、超過省略（單行列）。 */}
-      <span class="cps-player__name cps-player__name--fit">{player.displayName}</span>
+      {/* 外層沿用 --fit 讓位與省略；標籤放裡面，身分顏色才不會被 .cps-player__name 的字色蓋掉。 */}
+      <span class="cps-player__name cps-player__name--fit"><RosterNameTags row={player} /></span>
       <span class="cps-player__pos">{pos}</span>
       {player.isMinor ? <StatusTag kind="neutral" label={ct('minor')} /> : null}
       {/* 自己那一列給「退出名單」（本人退出），代表移除別人仍是垃圾桶：兩者是不同動作，退出用字說清楚。
           紅字靠右、右緣對齊垃圾桶，不縮（flex:none，長暱稱由名字省略讓位）；
           用行內樣式是因為賽事樣式已到 check:cp-css 上限，不為一行版面調上限。 */}
       {canLeave ? (
-        <Button variant="danger" size="sm" loading={busy} style="flex:none;min-inline-size:0;padding-inline:12px;margin:0 -12px 0 auto" onClick={onLeave}>{ct('leaveRoster')}</Button>
+        <>
+          {canRename ? (
+            <button type="button" class="cps-iconbtn cps-iconbtn--flat" style="flex:none;margin-left:auto" aria-label={ct('editNickname')} onClick={onRename}><PencilIcon /></button>
+          ) : null}
+          <Button variant="danger" size="sm" loading={busy} style={canRename ? 'flex:none;min-inline-size:0;padding-inline:12px;margin:0 -12px 0 0' : 'flex:none;min-inline-size:0;padding-inline:12px;margin:0 -12px 0 auto'} onClick={onLeave}>{ct('leaveRoster')}</Button>
+        </>
       ) : canEdit ? (
-        <button type="button" class="cps-iconbtn cps-iconbtn--flat" aria-label={ct('removePlayer', { name: player.displayName })} onClick={onRemove}>
+        <button type="button" class="cps-iconbtn cps-iconbtn--flat" aria-label={ct('removePlayer', { name: rosterNameParts(player).main })} onClick={onRemove}>
           <TrashIcon />
         </button>
       ) : null}
@@ -119,6 +135,12 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const [phase, setPhase] = useState<'loading' | 'ready' | CpLoadFail>(env.bundle ? 'ready' : 'loading');
   const [error, setError] = useState<{ reason: string; params?: Record<string, unknown> } | null>(null);
   const [busy, setBusy] = useState(false);
+  // 改暱稱面板（B 版斜方標籤，站長 11-27）：按筆開，改完即時更新那列。
+  const [renaming, setRenaming] = useState<RosterPublicDoc | null>(null);
+  const [nickDraft, setNickDraft] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renameBusy, setRenameBusy] = useState(false);
+  const syncTried = useRef(false);
   // 成員雙鍵（顧問 §3.846）：hook 要在提早 return 之前叫。
   const entryTeamId = bundle?.entries.find((row) => row.id === enId)?.teamId ?? '';
   const clubKeys = useClubMemberKeys(env.actor, entryTeamId, env.clubKeys);
@@ -140,6 +162,37 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, enId, env.actor.uid, env.bundle]);
+
+  // 名字補正（B 卡）：env 帶 myRosterProfile 且有自己那一列時補一次；失敗吞掉不影響名單顯示。
+  useEffect(() => {
+    if (syncTried.current) return;
+    const fn = env.myRosterProfile;
+    const uid = env.actor.uid;
+    if (!fn || !uid) return;
+    if (phase !== 'ready' || !bundle?.competition) return;
+    syncTried.current = true;
+    const nowMs = env.now ?? Date.now();
+    if (!rosterPhaseOpen(bundle.competition, nowMs)) return;
+    const mineIds = bundle.myPlIds ?? [];
+    const mine = bundle.roster.find((p) => p.enId === enId && mineIds.includes(p.id) && !!p.originalName && !p.isMinor);
+    if (!mine) return;
+    const plId = mine.id;
+    void (async () => {
+      try {
+        const p = await fn(uid);
+        const wantSync = (mine.nameSource === 'profile' && !!p.lineDisplayName)
+          || rosterRoleOf(p.role, p.stealth) !== rosterRoleOf(mine.role);
+        if (!wantSync) return;
+        const result = await env.actions.syncRosterName({ cid, plId });
+        if (!result.changed) return;
+        const next = await env.repo.listRoster(cid, enId);
+        setBundle((prev) => prev ? { ...prev, roster: next } : prev);
+      } catch {
+        /* 補正失敗不影響名單顯示 */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, bundle, env, cid, enId]);
 
   if (!cpDict.ct) return <CpI18nPending failed={cpDict.failed} retry={cpDict.retry} />;
   if (phase === 'loading') return <div class="cps-root"><PageSpinner /></div>;
@@ -176,6 +229,8 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
   const isMine = (player: RosterPublicDoc): boolean => myPlIds.includes(player.id);
   // 本人退出（leaveRoster）同樣走 assertRosterPhase：用 rosterPhaseOpen，延期、下架、結束時也不顯示（整合 po-host×CP-PO-08，顧問 §3.852）。
   const canLeave = open;
+  // 改暱稱：自己那一列、成年、而且是新規則的列（有原始暱稱）才有筆；舊列、未成年、代填都沒有。
+  const canRename = (player: RosterPublicDoc): boolean => canLeave && isMine(player) && !player.isMinor && !!player.originalName;
   const inThisRoster = players.some(isMine);
   const teamName = entry.name;
   const canJoin = canSelfJoin && !inThisRoster && open && activeEntry;
@@ -184,7 +239,7 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
     if (busy) return;
     const ok = self
       ? await dangerConfirm(ct('leaveRosterConfirm', { team: teamName }), { okText: ct('leave'), danger: true })
-      : await dangerConfirm(ct('removePlayerConfirm', { name: player.displayName }), { okText: ct('remove'), danger: true });
+      : await dangerConfirm(ct('removePlayerConfirm', { name: rosterNameParts(player).main }), { okText: ct('remove'), danger: true });
     if (!ok) return;
     setBusy(true);
     setError(null);
@@ -247,6 +302,36 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
     }
   }
 
+  async function saveNickname(): Promise<void> {
+    if (renameBusy || !renaming) return;
+    const trimmed = nickDraft.trim();
+    if (trimmed && !nicknameShapeOk(trimmed)) {
+      setRenameError(ct('nicknameShape'));
+      return;
+    }
+    setRenameBusy(true);
+    setRenameError(null);
+    const targetId = renaming.id;
+    try {
+      const result = await env.actions.updateRosterNickname({ cid, plId: targetId, nickname: trimmed || null });
+      setBundle((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          roster: prev.roster.map((row) => row.id === targetId
+            ? { ...row, nickname: trimmed && trimmed !== row.originalName ? trimmed : null, displayName: result.displayName }
+            : row),
+        };
+      });
+      setRenaming(null);
+    } catch (err) {
+      const e = errorOf(err);
+      setRenameError(reasonText(ct, e.reason, e.params));
+    } finally {
+      setRenameBusy(false);
+    }
+  }
+
   return (
     <CpFrame title={ct('rosterTitle')} context={competition.name} onBack={back}>
       {/* 新外觀卡 3-2：隊伍卡順序改成 隊徽＋隊名 → 兩顆標籤 → 人數 → 進度條 → 說明句（標記順序＝讀螢幕順序） */}
@@ -291,9 +376,11 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
               player={player}
               canEdit={canEdit}
               canLeave={canLeave && isMine(player)}
+              canRename={canRename(player)}
               busy={busy}
               onRemove={() => { void remove(player); }}
               onLeave={() => { void remove(player, true); }}
+              onRename={() => { setRenaming(player); setNickDraft(player.nickname ?? ''); setRenameError(null); }}
             />
           ))}
         </ul>
@@ -315,6 +402,40 @@ function RosterView({ env, cid, enId }: { env: CpInjectedEnv; cid: string; enId:
           <Button variant="danger" disabled={busy} onClick={() => { void withdraw(); }}>{ct('withdrawEntry')}</Button>
         </div>
       ) : null}
+      {renaming ? (
+        <BottomSheet
+          open
+          title={ct('editNickname')}
+          busy={renameBusy}
+          onClose={() => setRenaming(null)}
+          footer={(
+            <div class="cps-actions">
+              <Button variant="secondary" onClick={() => setRenaming(null)}>{ct('cancel')}</Button>
+              <Button variant="primary" loading={renameBusy} onClick={() => { void saveNickname(); }}>{ct('save')}</Button>
+            </div>
+          )}
+        >
+          <div class="cps-fields">
+            <Input
+              label={ct('nickname')}
+              value={nickDraft}
+              placeholder={renaming.originalName ?? ''}
+              maxLength={20}
+              error={renameError ?? undefined}
+              onValueChange={(v) => { setNickDraft(v); setRenameError(null); }}
+            />
+            <div class="cps-sub cpn-preview">
+              {ct('publicShown')}
+              <RosterNameTags row={{
+                displayName: renaming.originalName ?? '',
+                originalName: renaming.originalName ?? null,
+                nickname: nickDraft.trim() || null,
+                role: renaming.role ?? null,
+              }} />
+            </div>
+          </div>
+        </BottomSheet>
+      ) : null}
     </CpFrame>
   );
 }
@@ -328,7 +449,7 @@ export default function RosterPage(): JSX.Element {
   return (
     <LiveBoundary>
       {(actor, repo) => (
-        <RosterView env={{ actor, repo, actions: liveCpActions, route: { cid, enId }, clubKeys: loadClubMemberKeys }} cid={cid} enId={enId} />
+        <RosterView env={{ actor, repo, actions: liveCpActions, route: { cid, enId }, clubKeys: loadClubMemberKeys, myRosterProfile: loadMyRosterProfile }} cid={cid} enId={enId} />
       )}
     </LiveBoundary>
   );

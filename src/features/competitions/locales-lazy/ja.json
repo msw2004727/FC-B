@@ -229,6 +229,10 @@
   "number": "背號",
   "position": "位置",
   "nickname": "暱稱",
+  "editNickname": "改暱稱",
+  "publicShown": "公開顯示",
+  "nicknameShape": "暱稱不能有括號或換行",
+  "save": "儲存",
   "realName": "真實姓名",
   "maskedPreview": "公開顯示：{name}",
   "birthday": "生日",
@@ -499,6 +503,8 @@
     "outOfRange": "比賽期間須涵蓋已排的場次"
   },
   "reason": {
+    "NICK_EDIT_LIMIT": "這場賽事已改過 {max} 次暱稱，不能再改",
+    "NICKNAME_NOT_ALLOWED": "這一列不能改暱稱",
     "INTERNAL_PERIOD": "內部測試期間，尚未對外開放",
     "INTERNAL_COMPETITION": "這是內部測試賽事，尚未公開",
     "NOT_HOST": "只有主辦可以做這個操作",

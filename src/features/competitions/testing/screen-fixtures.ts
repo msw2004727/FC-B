@@ -62,6 +62,8 @@ export function idleActions(): CpActions {
     joinRoster: async () => ({}),
     addRosterByRep: async () => ({}),
     leaveRoster: async () => ({}),
+    updateRosterNickname: async (input) => ({ cid: input.cid, plId: input.plId, changed: true, displayName: input.nickname ?? '' }),
+    syncRosterName: async (input) => ({ cid: input.cid, plId: input.plId, changed: false }),
     confirmRoster: async () => ({}),
     lockRosters: async () => ({}),
     unlockRosters: async () => ({}),

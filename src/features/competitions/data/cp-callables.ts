@@ -313,6 +313,14 @@ export function cpEntryLeaveRoster(input: { cid: string; plId: string }): Promis
   return callAction('cpEntry', payload('leaveRoster', { ...input }));
 }
 
+export interface CpUpdateRosterNicknameResult { cid: string; plId: string; changed: boolean; displayName: string }
+export function cpEntryUpdateRosterNickname(input: { cid: string; plId: string; nickname: string | null }): Promise<CpUpdateRosterNicknameResult> {
+  return callAction<CpUpdateRosterNicknameResult>('cpEntry', payload('updateRosterNickname', { ...input }));
+}
+export function cpEntrySyncRosterName(input: { cid: string; plId: string }): Promise<{ cid: string; plId: string; changed: boolean }> {
+  return callAction<{ cid: string; plId: string; changed: boolean }>('cpEntry', payload('syncRosterName', { ...input }));
+}
+
 export function cpEntryConfirmRoster(input: { cid: string; enId: string }): Promise<unknown> {
   return callAction('cpEntry', payload('confirmRoster', { ...input }));
 }

@@ -149,6 +149,7 @@ const ENTRY_STATUSES: readonly EntryStatus[] = ['pending', 'approved', 'rejected
 const PAYMENT_STATUSES: readonly PaymentStatus[] = ['none', 'pending', 'paid', 'refunded'];
 const PLAYERS: readonly PlayersOnField[] = [5, 7, 8, 9, 11];
 const POSITIONS: readonly RosterPositionCode[] = ['GK', 'DF', 'MF', 'FW', 'custom'];
+const NAME_SOURCES: readonly ('line' | 'profile')[] = ['line', 'profile'];
 const MINE_ROLES: readonly MineRole[] = ['host', 'rep', 'player'];
 const STAFF_ROLES: readonly StaffRole[] = ['host', 'coHost'];
 const STAFF_ASSIGN_ROLES: readonly StaffAssignmentRole[] = ['host', 'coHost', 'scorer', 'referee'];
@@ -385,6 +386,10 @@ function rosterFromDoc(id: string, raw: Record<string, unknown>): RosterPublicDo
     position: oneOf(raw.position, POSITIONS),
     positionText: str(raw.positionText),
     isMinor: bool(raw.isMinor) ?? false,
+    originalName: str(raw.originalName),
+    nickname: str(raw.nickname),
+    nameSource: oneOf(raw.nameSource, NAME_SOURCES),
+    role: str(raw.role),
   };
 }
 

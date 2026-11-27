@@ -16,6 +16,10 @@
  *   超過上限結束碼 1；等於上限通過。
  *   --rev：改量某個 commit 的七支（用 git show 讀出，不動工作樹）。
  *   --dist：對帳用的打包目錄（預設 dist）；存在時列出含賽事根節點選擇器的 CSS 檔與大小，只供人看。
+ *
+ * 上限調整紀錄（package.json 的 check:cp-css）：
+ *   2026-11-27 130809 → 131475（＋666，實量）：賽事名單名字斜方身分標籤 .cpn-*（站長選 B 版、顧問 §3.906 選②照實上調、不放共用檔）。
+ *     量法：本腳本 --rev origin/main 為 130761、改後工作樹 131475（較 origin/main 實量 ＋714）；只隨名單頁、登錄頁的延後載入塊載入，不進入口。
  */
 import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';

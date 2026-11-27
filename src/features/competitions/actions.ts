@@ -10,6 +10,8 @@ import {
   cpEntryReview,
   cpEntrySetPaymentStatus,
   cpEntryUnlockRosters,
+  cpEntryUpdateRosterNickname,
+  cpEntrySyncRosterName,
   cpHostClearSchedule,
   cpHostConfirmMatchResult,
   cpHostCreate,
@@ -50,6 +52,7 @@ import {
   type CpModerateInput,
   type CpReviewStatus,
   type CpAddRosterByRepInput,
+  type CpUpdateRosterNicknameResult,
   type StaffScoreRole,
   type CpForfeitSide,
   type CpGenerateScheduleInput,
@@ -77,6 +80,8 @@ export interface CpActions {
   joinRoster(input: CpJoinRosterInput): Promise<unknown>;
   addRosterByRep(input: CpAddRosterByRepInput): Promise<unknown>;
   leaveRoster(input: { cid: string; plId: string }): Promise<unknown>;
+  updateRosterNickname(input: { cid: string; plId: string; nickname: string | null }): Promise<CpUpdateRosterNicknameResult>;
+  syncRosterName(input: { cid: string; plId: string }): Promise<{ cid: string; plId: string; changed: boolean }>;
   confirmRoster(input: { cid: string; enId: string }): Promise<unknown>;
   lockRosters(input: { cid: string }): Promise<unknown>;
   unlockRosters(input: { cid: string; reason: string }): Promise<unknown>;
@@ -184,6 +189,8 @@ export const liveCpActions: CpActions = {
   joinRoster: cpEntryJoinRoster,
   addRosterByRep: cpEntryAddRosterByRep,
   leaveRoster: cpEntryLeaveRoster,
+  updateRosterNickname: cpEntryUpdateRosterNickname,
+  syncRosterName: cpEntrySyncRosterName,
   confirmRoster: cpEntryConfirmRoster,
   lockRosters: cpEntryLockRosters,
   unlockRosters: cpEntryUnlockRosters,

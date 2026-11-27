@@ -36,7 +36,7 @@ const dict = {
 
 vi.mock('../rep-clubs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../rep-clubs')>();
-  return { ...actual, loadMyBirthday: () => Promise.resolve(null) };
+  return { ...actual, loadMyRosterProfile: () => Promise.resolve({ birthday: null, lineDisplayName: null, displayName: null, role: null, stealth: false }) };
 });
 
 vi.mock('@/i18n/i18n', async (importOriginal) => {
