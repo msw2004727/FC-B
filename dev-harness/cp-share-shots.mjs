@@ -2,7 +2,7 @@
 // 賽事分享截圖（CP-SHARE）：詳情頁分享鈕（招募中、進行中）、分享選單（可用 picker／不可用）、Flex 卡片與活動卡並排。
 // 360／390／1280 寬、深淺色；非 localhost 請求一律攔截。檢查 console 錯誤、橫向溢出、介面文字被動斷行。
 // 用法：先 node node_modules/vite/bin/vite.js --config dev-harness/vite.cp-share.config.ts --port <空埠>
-//       再 node dev-harness/cp-share-shots.mjs <輸出資料夾> http://localhost:<埠>
+//       再 node dev-harness/cp-share-shots.mjs <輸出資料夾> http://localhost:<埠> [screen,screen…]
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
@@ -11,12 +11,12 @@ const OUT = resolve(process.argv[2] || 'cp-share-shots');
 const BASE = process.argv[3] || 'http://localhost:5199';
 const SIZES = [[360, 740], [390, 844], [1280, 800]];
 const THEMES = ['light', 'dark'];
-const SCREENS = ['detail', 'detail-live', 'sheet', 'sheet-nopicker', 'flex'];
+const SCREENS = (process.argv[4] || 'detail,detail-live,sheet,sheet-nopicker,sheet-event,sheet-event-nopicker,flex').split(',');
 const SELECTORS = 'button, .share-action-sheet-title, .share-action-sheet-btn-label, .share-action-sheet-btn-sub';
 
 const browser = await chromium.launch({ args: ['--noerrdialogs'] });
 await mkdir(OUT, { recursive: true });
-const report = { shots: [], consoleErrors: [], blocked: [], overflows: [], wraps: [] };
+const report = { shots: [], consoleErrors: [], blocked: [], overflows: [], wraps: [], rows: [] };
 for (const name of SCREENS) {
   for (const [w, h] of SIZES) {
     for (const theme of THEMES) {
@@ -58,6 +58,9 @@ for (const name of SCREENS) {
           return out;
         }, SELECTORS);
         for (const t of wraps) report.wraps.push(`${tag}: ${t}`);
+        // 分享選單按鈕要同一列（站長 11-27：三鈕同列）。
+        const rows = await page.evaluate(() => new Set([...document.querySelectorAll('.share-action-sheet-btn')].map((b) => Math.round(b.getBoundingClientRect().top))).size);
+        if (name.startsWith('sheet') && rows !== 1) report.rows.push(`${tag}: 按鈕分成 ${rows} 列`);
       }
       await page.screenshot({ path: join(OUT, `${tag}.png`), fullPage: name === 'flex' && w < 1280 });
       report.shots.push(`${tag}.png`);
@@ -67,5 +70,5 @@ for (const name of SCREENS) {
 }
 await browser.close();
 await writeFile(join(OUT, 'report.json'), JSON.stringify(report, null, 2), 'utf8');
-console.log(`截圖 ${report.shots.length} 張；console 錯誤 ${report.consoleErrors.length}；攔截 ${report.blocked.length}；溢出 ${report.overflows.length}；斷行 ${report.wraps.length}`);
-for (const k of ['consoleErrors', 'blocked', 'overflows', 'wraps']) for (const l of report[k]) console.log(k, l);
+console.log(`截圖 ${report.shots.length} 張；console 錯誤 ${report.consoleErrors.length}；攔截 ${report.blocked.length}；溢出 ${report.overflows.length}；斷行 ${report.wraps.length}；分列 ${report.rows.length}`);
+for (const k of ['consoleErrors', 'blocked', 'overflows', 'wraps', 'rows']) for (const l of report[k]) console.log(k, l);

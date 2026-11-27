@@ -36,6 +36,21 @@ it('照 A 顯示三個分享選項與取消，選擇只回傳一次', () => {
   expect(onChoice).toHaveBeenCalledExactlyOnceWith('copy');
 });
 
+it('圖示是線條 SVG（aria-hidden），不再用 emoji；兩鈕版本也一樣', () => {
+  for (const canPicker of [true, false]) {
+    const view = render(<ShareActionSheet canPicker={canPicker} onChoice={vi.fn()} />);
+    const buttons = [...document.querySelectorAll('.share-action-sheet-btn')];
+    expect(buttons.length).toBe(canPicker ? 3 : 2);
+    for (const btn of buttons) {
+      const svg = btn.querySelector('.share-action-sheet-btn-icon > svg');
+      expect(svg?.getAttribute('aria-hidden')).toBe('true');
+      expect(svg?.getAttribute('stroke')).toBe('currentColor');
+      expect(btn.textContent).not.toMatch(/\p{Extended_Pictographic}/u);
+    }
+    view.unmount();
+  }
+});
+
 it('沒有 picker 時隱藏好友選項，保留 A 的 R/share 入口', () => {
   render(<ShareActionSheet canPicker={false} onChoice={vi.fn()} />);
   expect(screen.queryByText('LINE 好友')).toBeNull();

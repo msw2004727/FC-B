@@ -29,6 +29,41 @@ const DEFAULT_LABELS: ShareSheetLabels = {
   cancel: '取消',
 };
 
+// 線條圖示（R-UI-002 禁 emoji 功能鈕；站長 11-27 選方案 B）。顏色走 currentColor，由 CSS 依按鈕決定。
+const ICON_PROPS = {
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  'stroke-width': 1.8,
+  'stroke-linecap': 'round',
+  'stroke-linejoin': 'round',
+  'aria-hidden': 'true',
+  focusable: 'false',
+} as const;
+
+const FriendsIcon = (): JSX.Element => (
+  <svg {...ICON_PROPS}>
+    <rect x="3" y="4.5" width="18" height="15" rx="3" />
+    <circle cx="9" cy="10.5" r="2.3" />
+    <path d="M5.6 16.5c.6-1.8 1.9-2.8 3.4-2.8s2.8 1 3.4 2.8" />
+    <path d="M14.5 9.5h3.5M14.5 13h3.5" />
+  </svg>
+);
+
+const CommunityIcon = (): JSX.Element => (
+  <svg {...ICON_PROPS}>
+    <path d="M4 5.5h10a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H9l-3.5 3v-3H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2z" />
+    <path d="M18.5 9.5H20a2 2 0 0 1 2 2v4.5a2 2 0 0 1-2 2h-1v2.5l-3-2.5h-3.5" />
+  </svg>
+);
+
+const CopyIcon = (): JSX.Element => (
+  <svg {...ICON_PROPS}>
+    <path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2" />
+    <path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2" />
+  </svg>
+);
+
 interface Props {
   canPicker: boolean;
   title?: string;
@@ -91,7 +126,7 @@ export function ShareActionSheet({
                 data-choice="line"
                 onClick={() => close('line')}
               >
-                <span class="share-action-sheet-btn-icon">💚</span>
+                <span class="share-action-sheet-btn-icon"><FriendsIcon /></span>
                 <span class="share-action-sheet-btn-label">
                   {text.friends}
                   <span class="share-action-sheet-btn-sub">{text.friendsSub}</span>
@@ -103,7 +138,7 @@ export function ShareActionSheet({
                 data-choice="line-share"
                 onClick={() => close('line-share')}
               >
-                <span class="share-action-sheet-btn-icon">💬</span>
+                <span class="share-action-sheet-btn-icon"><CommunityIcon /></span>
                 <span class="share-action-sheet-btn-label">
                   {text.community}
                   <span class="share-action-sheet-btn-sub">{text.communitySub}</span>
@@ -117,7 +152,7 @@ export function ShareActionSheet({
               data-choice="line-share"
               onClick={() => close('line-share')}
             >
-              <span class="share-action-sheet-btn-icon">💬</span>
+              <span class="share-action-sheet-btn-icon"><CommunityIcon /></span>
               <span class="share-action-sheet-btn-label">{text.toLine}</span>
             </button>
           )}
@@ -127,7 +162,7 @@ export function ShareActionSheet({
             data-choice="copy"
             onClick={() => close('copy')}
           >
-            <span class="share-action-sheet-btn-icon">📋</span>
+            <span class="share-action-sheet-btn-icon"><CopyIcon /></span>
             <span class="share-action-sheet-btn-label">
               {text.copy}
               <span class="share-action-sheet-btn-sub">{text.copySub}</span>
