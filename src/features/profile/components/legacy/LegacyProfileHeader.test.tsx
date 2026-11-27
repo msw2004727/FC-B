@@ -74,3 +74,44 @@ describe('LegacyProfileHeader', () => {
     expect(container.textContent).not.toContain('GoldAch');
   });
 });
+
+// PROFILE-SPEED（顧問 §3.933）：頁首不再經 useUserRoles 重讀自己的 users 文件，身分只看 profile.role，
+// 由 resolveEffectiveRole（profile-legacy-helpers.ts）套隱身規則，與 user-roles.ts readRole 相同：
+// admin／super_admin 且 stealth===true 顯示成一般用戶；其他角色不受 stealth 影響。
+// 原始 UID 是否顯示照改前：viewer.role 或 profile.role（原值，不套隱身）為 admin 以上就顯示。
+describe('LegacyProfileHeader 身分標籤與隱身（PROFILE-SPEED）', () => {
+  beforeEach(async () => {
+    _setDictLoaderForTest(null);
+    await setLocale('zh-TW');
+  });
+  afterEach(() => cleanup());
+
+  const userViewer = { role: 'user', hasPermission: () => false } as unknown as ViewerView;
+
+  function renderWith(p: Record<string, unknown>) {
+    return render(
+      <LegacyProfileTopSection
+        uid="U-me"
+        profile={{ exp: 0, ...p } as unknown as UserProfile}
+        viewer={userViewer}
+        summary={null}
+      />,
+    );
+  }
+  const roleLabel = (c: Element): string | null => c.querySelector('#profile-role-tag-wrap .uc-role-tag')?.textContent ?? null;
+  const rawUidShown = (c: Element): boolean => (c.querySelector('#profile-uid-wrap')?.textContent ?? '').includes('U-me');
+
+  it.each([
+    [{ role: 'admin' }, '管理員', true],
+    [{ role: 'admin', stealth: true }, '一般用戶', true],
+    [{ role: 'super_admin' }, '總管', true],
+    [{ role: 'super_admin', stealth: true }, '一般用戶', true],
+    [{ role: 'coach', stealth: true }, '教練', false],
+    [{ role: 'admin', stealth: 'true' }, '管理員', true],
+    [{}, '一般用戶', false],
+  ])('profile %o → 標籤 %s、原始 UID 顯示 %s', (p, label, uidShown) => {
+    const { container } = renderWith(p);
+    expect(roleLabel(container)).toBe(label);
+    expect(rawUidShown(container)).toBe(uidShown);
+  });
+});
