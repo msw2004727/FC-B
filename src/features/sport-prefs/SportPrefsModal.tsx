@@ -197,13 +197,20 @@ export function SportPrefsModal({ owned, onClose, onSaved, onSeen }: SportPrefsM
               <button type="button" class="outline-btn spf-more" onClick={onMore}>{t('more')}</button>
               <button
                 type="button"
-                class="primary-btn spf-ok"
+                class={`primary-btn spf-ok${saving ? ' is-saving' : ''}`}
                 disabled={saving}
+                aria-busy={saving || undefined}
                 onClick={() => {
                   void onConfirm();
                 }}
               >
-                {t('confirm')}
+                <span class="spf-ok-label">{t('confirm')}</span>
+                {saving ? (
+                  // 同 ui/Button.tsx 載入中的 ui-button__spinner（裝飾性 inline SVG）
+                  <svg class="spf-ok-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false">
+                    <path d="M12 3a9 9 0 1 1-9 9" />
+                  </svg>
+                ) : null}
               </button>
             </div>
           </>

@@ -57,7 +57,9 @@ async function setupPush(): Promise<void> {
 }
 
 let favState: string[] = scene === 'profile-empty' ? [] : ['football', 'badminton', 'volleyball'];
-registerSportPrefsMock((data) => {
+const saveDelayMs = Number(params.get('delay')) || 0;
+registerSportPrefsMock(async (data) => {
+  if (saveDelayMs > 0) await new Promise((r) => setTimeout(r, saveDelayMs));
   if (Array.isArray(data.addSports)) favState = [...favState, ...(data.addSports as string[]).filter((k) => !favState.includes(k))];
   if (typeof data.removeSport === 'string') favState = favState.filter((k) => k !== data.removeSport);
   return { ok: true, favSports: favState, newEventNotify: data.newEventNotify !== false };

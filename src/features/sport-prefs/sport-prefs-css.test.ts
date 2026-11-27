@@ -12,3 +12,12 @@ describe('九宮格開著時浮球與泡泡讓開', () => {
     expect(css).toMatch(/body\.sport-prefs-open \.contact-owner-fab-hint \{ display: none !important; \}/);
   });
 });
+
+describe('確認鈕存檔中轉圈', () => {
+  it('沿用共用 ui-spin 動畫與時長 token，且 reduced motion 停轉', () => {
+    const css = readFileSync(join(__dirname, 'sport-prefs.css'), 'utf8');
+    expect(css).toMatch(/\.spf-ok-spin \{[^}]*animation: ui-spin var\(--ui-spin-dur\) var\(--ui-ease\) infinite;/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*#sport-prefs-modal \.spf-ok-spin \{ animation: none; \}/);
+    expect(css).not.toMatch(/@keyframes/);
+  });
+});

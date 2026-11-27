@@ -180,6 +180,53 @@ describe('SportPrefsModal', () => {
     expect(call.tone).toBe('error');
   });
 
+  it('存檔等待中：確認鈕轉圈、disabled、aria-busy；成功後移除', async () => {
+    let resolveSave: (v: unknown) => void = () => undefined;
+    mocks.saveSportPrefs.mockReturnValue(new Promise((r) => { resolveSave = r; }));
+    renderModal();
+    await screen.findAllByRole('checkbox');
+    pickFirstTile();
+    const confirm = screen.getByRole('button', { name: '確認' }) as HTMLButtonElement;
+    expect(confirm.querySelector('.spf-ok-spin')).toBeNull();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(confirm.disabled).toBe(true));
+    expect(confirm.getAttribute('aria-busy')).toBe('true');
+    expect(confirm.classList.contains('is-saving')).toBe(true);
+    expect(confirm.querySelector('svg.spf-ok-spin[aria-hidden="true"]')).toBeTruthy();
+    // 讀屏名稱不變、文字保留（寬度不跳）
+    expect(screen.getByRole('button', { name: '確認' })).toBe(confirm);
+    fireEvent.click(confirm);
+    expect(mocks.saveSportPrefs).toHaveBeenCalledTimes(1);
+    resolveSave({ favSports: ['football'], newEventNotify: true });
+    await waitFor(() => expect(document.querySelector('.spf-ok-spin')).toBeNull());
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it('存檔失敗後確認鈕恢復可按、不再轉圈', async () => {
+    mocks.saveSportPrefs.mockRejectedValue(new Error('boom'));
+    renderModal();
+    await screen.findAllByRole('checkbox');
+    pickFirstTile();
+    const confirm = screen.getByRole('button', { name: '確認' }) as HTMLButtonElement;
+    fireEvent.click(confirm);
+    await waitFor(() => expect(mocks.toastShow).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(confirm.disabled).toBe(false));
+    expect(confirm.getAttribute('aria-busy')).toBeNull();
+    expect(confirm.classList.contains('is-saving')).toBe(false);
+    expect(confirm.querySelector('.spf-ok-spin')).toBeNull();
+  });
+
+  it('0 個按確認直接關閉、不轉圈', async () => {
+    const { onClose } = renderModal();
+    await screen.findAllByRole('checkbox');
+    const confirm = screen.getByRole('button', { name: '確認' }) as HTMLButtonElement;
+    fireEvent.click(confirm);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(confirm.querySelector('.spf-ok-spin')).toBeNull();
+    expect(confirm.disabled).toBe(false);
+    expect(mocks.saveSportPrefs).not.toHaveBeenCalled();
+  });
+
   it('卸載後 body 沒有 sport-prefs-open', async () => {
     const { unmount } = renderModal();
     await screen.findAllByRole('checkbox');

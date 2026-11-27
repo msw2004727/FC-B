@@ -112,6 +112,13 @@
 .legacy-ui .ne-block { margin-bottom: 16px; }
 
 #sport-prefs-modal .spf-ok:disabled { cursor: not-allowed; }
+/* 存檔中：轉圈疊在字上置中、字只變透明（保留寬度與讀屏名稱）；轉圈與時長沿用 ui/button.css 的 ui-button__spinner（ui-spin），半透明照 A 的 _withButtonLoading（.6） */
+#sport-prefs-modal .spf-actions .spf-ok.is-saving { position: relative; opacity: .6; cursor: progress; }
+#sport-prefs-modal .spf-ok.is-saving .spf-ok-label { color: transparent; }
+#sport-prefs-modal .spf-ok-spin { position: absolute; top: 50%; left: 50%; margin: -9px 0 0 -9px; animation: ui-spin var(--ui-spin-dur) var(--ui-ease) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  #sport-prefs-modal .spf-ok-spin { animation: none; }
+}
 .legacy-ui .fav-legacy { color: var(--text-primary); }
 /* 九宮格開著時，安裝浮球與聯繫站長泡泡讓開（計畫書 §7.2） */
 body.sport-prefs-open .pwa-install-fab,
